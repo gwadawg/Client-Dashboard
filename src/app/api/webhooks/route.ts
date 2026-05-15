@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
+import { parseYnFlag } from '@/lib/metrics';
 
-const VALID_EVENT_TYPES = ['dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked'] as const;
+const VALID_EVENT_TYPES = [
+  'dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked',
+  'live_transfer', 'proposal_sent', 'closed', 'out_of_state_lead',
+] as const;
 
 export async function POST(req: Request) {
   try {
@@ -74,6 +78,7 @@ export async function POST(req: Request) {
       }
     }
 
+    const isLead = payload.event_type === 'lead';
     const { error } = await service.from('events').insert({
       client_id,
       event_type: payload.event_type,
@@ -81,6 +86,13 @@ export async function POST(req: Request) {
       duration_seconds: payload.duration_seconds ?? null,
       is_pickup: payload.is_pickup ?? null,
       is_conversation: payload.is_conversation ?? null,
+      is_qualified: isLead
+        ? parseYnFlag(payload.is_qualified ?? payload.qualified)
+        : null,
+      is_hot: isLead ? parseYnFlag(payload.is_hot ?? payload.hot) : null,
+      is_out_of_state: isLead
+        ? parseYnFlag(payload.is_out_of_state ?? payload.out_of_state)
+        : null,
       speed_to_lead_seconds,
       ghl_contact_id: payload.ghl_contact_id ?? null,
       scheduled_at: payload.scheduled_at ?? null,

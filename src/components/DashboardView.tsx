@@ -14,31 +14,9 @@ import AlertBanner from "./AlertBanner";
 import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
 import UserManager from "./UserManager";
+import type { MetricsResult } from "@/lib/metrics";
 
 type Client = { id: string; name: string; is_live?: boolean };
-
-type Metrics = {
-  new_leads: number;
-  booked_appointments: number;
-  appt_booking_rate: number;
-  appts_to_take_place: number;
-  shows: number;
-  no_shows: number;
-  show_pct: number;
-  ad_spend: number;
-  cpl: number;
-  cp_appt: number;
-  cps: number;
-  outbound_dials: number;
-  dials_per_lead: number;
-  pickups: number;
-  pickup_pct: number;
-  conversations: number;
-  conversation_pct: number;
-  callbacks: number;
-  cb_pct: number;
-  speed_to_lead_min: number;
-};
 
 type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "all_time" | "custom";
 
@@ -222,7 +200,7 @@ export default function DashboardView() {
   const [preset, setPreset] = useState<Preset>("this_month");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [metrics, setMetrics] = useState<MetricsResult | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [showPresetMenu, setShowPresetMenu] = useState(false);
   const [heatmapDays, setHeatmapDays] = useState(0);
@@ -477,21 +455,46 @@ export default function DashboardView() {
             ) : metrics ? (
               <div className="space-y-8 max-w-7xl">
                 <section>
-                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>KPIs</h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                    <KpiCard label="New Leads" value={fmtInt(metrics.new_leads)} />
-                    <KpiCard label="Booked Appointments" value={fmtInt(metrics.booked_appointments)} />
-                    <KpiCard label="Appt Booking Rate" value={fmtPct(metrics.appt_booking_rate)} />
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Leads &amp; Pipeline</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <KpiCard label="Total Leads" value={fmtInt(metrics.new_leads)} />
+                    <KpiCard label="Qualified Leads" value={fmtInt(metrics.qualified_leads)} />
+                    <KpiCard label="Hot Leads" value={fmtInt(metrics.hot_leads)} accent />
+                    <KpiCard label="Out of State Leads" value={fmtInt(metrics.out_of_state_leads)} />
+                    <KpiCard label="Proposals Sent" value={fmtInt(metrics.proposals_sent)} />
+                    <KpiCard label="Closed" value={fmtInt(metrics.closed)} accent />
+                  </div>
+                </section>
+
+                <section>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Appointments</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <KpiCard label="Appointments Booked" value={fmtInt(metrics.booked_appointments)} />
+                    <KpiCard label="Booking Rate" value={fmtPct(metrics.appt_booking_rate)} />
                     <KpiCard label="Appts To Take Place" value={fmtInt(metrics.appts_to_take_place)} />
                     <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
                     <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
+                    <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
+                </section>
+
+                <section>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Engagement</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <KpiCard label="Live Transfers" value={fmtInt(metrics.live_transfers)} />
+                    <KpiCard label="Total Conversations (2m+)" value={fmtInt(metrics.total_conversations)} />
+                    <KpiCard label="Callback Requests" value={fmtInt(metrics.callbacks)} />
+                    <KpiCard label="Callback Rate" value={fmtPct(metrics.cb_pct)} />
+                  </div>
+                </section>
+
+                <section>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Ad Spend</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <KpiCard label="Ad Spend" value={fmt$(metrics.ad_spend)} />
                     <KpiCard label="CPL" value={fmt$(metrics.cpl)} />
                     <KpiCard label="CP Appointment" value={fmt$(metrics.cp_appt)} />
                     <KpiCard label="CPS" value={fmt$(metrics.cps)} />
-                    <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
                   </div>
                 </section>
 
@@ -509,10 +512,6 @@ export default function DashboardView() {
                     <KpiCard label="Pick Up Rate" value={fmtPct(metrics.pickup_pct)} accent />
                     <KpiCard label="Conversations (2m+)" value={fmtInt(metrics.conversations)} />
                     <KpiCard label="Conversation Rate" value={fmtPct(metrics.conversation_pct)} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 mt-3 max-w-sm">
-                    <KpiCard label="Callback Requests" value={fmtInt(metrics.callbacks)} />
-                    <KpiCard label="Callback Rate" value={fmtPct(metrics.cb_pct)} />
                   </div>
                 </section>
               </div>

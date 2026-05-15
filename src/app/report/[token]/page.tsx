@@ -2,28 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import type { MetricsResult } from "@/lib/metrics";
 
-type Metrics = {
-  client_name: string;
-  new_leads: number;
-  booked_appointments: number;
-  appt_booking_rate: number;
-  shows: number;
-  no_shows: number;
-  show_pct: number;
-  ad_spend: number;
-  cpl: number;
-  cp_appt: number;
-  cps: number;
-  outbound_dials: number;
-  dials_per_lead: number;
-  pickups: number;
-  pickup_pct: number;
-  conversations: number;
-  conversation_pct: number;
-  callbacks: number;
-  speed_to_lead_min: number;
-};
+type ReportMetrics = MetricsResult & { client_name: string };
 
 function KpiCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -55,7 +36,7 @@ function getRange(p: Preset) {
 
 export default function PublicReportPage() {
   const { token } = useParams<{ token: string }>();
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [metrics, setMetrics] = useState<ReportMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [preset, setPreset] = useState<Preset>("this_month");
@@ -75,6 +56,7 @@ export default function PublicReportPage() {
   const fmt$ = (v: number) => `$${Math.round(v).toLocaleString()}`;
   const fmtPct = (v: number) => `${v.toFixed(1)}%`;
   const fmtDec = (v: number) => v.toFixed(2);
+  const fmtInt = (v: number) => Math.round(v).toString();
 
   if (notFound) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: "#080f1e" }}>
@@ -126,16 +108,39 @@ export default function PublicReportPage() {
         ) : metrics ? (
           <div className="space-y-8">
             <section>
-              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>KPIs</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                <KpiCard label="New Leads" value={String(metrics.new_leads)} />
-                <KpiCard label="Appointments Booked" value={String(metrics.booked_appointments)} />
+              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Leads &amp; Pipeline</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                <KpiCard label="Total Leads" value={fmtInt(metrics.new_leads)} />
+                <KpiCard label="Qualified Leads" value={fmtInt(metrics.qualified_leads)} />
+                <KpiCard label="Hot Leads" value={fmtInt(metrics.hot_leads)} accent />
+                <KpiCard label="Out of State Leads" value={fmtInt(metrics.out_of_state_leads)} />
+                <KpiCard label="Proposals Sent" value={fmtInt(metrics.proposals_sent)} />
+                <KpiCard label="Closed" value={fmtInt(metrics.closed)} accent />
+              </div>
+            </section>
+
+            <section>
+              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Appointments</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                <KpiCard label="Appointments Booked" value={fmtInt(metrics.booked_appointments)} />
                 <KpiCard label="Booking Rate" value={fmtPct(metrics.appt_booking_rate)} />
-                <KpiCard label="Shows" value={String(metrics.shows)} accent />
-                <KpiCard label="No Shows" value={String(metrics.no_shows)} />
+                <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
+                <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
                 <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+            </section>
+
+            <section>
+              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Engagement</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <KpiCard label="Live Transfers" value={fmtInt(metrics.live_transfers)} />
+                <KpiCard label="Conversations (2m+)" value={fmtInt(metrics.total_conversations)} />
+              </div>
+            </section>
+
+            <section>
+              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Ad Spend</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <KpiCard label="Ad Spend" value={fmt$(metrics.ad_spend)} />
                 <KpiCard label="Cost Per Lead" value={fmt$(metrics.cpl)} />
                 <KpiCard label="Cost Per Appt" value={fmt$(metrics.cp_appt)} />
@@ -148,8 +153,8 @@ export default function PublicReportPage() {
             <section>
               <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Calling Stats</h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <KpiCard label="Outbound Dials" value={String(metrics.outbound_dials)} />
-                <KpiCard label="Pickups" value={String(metrics.pickups)} />
+                <KpiCard label="Outbound Dials" value={fmtInt(metrics.outbound_dials)} />
+                <KpiCard label="Pickups" value={fmtInt(metrics.pickups)} />
                 <KpiCard label="Pickup Rate" value={fmtPct(metrics.pickup_pct)} accent />
                 <KpiCard label="Speed to Lead" value={`${fmtDec(metrics.speed_to_lead_min)}m`} />
               </div>

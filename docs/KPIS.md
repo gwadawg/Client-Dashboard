@@ -191,12 +191,12 @@ Document your live Make scenario to match one approach:
 | Appointments Booked | Yes | `appointment_booked` |
 | Booking Rate | Yes | |
 | Shows / No Shows | Yes | |
-| Show Rate | Partial | App uses `shows ÷ (shows + no_shows)`; **target:** `shows ÷ booked` per this doc |
+| Show Rate | Yes | `shows ÷ appointments booked` |
 | Outbound Dials, Pickups, CPL, etc. | Yes | See `src/lib/metrics.ts` |
 | Total Conversations (2 min+) | Partial | Uses `is_conversation` on dials; align `call_status = completed` in Make |
-| Qualified / Hot / Out of State | Planned | Send in `raw` now; add columns + metrics later |
-| Live Transfers | Planned | New `event_type` + schema |
-| Proposals Sent / Closed | Planned | Pipeline events |
+| Qualified / Hot / Out of State | Yes | `is_qualified`, `is_hot`, `is_out_of_state` on lead webhooks |
+| Live Transfers | Yes | `event_type: live_transfer` |
+| Proposals Sent / Closed | Yes | `event_type: proposal_sent`, `closed` |
 | Goals (targets) | Partial | Requires `goals` table in Supabase |
 
 **Code references:**

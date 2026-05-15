@@ -115,4 +115,17 @@ await runSQL(`
   CREATE INDEX IF NOT EXISTS watch_schedule_date_idx ON watch_schedule (scheduled_date);
 `, 'Create watch_schedule table');
 
+await runSQL(`
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS is_qualified boolean;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS is_hot boolean;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS is_out_of_state boolean;
+  ALTER TABLE events DROP CONSTRAINT IF EXISTS events_event_type_check;
+  ALTER TABLE events ADD CONSTRAINT events_event_type_check CHECK (
+    event_type IN (
+      'dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked',
+      'live_transfer', 'proposal_sent', 'closed', 'out_of_state_lead'
+    )
+  );
+`, 'Add client KPI fields and event types');
+
 console.log('\nAll migrations complete.');

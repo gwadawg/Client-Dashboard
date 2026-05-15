@@ -87,8 +87,16 @@ create table if not exists events (
   ghl_contact_id  text,
   raw             jsonb,
 
+  -- Lead flags (meaningful when event_type = 'lead')
+  is_qualified    boolean,
+  is_hot          boolean,
+  is_out_of_state boolean,
+
   constraint events_event_type_check check (
-    event_type in ('dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked')
+    event_type in (
+      'dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked',
+      'live_transfer', 'proposal_sent', 'closed', 'out_of_state_lead'
+    )
   )
 );
 
