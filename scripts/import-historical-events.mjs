@@ -32,7 +32,7 @@ const SERVICE_KEY = envVars['SUPABASE_SERVICE_ROLE_KEY'];
 const SUPABASE_HOST = new URL(SUPABASE_URL).hostname;
 const SUPABASE_IP = '104.18.38.10';
 
-function request(method, path, body) {
+function request(method, path, body, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
     const req = https.request(
@@ -48,6 +48,7 @@ function request(method, path, body) {
           'Content-Type': 'application/json',
           Prefer: 'return=representation',
           ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+          ...extraHeaders,
         },
       },
       (res) => {
@@ -128,25 +129,36 @@ async function loadClients() {
   return map;
 }
 
-async function ensureClients(names, clientMap) {
-  for (const name of names) {
-    if (clientMap.has(name)) continue;
-    if (DRY_RUN) {
-      console.log(`  [dry-run] would create client: ${name}`);
-      clientMap.set(name, `dry-${name}`);
-      continue;
-    }
-    const { status, data } = await request('POST', '/rest/v1/clients', { name, is_live: true });
-    if (status !== 201) {
-      console.warn(`  client "${name}" insert: ${status}`, data);
-      const refetch = await loadClients();
-      if (refetch.has(name)) clientMap.set(name, refetch.get(name));
-    } else {
-      const created = JSON.parse(data);
-      const row = Array.isArray(created) ? created[0] : created;
-      clientMap.set(name, row.id);
-      console.log(`  created client: ${name}`);
-    }
+async function upsertClient(row, clientMap) {
+  const name = row.name?.trim();
+  if (!name) return;
+
+  const body = {
+    name,
+    is_live: row.is_live === 'true',
+    ...(row.ghl_location_id?.trim() ? { ghl_location_id: row.ghl_location_id.trim() } : {}),
+  };
+
+  if (DRY_RUN) {
+    clientMap.set(name, clientMap.get(name) ?? `dry-${name}`);
+    return;
+  }
+
+  const { status, data } = await request(
+    'POST',
+    '/rest/v1/clients?on_conflict=name',
+    body,
+    { Prefer: 'resolution=merge-duplicates,return=representation' },
+  );
+
+  if (status === 200 || status === 201) {
+    const created = JSON.parse(data);
+    const c = Array.isArray(created) ? created[0] : created;
+    clientMap.set(name, c.id);
+  } else {
+    console.warn(`  client "${name}" upsert: ${status}`, data);
+    const refetch = await loadClients();
+    if (refetch.has(name)) clientMap.set(name, refetch.get(name));
   }
 }
 
@@ -198,10 +210,10 @@ async function main() {
   const eventRows = await readCsv(combinedPath);
 
   const clientMap = await loadClients();
-  await ensureClients(
-    clientRows.map((r) => r.name.trim()),
-    clientMap,
-  );
+  console.log(`Upserting ${clientRows.length} clients…`);
+  for (const row of clientRows) {
+    await upsertClient(row, clientMap);
+  }
 
   let batch = [];
   let inserted = 0;

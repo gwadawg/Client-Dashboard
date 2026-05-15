@@ -34,12 +34,16 @@ create trigger on_auth_user_created
 -- 2. Clients (lead sources or service lines)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists clients (
-  id           uuid    primary key default gen_random_uuid(),
-  name         text    not null unique,
-  is_live      boolean not null default true,
-  share_token  text,
-  created_at   timestamptz default now()
+  id               uuid    primary key default gen_random_uuid(),
+  name             text    not null unique,
+  is_live          boolean not null default true,
+  ghl_location_id  text,
+  share_token      text,
+  created_at       timestamptz default now()
 );
+
+create unique index if not exists clients_ghl_location_id_key
+  on clients (ghl_location_id) where ghl_location_id is not null;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 3. Agents (setters)

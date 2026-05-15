@@ -1,47 +1,45 @@
-# Historical import — Waiz New Leads
+# Supabase historical import
 
-Generated from `Call Center - Waiz - New Leads.csv`.
+## Regenerate all files
 
-## Files
+```bash
+node scripts/prepare-supabase-import.mjs
+```
+
+Source files (default paths):
+
+- `~/Downloads/Call Center - Waiz - Project Info.csv`
+- `~/Downloads/Call Center - Waiz - New Leads.csv`
+
+## Output files
 
 | File | Purpose |
 |------|---------|
-| `01_clients.csv` | Unique client names — create in Admin → Client Roster first (or auto via script) |
-| `02_lead_registry.csv` | One row per unique lead (`lead_id` lookup) |
-| `03_events_leads.csv` | `lead` events only |
-| `04_events_conversions_from_flags.csv` | `appointment_booked`, `dial`, `proposal_sent`, `closed` from sheet Y/N columns |
-| `05_events_all_combined.csv` | **Use this for bulk import** (leads + conversions) |
+| `00_client_config.csv` | Reference: calendars, ad accounts (not imported to DB) |
+| `01_clients.csv` | **Import first** — `name`, `is_live`, `ghl_location_id` |
+| `02_lead_registry.csv` | Lead ID lookup |
+| `03_events_leads.csv` | Lead events only |
+| `04_events_conversions_from_flags.csv` | Appt/spoken/offer/closed from sheet Y/N |
+| `05_events_all_combined.csv` | **Import second** — all events |
+| `06_import_warnings.txt` | Name mismatches, duplicate location IDs |
 
-## Lead ID rules
-
-- GHL contact URL present → use GHL contact id
-- Else phone + client → `ldr:{Client Name}:{10-digit phone}`
-- Else no phone → `ldr:{Client Name}:nophone:{hash}` (per name + date)
-
-Same phone on **different clients** = different `lead_id`.
-
-## Regenerate
+## Import order
 
 ```bash
-node scripts/transform-leads-csv.mjs "/Users/gwadawg/Downloads/Call Center - Waiz - New Leads.csv"
-```
+# Run DB migration once (adds clients.ghl_location_id)
+node scripts/migrate.mjs
 
-## Import into Supabase
+node scripts/import-clients.mjs --dry-run
+node scripts/import-clients.mjs
 
-**Option A — Script (recommended)**
-
-```bash
 node scripts/import-historical-events.mjs --dry-run
 node scripts/import-historical-events.mjs
 ```
 
 Requires `.env.local` with `SUPABASE_SERVICE_ROLE_KEY`.
 
-**Option B — Table Editor**
+## Notes
 
-1. Import `01_clients.csv` into `clients` (or create clients manually with matching names).
-2. Import `05_events_all_combined.csv` is **not** compatible with Table Editor as-is (needs `client_id`). Use the script instead.
-
-## After import
-
-When you have **Appointments** / **Conversations** CSVs, run the same transform pattern with matching `lead_id` / phone + client so timelines fill in without double-counting flags.
+- Client `name` matches Leads **Account** exactly (required for events).
+- `is_live` comes from Project Info **Reporting Active**.
+- Review `06_import_warnings.txt` before importing.

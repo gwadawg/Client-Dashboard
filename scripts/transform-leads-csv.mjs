@@ -249,9 +249,6 @@ for (let r = 1; r < table.length; r++) {
 
 mkdirSync(OUT_DIR, { recursive: true });
 
-const clients = [...new Set([...profiles.values()].map((p) => p.client_name))].sort();
-const clientRows = clients.map((name) => ({ name, is_live: 'true' }));
-
 const registryRows = [...profiles.values()].map((p) => ({
   lead_id: p.lead_id,
   ghl_contact_id: p.ghl_contact_id,
@@ -305,7 +302,6 @@ for (const p of profiles.values()) {
   if (p.closed) conversionEvents.push({ ...base, event_type: 'closed' });
 }
 
-writeCsv(resolve(OUT_DIR, '01_clients.csv'), ['name', 'is_live'], clientRows);
 writeCsv(
   resolve(OUT_DIR, '02_lead_registry.csv'),
   ['lead_id', 'ghl_contact_id', 'client_name', 'lead_name', 'lead_phone', 'lead_email', 'first_seen_at'],
@@ -379,7 +375,7 @@ writeCsv(
 console.log(`Input rows:     ${table.length - 1}`);
 console.log(`Skipped:        ${skipped} (no client name)`);
 console.log(`Unique leads:   ${profiles.size}`);
-console.log(`Clients:        ${clients.length}`);
+console.log(`Client names:   ${new Set([...profiles.values()].map((p) => p.client_name)).size} (see 01_clients.csv from transform-clients.mjs)`);
 console.log(`Lead events:    ${leadEvents.length}`);
 console.log(`Conversion evt: ${conversionEvents.length}`);
 console.log(`\nWrote files to: ${OUT_DIR}/`);
