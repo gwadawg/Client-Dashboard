@@ -63,6 +63,7 @@ const COLUMNS: Record<string, { key: string; label: string }[]> = {
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   appointment_booked: "Booked",
+  appointment_cancelled: "Cancelled",
   show: "Show",
   no_show: "No Show",
   callback_booked: "Callback",

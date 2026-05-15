@@ -43,7 +43,7 @@ export async function GET(req: Request) {
   const eventTypeMap: Record<string, string[]> = {
     leads:          ['lead'],
     dials:          ['dial'],
-    appointments:   ['appointment_booked', 'show', 'no_show', 'callback_booked'],
+    appointments:   ['appointment_booked', 'appointment_cancelled', 'show', 'no_show', 'callback_booked'],
     speed_to_lead:  ['dial'],
   };
 

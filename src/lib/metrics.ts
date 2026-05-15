@@ -21,6 +21,8 @@ export type MetricsResult = {
   shows: number;
   no_shows: number;
   show_pct: number;
+  appointment_cancelled: number;
+  cancel_rate: number;
   live_transfers: number;
   total_conversations: number;
   proposals_sent: number;
@@ -50,8 +52,10 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
     events.filter(e => e.event_type === 'out_of_state_lead').length;
 
   const booked = events.filter(e => e.event_type === 'appointment_booked').length;
+  const cancelled = events.filter(e => e.event_type === 'appointment_cancelled').length;
   const shows = events.filter(e => e.event_type === 'show').length;
   const no_shows = events.filter(e => e.event_type === 'no_show').length;
+  const scheduled_total = booked + cancelled;
   const dials = events.filter(e => e.event_type === 'dial');
   const dial_count = dials.length;
   const pickups = dials.filter(e => e.is_pickup).length;
@@ -78,10 +82,12 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
     out_of_state_leads,
     booked_appointments: booked,
     appt_booking_rate: leads > 0 ? (booked / leads) * 100 : 0,
-    appts_to_take_place: Math.max(0, booked - shows - no_shows),
+    appts_to_take_place: Math.max(0, booked - shows - no_shows - cancelled),
     shows,
     no_shows,
     show_pct: booked > 0 ? (shows / booked) * 100 : 0,
+    appointment_cancelled: cancelled,
+    cancel_rate: scheduled_total > 0 ? (cancelled / scheduled_total) * 100 : 0,
     live_transfers,
     total_conversations: conversations,
     proposals_sent,

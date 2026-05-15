@@ -476,6 +476,8 @@ export default function DashboardView() {
                     <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
                     <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
                     <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
+                    <KpiCard label="Cancellations" value={fmtInt(metrics.appointment_cancelled)} />
+                    <KpiCard label="Cancel Rate" value={fmtPct(metrics.cancel_rate)} />
                   </div>
                 </section>
 

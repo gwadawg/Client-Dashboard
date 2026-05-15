@@ -94,7 +94,7 @@ create table if not exists events (
 
   constraint events_event_type_check check (
     event_type in (
-      'dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked',
+      'dial', 'lead', 'appointment_booked', 'appointment_cancelled', 'show', 'no_show', 'callback_booked',
       'live_transfer', 'proposal_sent', 'closed', 'out_of_state_lead'
     )
   )

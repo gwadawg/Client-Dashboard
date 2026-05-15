@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 
-// Called by Make automation when an appointment shows or no-shows.
+// Called by Make when an appointment shows, no-shows, or is cancelled.
 // Finds the original appointment_booked event by external_id and updates its type.
-// Body: { external_id: string, status: "show" | "no_show" }
+// Body: { external_id: string, status: "show" | "no_show" | "cancelled" }
 export async function POST(req: Request) {
   try {
     if (!validateWebhookSecret(req)) {
@@ -16,15 +16,16 @@ export async function POST(req: Request) {
     if (!external_id) {
       return NextResponse.json({ error: 'external_id is required' }, { status: 400 });
     }
-    if (status !== 'show' && status !== 'no_show') {
-      return NextResponse.json({ error: 'status must be "show" or "no_show"' }, { status: 400 });
+    if (status !== 'show' && status !== 'no_show' && status !== 'cancelled') {
+      return NextResponse.json({ error: 'status must be "show", "no_show", or "cancelled"' }, { status: 400 });
     }
 
     const service = createServiceClient();
+    const event_type = status === 'cancelled' ? 'appointment_cancelled' : status;
 
     const { data, error } = await service
       .from('events')
-      .update({ event_type: status })
+      .update({ event_type })
       .eq('external_id', external_id)
       .eq('event_type', 'appointment_booked')
       .select('id')

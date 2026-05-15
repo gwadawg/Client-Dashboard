@@ -6,6 +6,7 @@ import { parseYnFlag } from '@/lib/metrics';
 const VALID_EVENT_TYPES = [
   'dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked',
   'live_transfer', 'proposal_sent', 'closed', 'out_of_state_lead',
+  'appointment_cancelled',
 ] as const;
 
 export async function POST(req: Request) {

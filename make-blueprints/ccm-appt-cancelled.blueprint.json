@@ -1,5 +1,5 @@
 {
-    "name": "CCM - Appointment Booked → Supabase",
+    "name": "CCM - Appointment Cancelled → Supabase",
     "flow": [
         {
             "id": 1,
@@ -15,7 +15,7 @@
                     "parameters": {
                         "__IMTHOOK__": {
                             "data": { "editable": "false" },
-                            "label": "Appointment Booked Webhook — create new and point GHL here"
+                            "label": "Appointment Cancelled Webhook — create new and point GHL here"
                         }
                     }
                 },
@@ -38,7 +38,7 @@
                 "useNewZLibDeCompression": true
             },
             "mapper": {
-                "url": "https://wm-os-production.up.railway.app/api/webhooks",
+                "url": "https://wm-os-production.up.railway.app/api/webhooks/appointment-status",
                 "serializeUrl": false,
                 "method": "POST",
                 "headers": [
@@ -61,10 +61,10 @@
                 "ca": "",
                 "useMtls": false,
                 "contentType": "application/json",
-                "data": "{\"event_type\": \"appointment_booked\", \"client_name\": \"{{trim(1.location.name)}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"external_id\": \"{{1.appointment.id}}\", \"occurred_at\": \"{{formatDate(1.calendar.date_created; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"scheduled_at\": \"{{formatDate(1.appointment.startTime; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"calendar_name\": \"{{1.calendar.name}}\", \"lead_name\": \"{{1.contact.name}}\", \"lead_phone\": \"{{1.contact.phone}}\", \"lead_email\": \"{{1.contact.email}}\", \"agent_name\": \"{{1.assignedUser.name}}\"}"
+                "data": "{\"external_id\": \"{{1.appointment.id}}\", \"status\": \"cancelled\"}"
             },
             "metadata": {
-                "designer": { "x": 300, "y": 0, "name": "Send to Supabase" }
+                "designer": { "x": 300, "y": 0, "name": "Mark Cancelled in Supabase" }
             }
         }
     ],
