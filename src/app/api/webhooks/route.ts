@@ -18,6 +18,21 @@ const VALID_EVENT_TYPES = [
   'appointment_cancelled', 'lo_bailed', 'lo_audit',
 ] as const;
 
+/** Empty string from Make is not valid for timestamptz — use null or omit for DB. */
+function nullIfInvalidTimestamptz(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== 'string') return null;
+  const t = value.trim();
+  if (t === '') return null;
+  const ms = Date.parse(t);
+  if (Number.isNaN(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
+function occurredAtOrNow(value: unknown): string {
+  return nullIfInvalidTimestamptz(value) ?? new Date().toISOString();
+}
+
 export async function POST(req: Request) {
   try {
     if (!validateWebhookSecret(req)) {
@@ -198,11 +213,7 @@ export async function POST(req: Request) {
 
       // Only set on first dial, and only when we have a lead event to measure from
       if (!priorDial && leadEvent) {
-        const dialAt =
-          typeof payload.occurred_at === 'string'
-            ? payload.occurred_at
-            : new Date().toISOString();
-        const dialMs = new Date(dialAt).getTime();
+        const dialMs = new Date(occurredAtOrNow(payload.occurred_at)).getTime();
         const leadMs = new Date(leadEvent.occurred_at).getTime();
         if (dialMs > leadMs) speed_to_lead_seconds = Math.floor((dialMs - leadMs) / 1000);
       }
@@ -212,7 +223,7 @@ export async function POST(req: Request) {
     const { error } = await service.from('events').insert({
       client_id,
       event_type: eventType,
-      occurred_at: payload.occurred_at ?? new Date().toISOString(),
+      occurred_at: occurredAtOrNow(payload.occurred_at),
       duration_seconds: payload.duration_seconds ?? null,
       is_pickup: payload.is_pickup ?? null,
       is_conversation: payload.is_conversation ?? null,
@@ -225,7 +236,7 @@ export async function POST(req: Request) {
         : null,
       speed_to_lead_seconds,
       ghl_contact_id: payload.ghl_contact_id ?? null,
-      scheduled_at: payload.scheduled_at ?? null,
+      scheduled_at: nullIfInvalidTimestamptz(payload.scheduled_at),
       external_id: payload.external_id ?? null,
       calendar_name: payload.calendar_name ?? null,
       lead_name: payload.lead_name ?? null,
