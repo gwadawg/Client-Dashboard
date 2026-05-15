@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated historical import CSVs (regenerate with scripts/transform-leads-csv.mjs)
+/data/import/*.csv
