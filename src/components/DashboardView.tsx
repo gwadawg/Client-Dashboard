@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
 import RawDataTable from "./RawDataTable";
+import LeadProfilesTable from "./LeadProfilesTable";
 import HeatMap from "./HeatMap";
 import AgentStats from "./AgentStats";
 import AgentAdmin from "./AgentAdmin";
@@ -519,9 +520,16 @@ export default function DashboardView() {
           )}
 
           {/* ── Raw Data Tables ── */}
-          {isRaw && (
+          {isRaw && view === "leads" && (
+            <LeadProfilesTable
+              clients={clients}
+              startDate={dateStart}
+              endDate={dateEnd}
+            />
+          )}
+          {isRaw && view !== "leads" && (
             <RawDataTable
-              type={view as "leads" | "dials" | "appointments" | "speed_to_lead" | "ad_spend"}
+              type={view as "dials" | "appointments" | "speed_to_lead" | "ad_spend"}
               clients={clients}
               preset={preset}
               startDate={dateStart}
