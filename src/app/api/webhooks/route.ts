@@ -198,7 +198,11 @@ export async function POST(req: Request) {
 
       // Only set on first dial, and only when we have a lead event to measure from
       if (!priorDial && leadEvent) {
-        const dialMs = new Date(payload.occurred_at ?? new Date().toISOString()).getTime();
+        const dialAt =
+          typeof payload.occurred_at === 'string'
+            ? payload.occurred_at
+            : new Date().toISOString();
+        const dialMs = new Date(dialAt).getTime();
         const leadMs = new Date(leadEvent.occurred_at).getTime();
         if (dialMs > leadMs) speed_to_lead_seconds = Math.floor((dialMs - leadMs) / 1000);
       }
