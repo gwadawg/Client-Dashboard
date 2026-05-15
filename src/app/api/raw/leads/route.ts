@@ -31,6 +31,7 @@ type EventRow = {
   is_qualified: boolean | null;
   is_hot: boolean | null;
   is_out_of_state: boolean | null;
+  raw: unknown;
   clients: { name: string } | { name: string }[] | null;
 };
 
@@ -62,10 +63,12 @@ type LeadCounts = {
   appointments_booked: number;
   shows: number;
   no_shows: number;
+  lo_bailed: number;
   cancellations: number;
   callbacks: number;
   live_transfers: number;
   proposals: number;
+  loan_processing: number;
   closed: number;
 };
 
@@ -80,9 +83,103 @@ type LeadProfile = {
   is_qualified: boolean;
   is_hot: boolean;
   is_out_of_state: boolean;
+  loan_amount: string | null;
+  property_value: string | null;
+  b1_age: string | null;
+  b2_age: string | null;
   counts: LeadCounts;
   timeline: TimelineItem[];
 };
+
+/** Pull first matching key from webhook `raw` jsonb. */
+function pickRaw(raw: unknown, keys: string[]): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  for (const k of keys) {
+    if (!(k in o)) continue;
+    const v = o[k];
+    if (v == null || typeof v === 'boolean') continue;
+    if (typeof v === 'string' && v.trim() === '') continue;
+    return v;
+  }
+  return null;
+}
+
+function formatCurrencyCell(v: unknown): string | null {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number' && !Number.isNaN(v)) {
+    return `$${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  }
+  if (typeof v === 'string') {
+    const t = v.trim();
+    const n = Number(t.replace(/[^0-9.-]/g, ''));
+    if (!Number.isNaN(n) && t !== '') {
+      return `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+    }
+    return t;
+  }
+  return String(v);
+}
+
+function extractLoanAmount(raw: unknown): string | null {
+  return formatCurrencyCell(
+    pickRaw(raw, ['loan_amount', 'loanAmount', 'mortgage_amount', 'mortgageAmount', 'requested_loan_amount']),
+  );
+}
+
+function extractPropertyValue(raw: unknown): string | null {
+  return formatCurrencyCell(
+    pickRaw(raw, [
+      'property_value',
+      'propertyValue',
+      'home_value',
+      'homeValue',
+      'estimated_property_value',
+      'property_estimated_value',
+    ]),
+  );
+}
+
+/** Ages as whole numbers or short labels (e.g. co-borrower not yet collected). */
+function formatAgeCell(v: unknown): string | null {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number' && !Number.isNaN(v)) return String(Math.trunc(v));
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (t === '') return null;
+    const n = Number(t.replace(/[^0-9.-]/g, ''));
+    if (!Number.isNaN(n) && /^-?\d/.test(t)) return String(Math.trunc(n));
+    return t;
+  }
+  return String(v);
+}
+
+function extractB1Age(raw: unknown): string | null {
+  const v = pickRaw(raw, [
+    'b1_age',
+    'b1Age',
+    'B1_age',
+    'borrower_1_age',
+    'borrower1_age',
+    'primary_borrower_age',
+    'lead_age',
+  ]);
+  return formatAgeCell(v);
+}
+
+function extractB2Age(raw: unknown): string | null {
+  const v = pickRaw(raw, [
+    'b2_age',
+    'b2Age',
+    'B2_age',
+    'borrower_2_age',
+    'borrower2_age',
+    'spouse_age',
+    'co_borrower_age',
+    'coborrower_age',
+  ]);
+  return formatAgeCell(v);
+}
 
 function emptyCounts(): LeadCounts {
   return {
@@ -92,10 +189,12 @@ function emptyCounts(): LeadCounts {
     appointments_booked: 0,
     shows: 0,
     no_shows: 0,
+    lo_bailed: 0,
     cancellations: 0,
     callbacks: 0,
     live_transfers: 0,
     proposals: 0,
+    loan_processing: 0,
     closed: 0,
   };
 }
@@ -116,6 +215,9 @@ function bumpCounts(counts: LeadCounts, eventType: string, row: EventRow) {
     case 'no_show':
       counts.no_shows++;
       break;
+    case 'lo_bailed':
+      counts.lo_bailed++;
+      break;
     case 'appointment_cancelled':
       counts.cancellations++;
       break;
@@ -127,6 +229,9 @@ function bumpCounts(counts: LeadCounts, eventType: string, row: EventRow) {
       break;
     case 'proposal_sent':
       counts.proposals++;
+      break;
+    case 'loan_processing':
+      counts.loan_processing++;
       break;
     case 'closed':
       counts.closed++;
@@ -172,7 +277,7 @@ export async function GET(req: Request) {
   let q = ctx.service
     .from('events')
     .select(
-      'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, clients(name)',
+      'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, raw, clients(name)',
     )
     .order('occurred_at', { ascending: false })
     .limit(MAX_EVENTS);
@@ -204,6 +309,10 @@ export async function GET(req: Request) {
         is_qualified: false,
         is_hot: false,
         is_out_of_state: false,
+        loan_amount: null,
+        property_value: null,
+        b1_age: null,
+        b2_age: null,
         counts: emptyCounts(),
         timeline: [],
       });
@@ -221,6 +330,14 @@ export async function GET(req: Request) {
       if (row.is_qualified === true) profile.is_qualified = true;
       if (row.is_hot === true) profile.is_hot = true;
       if (row.is_out_of_state === true) profile.is_out_of_state = true;
+      const la = extractLoanAmount(row.raw);
+      const pv = extractPropertyValue(row.raw);
+      const b1 = extractB1Age(row.raw);
+      const b2 = extractB2Age(row.raw);
+      if (la != null) profile.loan_amount = la;
+      if (pv != null) profile.property_value = pv;
+      if (b1 != null) profile.b1_age = b1;
+      if (b2 != null) profile.b2_age = b2;
       if (new Date(row.occurred_at).getTime() < new Date(profile.created_at).getTime()) {
         profile.created_at = row.occurred_at;
         if (row.lead_name) profile.lead_name = row.lead_name;

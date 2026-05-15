@@ -12,10 +12,12 @@ type LeadCounts = {
   appointments_booked: number;
   shows: number;
   no_shows: number;
+  lo_bailed: number;
   cancellations: number;
   callbacks: number;
   live_transfers: number;
   proposals: number;
+  loan_processing: number;
   closed: number;
 };
 
@@ -44,6 +46,10 @@ type LeadProfile = {
   is_qualified: boolean;
   is_hot: boolean;
   is_out_of_state: boolean;
+  loan_amount: string | null;
+  property_value: string | null;
+  b1_age: string | null;
+  b2_age: string | null;
   counts: LeadCounts;
   timeline: TimelineItem[];
 };
@@ -60,11 +66,14 @@ const EVENT_LABELS: Record<string, string> = {
   appointment_booked: "Appt Booked",
   appointment_cancelled: "Cancelled",
   show: "Show",
-  no_show: "No Show",
+  no_show: "No Show (lead)",
+  lo_bailed: "LO bailed",
   callback_booked: "Callback",
   live_transfer: "Live Transfer",
   proposal_sent: "Proposal",
-  closed: "Closed",
+  loan_processing: "Submitted",
+  closed: "Funded",
+  lo_audit: "LO audit",
   out_of_state_lead: "Out of State",
 };
 
@@ -82,6 +91,82 @@ function fmtPhone(phone: string | null) {
   const d = phone.replace(/\D/g, "");
   if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
   return phone;
+}
+
+function csvEscape(s: string): string {
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function downloadLeadsPageCsv(rows: LeadProfile[], page: number) {
+  const headers = [
+    "Client",
+    "Lead ID",
+    "Name",
+    "Phone",
+    "Email",
+    "Loan amount",
+    "Property value",
+    "B1 age",
+    "B2 age",
+    "Lead created",
+    "Qualified",
+    "Hot",
+    "Out of state",
+    "Dials",
+    "Appts booked",
+    "Shows",
+    "No-shows",
+    "LO bailed",
+    "Cancelled",
+    "Funded",
+    "In processing",
+    "Callbacks",
+    "Proposals",
+    "Live transfers",
+  ];
+  const lines = [headers.map(csvEscape).join(",")];
+  for (const row of rows) {
+    const k = row.contact_key;
+    const c = row.counts;
+    lines.push(
+      [
+        row.client_name,
+        k,
+        row.lead_name ?? "",
+        row.lead_phone ?? "",
+        row.lead_email ?? "",
+        row.loan_amount ?? "",
+        row.property_value ?? "",
+        row.b1_age ?? "",
+        row.b2_age ?? "",
+        new Date(row.created_at).toISOString().slice(0, 10),
+        row.is_qualified ? "Y" : "",
+        row.is_hot ? "Y" : "",
+        row.is_out_of_state ? "Y" : "",
+        String(c.dials),
+        String(c.appointments_booked),
+        String(c.shows),
+        String(c.no_shows),
+        String(c.lo_bailed),
+        String(c.cancellations),
+        String(c.closed),
+        String(c.loan_processing),
+        String(c.callbacks),
+        String(c.proposals),
+        String(c.live_transfers),
+      ]
+        .map(csvEscape)
+        .join(","),
+    );
+  }
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `raw-leads-page-${page}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function Flag({ on, label, color }: { on: boolean; label: string; color: string }) {
@@ -210,18 +295,34 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         <span className="text-sm" style={{ color: "#334155" }}>
           {total.toLocaleString()} leads
         </span>
+        <button
+          type="button"
+          disabled={loading || rows.length === 0}
+          onClick={() => downloadLeadsPageCsv(rows, page)}
+          className="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40 transition-colors"
+          style={{
+            background: "#0f2040",
+            border: "1px solid rgba(255,255,255,0.12)",
+            color: "#94a3b8",
+          }}
+        >
+          Download CSV (this page)
+        </button>
         {capped && (
           <span className="text-xs px-2 py-1 rounded" style={{ background: "#422006", color: "#fbbf24" }}>
             Large range — narrow dates or client for full history
           </span>
         )}
       </div>
+      <p className="text-xs leading-relaxed max-w-3xl" style={{ color: "#475569" }}>
+        One row per lead (contact). Columns show identity, loan/property and borrower ages from your webhook payload, flags, and activity counts. Use date and client filters, then page through the full list. Scroll sideways on smaller screens. Expand a row for the full event timeline.
+      </p>
 
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <table className="w-full text-sm">
+        <table className="w-full text-sm min-w-[1100px]">
           <thead>
             <tr style={{ background: "#050c18" }}>
-              {["", "Client", "Lead ID", "Name", "Phone", "Created", "Flags", "Activity"].map((h) => (
+              {["", "Client", "Lead ID", "Name", "Phone", "Email", "Loan amt", "Prop. value", "B1 age", "B2 age", "Created", "Flags", "Activity"].map((h) => (
                 <th
                   key={h || "expand"}
                   className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
@@ -235,13 +336,13 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
+                <td colSpan={13} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
+                <td colSpan={13} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
                   No leads in this range
                 </td>
               </tr>
@@ -278,6 +379,25 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
                       <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#94a3b8" }}>
                         {fmtPhone(row.lead_phone)}
                       </td>
+                      <td
+                        className="px-4 py-2.5 whitespace-nowrap text-xs max-w-[10rem] truncate"
+                        style={{ color: "#94a3b8" }}
+                        title={row.lead_email ?? undefined}
+                      >
+                        {row.lead_email ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
+                        {row.loan_amount ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
+                        {row.property_value ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
+                        {row.b1_age ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
+                        {row.b2_age ?? "—"}
+                      </td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-xs" style={{ color: "#64748b" }}>
                         {fmtDate(row.created_at, false)}
                       </td>
@@ -294,8 +414,10 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
                           <CountPill label="booked" value={c.appointments_booked} accent="#38bdf8" />
                           <CountPill label="shows" value={c.shows} accent="#22c55e" />
                           <CountPill label="no-shows" value={c.no_shows} accent="#f87171" />
+                          <CountPill label="LO bailed" value={c.lo_bailed} accent="#fb923c" />
                           <CountPill label="cancelled" value={c.cancellations} />
-                          <CountPill label="closed" value={c.closed} accent="#f59e0b" />
+                          <CountPill label="funded" value={c.closed} accent="#f59e0b" />
+                          <CountPill label="in processing" value={c.loan_processing} />
                           <CountPill label="callbacks" value={c.callbacks} />
                           <CountPill label="proposals" value={c.proposals} />
                         </div>
@@ -303,7 +425,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={8} className="px-0 py-0" style={{ background: "#070f1a" }}>
+                        <td colSpan={13} className="px-0 py-0" style={{ background: "#070f1a" }}>
                           <table className="w-full">
                             <thead>
                               <tr>
