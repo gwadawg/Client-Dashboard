@@ -15,6 +15,7 @@ import AlertBanner from "./AlertBanner";
 import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
 import UserManager from "./UserManager";
+import AgentCreditQueue from "./AgentCreditQueue";
 import type { MetricsResult } from "@/lib/metrics";
 
 type Client = { id: string; name: string; is_live?: boolean };
@@ -32,6 +33,7 @@ type View =
   | "heatmap_pickup"
   | "heatmap_leads"
   | "agent_stats"
+  | "agent_credit_queue"
   | "agent_scorecards"
   | "recordings"
   | "goals"
@@ -61,6 +63,7 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "heatmap_pickup", label: "Pick Up Rate",   group: "Heat Maps"   },
   { view: "heatmap_leads",  label: "New Leads",      group: "Heat Maps"   },
   { view: "agent_stats",      label: "Agent Stats",      group: "Agent Stats" },
+  { view: "agent_credit_queue", label: "Credit Queue",   group: "Agent Credit" },
   { view: "agent_scorecards", label: "Scorecards",        group: "Agent Stats" },
   { view: "recordings",       label: "Call Recordings",   group: "Agent Stats" },
   { view: "goals",            label: "Goal Tracker",      group: "Overview"    },
@@ -70,6 +73,14 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "admin_share",      label: "Share Reports",     group: "Admin"       },
   { view: "admin_users",      label: "Users",             group: "Admin"       },
 ];
+
+const VALID_VIEWS = new Set<View>(NAV.map(item => item.view));
+
+function getInitialView(): View {
+  if (typeof window === "undefined") return "dashboard";
+  const requested = new URLSearchParams(window.location.search).get("view");
+  return requested && VALID_VIEWS.has(requested as View) ? (requested as View) : "dashboard";
+}
 
 const NAV_ICONS: Record<View, string> = {
   dashboard:     "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
@@ -82,6 +93,7 @@ const NAV_ICONS: Record<View, string> = {
   heatmap_pickup:"M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   heatmap_leads: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   agent_stats:   "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
+  agent_credit_queue: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
   admin_agents:     "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
   admin_clients:    "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
   admin_share:      "M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z",
@@ -195,7 +207,7 @@ function ShareReports({ clients }: { clients: Client[] }) {
 }
 
 export default function DashboardView() {
-  const [view, setView] = useState<View>("dashboard");
+  const [view, setView] = useState<View>(getInitialView);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [preset, setPreset] = useState<Preset>("this_month");
@@ -207,6 +219,7 @@ export default function DashboardView() {
   const [heatmapDays, setHeatmapDays] = useState(0);
   const [heatmapClientId, setHeatmapClientId] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [renderDate] = useState(() => new Date());
   const presetRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -225,7 +238,7 @@ export default function DashboardView() {
   useEffect(() => {
     if (view !== "dashboard") return;
     const { start, end } = preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
-    setMetricsLoading(true);
+    queueMicrotask(() => setMetricsLoading(true));
     const params = new URLSearchParams();
     if (selectedClientId === "__live__") params.set("live_only", "true");
     else if (selectedClientId) params.set("client_id", selectedClientId);
@@ -252,16 +265,16 @@ export default function DashboardView() {
   const { start: dateStart, end: dateEnd } =
     preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = renderDate.toISOString().split("T")[0];
   const heatmapStart = heatmapDays > 0
-    ? new Date(Date.now() - heatmapDays * 86400000).toISOString().split("T")[0]
+    ? new Date(renderDate.getTime() - heatmapDays * 86400000).toISOString().split("T")[0]
     : undefined;
   const heatmapEnd = heatmapDays > 0 ? today : undefined;
 
   const isHeatmap = view.startsWith("heatmap_");
   const isRaw = ["leads", "dials", "appointments", "speed_to_lead", "ad_spend"].includes(view);
-  const isAgentView = ["agent_stats", "agent_scorecards", "recordings"].includes(view);
-  const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Stats", "Admin"];
+  const isAgentView = ["agent_stats", "agent_credit_queue", "agent_scorecards", "recordings"].includes(view);
+  const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Credit", "Agent Stats", "Admin"];
 
   return (
     <div className="min-h-screen flex" style={{ background: "#080f1e" }}>
@@ -550,6 +563,14 @@ export default function DashboardView() {
             <AgentStats
               clients={clients}
               preset={preset}
+              startDate={dateStart}
+              endDate={dateEnd}
+            />
+          )}
+
+          {view === "agent_credit_queue" && (
+            <AgentCreditQueue
+              clients={clients}
               startDate={dateStart}
               endDate={dateEnd}
             />
