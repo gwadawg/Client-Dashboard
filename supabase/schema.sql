@@ -101,7 +101,7 @@ create table if not exists events (
     event_type in (
       'dial', 'lead', 'appointment_booked', 'appointment_cancelled', 'show', 'no_show', 'callback_booked',
       'live_transfer', 'proposal_sent', 'loan_processing', 'closed', 'out_of_state_lead',
-      'lo_bailed', 'lo_audit'
+      'lo_bailed', 'lo_audit', 'claimed'
     )
   )
 );

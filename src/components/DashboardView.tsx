@@ -485,6 +485,7 @@ export default function DashboardView() {
                   <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Engagement</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                     <KpiCard label="Live Transfers" value={fmtInt(metrics.live_transfers)} />
+                    <KpiCard label="Claimed" value={fmtInt(metrics.claimed)} />
                     <KpiCard label="Total Conversations (2m+)" value={fmtInt(metrics.total_conversations)} />
                     <KpiCard label="Callback Requests" value={fmtInt(metrics.callbacks)} />
                     <KpiCard label="Callback Rate" value={fmtPct(metrics.cb_pct)} />

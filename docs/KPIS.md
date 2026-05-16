@@ -29,7 +29,7 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **Cancellations** | Appointments cancelled | `COUNT(appointment_cancelled)` | GHL cancel trigger |
 | **Cancel Rate** | Cancelled vs scheduled | `Cancellations ÷ (Appointments Booked + Cancellations) × 100` | Appointments |
 | **Live Transfers** | Live transfer to client/agent | `COUNT(live_transfer events)` | Live Transfers tab |
-| **Total Conversations** | Meaningful completed calls (2 min+) | `COUNT(dials WHERE is_conversation = true)` — includes **Claimed** rows mapped as `dial` + conversation | Conversations / Claimed tab |
+| **Total Conversations** | Meaningful completed calls (2 min+) plus client-claimed conversations | `COUNT(dials WHERE is_conversation = true) + COUNT(claimed events)` | Conversations / Claimed tab |
 | **Proposals Sent** | Offer made / proposal stage | `COUNT(proposal_sent)` | MLO / Pipeline |
 | **Submitted (in processing)** | Deal submitted, not yet funded | `COUNT(loan_processing)` | MLO `Submitted` |
 | **Funded (closed)** | Deal closed; client received funds | `COUNT(closed)` | MLO `Closed` |
@@ -41,7 +41,7 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 - **Cancel rate:** `Cancellations ÷ (Appointments Booked + Cancellations)`. Use the same GHL **appointment ID** (`external_id`) on book and cancel. Prefer `/api/webhooks/appointment-status` with `status: "cancelled"` so the original booking row is updated (see `ccm-appt-cancelled.blueprint.json`).
 - **Appts to take place:** `Booked − Shows − No Shows − Cancellations − LO bailed` (pending / unresolved slots).
 - **Qualified / Hot:** Manually tagged in GHL or the setter team — there is no automatic qualification rule.
-- **Total conversations:** Do not count failed or zero-duration calls. Use **completed** status and **duration > 120 seconds** (2 minutes), matching the Daily Summary definition.
+- **Total conversations:** Do not count failed or zero-duration calls. Use **completed** status and **duration > 120 seconds** (2 minutes), matching the Daily Summary definition. `claimed` events also count because they represent the client manually speaking with or messaging a lead outside the setter workflow.
 
 ---
 
@@ -54,7 +54,8 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **Outbound Dials** | All dial events | `COUNT(dial)` |
 | **Pickups** | Calls at least 40 seconds | `COUNT(dial WHERE is_pickup = true)` — typically `duration ≥ 40s` |
 | **Pick Up Rate** | Pickups per dial | `Pickups ÷ Outbound Dials × 100` |
-| **Conversations (2 min+)** | Same as Total Conversations | `COUNT(dial WHERE is_conversation = true)` |
+| **Conversations (2 min+)** | Dial conversations only | `COUNT(dial WHERE is_conversation = true)` |
+| **Claimed** | Client manually spoke with/messaged the lead outside our booking flow | `COUNT(claimed)` |
 | **Conversation Rate** | Conversations per pickup | `Conversations ÷ Pickups × 100` |
 | **Speed to Lead** | Minutes from lead to first dial | `AVG(first_dial.occurred_at − lead.occurred_at)` per contact |
 | **Callback Requests** | Callback appointments booked | `COUNT(callback_booked)` |
@@ -82,7 +83,7 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **Appointments** | `appointment_booked` | `POST /api/webhooks` |
 | **Appointments** (outcome) | `show`, `no_show`, `lo_bailed`, `appointment_cancelled` | `POST /api/webhooks` or `POST /api/webhooks/appointment-status` |
 | **Conversations** | `dial` | `POST /api/webhooks` |
-| **Claimed** (LO-handled) | `dial` with `is_conversation = true` | Import / webhook equivalent |
+| **Claimed** (client-handled) | `claimed` | `POST /api/webhooks` |
 | **LO audit** | `lo_audit` | Internal cadence tracking — **not** a client KPI |
 | **Live Transfers** | `live_transfer` *(planned)* | `POST /api/webhooks` |
 | **Pipeline / MLO** | `proposal_sent`, `loan_processing`, `closed` | `POST /api/webhooks` |
@@ -170,6 +171,18 @@ is_conversation = duration_seconds >= 120 AND call_status = 'completed'
 | Lead Name / Phone | `lead_name`, `lead_phone` |
 | Agent | `agent_name` |
 
+### Claimed (`event_type: claimed`)
+
+Use when the client manually spoke with or messaged a lead outside the setter booking/live-transfer flow. This counts toward **Total Conversations** but does not count as an outbound dial or appointment.
+
+| Field | Webhook field |
+|-------|---------------|
+| Date | `occurred_at` |
+| Project Name | `client_name` |
+| Lead identity | `ghl_contact_id`, `lead_name`, `lead_phone`, `lead_email` |
+| Who handled it, if known | `agent_name` |
+| Channel/source, optional | Stored in `raw` fields like `channel`, `claimed_source` |
+
 ### Ad spend (`ad_spend` table)
 
 | Field | Webhook (`POST /api/ad-spend`) |
@@ -205,9 +218,10 @@ Document your live Make scenario to match one approach:
 | Show Rate | Yes | `shows ÷ appointments booked` |
 | Cancellations / Cancel Rate | Yes | `appointment_cancelled`; rate = cancel ÷ (booked + cancel) |
 | Outbound Dials, Pickups, CPL, etc. | Yes | See `src/lib/metrics.ts` |
-| Total Conversations (2 min+) | Partial | Uses `is_conversation` on dials; align `call_status = completed` in Make |
+| Total Conversations (2 min+) | Yes | Dial conversations plus `claimed` events |
 | Qualified / Hot / Out of State | Yes | `is_qualified`, `is_hot`, `is_out_of_state` on lead webhooks |
 | Live Transfers | Yes | `event_type: live_transfer` |
+| Claimed | Yes | `event_type: claimed` |
 | Proposals Sent / Closed | Yes | `event_type: proposal_sent`, `closed` |
 | Goals (targets) | Partial | Requires `goals` table in Supabase |
 

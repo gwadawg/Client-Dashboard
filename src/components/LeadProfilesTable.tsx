@@ -16,6 +16,7 @@ type LeadCounts = {
   cancellations: number;
   callbacks: number;
   live_transfers: number;
+  claimed: number;
   proposals: number;
   loan_processing: number;
   closed: number;
@@ -72,6 +73,7 @@ const EVENT_LABELS: Record<string, string> = {
   lo_bailed: "LO bailed",
   callback_booked: "Callback",
   live_transfer: "Live Transfer",
+  claimed: "Claimed",
   proposal_sent: "Proposal",
   loan_processing: "Submitted",
   closed: "Funded",
@@ -124,6 +126,7 @@ function downloadLeadsPageCsv(rows: LeadProfile[], page: number) {
     "Funded",
     "In processing",
     "Callbacks",
+    "Claimed",
     "Proposals",
     "Live transfers",
   ];
@@ -155,6 +158,7 @@ function downloadLeadsPageCsv(rows: LeadProfile[], page: number) {
         String(c.closed),
         String(c.loan_processing),
         String(c.callbacks),
+        String(c.claimed),
         String(c.proposals),
         String(c.live_transfers),
       ]
@@ -436,6 +440,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
                           <CountPill label="funded" value={c.closed} accent="#f59e0b" />
                           <CountPill label="in processing" value={c.loan_processing} />
                           <CountPill label="callbacks" value={c.callbacks} />
+                          <CountPill label="claimed" value={c.claimed} accent="#f59e0b" />
                           <CountPill label="proposals" value={c.proposals} />
                         </div>
                       </td>

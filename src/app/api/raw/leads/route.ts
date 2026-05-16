@@ -71,6 +71,7 @@ type LeadCounts = {
   cancellations: number;
   callbacks: number;
   live_transfers: number;
+  claimed: number;
   proposals: number;
   loan_processing: number;
   closed: number;
@@ -197,6 +198,7 @@ function emptyCounts(): LeadCounts {
     cancellations: 0,
     callbacks: 0,
     live_transfers: 0,
+    claimed: 0,
     proposals: 0,
     loan_processing: 0,
     closed: 0,
@@ -230,6 +232,9 @@ function bumpCounts(counts: LeadCounts, eventType: string, row: EventRow) {
       break;
     case 'live_transfer':
       counts.live_transfers++;
+      break;
+    case 'claimed':
+      counts.claimed++;
       break;
     case 'proposal_sent':
       counts.proposals++;

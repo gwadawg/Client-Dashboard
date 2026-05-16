@@ -24,6 +24,8 @@ export type MetricsResult = {
   appointment_cancelled: number;
   cancel_rate: number;
   live_transfers: number;
+  /** Client manually contacted or spoke with the lead outside our booking flow. */
+  claimed: number;
   total_conversations: number;
   proposals_sent: number;
   closed: number;
@@ -62,6 +64,7 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
   const conversations = dials.filter(e => e.is_conversation).length;
   const callbacks = events.filter(e => e.event_type === 'callback_booked').length;
   const live_transfers = events.filter(e => e.event_type === 'live_transfer').length;
+  const claimed = events.filter(e => e.event_type === 'claimed').length;
   const proposals_sent = events.filter(e => e.event_type === 'proposal_sent').length;
   const closed = events.filter(e => e.event_type === 'closed').length;
 
@@ -89,7 +92,8 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
     appointment_cancelled: cancelled,
     cancel_rate: scheduled_total > 0 ? (cancelled / scheduled_total) * 100 : 0,
     live_transfers,
-    total_conversations: conversations,
+    claimed,
+    total_conversations: conversations + claimed,
     proposals_sent,
     closed,
     ad_spend,

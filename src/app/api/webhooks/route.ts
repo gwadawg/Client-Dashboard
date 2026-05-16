@@ -15,7 +15,7 @@ function isTruthyPayloadFlag(value: unknown): boolean {
 const VALID_EVENT_TYPES = [
   'dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked',
   'live_transfer', 'proposal_sent', 'loan_processing', 'closed', 'out_of_state_lead',
-  'appointment_cancelled', 'lo_bailed', 'lo_audit',
+  'appointment_cancelled', 'lo_bailed', 'lo_audit', 'claimed',
 ] as const;
 
 /** Empty string from Make is not valid for timestamptz — use null or omit for DB. */
