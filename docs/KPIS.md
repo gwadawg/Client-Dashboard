@@ -152,6 +152,8 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | Status | `call_status` | `call_status` |
 | Durations (seconds) | `duration_seconds` | `duration_seconds` |
 | Agent | `agent_name` | `agent_name` |
+| Dialing software | `dial_source` or `software` | `dial_source` |
+| Phone number used | `phone_number_used` | `phone_number_used` |
 | Recording URL | `recording_url` | `recording_url` |
 | Call Summary | `call_summary` | `call_summary` |
 

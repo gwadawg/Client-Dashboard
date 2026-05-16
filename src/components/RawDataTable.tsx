@@ -25,6 +25,8 @@ const COLUMNS: Record<string, { key: string; label: string }[]> = {
     { key: "lead_name", label: "Lead Name" },
     { key: "lead_phone", label: "Lead Phone" },
     { key: "agent_name", label: "Agent" },
+    { key: "dial_source", label: "Software" },
+    { key: "phone_number_used", label: "Number Used" },
     { key: "duration_seconds", label: "Duration (s)" },
     { key: "is_pickup", label: "Pickup" },
     { key: "is_conversation", label: "Conversation" },

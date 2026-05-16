@@ -74,6 +74,7 @@ create table if not exists events (
   recording_url      text,
   call_summary       text,
   phone_number_used  text,
+  dial_source        text,       -- dialing software/source, e.g. GHL | HP
 
   -- Appointment fields
   scheduled_at   timestamptz,   -- when the appointment is scheduled for

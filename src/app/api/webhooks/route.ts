@@ -41,6 +41,24 @@ function jsonStringField(v: unknown): string | null {
   return t === '' ? null : t;
 }
 
+function numberField(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(String(v).trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function booleanField(v: unknown): boolean | null {
+  if (v === true || v === false) return v;
+  if (v === 1) return true;
+  if (v === 0) return false;
+  if (typeof v === 'string') {
+    const normalized = v.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+  }
+  return null;
+}
+
 export async function POST(req: Request) {
   try {
     if (!validateWebhookSecret(req)) {
@@ -228,17 +246,29 @@ export async function POST(req: Request) {
     }
 
     const isLead = eventType === 'lead';
+    const duration_seconds = numberField(payload.duration_seconds);
+    const isDial = eventType === 'dial';
+    const is_pickup =
+      isDial ? booleanField(payload.is_pickup) ?? (duration_seconds != null ? duration_seconds >= 40 : null) : null;
+    const is_conversation =
+      isDial
+        ? booleanField(payload.is_conversation) ??
+          (duration_seconds != null ? duration_seconds >= 120 : null)
+        : null;
     const calIdRaw = payload.calendar_id ?? payload.ghl_calendar_id;
     const calendar_id = jsonStringField(calIdRaw);
     const external_id = jsonStringField(payload.external_id ?? payload.ghl_appointment_id);
+    const dial_source = jsonStringField(
+      payload.dial_source ?? payload.software ?? payload.dialer_source ?? payload.call_source,
+    );
 
     const { error } = await service.from('events').insert({
       client_id,
       event_type: eventType,
       occurred_at: occurredAtOrNow(payload.occurred_at),
-      duration_seconds: payload.duration_seconds ?? null,
-      is_pickup: payload.is_pickup ?? null,
-      is_conversation: payload.is_conversation ?? null,
+      duration_seconds,
+      is_pickup,
+      is_conversation,
       is_qualified: isLead
         ? parseYnFlag(payload.is_qualified ?? payload.qualified)
         : null,
@@ -261,6 +291,7 @@ export async function POST(req: Request) {
       recording_url: payload.recording_url ?? null,
       call_summary: payload.call_summary ?? null,
       phone_number_used: payload.phone_number_used ?? null,
+      dial_source,
       stage_booked: payload.stage_booked ?? null,
       raw: payload,
     });
