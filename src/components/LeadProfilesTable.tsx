@@ -32,6 +32,8 @@ type TimelineItem = {
   is_conversation: boolean | null;
   call_status: string | null;
   calendar_name: string | null;
+  external_id: string | null;
+  calendar_id: string | null;
   stage_booked: string | null;
   recording_url: string | null;
 };
@@ -190,6 +192,15 @@ function CountPill({ label, value, accent }: { label: string; value: number; acc
   );
 }
 
+const TIMELINE_APPT_TYPES = new Set([
+  "appointment_booked",
+  "appointment_cancelled",
+  "show",
+  "no_show",
+  "lo_bailed",
+  "callback_booked",
+]);
+
 function TimelineRow({ item }: { item: TimelineItem }) {
   const label = EVENT_LABELS[item.event_type] ?? item.event_type;
   const detail: string[] = [];
@@ -201,6 +212,12 @@ function TimelineRow({ item }: { item: TimelineItem }) {
   if (item.calendar_name) detail.push(item.calendar_name);
   if (item.stage_booked) detail.push(item.stage_booked);
   if (item.scheduled_at) detail.push(`sched ${fmtDate(item.scheduled_at)}`);
+  if (TIMELINE_APPT_TYPES.has(item.event_type) && item.external_id) {
+    detail.push(`appt ${item.external_id}`);
+  }
+  if (TIMELINE_APPT_TYPES.has(item.event_type) && item.calendar_id) {
+    detail.push(`cal ${item.calendar_id}`);
+  }
 
   return (
     <tr style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>

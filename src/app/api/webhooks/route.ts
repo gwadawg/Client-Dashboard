@@ -33,6 +33,14 @@ function occurredAtOrNow(value: unknown): string {
   return nullIfInvalidTimestamptz(value) ?? new Date().toISOString();
 }
 
+/** Non-empty trimmed string, or null — avoids "" in uuid/text columns used for lookups. */
+function jsonStringField(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v !== 'string') return String(v).trim() || null;
+  const t = v.trim();
+  return t === '' ? null : t;
+}
+
 export async function POST(req: Request) {
   try {
     if (!validateWebhookSecret(req)) {
@@ -220,6 +228,10 @@ export async function POST(req: Request) {
     }
 
     const isLead = eventType === 'lead';
+    const calIdRaw = payload.calendar_id ?? payload.ghl_calendar_id;
+    const calendar_id = jsonStringField(calIdRaw);
+    const external_id = jsonStringField(payload.external_id ?? payload.ghl_appointment_id);
+
     const { error } = await service.from('events').insert({
       client_id,
       event_type: eventType,
@@ -237,8 +249,9 @@ export async function POST(req: Request) {
       speed_to_lead_seconds,
       ghl_contact_id: payload.ghl_contact_id ?? null,
       scheduled_at: nullIfInvalidTimestamptz(payload.scheduled_at),
-      external_id: payload.external_id ?? null,
-      calendar_name: payload.calendar_name ?? null,
+      external_id,
+      calendar_name: jsonStringField(payload.calendar_name),
+      calendar_id,
       lead_name: payload.lead_name ?? null,
       lead_phone: payload.lead_phone ?? null,
       lead_email: payload.lead_email ?? null,

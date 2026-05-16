@@ -43,7 +43,7 @@ export async function GET(req: Request) {
   const eventTypeMap: Record<string, string[]> = {
     leads:          ['lead'],
     dials:          ['dial'],
-    appointments:   ['appointment_booked', 'appointment_cancelled', 'show', 'no_show', 'callback_booked'],
+    appointments:   ['appointment_booked', 'appointment_cancelled', 'show', 'no_show', 'lo_bailed', 'callback_booked'],
     speed_to_lead:  ['dial'],
   };
 
@@ -52,7 +52,7 @@ export async function GET(req: Request) {
 
   let q = ctx.service
     .from('events')
-    .select('id, event_type, occurred_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, stage_booked, scheduled_at, clients(name)', { count: 'exact' })
+    .select('id, event_type, occurred_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, calendar_id, external_id, stage_booked, scheduled_at, clients(name)', { count: 'exact' })
     .in('event_type', eventTypes)
     .order('occurred_at', { ascending: false })
     .range(offset, offset + limit - 1);

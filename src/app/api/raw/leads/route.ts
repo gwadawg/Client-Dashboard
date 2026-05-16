@@ -25,6 +25,8 @@ type EventRow = {
   call_status: string | null;
   recording_url: string | null;
   calendar_name: string | null;
+  external_id: string | null;
+  calendar_id: string | null;
   stage_booked: string | null;
   ghl_contact_id: string | null;
   phone_number_used: string | null;
@@ -52,6 +54,8 @@ type TimelineItem = {
   is_conversation: boolean | null;
   call_status: string | null;
   calendar_name: string | null;
+  external_id: string | null;
+  calendar_id: string | null;
   stage_booked: string | null;
   recording_url: string | null;
 };
@@ -253,6 +257,8 @@ function toTimelineItem(row: EventRow): TimelineItem {
     is_conversation: row.is_conversation,
     call_status: row.call_status,
     calendar_name: row.calendar_name,
+    external_id: row.external_id,
+    calendar_id: row.calendar_id,
     stage_booked: row.stage_booked,
     recording_url: row.recording_url,
   };
@@ -277,7 +283,7 @@ export async function GET(req: Request) {
   let q = ctx.service
     .from('events')
     .select(
-      'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, raw, clients(name)',
+      'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, raw, clients(name)',
     )
     .order('occurred_at', { ascending: false })
     .limit(MAX_EVENTS);

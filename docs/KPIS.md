@@ -24,20 +24,22 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **Booking Rate** | Share of leads that book | `Appointments Booked ÷ Total Leads × 100` | Leads + Appointments |
 | **Shows** | Lead attended the appointment | `COUNT(show events)` or `Showed? = Y` | Appointments col J |
 | **No Shows** | Lead missed the appointment | `COUNT(no_show events)` or `Showed? = N` | Appointments col J |
+| **LO bailed** | Partner LO missed the appointment with the lead (not a lead no-show) | `COUNT(lo_bailed events)` or `Showed? = X` | Appointments col J |
 | **Show Rate** | Shows vs all bookings | `Shows ÷ Appointments Booked × 100` | Appointments |
 | **Cancellations** | Appointments cancelled | `COUNT(appointment_cancelled)` | GHL cancel trigger |
 | **Cancel Rate** | Cancelled vs scheduled | `Cancellations ÷ (Appointments Booked + Cancellations) × 100` | Appointments |
 | **Live Transfers** | Live transfer to client/agent | `COUNT(live_transfer events)` | Live Transfers tab |
-| **Total Conversations** | Meaningful completed calls (2 min+) | `COUNT(dials WHERE call_status = completed AND duration > 120s)` | Conversations tab |
-| **Proposals Sent** | Proposal stage reached | `COUNT(pipeline WHERE proposal_sent = Y)` | Pipeline tab |
-| **Closed** | Deal closed/won | `COUNT(pipeline WHERE closed = Y)` | Pipeline tab |
+| **Total Conversations** | Meaningful completed calls (2 min+) | `COUNT(dials WHERE is_conversation = true)` — includes **Claimed** rows mapped as `dial` + conversation | Conversations / Claimed tab |
+| **Proposals Sent** | Offer made / proposal stage | `COUNT(proposal_sent)` | MLO / Pipeline |
+| **Submitted (in processing)** | Deal submitted, not yet funded | `COUNT(loan_processing)` | MLO `Submitted` |
+| **Funded (closed)** | Deal closed; client received funds | `COUNT(closed)` | MLO `Closed` |
 
 ### Formula notes
 
 - **Booking rate:** Use the same date window for leads and appointments. Filter both sides by the same client.
-- **Show rate (client reporting):** `Shows ÷ Appointments Booked`, not shows ÷ (shows + no-shows only). Pending appointments stay in the denominator until they are marked show or no-show.
+- **Show rate (client reporting):** `Shows ÷ Appointments Booked`, not shows ÷ (shows + no-shows only). Pending appointments stay in the denominator until they are marked show, no-show, LO bailed, or cancelled.
 - **Cancel rate:** `Cancellations ÷ (Appointments Booked + Cancellations)`. Use the same GHL **appointment ID** (`external_id`) on book and cancel. Prefer `/api/webhooks/appointment-status` with `status: "cancelled"` so the original booking row is updated (see `ccm-appt-cancelled.blueprint.json`).
-- **Appts to take place:** `Booked − Shows − No Shows − Cancellations` (pending scheduled appointments).
+- **Appts to take place:** `Booked − Shows − No Shows − Cancellations − LO bailed` (pending / unresolved slots).
 - **Qualified / Hot:** Manually tagged in GHL or the setter team — there is no automatic qualification rule.
 - **Total conversations:** Do not count failed or zero-duration calls. Use **completed** status and **duration > 120 seconds** (2 minutes), matching the Daily Summary definition.
 
@@ -57,7 +59,7 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **Speed to Lead** | Minutes from lead to first dial | `AVG(first_dial.occurred_at − lead.occurred_at)` per contact |
 | **Callback Requests** | Callback appointments booked | `COUNT(callback_booked)` |
 | **Callback Rate** | Callbacks per lead | `Callbacks ÷ Total Leads × 100` |
-| **Appts To Take Place** | Still scheduled (pending outcomes) | `Appointments Booked − Shows − No Shows − Cancellations` |
+| **Appts To Take Place** | Still scheduled (pending outcomes) | `Appointments Booked − Shows − No Shows − Cancellations − LO bailed` |
 | **Dials Per Lead** | Dial effort per lead | `Outbound Dials ÷ Total Leads` |
 | **Ad Spend** | Meta + Google + Local Services | `SUM(ad_spend.amount)` for date range |
 | **CPL** | Cost per lead | `Ad Spend ÷ Total Leads` |
@@ -78,10 +80,12 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 |-----------|------------------|---------|
 | **Leads** | `lead` | `POST /api/webhooks` |
 | **Appointments** | `appointment_booked` | `POST /api/webhooks` |
-| **Appointments** (outcome) | `show`, `no_show`, `appointment_cancelled` | `POST /api/webhooks` or `POST /api/webhooks/appointment-status` |
+| **Appointments** (outcome) | `show`, `no_show`, `lo_bailed`, `appointment_cancelled` | `POST /api/webhooks` or `POST /api/webhooks/appointment-status` |
 | **Conversations** | `dial` | `POST /api/webhooks` |
+| **Claimed** (LO-handled) | `dial` with `is_conversation = true` | Import / webhook equivalent |
+| **LO audit** | `lo_audit` | Internal cadence tracking — **not** a client KPI |
 | **Live Transfers** | `live_transfer` *(planned)* | `POST /api/webhooks` |
-| **Pipeline** | `proposal_sent`, `closed` *(planned)* | `POST /api/webhooks` |
+| **Pipeline / MLO** | `proposal_sent`, `loan_processing`, `closed` | `POST /api/webhooks` |
 | **Callbacks** (callback calendar) | `callback_booked` | `POST /api/webhooks` |
 | **Ad spend** | — | `POST /api/ad-spend` |
 
@@ -128,11 +132,14 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | Date Of Appointment / Requested Time | `scheduled_at` | `scheduled_at` |
 | Project Name | `client_name` | → `client_id` |
 | Lead Name / Email / Phone | `lead_name`, `lead_email`, `lead_phone` | same |
+| GHL appointment ID | `external_id` or `ghl_appointment_id` | `external_id` |
+| GHL calendar ID | `calendar_id` or `ghl_calendar_id` | `calendar_id` |
 | Calendar Name | `calendar_name` | `calendar_name` |
 | Stage Booked | `stage_booked` | `stage_booked` |
-| Showed? Y/N | `show` / `no_show` or status webhook | `event_type` |
+| Showed? Y/N/X | `show` / `no_show` / `lo_bailed` or status webhook | `event_type` |
 | Agent | `agent_name` | `agent_name` |
-| GHL appointment ID | `external_id` | `external_id` |
+
+**Lifecycle:** Send the **same** `external_id` (GHL appointment id) on `appointment_booked` and when calling **`POST /api/webhooks/appointment-status`** (show / no_show / cancelled). For separate outcome **inserts** (`show`, `no_show`, `lo_bailed`, `appointment_cancelled` via main webhook), include **`external_id`** on each row so joins and exports stay aligned. Include **`calendar_id`** on booking (and on any follow-up inserts if you want it denormalized).
 
 ### Call (`event_type: dial`)
 

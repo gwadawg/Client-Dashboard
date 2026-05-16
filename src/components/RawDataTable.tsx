@@ -37,6 +37,8 @@ const COLUMNS: Record<string, { key: string; label: string }[]> = {
     { key: "client", label: "Client" },
     { key: "occurred_at", label: "Booked At" },
     { key: "event_type", label: "Status" },
+    { key: "external_id", label: "Appt ID" },
+    { key: "calendar_id", label: "Calendar ID" },
     { key: "lead_name", label: "Lead Name" },
     { key: "lead_phone", label: "Lead Phone" },
     { key: "lead_email", label: "Email" },
@@ -66,7 +68,12 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   appointment_cancelled: "Cancelled",
   show: "Show",
   no_show: "No Show",
+  lo_bailed: "LO bailed",
   callback_booked: "Callback",
+  proposal_sent: "Proposal",
+  loan_processing: "Submitted",
+  closed: "Funded",
+  lo_audit: "LO audit",
 };
 
 function formatCell(key: string, value: unknown): string {

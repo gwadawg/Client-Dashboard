@@ -3,7 +3,8 @@ import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 
 // Called by Make when an appointment shows, no-shows, or is cancelled.
-// Finds the original appointment_booked event by external_id and updates its type.
+// Finds the original appointment_booked event by external_id (GHL appointment id) and updates its type.
+// calendar_id / external_id on that row are unchanged — only event_type flips.
 // Body: { external_id: string, status: "show" | "no_show" | "cancelled" }
 export async function POST(req: Request) {
   try {

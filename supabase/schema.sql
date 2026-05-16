@@ -79,6 +79,7 @@ create table if not exists events (
   scheduled_at   timestamptz,   -- when the appointment is scheduled for
   external_id    text,          -- GHL appointment ID — used to flip booked → show/no_show
   calendar_name  text,          -- GHL calendar name
+  calendar_id    text,          -- GHL calendar id (which calendar the appointment is on)
   stage_booked   text,          -- e.g. "Day 1 AM"
 
   -- Lead identity
@@ -99,7 +100,8 @@ create table if not exists events (
   constraint events_event_type_check check (
     event_type in (
       'dial', 'lead', 'appointment_booked', 'appointment_cancelled', 'show', 'no_show', 'callback_booked',
-      'live_transfer', 'proposal_sent', 'closed', 'out_of_state_lead'
+      'live_transfer', 'proposal_sent', 'loan_processing', 'closed', 'out_of_state_lead',
+      'lo_bailed', 'lo_audit'
     )
   )
 );
@@ -176,6 +178,7 @@ create table if not exists pd_schedule (
 create index if not exists events_client_occurred  on events(client_id, occurred_at desc);
 create index if not exists events_type             on events(event_type);
 create index if not exists events_external_id_idx  on events(external_id)  where external_id is not null;
+create index if not exists events_calendar_id_idx  on events(calendar_id)  where calendar_id is not null;
 create index if not exists events_agent_name_idx   on events(agent_name)   where agent_name is not null;
 create index if not exists events_lead_phone_idx   on events(lead_phone)   where lead_phone is not null;
 create index if not exists ad_spend_client_date    on ad_spend(client_id, spend_date desc);
