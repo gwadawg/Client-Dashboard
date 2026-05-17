@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
@@ -29,43 +30,51 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#1a3d6b" }}>
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "linear-gradient(145deg, #f8fafc 0%, #eef2f7 48%, #dbe3ef 100%)" }}>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-block border-4 border-white px-10 py-3 mb-4">
-            <h1 className="text-2xl font-black tracking-widest text-white uppercase">
-              Call Center Data
-            </h1>
+          <div className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+            <Image
+              src="/mr-waiz-logo.png"
+              alt="Mr. Waiz logo"
+              width={96}
+              height={96}
+              priority
+              className="h-24 w-24 object-contain"
+            />
           </div>
-          <p className="text-white/50 text-sm">Sign in to your account</p>
+          <h1 className="text-4xl font-black tracking-tight text-slate-950">
+            Mr. Waiz
+          </h1>
+          <p className="mt-2 text-sm text-slate-500">Sign in to your reporting dashboard</p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 bg-white/5 border border-white/10 rounded-xl px-8 py-8"
+          className="space-y-4 rounded-2xl border border-slate-200 bg-white px-8 py-8 shadow-xl shadow-slate-200/70"
         >
           <div>
-            <label className="block text-white/70 text-sm mb-1.5 font-medium">Email</label>
+            <label className="block text-slate-600 text-sm mb-1.5 font-medium">Email</label>
             <input
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className="w-full bg-white/10 border border-white/20 rounded px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-amber-500 transition-colors"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-950 placeholder-slate-400 outline-none transition-colors focus:border-slate-950 focus:bg-white"
               placeholder="you@agency.com"
             />
           </div>
 
           <div>
-            <label className="block text-white/70 text-sm mb-1.5 font-medium">Password</label>
+            <label className="block text-slate-600 text-sm mb-1.5 font-medium">Password</label>
             <input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              className="w-full bg-white/10 border border-white/20 rounded px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-amber-500 transition-colors"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-950 placeholder-slate-400 outline-none transition-colors focus:border-slate-950 focus:bg-white"
               placeholder="••••••••"
             />
           </div>
@@ -79,13 +88,13 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-white font-semibold py-2.5 rounded transition-colors mt-2"
+            className="mt-2 w-full rounded-lg bg-slate-950 py-2.5 font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
           >
             {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
 
-        <p className="text-center text-white/30 text-xs mt-6">
+        <p className="text-center text-slate-400 text-xs mt-6">
           Need access? Contact your account administrator.
         </p>
       </div>

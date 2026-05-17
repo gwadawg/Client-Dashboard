@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TFU AI — Call Center Dashboard",
-  description: "Multi-client call center reporting dashboard",
+  title: "Mr. Waiz — Reporting Dashboard",
+  description: "Reverse mortgage call center reporting dashboard",
 };
 
 export default function RootLayout({
