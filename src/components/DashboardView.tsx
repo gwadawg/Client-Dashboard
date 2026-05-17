@@ -11,7 +11,6 @@ import AgentAdmin from "./AgentAdmin";
 import RecordingBrowser from "./RecordingBrowser";
 import GoalTracker from "./GoalTracker";
 import AgentScorecards from "./AgentScorecards";
-import AlertBanner from "./AlertBanner";
 import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
 import UserManager from "./UserManager";
@@ -451,8 +450,6 @@ export default function DashboardView() {
 
         {/* Content */}
         <main className="flex-1 p-6 md:p-8 overflow-auto" style={{ background: "#080f1e" }}>
-
-          <AlertBanner />
 
           {/* ── Dashboard KPIs ── */}
           {view === "dashboard" && (

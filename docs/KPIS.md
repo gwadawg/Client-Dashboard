@@ -67,10 +67,6 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **CP Appointment** | Cost per booking | `Ad Spend ÷ Appointments Booked` |
 | **CPS** | Cost per show | `Ad Spend ÷ Shows` |
 
-### Alerts
-
-- **Stale booking alert:** Client has no `appointment_booked` or `callback_booked` in the last **3+ days** (see `/api/alerts`).
-
 ---
 
 ## Sheet tabs → app mapping
