@@ -8,7 +8,7 @@ export type EventRow = {
   is_out_of_state?: boolean | null;
 };
 
-export type SpendRow = { amount: number | string };
+export type SpendRow = { amount: number | string; platform?: string | null };
 
 export type MetricsResult = {
   new_leads: number;
@@ -23,13 +23,20 @@ export type MetricsResult = {
   show_pct: number;
   appointment_cancelled: number;
   cancel_rate: number;
+  /** Partner LO did not attend scheduled appointment with lead (“bailed”). */
+  lo_bailed: number;
+  /** Deal submitted / in processing (not yet funded). */
+  loan_processing: number;
   live_transfers: number;
   /** Client manually contacted or spoke with the lead outside our booking flow. */
   claimed: number;
   total_conversations: number;
   proposals_sent: number;
   closed: number;
+  /** Sum of all imported spend (Meta + Google + Local Services). */
   ad_spend: number;
+  /** Meta / Facebook spend only (compare to Ads Manager). */
+  ad_spend_meta: number;
   cpl: number;
   cp_appt: number;
   cps: number;
@@ -57,6 +64,8 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
   const cancelled = events.filter(e => e.event_type === 'appointment_cancelled').length;
   const shows = events.filter(e => e.event_type === 'show').length;
   const no_shows = events.filter(e => e.event_type === 'no_show').length;
+  const lo_bailed = events.filter(e => e.event_type === 'lo_bailed').length;
+  const loan_processing = events.filter(e => e.event_type === 'loan_processing').length;
   const scheduled_total = booked + cancelled;
   const dials = events.filter(e => e.event_type === 'dial');
   const dial_count = dials.length;
@@ -69,6 +78,9 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
   const closed = events.filter(e => e.event_type === 'closed').length;
 
   const ad_spend = spendRows.reduce((sum, r) => sum + Number(r.amount), 0);
+  const ad_spend_meta = spendRows
+    .filter(r => r.platform === 'meta')
+    .reduce((sum, r) => sum + Number(r.amount), 0);
 
   const speedReadings = dials
     .filter(e => e.speed_to_lead_seconds != null)
@@ -85,18 +97,21 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
     out_of_state_leads,
     booked_appointments: booked,
     appt_booking_rate: leads > 0 ? (booked / leads) * 100 : 0,
-    appts_to_take_place: Math.max(0, booked - shows - no_shows - cancelled),
+    appts_to_take_place: Math.max(0, booked - shows - no_shows - cancelled - lo_bailed),
     shows,
     no_shows,
     show_pct: booked > 0 ? (shows / booked) * 100 : 0,
     appointment_cancelled: cancelled,
     cancel_rate: scheduled_total > 0 ? (cancelled / scheduled_total) * 100 : 0,
+    lo_bailed,
+    loan_processing,
     live_transfers,
     claimed,
     total_conversations: conversations + claimed,
     proposals_sent,
     closed,
     ad_spend,
+    ad_spend_meta,
     cpl: leads > 0 ? ad_spend / leads : 0,
     cp_appt: booked > 0 ? ad_spend / booked : 0,
     cps: shows > 0 ? ad_spend / shows : 0,
