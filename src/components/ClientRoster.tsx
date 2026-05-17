@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DEFAULT_REPORTING_TYPE, normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 
-type Client = { id: string; name: string; is_live?: boolean };
+type Client = { id: string; name: string; is_live?: boolean; reporting_type?: ReportingType };
 
 function Input({ value, onChange, placeholder = "", className = "" }: {
   value: string; onChange: (v: string) => void; placeholder?: string; className?: string;
@@ -19,6 +20,24 @@ function Input({ value, onChange, placeholder = "", className = "" }: {
   );
 }
 
+function Select({ value, onChange, children, className = "" }: {
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className={`px-3 py-2 rounded-lg text-sm outline-none cursor-pointer ${className}`}
+      style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+    >
+      {children}
+    </select>
+  );
+}
+
 export default function ClientRoster() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +45,7 @@ export default function ClientRoster() {
   const [newName, setNewName] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [newReportingType, setNewReportingType] = useState<ReportingType>(DEFAULT_REPORTING_TYPE);
 
   useEffect(() => {
     fetch("/api/clients")
@@ -39,12 +59,13 @@ export default function ClientRoster() {
     const res = await fetch("/api/clients", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName.trim() }),
+      body: JSON.stringify({ name: newName.trim(), reporting_type: newReportingType }),
     });
     const d = await res.json();
     if (d.client) {
       setClients(prev => [...prev, { ...d.client, is_live: true }].sort((a, b) => a.name.localeCompare(b.name)));
       setNewName("");
+      setNewReportingType(DEFAULT_REPORTING_TYPE);
     }
     setSaving(false);
   }
@@ -59,6 +80,20 @@ export default function ClientRoster() {
     const d = await res.json();
     if (d.client) setClients(prev => prev.map(x => x.id === c.id ? { ...x, is_live: d.client.is_live } : x));
     setToggling(null);
+  }
+
+  async function updateReportingType(c: Client, reportingType: ReportingType) {
+    const res = await fetch(`/api/clients/${c.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reporting_type: reportingType }),
+    });
+    const d = await res.json();
+    if (d.client) {
+      setClients(prev =>
+        prev.map(x => x.id === c.id ? { ...x, reporting_type: normalizeReportingType(d.client.reporting_type) } : x)
+      );
+    }
   }
 
   async function handleDelete(id: string) {
@@ -77,17 +112,21 @@ export default function ClientRoster() {
   if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#334155" }}>Loading…</p>;
 
   return (
-    <div className="space-y-6 max-w-xl">
+    <div className="space-y-6 max-w-3xl">
       <div>
         <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Roster</h2>
-        <p className="text-sm mt-0.5" style={{ color: "#475569" }}>Add clients and manage their live status.</p>
+        <p className="text-sm mt-0.5" style={{ color: "#475569" }}>Add clients and manage their live status and reporting type.</p>
       </div>
 
       {/* Add form */}
       <div className="rounded-xl p-5" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
         <p className="text-sm font-semibold mb-3" style={{ color: "#e2e8f0" }}>Add Client</p>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <Input value={newName} onChange={setNewName} placeholder="Client name…" className="flex-1" />
+          <Select value={newReportingType} onChange={v => setNewReportingType(normalizeReportingType(v))} className="w-52">
+            <option value="RM">RM - Reverse Mortgage</option>
+            <option value="HE">HE - Appointment Only</option>
+          </Select>
           <button
             onClick={handleAdd}
             disabled={!newName.trim() || saving}
@@ -120,13 +159,14 @@ export default function ClientRoster() {
           <thead>
             <tr style={{ background: "#0a1628" }}>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>Client</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>Client Type</th>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>Status</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>
             {clients.length === 0 ? (
-              <tr><td colSpan={3} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
             ) : clients.map((c, i) => (
               <tr key={c.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                 <td className="px-4 py-3">
@@ -134,6 +174,16 @@ export default function ClientRoster() {
                     <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: c.is_live ? "#22c55e" : "#475569" }} />
                     <span className="font-medium" style={{ color: "#e2e8f0" }}>{c.name}</span>
                   </div>
+                </td>
+                <td className="px-4 py-3">
+                  <Select
+                    value={normalizeReportingType(c.reporting_type)}
+                    onChange={v => updateReportingType(c, normalizeReportingType(v))}
+                    className="w-48 py-1 text-xs"
+                  >
+                    <option value="RM">RM - Reverse Mortgage</option>
+                    <option value="HE">HE - Appointment Only</option>
+                  </Select>
                 </td>
                 <td className="px-4 py-3">
                   <button

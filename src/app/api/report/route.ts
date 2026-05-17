@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { calculateMetrics } from '@/lib/metrics';
+import { normalizeReportingType } from '@/lib/kpi-layouts';
 
 // Public endpoint — authenticated by share_token, no user session required.
 export async function GET(req: Request) {
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
 
   const { data: client } = await service
     .from('clients')
-    .select('id, name')
+    .select('id, name, reporting_type')
     .eq('share_token', token)
     .single();
 
@@ -29,7 +30,7 @@ export async function GET(req: Request) {
   if (start_date) eventsQuery = eventsQuery.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsQuery = eventsQuery.lte('occurred_at', `${end_date}T23:59:59.999Z`);
 
-  let spendQuery = service.from('ad_spend').select('amount').eq('client_id', client.id);
+  let spendQuery = service.from('ad_spend').select('amount, platform').eq('client_id', client.id);
   if (start_date) spendQuery = spendQuery.gte('spend_date', start_date);
   if (end_date)   spendQuery = spendQuery.lte('spend_date', end_date);
 
@@ -37,6 +38,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     client_name: client.name,
+    reporting_type: normalizeReportingType(client.reporting_type),
     ...calculateMetrics(events ?? [], spendRows ?? []),
   });
 }

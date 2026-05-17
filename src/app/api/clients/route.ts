@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { normalizeReportingType } from '@/lib/kpi-layouts';
 
 export async function GET() {
   const ctx = await getAuthContext();
@@ -7,7 +8,7 @@ export async function GET() {
 
   const { data, error } = await ctx.service
     .from('clients')
-    .select('id, name, is_live, share_token, created_at')
+    .select('id, name, is_live, reporting_type, share_token, created_at')
     .order('name');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -18,12 +19,12 @@ export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
 
-  const { name } = await req.json();
+  const { name, reporting_type } = await req.json();
   if (!name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 });
 
   const { data, error } = await ctx.service
     .from('clients')
-    .insert({ name: name.trim() })
+    .insert({ name: name.trim(), reporting_type: normalizeReportingType(reporting_type) })
     .select()
     .single();
 

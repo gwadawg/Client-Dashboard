@@ -3,8 +3,14 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import type { MetricsResult } from "@/lib/metrics";
+import {
+  formatKpiValue,
+  getKpiSections,
+  normalizeReportingType,
+  type ReportingType,
+} from "@/lib/kpi-layouts";
 
-type ReportMetrics = MetricsResult & { client_name: string };
+type ReportMetrics = MetricsResult & { client_name: string; reporting_type?: ReportingType };
 
 function KpiCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -43,7 +49,7 @@ export default function PublicReportPage() {
 
   useEffect(() => {
     const { start, end } = getRange(preset);
-    setLoading(true);
+    queueMicrotask(() => setLoading(true));
     const params = new URLSearchParams({ token });
     if (start) params.set("start_date", start);
     if (end) params.set("end_date", end);
@@ -52,11 +58,6 @@ export default function PublicReportPage() {
       .then(d => { if (d) setMetrics(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, [token, preset]);
-
-  const fmt$ = (v: number) => `$${Math.round(v).toLocaleString()}`;
-  const fmtPct = (v: number) => `${v.toFixed(1)}%`;
-  const fmtDec = (v: number) => v.toFixed(2);
-  const fmtInt = (v: number) => Math.round(v).toString();
 
   if (notFound) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: "#080f1e" }}>
@@ -107,61 +108,28 @@ export default function PublicReportPage() {
           </div>
         ) : metrics ? (
           <div className="space-y-8">
-            <section>
-              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Leads &amp; Pipeline</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                <KpiCard label="Total Leads" value={fmtInt(metrics.new_leads)} />
-                <KpiCard label="Qualified Leads" value={fmtInt(metrics.qualified_leads)} />
-                <KpiCard label="Hot Leads" value={fmtInt(metrics.hot_leads)} accent />
-                <KpiCard label="Out of State Leads" value={fmtInt(metrics.out_of_state_leads)} />
-                <KpiCard label="Proposals Sent" value={fmtInt(metrics.proposals_sent)} />
-                <KpiCard label="Closed" value={fmtInt(metrics.closed)} accent />
-              </div>
-            </section>
-
-            <section>
-              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Appointments</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                <KpiCard label="Appointments Booked" value={fmtInt(metrics.booked_appointments)} />
-                <KpiCard label="Booking Rate" value={fmtPct(metrics.appt_booking_rate)} />
-                <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
-                <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
-                <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
-                <KpiCard label="Cancellations" value={fmtInt(metrics.appointment_cancelled)} />
-                <KpiCard label="Cancel Rate" value={fmtPct(metrics.cancel_rate)} />
-              </div>
-            </section>
-
-            <section>
-              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Engagement</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <KpiCard label="Live Transfers" value={fmtInt(metrics.live_transfers)} />
-                <KpiCard label="Claimed" value={fmtInt(metrics.claimed)} />
-                <KpiCard label="Conversations (2m+)" value={fmtInt(metrics.total_conversations)} />
-              </div>
-            </section>
-
-            <section>
-              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Ad Spend</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <KpiCard label="Ad Spend" value={fmt$(metrics.ad_spend)} />
-                <KpiCard label="Cost Per Lead" value={fmt$(metrics.cpl)} />
-                <KpiCard label="Cost Per Appt" value={fmt$(metrics.cp_appt)} />
-                <KpiCard label="Cost Per Show" value={fmt$(metrics.cps)} />
-              </div>
-            </section>
-
-            <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
-
-            <section>
-              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Calling Stats</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <KpiCard label="Outbound Dials" value={fmtInt(metrics.outbound_dials)} />
-                <KpiCard label="Pickups" value={fmtInt(metrics.pickups)} />
-                <KpiCard label="Pickup Rate" value={fmtPct(metrics.pickup_pct)} accent />
-                <KpiCard label="Speed to Lead" value={`${fmtDec(metrics.speed_to_lead_min)}m`} />
-              </div>
-            </section>
+            {getKpiSections(normalizeReportingType(metrics.reporting_type)).map((section, sectionIndex) => (
+              <section key={section.title}>
+                {sectionIndex > 0 && section.title === "Calling Stats" && (
+                  <div className="mb-8" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
+                )}
+                <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>
+                  {section.title}
+                </h2>
+                <div className={section.gridClassName}>
+                  {section.cards
+                    .filter(card => !card.visible || card.visible(metrics))
+                    .map(card => (
+                      <KpiCard
+                        key={`${section.title}-${card.label}`}
+                        label={card.label}
+                        value={formatKpiValue(metrics[card.metric], card.format)}
+                        accent={card.accent}
+                      />
+                    ))}
+                </div>
+              </section>
+            ))}
           </div>
         ) : null}
       </main>

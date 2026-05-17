@@ -17,8 +17,15 @@ import ClientRoster from "./ClientRoster";
 import UserManager from "./UserManager";
 import AgentCreditQueue from "./AgentCreditQueue";
 import type { MetricsResult } from "@/lib/metrics";
+import {
+  DEFAULT_REPORTING_TYPE,
+  formatKpiValue,
+  getKpiSections,
+  normalizeReportingType,
+  type ReportingType,
+} from "@/lib/kpi-layouts";
 
-type Client = { id: string; name: string; is_live?: boolean };
+type Client = { id: string; name: string; is_live?: boolean; reporting_type?: ReportingType };
 
 type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "all_time" | "custom";
 
@@ -148,6 +155,18 @@ function Select({ value, onChange, children, className = "" }: {
   );
 }
 
+function getDashboardScopeClients(clients: Client[], selectedClientId: string): Client[] {
+  if (selectedClientId === "__live__") return clients.filter(c => c.is_live !== false);
+  if (selectedClientId) return clients.filter(c => c.id === selectedClientId);
+  return clients;
+}
+
+function resolveDashboardReportingType(clients: Client[], selectedClientId: string): ReportingType {
+  const scopedClients = getDashboardScopeClients(clients, selectedClientId);
+  const reportingTypes = new Set(scopedClients.map(c => normalizeReportingType(c.reporting_type)));
+  return reportingTypes.size === 1 ? Array.from(reportingTypes)[0] : DEFAULT_REPORTING_TYPE;
+}
+
 type ClientWithToken = Client & { share_token?: string };
 
 function ShareReports({ clients }: { clients: Client[] }) {
@@ -257,11 +276,6 @@ export default function DashboardView() {
     router.refresh();
   }
 
-  const fmt$   = (v: number) => `$${Math.round(v).toLocaleString("en-US")}`;
-  const fmtPct = (v: number) => `${v.toFixed(2)}%`;
-  const fmtDec = (v: number) => v.toFixed(2);
-  const fmtInt = (v: number) => Math.round(v).toString();
-
   const { start: dateStart, end: dateEnd } =
     preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
 
@@ -275,6 +289,10 @@ export default function DashboardView() {
   const isRaw = ["leads", "dials", "appointments", "speed_to_lead", "ad_spend"].includes(view);
   const isAgentView = ["agent_stats", "agent_credit_queue", "agent_scorecards", "recordings"].includes(view);
   const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Credit", "Agent Stats", "Admin"];
+  const dashboardScopeClients = getDashboardScopeClients(clients, selectedClientId);
+  const dashboardReportingType = resolveDashboardReportingType(clients, selectedClientId);
+  const dashboardHasMixedReportingTypes =
+    new Set(dashboardScopeClients.map(c => normalizeReportingType(c.reporting_type))).size > 1;
 
   return (
     <div className="min-h-screen flex" style={{ background: "#080f1e" }}>
@@ -468,69 +486,39 @@ export default function DashboardView() {
               </div>
             ) : metrics ? (
               <div className="space-y-8 max-w-7xl">
-                <section>
-                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Leads &amp; Pipeline</h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    <KpiCard label="Total Leads" value={fmtInt(metrics.new_leads)} />
-                    <KpiCard label="Qualified Leads" value={fmtInt(metrics.qualified_leads)} />
-                    <KpiCard label="Hot Leads" value={fmtInt(metrics.hot_leads)} accent />
-                    <KpiCard label="Out of State Leads" value={fmtInt(metrics.out_of_state_leads)} />
-                    <KpiCard label="Proposals Sent" value={fmtInt(metrics.proposals_sent)} />
-                    <KpiCard label="Closed" value={fmtInt(metrics.closed)} accent />
-                  </div>
-                </section>
+                {dashboardHasMixedReportingTypes && (
+                  <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#64748b", background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    Mixed RM/HE selection detected. Showing the full RM dashboard for this combined view.
+                  </p>
+                )}
 
-                <section>
-                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Appointments</h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    <KpiCard label="Appointments Booked" value={fmtInt(metrics.booked_appointments)} />
-                    <KpiCard label="Booking Rate" value={fmtPct(metrics.appt_booking_rate)} />
-                    <KpiCard label="Appts To Take Place" value={fmtInt(metrics.appts_to_take_place)} />
-                    <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
-                    <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
-                    <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
-                    <KpiCard label="Cancellations" value={fmtInt(metrics.appointment_cancelled)} />
-                    <KpiCard label="Cancel Rate" value={fmtPct(metrics.cancel_rate)} />
-                  </div>
-                </section>
-
-                <section>
-                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Engagement</h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    <KpiCard label="Live Transfers" value={fmtInt(metrics.live_transfers)} />
-                    <KpiCard label="Claimed" value={fmtInt(metrics.claimed)} />
-                    <KpiCard label="Total Conversations (2m+)" value={fmtInt(metrics.total_conversations)} />
-                    <KpiCard label="Callback Requests" value={fmtInt(metrics.callbacks)} />
-                    <KpiCard label="Callback Rate" value={fmtPct(metrics.cb_pct)} />
-                  </div>
-                </section>
-
-                <section>
-                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Ad Spend</h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <KpiCard label="Ad Spend" value={fmt$(metrics.ad_spend)} />
-                    <KpiCard label="CPL" value={fmt$(metrics.cpl)} />
-                    <KpiCard label="CP Appointment" value={fmt$(metrics.cp_appt)} />
-                    <KpiCard label="CPS" value={fmt$(metrics.cps)} />
-                  </div>
-                </section>
-
-                <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
-
-                <section>
-                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Calling Stats</h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <KpiCard label="Speed To Lead (Min)" value={fmtDec(metrics.speed_to_lead_min)} />
-                    <KpiCard label="Outbound Dials" value={fmtInt(metrics.outbound_dials)} />
-                    <KpiCard label="Dials Per Lead" value={fmtDec(metrics.dials_per_lead)} />
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
-                    <KpiCard label="Pickups (40s+)" value={fmtInt(metrics.pickups)} />
-                    <KpiCard label="Pick Up Rate" value={fmtPct(metrics.pickup_pct)} accent />
-                    <KpiCard label="Conversations (2m+)" value={fmtInt(metrics.conversations)} />
-                    <KpiCard label="Conversation Rate" value={fmtPct(metrics.conversation_pct)} />
-                  </div>
-                </section>
+                {getKpiSections(dashboardReportingType).map((section, sectionIndex) => (
+                  <section key={section.title}>
+                    {sectionIndex > 0 && section.title === "Calling Stats" && (
+                      <div className="mb-8" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
+                    )}
+                    <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>
+                      {section.title}
+                    </h2>
+                    <div className={section.gridClassName}>
+                      {section.cards
+                        .filter(card => !card.visible || card.visible(metrics))
+                        .map(card => (
+                          <KpiCard
+                            key={`${section.title}-${card.label}`}
+                            label={card.label}
+                            value={formatKpiValue(metrics[card.metric], card.format)}
+                            accent={card.accent}
+                          />
+                        ))}
+                    </div>
+                    {dashboardReportingType === "RM" && section.title === "Ad Spend" && (
+                      <p className="text-[10px] mt-2 px-1" style={{ color: "#475569" }}>
+                        CPL / CP Appt / CPS use total ad spend (all platforms). Meta spend matches your Facebook Data import. With &quot;Live clients&quot; selected, spend for paused accounts is excluded.
+                      </p>
+                    )}
+                  </section>
+                ))}
               </div>
             ) : null
           )}

@@ -37,10 +37,35 @@ create table if not exists clients (
   id               uuid    primary key default gen_random_uuid(),
   name             text    not null unique,
   is_live          boolean not null default true,
+  reporting_type   text    not null default 'RM',
   ghl_location_id  text,
   share_token      text,
-  created_at       timestamptz default now()
+  created_at       timestamptz default now(),
+  constraint clients_reporting_type_check check (reporting_type in ('RM', 'HE'))
 );
+
+alter table clients
+  add column if not exists reporting_type text not null default 'RM';
+
+update clients
+  set reporting_type = 'RM'
+  where reporting_type is null or reporting_type not in ('RM', 'HE');
+
+alter table clients
+  alter column reporting_type set default 'RM',
+  alter column reporting_type set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'clients_reporting_type_check'
+  ) then
+    alter table clients
+      add constraint clients_reporting_type_check check (reporting_type in ('RM', 'HE'));
+  end if;
+end $$;
 
 create unique index if not exists clients_ghl_location_id_key
   on clients (ghl_location_id) where ghl_location_id is not null;
