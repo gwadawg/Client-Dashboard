@@ -299,8 +299,7 @@ export default function DashboardView() {
             </svg>
           </div>
           <div>
-            <p className="text-sm font-bold tracking-wide" style={{ color: "#f1f5f9" }}>Call Center</p>
-            <p className="text-xs font-medium" style={{ color: "#475569" }}>Analytics</p>
+            <p className="text-sm font-bold tracking-wide" style={{ color: "#f1f5f9" }}>Mr. Waiz</p>
           </div>
         </div>
 
