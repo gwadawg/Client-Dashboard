@@ -147,7 +147,35 @@ create table if not exists ad_spend (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 6. Setter Availability (recurring weekly windows per agent)
+-- 6. Meta Ad Insights (daily ad-level reporting from Meta Ads)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists meta_ad_insights (
+  id                   uuid    primary key default gen_random_uuid(),
+  client_id            uuid    not null references clients(id) on delete cascade,
+  insight_date         date    not null,
+  account_id           text    not null,
+  campaign_id          text    not null,
+  campaign_name        text,
+  adset_id             text    not null,
+  adset_name           text,
+  ad_id                text    not null,
+  ad_name              text,
+  spend                numeric not null default 0,
+  impressions          bigint  not null default 0,
+  clicks               bigint  not null default 0,
+  ctr                  numeric,
+  cpc                  numeric,
+  cpm                  numeric,
+  actions              jsonb,
+  cost_per_action_type jsonb,
+  raw                  jsonb,
+  created_at           timestamptz default now(),
+  updated_at           timestamptz default now(),
+  unique(client_id, insight_date, account_id, campaign_id, adset_id, ad_id)
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 7. Setter Availability (recurring weekly windows per agent)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists setter_availability (
   id          uuid    primary key default gen_random_uuid(),
@@ -160,7 +188,7 @@ create table if not exists setter_availability (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 7. Client Calling Windows (when each client/lead-source is dialled each week)
+-- 8. Client Calling Windows (when each client/lead-source is dialled each week)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists client_calling_windows (
   id          uuid    primary key default gen_random_uuid(),
@@ -173,7 +201,7 @@ create table if not exists client_calling_windows (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 8. Watch Schedule (manager assigns setters to specific dates + hours)
+-- 9. Watch Schedule (manager assigns setters to specific dates + hours)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists watch_schedule (
   id             uuid primary key default gen_random_uuid(),
@@ -185,7 +213,7 @@ create table if not exists watch_schedule (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 9. PD Schedule (generated power dialer schedule from watch schedule)
+-- 10. PD Schedule (generated power dialer schedule from watch schedule)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists pd_schedule (
   id             uuid    primary key default gen_random_uuid(),
@@ -199,7 +227,7 @@ create table if not exists pd_schedule (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 10. Indexes
+-- 11. Indexes
 -- ─────────────────────────────────────────────────────────────────────────────
 create index if not exists events_client_occurred  on events(client_id, occurred_at desc);
 create index if not exists events_type             on events(event_type);
@@ -208,5 +236,8 @@ create index if not exists events_calendar_id_idx  on events(calendar_id)  where
 create index if not exists events_agent_name_idx   on events(agent_name)   where agent_name is not null;
 create index if not exists events_lead_phone_idx   on events(lead_phone)   where lead_phone is not null;
 create index if not exists ad_spend_client_date    on ad_spend(client_id, spend_date desc);
+create index if not exists meta_ad_insights_client_date on meta_ad_insights(client_id, insight_date desc);
+create index if not exists meta_ad_insights_campaign    on meta_ad_insights(client_id, campaign_id);
+create index if not exists meta_ad_insights_ad          on meta_ad_insights(client_id, ad_id);
 create index if not exists watch_schedule_date     on watch_schedule(scheduled_date);
 create index if not exists pd_schedule_date        on pd_schedule(scheduled_date);

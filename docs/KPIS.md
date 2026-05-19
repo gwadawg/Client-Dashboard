@@ -190,6 +190,25 @@ Use when the client manually spoke with or messaged a lead outside the setter bo
 | Platform | `platform`: `meta` \| `google` \| `local_services` |
 | Amount | `amount` |
 
+For the daily Meta Ads Make setup, see [`docs/META_ADS_SPEND_IMPORT.md`](META_ADS_SPEND_IMPORT.md).
+
+### Meta ad insights (`meta_ad_insights` table)
+
+Ad-level Meta reporting is stored separately from `ad_spend` so the dashboard can
+keep total spend metrics stable while also preserving campaign/adset/ad performance
+history.
+
+| Field | Webhook (`POST /api/meta-ad-insights`) |
+|-------|----------------------------------------|
+| Date | `date`, `insight_date`, or Meta `date_start` |
+| Client | `client_name` or `client_id` |
+| Campaign | `campaign_id`, `campaign_name` |
+| Ad set | `adset_id`, `adset_name` |
+| Ad | `ad_id`, `ad_name` |
+| Delivery account | `account_id` |
+| Cost metrics | `spend`, `impressions`, `clicks`, `ctr`, `cpc`, `cpm` |
+| Meta actions | `actions`, `cost_per_action_type` |
+
 ---
 
 ## Show / no-show handling (choose one model)

@@ -1,0 +1,139 @@
+{
+    "name": "CCM - Meta Ad Insights → Dashboard",
+    "flow": [
+        {
+            "id": 1,
+            "module": "app#call-center-mastery-qeqot5:watchEventsManualPlacement",
+            "version": 1,
+            "parameters": {
+                "__IMTHOOK__": 0
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": { "x": 0, "y": 0, "name": "Client Config Row" },
+                "restore": {
+                    "parameters": {
+                        "__IMTHOOK__": {
+                            "data": { "editable": "false" },
+                            "label": "Replace with Scheduler + client map iterator"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTHOOK__",
+                        "type": "hook:app#call-center-mastery-qeqot53",
+                        "label": "Client Config",
+                        "required": true
+                    }
+                ]
+            }
+        },
+        {
+            "id": 2,
+            "module": "http:ActionSendData",
+            "version": 3,
+            "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompression": true
+            },
+            "mapper": {
+                "url": "https://graph.facebook.com/v20.0/act_{{replace(1.meta_ad_account_id; \"act_\"; \"\")}}/insights",
+                "serializeUrl": false,
+                "method": "GET",
+                "headers": [],
+                "qs": [
+                    {
+                        "name": "fields",
+                        "value": "date_start,date_stop,account_id,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,ctr,cpc,cpm,actions,cost_per_action_type"
+                    },
+                    {
+                        "name": "level",
+                        "value": "ad"
+                    },
+                    {
+                        "name": "time_increment",
+                        "value": "1"
+                    },
+                    {
+                        "name": "time_range",
+                        "value": "{\"since\":\"{{formatDate(addDays(now; -1); \"YYYY-MM-DD\")}}\",\"until\":\"{{formatDate(addDays(now; -1); \"YYYY-MM-DD\")}}\"}"
+                    },
+                    {
+                        "name": "access_token",
+                        "value": "REPLACE_WITH_META_ACCESS_TOKEN"
+                    }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "authUser": "",
+                "authPass": "",
+                "timeout": "",
+                "shareCookies": false,
+                "ca": "",
+                "useMtls": false,
+                "contentType": "application/json",
+                "data": ""
+            },
+            "metadata": {
+                "designer": { "x": 300, "y": 0, "name": "Fetch Meta Ad Insights" }
+            }
+        },
+        {
+            "id": 3,
+            "module": "http:ActionSendData",
+            "version": 3,
+            "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompression": true
+            },
+            "mapper": {
+                "url": "https://YOUR_RAILWAY_APP_URL/api/meta-ad-insights",
+                "serializeUrl": false,
+                "method": "POST",
+                "headers": [
+                    {
+                        "name": "Authorization",
+                        "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET"
+                    },
+                    {
+                        "name": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "authUser": "",
+                "authPass": "",
+                "timeout": "",
+                "shareCookies": false,
+                "ca": "",
+                "useMtls": false,
+                "contentType": "application/json",
+                "data": "{\"client_name\":\"{{1.client_name}}\",\"rows\":{{2.data}}}"
+            },
+            "metadata": {
+                "designer": { "x": 600, "y": 0, "name": "Send Ad Insights to Dashboard" }
+            }
+        }
+    ],
+    "metadata": {
+        "instant": false,
+        "version": 1,
+        "notes": "Import this as a starting template. Replace module 1 with a daily scheduler plus client map iterator. Keep ccm-meta-spend.blueprint.json for daily account-level spend totals.",
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": true,
+            "confidential": true,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": { "orphans": [] },
+        "zone": "eu1.make.com"
+    }
+}
