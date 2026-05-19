@@ -6,6 +6,7 @@ import type { NextRequest } from 'next/server';
 const BYPASS_ROUTES = [
   '/api/webhooks',
   '/api/ad-spend',
+  '/api/meta-ad-insights',
   '/api/admin/onboard',
   '/api/setup',
   '/api/users',
