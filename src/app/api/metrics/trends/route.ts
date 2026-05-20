@@ -38,7 +38,7 @@ export async function GET(req: Request) {
 
   let eventsQuery = ctx.service
     .from('events')
-    .select('event_type, occurred_at, is_qualified, is_conversation');
+    .select('event_type, occurred_at, is_qualified');
 
   if (client_id) eventsQuery = eventsQuery.eq('client_id', client_id);
   else if (liveClientIds) eventsQuery = eventsQuery.in('client_id', liveClientFilter(liveClientIds));

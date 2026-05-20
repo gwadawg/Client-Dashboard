@@ -47,8 +47,8 @@ const CHARTS: {
   {
     key: "cp_conversation",
     title: "Cost per conversation",
-    subtitle: "Ad spend ÷ conversations (2m+ dials + claimed)",
-    denominatorLabel: "Conversations",
+    subtitle: "Ad spend ÷ (live transfers + shows + claimed)",
+    denominatorLabel: "LT + Shows + Claimed",
   },
 ];
 
@@ -151,7 +151,7 @@ function ChartPanel({
                           ? point.leads
                           : denominatorLabel === "Qualified"
                             ? point.qualified_leads
-                            : point.conversations}
+                            : point.client_conversations}
                       </p>
                     </div>
                   );

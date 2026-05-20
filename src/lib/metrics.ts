@@ -14,7 +14,6 @@ export type TrendEventRow = {
   event_type: string;
   occurred_at: string;
   is_qualified?: boolean | null;
-  is_conversation?: boolean | null;
 };
 
 export type TrendSpendRow = { spend_date: string; amount: number | string };
@@ -24,7 +23,8 @@ export type DailyCostBucket = {
   spend: number;
   leads: number;
   qualified_leads: number;
-  conversations: number;
+  /** Client conversations: live transfers + shows + claimed */
+  client_conversations: number;
 };
 
 export type CostTrendPoint = {
@@ -32,7 +32,7 @@ export type CostTrendPoint = {
   spend: number;
   leads: number;
   qualified_leads: number;
-  conversations: number;
+  client_conversations: number;
   cpl: number | null;
   cp_qualified: number | null;
   cp_conversation: number | null;
@@ -196,7 +196,7 @@ export function buildDailyCostSeries(
   const byDate = new Map<string, DailyCostBucket>();
 
   for (const date of eachDateInRange(rangeStart, rangeEnd)) {
-    byDate.set(date, { date, spend: 0, leads: 0, qualified_leads: 0, conversations: 0 });
+    byDate.set(date, { date, spend: 0, leads: 0, qualified_leads: 0, client_conversations: 0 });
   }
 
   for (const row of spendRows) {
@@ -213,10 +213,12 @@ export function buildDailyCostSeries(
     if (e.event_type === 'lead') {
       bucket.leads++;
       if (e.is_qualified === true) bucket.qualified_leads++;
-    } else if (e.event_type === 'dial' && e.is_conversation === true) {
-      bucket.conversations++;
-    } else if (e.event_type === 'claimed') {
-      bucket.conversations++;
+    } else if (
+      e.event_type === 'live_transfer' ||
+      e.event_type === 'show' ||
+      e.event_type === 'claimed'
+    ) {
+      bucket.client_conversations++;
     }
   }
 
@@ -229,13 +231,13 @@ export function rollupCostSeriesToWeeks(daily: DailyCostBucket[]): DailyCostBuck
     const key = weekStartKey(row.date);
     let bucket = byWeek.get(key);
     if (!bucket) {
-      bucket = { date: key, spend: 0, leads: 0, qualified_leads: 0, conversations: 0 };
+      bucket = { date: key, spend: 0, leads: 0, qualified_leads: 0, client_conversations: 0 };
       byWeek.set(key, bucket);
     }
     bucket.spend += row.spend;
     bucket.leads += row.leads;
     bucket.qualified_leads += row.qualified_leads;
-    bucket.conversations += row.conversations;
+    bucket.client_conversations += row.client_conversations;
   }
   return [...byWeek.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -246,10 +248,10 @@ export function toCostTrendPoints(buckets: DailyCostBucket[]): CostTrendPoint[] 
     spend: b.spend,
     leads: b.leads,
     qualified_leads: b.qualified_leads,
-    conversations: b.conversations,
+    client_conversations: b.client_conversations,
     cpl: b.leads > 0 ? b.spend / b.leads : null,
     cp_qualified: b.qualified_leads > 0 ? b.spend / b.qualified_leads : null,
-    cp_conversation: b.conversations > 0 ? b.spend / b.conversations : null,
+    cp_conversation: b.client_conversations > 0 ? b.spend / b.client_conversations : null,
   }));
 }
 
