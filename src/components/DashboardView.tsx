@@ -16,6 +16,7 @@ import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
 import UserManager from "./UserManager";
 import AgentCreditQueue from "./AgentCreditQueue";
+import CostTrendCharts from "./CostTrendCharts";
 import type { MetricsResult } from "@/lib/metrics";
 import {
   DEFAULT_REPORTING_TYPE,
@@ -519,6 +520,21 @@ export default function DashboardView() {
                     )}
                   </section>
                 ))}
+
+                {dashboardReportingType === "RM" && (
+                  <section>
+                    <div className="mb-8" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
+                    <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>
+                      Cost trends
+                    </h2>
+                    <CostTrendCharts
+                      clientId={selectedClientId === "__live__" ? "" : selectedClientId}
+                      liveOnly={selectedClientId === "__live__"}
+                      startDate={dateStart}
+                      endDate={dateEnd}
+                    />
+                  </section>
+                )}
               </div>
             ) : null
           )}

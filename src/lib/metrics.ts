@@ -10,6 +10,34 @@ export type EventRow = {
 
 export type SpendRow = { amount: number | string; platform?: string | null };
 
+export type TrendEventRow = {
+  event_type: string;
+  occurred_at: string;
+  is_qualified?: boolean | null;
+  is_conversation?: boolean | null;
+};
+
+export type TrendSpendRow = { spend_date: string; amount: number | string };
+
+export type DailyCostBucket = {
+  date: string;
+  spend: number;
+  leads: number;
+  qualified_leads: number;
+  conversations: number;
+};
+
+export type CostTrendPoint = {
+  date: string;
+  spend: number;
+  leads: number;
+  qualified_leads: number;
+  conversations: number;
+  cpl: number | null;
+  cp_qualified: number | null;
+  cp_conversation: number | null;
+};
+
 export type MetricsResult = {
   new_leads: number;
   qualified_leads: number;
@@ -125,6 +153,104 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
     cb_pct: leads > 0 ? (callbacks / leads) * 100 : 0,
     speed_to_lead_min,
   };
+}
+
+function utcDateKey(iso: string): string {
+  return new Date(iso).toISOString().split('T')[0];
+}
+
+function eachDateInRange(rangeStart: string, rangeEnd: string): string[] {
+  const dates: string[] = [];
+  const cur = new Date(`${rangeStart}T00:00:00.000Z`);
+  const end = new Date(`${rangeEnd}T00:00:00.000Z`);
+  while (cur <= end) {
+    dates.push(cur.toISOString().split('T')[0]);
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+/** Monday (UTC) of the week containing `dateStr` (YYYY-MM-DD). */
+export function weekStartKey(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00.000Z`);
+  const day = d.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().split('T')[0];
+}
+
+export function daysInRange(rangeStart: string, rangeEnd: string): number {
+  if (!rangeStart || !rangeEnd) return 0;
+  const start = new Date(`${rangeStart}T00:00:00.000Z`).getTime();
+  const end = new Date(`${rangeEnd}T00:00:00.000Z`).getTime();
+  if (end < start) return 0;
+  return Math.floor((end - start) / 86400000) + 1;
+}
+
+export function buildDailyCostSeries(
+  events: TrendEventRow[],
+  spendRows: TrendSpendRow[],
+  rangeStart: string,
+  rangeEnd: string,
+): DailyCostBucket[] {
+  const byDate = new Map<string, DailyCostBucket>();
+
+  for (const date of eachDateInRange(rangeStart, rangeEnd)) {
+    byDate.set(date, { date, spend: 0, leads: 0, qualified_leads: 0, conversations: 0 });
+  }
+
+  for (const row of spendRows) {
+    const date = row.spend_date;
+    if (!byDate.has(date)) continue;
+    const bucket = byDate.get(date)!;
+    bucket.spend += Number(row.amount);
+  }
+
+  for (const e of events) {
+    const date = utcDateKey(e.occurred_at);
+    if (!byDate.has(date)) continue;
+    const bucket = byDate.get(date)!;
+    if (e.event_type === 'lead') {
+      bucket.leads++;
+      if (e.is_qualified === true) bucket.qualified_leads++;
+    } else if (e.event_type === 'dial' && e.is_conversation === true) {
+      bucket.conversations++;
+    } else if (e.event_type === 'claimed') {
+      bucket.conversations++;
+    }
+  }
+
+  return eachDateInRange(rangeStart, rangeEnd).map(date => byDate.get(date)!);
+}
+
+export function rollupCostSeriesToWeeks(daily: DailyCostBucket[]): DailyCostBucket[] {
+  const byWeek = new Map<string, DailyCostBucket>();
+  for (const row of daily) {
+    const key = weekStartKey(row.date);
+    let bucket = byWeek.get(key);
+    if (!bucket) {
+      bucket = { date: key, spend: 0, leads: 0, qualified_leads: 0, conversations: 0 };
+      byWeek.set(key, bucket);
+    }
+    bucket.spend += row.spend;
+    bucket.leads += row.leads;
+    bucket.qualified_leads += row.qualified_leads;
+    bucket.conversations += row.conversations;
+  }
+  return [...byWeek.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function toCostTrendPoints(buckets: DailyCostBucket[]): CostTrendPoint[] {
+  return buckets.map(b => ({
+    date: b.date,
+    spend: b.spend,
+    leads: b.leads,
+    qualified_leads: b.qualified_leads,
+    conversations: b.conversations,
+    cpl: b.leads > 0 ? b.spend / b.leads : null,
+    cp_qualified: b.qualified_leads > 0 ? b.spend / b.qualified_leads : null,
+    cp_conversation: b.conversations > 0 ? b.spend / b.conversations : null,
+  }));
 }
 
 /** Parse GHL/sheet Y/N or boolean flags on webhook payloads. */

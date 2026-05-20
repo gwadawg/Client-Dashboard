@@ -64,6 +64,8 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **Dials Per Lead** | Dial effort per lead | `Outbound Dials ÷ Total Leads` |
 | **Ad Spend** | Meta + Google + Local Services | `SUM(ad_spend.amount)` for date range |
 | **CPL** | Cost per lead | `Ad Spend ÷ Total Leads` |
+| **CP Qualified Lead** | Cost per qualified lead | `Ad Spend ÷ Qualified Leads` |
+| **CP Conversation** | Cost per conversation | `Ad Spend ÷ Total Conversations` (2m+ dials + claimed) |
 | **CP Appointment** | Cost per booking | `Ad Spend ÷ Appointments Booked` |
 | **CPS** | Cost per show | `Ad Spend ÷ Shows` |
 
