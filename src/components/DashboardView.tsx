@@ -17,11 +17,12 @@ import ClientRoster from "./ClientRoster";
 import UserManager from "./UserManager";
 import AgentCreditQueue from "./AgentCreditQueue";
 import CostTrendCharts from "./CostTrendCharts";
+import ClientHealthDashboard from "./ClientHealthDashboard";
+import KpiSections from "./kpi/KpiSections";
+import KpiSection from "./kpi/KpiSection";
 import type { MetricsResult } from "@/lib/metrics";
 import {
   DEFAULT_REPORTING_TYPE,
-  formatKpiValue,
-  getKpiSections,
   normalizeReportingType,
   type ReportingType,
 } from "@/lib/kpi-layouts";
@@ -37,6 +38,7 @@ type View =
   | "appointments"
   | "speed_to_lead"
   | "ad_spend"
+  | "meta_ad_insights"
   | "heatmap_show"
   | "heatmap_pickup"
   | "heatmap_leads"
@@ -45,6 +47,7 @@ type View =
   | "agent_scorecards"
   | "recordings"
   | "goals"
+  | "client_health"
   | "admin_agents"
   | "admin_clients"
   | "admin_share"
@@ -66,7 +69,8 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "dials",          label: "All Dials",      group: "Raw Data"  },
   { view: "appointments",   label: "Appointments",   group: "Raw Data"  },
   { view: "speed_to_lead",  label: "Speed to Lead",  group: "Raw Data"  },
-  { view: "ad_spend",       label: "Ad Spend",       group: "Raw Data"  },
+  { view: "meta_ad_insights", label: "Meta Ads",       group: "Raw Data"  },
+  { view: "ad_spend",         label: "Other Ad Spend", group: "Raw Data"  },
   { view: "heatmap_show",   label: "Show Rate",      group: "Heat Maps"   },
   { view: "heatmap_pickup", label: "Pick Up Rate",   group: "Heat Maps"   },
   { view: "heatmap_leads",  label: "New Leads",      group: "Heat Maps"   },
@@ -75,6 +79,7 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "agent_scorecards", label: "Scorecards",        group: "Agent Stats" },
   { view: "recordings",       label: "Call Recordings",   group: "Agent Stats" },
   { view: "goals",            label: "Goal Tracker",      group: "Overview"    },
+  { view: "client_health",    label: "Client Success",    group: "Overview"    },
   { view: "admin_agents",     label: "Agent Roster",      group: "Admin"       },
   { view: "admin_clients",    label: "Client Roster",     group: "Admin"       },
   { view: "schedule",         label: "Power Dialer Schedule", group: "Admin"    },
@@ -96,7 +101,8 @@ const NAV_ICONS: Record<View, string> = {
   dials:         "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
   appointments:  "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
   speed_to_lead: "M13 10V3L4 14h7v7l9-11h-7z",
-  ad_spend:      "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+  ad_spend:         "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+  meta_ad_insights: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
   heatmap_show:  "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   heatmap_pickup:"M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   heatmap_leads: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
@@ -110,6 +116,7 @@ const NAV_ICONS: Record<View, string> = {
   agent_scorecards: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
   recordings:       "M15.536 8.464a5 5 0 010 7.072M12 18.364a9 9 0 010-12.728M8.464 15.536a5 5 0 010-7.072",
   goals:            "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+  client_health:    "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
 };
 
 function getDateRange(p: Preset): { start: string; end: string } {
@@ -125,17 +132,6 @@ function getDateRange(p: Preset): { start: string; end: string } {
   if (p === "last_30") return { start: new Date(now.getTime() - 30 * 86400000).toISOString().split("T")[0], end: today };
   if (p === "last_7")  return { start: new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0], end: today };
   return { start: "", end: "" };
-}
-
-function KpiCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="relative overflow-hidden rounded-xl p-5 flex flex-col gap-2 group transition-all duration-200 hover:translate-y-[-1px]"
-      style={{ background: "linear-gradient(135deg, #0f2040 0%, #0c1a30 100%)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: accent ? "#f59e0b" : "#1d4ed8" }} />
-      <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#64748b" }}>{label}</span>
-      <span className="text-3xl font-bold pl-3" style={{ color: "#f1f5f9" }}>{value}</span>
-    </div>
-  );
 }
 
 function Select({ value, onChange, children, className = "" }: {
@@ -287,7 +283,7 @@ export default function DashboardView() {
   const heatmapEnd = heatmapDays > 0 ? today : undefined;
 
   const isHeatmap = view.startsWith("heatmap_");
-  const isRaw = ["leads", "dials", "appointments", "speed_to_lead", "ad_spend"].includes(view);
+  const isRaw = ["leads", "dials", "appointments", "speed_to_lead", "ad_spend", "meta_ad_insights"].includes(view);
   const isAgentView = ["agent_stats", "agent_credit_queue", "agent_scorecards", "recordings"].includes(view);
   const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Credit", "Agent Stats", "Admin"];
   const dashboardScopeClients = getDashboardScopeClients(clients, selectedClientId);
@@ -396,7 +392,7 @@ export default function DashboardView() {
           </h1>
 
           {/* Dashboard, raw data, and agent/recording views filters */}
-          {(view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "recordings") && !view.startsWith("admin_") && (
+          {(view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "client_health" || view === "recordings") && !view.startsWith("admin_") && (
             <>
               {view === "dashboard" && (
                 <Select value={selectedClientId} onChange={v => setSelectedClientId(v)}>
@@ -493,47 +489,17 @@ export default function DashboardView() {
                   </p>
                 )}
 
-                {getKpiSections(dashboardReportingType).map((section, sectionIndex) => (
-                  <section key={section.title}>
-                    {sectionIndex > 0 && section.title === "Calling Stats" && (
-                      <div className="mb-8" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
-                    )}
-                    <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>
-                      {section.title}
-                    </h2>
-                    <div className={section.gridClassName}>
-                      {section.cards
-                        .filter(card => !card.visible || card.visible(metrics))
-                        .map(card => (
-                          <KpiCard
-                            key={`${section.title}-${card.label}`}
-                            label={card.label}
-                            value={formatKpiValue(metrics[card.metric], card.format)}
-                            accent={card.accent}
-                          />
-                        ))}
-                    </div>
-                    {dashboardReportingType === "RM" && section.title === "Ad Spend" && (
-                      <p className="text-[10px] mt-2 px-1" style={{ color: "#475569" }}>
-                        CPL / CP Appt / CPS use total ad spend (all platforms). Meta spend matches your Facebook Data import. With &quot;Live clients&quot; selected, spend for paused accounts is excluded.
-                      </p>
-                    )}
-                  </section>
-                ))}
+                <KpiSections metrics={metrics} reportingType={dashboardReportingType} />
 
                 {dashboardReportingType === "RM" && (
-                  <section>
-                    <div className="mb-8" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
-                    <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>
-                      Cost trends
-                    </h2>
+                  <KpiSection title="Trends" showDivider>
                     <CostTrendCharts
                       clientId={selectedClientId === "__live__" ? "" : selectedClientId}
                       liveOnly={selectedClientId === "__live__"}
                       startDate={dateStart}
                       endDate={dateEnd}
                     />
-                  </section>
+                  </KpiSection>
                 )}
               </div>
             ) : null
@@ -549,7 +515,7 @@ export default function DashboardView() {
           )}
           {isRaw && view !== "leads" && (
             <RawDataTable
-              type={view as "dials" | "appointments" | "speed_to_lead" | "ad_spend"}
+              type={view as "dials" | "appointments" | "speed_to_lead" | "ad_spend" | "meta_ad_insights"}
               clients={clients}
               preset={preset}
               startDate={dateStart}
@@ -593,6 +559,10 @@ export default function DashboardView() {
           {/* ── Goal Tracker ── */}
           {view === "goals" && (
             <GoalTracker clients={clients} startDate={dateStart} endDate={dateEnd} />
+          )}
+
+          {view === "client_health" && (
+            <ClientHealthDashboard startDate={dateStart} endDate={dateEnd} />
           )}
 
           {/* ── Admin ── */}

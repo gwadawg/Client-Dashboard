@@ -61,11 +61,14 @@ export type MetricsResult = {
   total_conversations: number;
   proposals_sent: number;
   closed: number;
-  /** Sum of all imported spend (Meta + Google + Local Services). */
+  /** Sum of all spend (Meta from meta_ad_insights + Google / Local Services from ad_spend). */
   ad_spend: number;
-  /** Meta / Facebook spend only (compare to Ads Manager). */
+  /** Meta / Facebook spend only (sum of meta_ad_insights). */
   ad_spend_meta: number;
   cpl: number;
+  cp_qualified: number;
+  cp_hot: number;
+  cp_conversation: number;
   cp_appt: number;
   cps: number;
   outbound_dials: number;
@@ -118,13 +121,15 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
       ? speedReadings.reduce((a, b) => a + b, 0) / speedReadings.length / 60
       : 0;
 
+  const client_conversations = live_transfers + claimed + shows;
+
   return {
     new_leads: leads,
     qualified_leads,
     hot_leads,
     out_of_state_leads,
     booked_appointments: booked,
-    appt_booking_rate: leads > 0 ? (booked / leads) * 100 : 0,
+    appt_booking_rate: qualified_leads > 0 ? (booked / qualified_leads) * 100 : 0,
     appts_to_take_place: Math.max(0, booked - shows - no_shows - cancelled - lo_bailed),
     shows,
     no_shows,
@@ -141,6 +146,9 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
     ad_spend,
     ad_spend_meta,
     cpl: leads > 0 ? ad_spend / leads : 0,
+    cp_qualified: qualified_leads > 0 ? ad_spend / qualified_leads : 0,
+    cp_hot: hot_leads > 0 ? ad_spend / hot_leads : 0,
+    cp_conversation: client_conversations > 0 ? ad_spend / client_conversations : 0,
     cp_appt: booked > 0 ? ad_spend / booked : 0,
     cps: shows > 0 ? ad_spend / shows : 0,
     outbound_dials: dial_count,

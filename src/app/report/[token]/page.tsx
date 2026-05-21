@@ -2,26 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import KpiSections from "@/components/kpi/KpiSections";
 import type { MetricsResult } from "@/lib/metrics";
-import {
-  formatKpiValue,
-  getKpiSections,
-  normalizeReportingType,
-  type ReportingType,
-} from "@/lib/kpi-layouts";
+import { normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 
 type ReportMetrics = MetricsResult & { client_name: string; reporting_type?: ReportingType };
-
-function KpiCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="relative overflow-hidden rounded-xl p-5 flex flex-col gap-2"
-      style={{ background: "linear-gradient(135deg, #0f2040 0%, #0c1a30 100%)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: accent ? "#f59e0b" : "#1d4ed8" }} />
-      <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#64748b" }}>{label}</span>
-      <span className="text-3xl font-bold pl-3" style={{ color: "#f1f5f9" }}>{value}</span>
-    </div>
-  );
-}
 
 type Preset = "this_month" | "last_month" | "last_30" | "all_time";
 const PRESETS: { value: Preset; label: string }[] = [
@@ -67,7 +52,6 @@ export default function PublicReportPage() {
 
   return (
     <div className="min-h-screen" style={{ background: "#080f1e" }}>
-      {/* Header */}
       <header className="px-6 py-5 flex items-center justify-between flex-wrap gap-3"
         style={{ background: "#050c18", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div className="flex items-center gap-3">
@@ -107,30 +91,10 @@ export default function PublicReportPage() {
             </div>
           </div>
         ) : metrics ? (
-          <div className="space-y-8">
-            {getKpiSections(normalizeReportingType(metrics.reporting_type)).map((section, sectionIndex) => (
-              <section key={section.title}>
-                {sectionIndex > 0 && section.title === "Calling Stats" && (
-                  <div className="mb-8" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
-                )}
-                <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>
-                  {section.title}
-                </h2>
-                <div className={section.gridClassName}>
-                  {section.cards
-                    .filter(card => !card.visible || card.visible(metrics))
-                    .map(card => (
-                      <KpiCard
-                        key={`${section.title}-${card.label}`}
-                        label={card.label}
-                        value={formatKpiValue(metrics[card.metric], card.format)}
-                        accent={card.accent}
-                      />
-                    ))}
-                </div>
-              </section>
-            ))}
-          </div>
+          <KpiSections
+            metrics={metrics}
+            reportingType={normalizeReportingType(metrics.reporting_type)}
+          />
         ) : null}
       </main>
 

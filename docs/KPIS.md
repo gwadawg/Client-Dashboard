@@ -21,7 +21,7 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **Hot Leads** | Leads manually tagged as hot | `COUNT(leads WHERE hot = Y)` | Leads col H |
 | **Out of State Leads** | Leads outside target geography | `COUNT(out-of-state leads)` | Out of State tab / Leads col M |
 | **Appointments Booked** | Every appointment booked | `COUNT(appointment_booked events)` | Appointments tab |
-| **Booking Rate** | Share of leads that book | `Appointments Booked ÷ Total Leads × 100` | Leads + Appointments |
+| **Booking Rate** | Share of qualified (dialable) leads that book | `Appointments Booked ÷ Qualified Leads × 100` | Leads + Appointments |
 | **Shows** | Lead attended the appointment | `COUNT(show events)` or `Showed? = Y` | Appointments col J |
 | **No Shows** | Lead missed the appointment | `COUNT(no_show events)` or `Showed? = N` | Appointments col J |
 | **LO bailed** | Partner LO missed the appointment with the lead (not a lead no-show) | `COUNT(lo_bailed events)` or `Showed? = X` | Appointments col J |
@@ -36,7 +36,7 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 
 ### Formula notes
 
-- **Booking rate:** Use the same date window for leads and appointments. Filter both sides by the same client.
+- **Booking rate:** Qualified leads only (leads you dial). Use the same date window for qualified leads and appointments. Filter both sides by the same client.
 - **Show rate (client reporting):** `Shows ÷ Appointments Booked`, not shows ÷ (shows + no-shows only). Pending appointments stay in the denominator until they are marked show, no-show, LO bailed, or cancelled.
 - **Cancel rate:** `Cancellations ÷ (Appointments Booked + Cancellations)`. Use the same GHL **appointment ID** (`external_id`) on book and cancel. Prefer `/api/webhooks/appointment-status` with `status: "cancelled"` so the original booking row is updated (see `ccm-appt-cancelled.blueprint.json`).
 - **Appts to take place:** `Booked − Shows − No Shows − Cancellations − LO bailed` (pending / unresolved slots).
@@ -62,12 +62,25 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **Callback Rate** | Callbacks per lead | `Callbacks ÷ Total Leads × 100` |
 | **Appts To Take Place** | Still scheduled (pending outcomes) | `Appointments Booked − Shows − No Shows − Cancellations − LO bailed` |
 | **Dials Per Lead** | Dial effort per lead | `Outbound Dials ÷ Total Leads` |
-| **Ad Spend** | Meta + Google + Local Services | `SUM(ad_spend.amount)` for date range |
+| **Ad Spend** | Meta + Google + Local Services | `SUM(meta_ad_insights.spend)` + `SUM(ad_spend.amount)` where platform ≠ meta |
+| **Meta spend** | Facebook / Meta only | `SUM(meta_ad_insights.spend)` (daily rollup via `daily_meta_spend` view) |
 | **CPL** | Cost per lead | `Ad Spend ÷ Total Leads` |
-| **CP Qualified Lead** | Cost per qualified lead | `Ad Spend ÷ Qualified Leads` |
+| **CP Qualified Lead (CPQL)** | Cost per qualified lead | `Ad Spend ÷ Qualified Leads` |
+| **CP Hot Lead (CPH)** | Cost per hot lead | `Ad Spend ÷ Hot Leads` |
 | **CP Conversation** | Cost per client conversation | `Ad Spend ÷ (Live Transfers + Shows + Claimed)` |
 | **CP Appointment** | Cost per booking | `Ad Spend ÷ Appointments Booked` |
 | **CPS** | Cost per show | `Ad Spend ÷ Shows` |
+
+### RM dashboard layout (login → Dashboard)
+
+The main **Dashboard** view for RM clients shows four sections:
+
+1. **Leads & Pipeline** — Total Leads, Qualified, Hot, Out of State, Claimed, Live Transfers  
+2. **Appointments** — Appointments Booked (hero metric)  
+3. **Acquisition Costs** — Total Spend, CPL, CPQL, CPH, Cost per Appointment, Cost per Conversation  
+4. **Trends** — Line charts for CPL, CPQL, and Cost per Conversation over the selected date range  
+
+HE clients keep a minimal dashboard (appointments + calling stats). Operational metrics (dials, show rate, booking rate, etc.) remain in other nav views.
 
 ---
 
@@ -183,22 +196,22 @@ Use when the client manually spoke with or messaged a lead outside the setter bo
 | Who handled it, if known | `agent_name` |
 | Channel/source, optional | Stored in `raw` fields like `channel`, `claimed_source` |
 
-### Ad spend (`ad_spend` table)
+### Meta ad insights (`meta_ad_insights` table) — Meta spend source
+
+All Meta spend KPIs sum `spend` from this table (grouped by client and day). Make
+posts ad-level rows daily; historical sheet totals may exist as synthetic daily rows
+after migration from `ad_spend`.
+
+For setup, see [`docs/META_ADS_SPEND_IMPORT.md`](META_ADS_SPEND_IMPORT.md).
+
+### Ad spend (`ad_spend` table) — Google / Local Services only
 
 | Field | Webhook (`POST /api/ad-spend`) |
 |-------|----------------------------------|
 | Date | `date` → `spend_date` |
 | Client | `client_name` or `client_id` |
-| Platform | `platform`: `meta` \| `google` \| `local_services` |
+| Platform | `google` \| `local_services` only (`meta` rejected) |
 | Amount | `amount` |
-
-For the daily Meta Ads Make setup, see [`docs/META_ADS_SPEND_IMPORT.md`](META_ADS_SPEND_IMPORT.md).
-
-### Meta ad insights (`meta_ad_insights` table)
-
-Ad-level Meta reporting is stored separately from `ad_spend` so the dashboard can
-keep total spend metrics stable while also preserving campaign/adset/ad performance
-history.
 
 | Field | Webhook (`POST /api/meta-ad-insights`) |
 |-------|----------------------------------------|
@@ -272,4 +285,4 @@ Document your live Make scenario to match one approach:
 | Show heat map | `scheduled_at` |
 | Ad spend | `spend_date` |
 
-Use the same client + date range when comparing booking rate across leads and appointments.
+Use the same client + date range when comparing booking rate across qualified leads and appointments.

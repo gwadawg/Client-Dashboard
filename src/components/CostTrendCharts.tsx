@@ -250,7 +250,7 @@ export default function CostTrendCharts({ clientId, liveOnly, startDate, endDate
           Weekly buckets (range over 90 days). All platforms included in spend.
         </p>
       )}
-      <div className="grid gap-4 lg:grid-cols-1">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {CHARTS.map(chart => (
           <ChartPanel
             key={chart.key}
