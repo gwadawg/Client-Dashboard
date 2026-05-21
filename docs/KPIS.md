@@ -76,7 +76,7 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 The main **Dashboard** view for RM clients shows four sections:
 
 1. **Leads & Pipeline** — Total Leads, Qualified, Hot, Out of State, Claimed, Live Transfers  
-2. **Appointments** — Appointments Booked (hero metric)  
+2. **Appointments** — Booked, booking rate, appts to take place, shows, no-shows, LO bailed, show rate, cancellations, cancel rate  
 3. **Acquisition Costs** — Total Spend, CPL, CPQL, CPH, Cost per Appointment, Cost per Conversation  
 4. **Trends** — Line charts for CPL, CPQL, and Cost per Conversation over the selected date range  
 

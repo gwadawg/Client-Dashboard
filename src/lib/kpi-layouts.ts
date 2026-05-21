@@ -48,10 +48,18 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
   },
   {
     title: "Appointments",
-    variant: "hero",
-    gridClassName: "",
+    variant: "grid",
+    gridClassName: DEFAULT_GRID,
     cards: [
-      { label: "Appointments Booked", metric: "booked_appointments", format: "int", accent: true },
+      { label: "Appointments Booked", metric: "booked_appointments", format: "int" },
+      { label: "Booking Rate", metric: "appt_booking_rate", format: "pct" },
+      { label: "Appts To Take Place", metric: "appts_to_take_place", format: "int" },
+      { label: "Shows", metric: "shows", format: "int", accent: true },
+      { label: "No Shows (lead)", metric: "no_shows", format: "int" },
+      { label: "LO bailed (no-show)", metric: "lo_bailed", format: "int" },
+      { label: "Show Rate", metric: "show_pct", format: "pct", accent: true },
+      { label: "Cancellations", metric: "appointment_cancelled", format: "int" },
+      { label: "Cancel Rate", metric: "cancel_rate", format: "pct" },
     ],
   },
   {
