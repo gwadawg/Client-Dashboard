@@ -1,37 +1,22 @@
 # Meta Ads Import
 
-Use this to pull Meta Ads data into the dashboard. There are two separate imports:
+Meta spend and cost KPIs (Meta spend, total ad spend, CPL, CP appointment, CPS) read from
+**`meta_ad_insights` only**. The dashboard sums `spend` by client and day (via the
+`daily_meta_spend` view). Do not POST Meta rows to `/api/ad-spend`.
 
-- Daily account-level spend goes to `ad_spend` and powers Ad Spend, Meta Spend, CPL,
-  cost per appointment, and cost per show.
-- Daily ad-level insights go to `meta_ad_insights` and preserve campaign, ad set,
-  ad, impression, click, and cost metrics for future best-performer reporting.
+Google and Local Services spend still use `ad_spend` via `POST /api/ad-spend`.
 
-## Data Contract
-
-Make sends one row per client per day:
-
-```json
-{
-  "client_name": "Exact Dashboard Client Name",
-  "date": "2026-05-16",
-  "platform": "meta",
-  "amount": 123.45
-}
-```
-
-Endpoint:
+## Data flow
 
 ```text
-POST https://YOUR_RAILWAY_APP_URL/api/ad-spend
-Authorization: Bearer YOUR_ADMIN_WEBHOOK_SECRET
-Content-Type: application/json
+Make (daily) → POST /api/meta-ad-insights → meta_ad_insights → daily_meta_spend view → KPIs
 ```
 
-The API upserts by `client_id + spend_date + platform`, so rerunning a day replaces
-the prior amount instead of duplicating spend.
+Historical Facebook Data sheet totals were migrated once into `meta_ad_insights` as
+synthetic daily rows (`_imported_daily_total` sentinel). Live Make rows use real ad IDs;
+both roll up correctly for daily Meta spend.
 
-## Client Map
+## Client map
 
 Create a Make data store, Google Sheet, or CSV-backed list with these fields:
 
@@ -50,120 +35,14 @@ Validate the map before building the scenario:
 node scripts/validate-meta-client-map.mjs path/to/meta-client-map.csv
 ```
 
-This checks that every active `client_name` exists in Supabase and every active row
-has a Meta ad account ID.
+## Make scenario
 
-## Make Scenario
+Import blueprint: `make-blueprints/ccm-meta-ad-insights.blueprint.json`.
 
-Create one scheduled scenario named `Meta Ads Spend -> Dashboard`.
-
-1. **Scheduler**
-   - Run daily after Meta has finalized yesterday's spend.
-   - Recommended: early morning in your agency timezone.
-
-2. **Client config source**
-   - Use a Make Data Store, Google Sheet, or imported CSV.
-   - Filter to `is_active = true`.
-
-3. **Iterator**
-   - Iterate one client config row at a time.
-
-4. **Meta Ads Insights request**
-   - Module: Meta Ads Insights, or HTTP `GET`.
-   - HTTP URL:
-
-```text
-https://graph.facebook.com/v20.0/act_{{meta_ad_account_id}}/insights
-```
-
-   - Query string:
-
-```text
-fields=spend
-level=account
-time_increment=1
-time_range={"since":"{{formatDate(addDays(now; -1); "YYYY-MM-DD")}}","until":"{{formatDate(addDays(now; -1); "YYYY-MM-DD")}}"}
-access_token=YOUR_META_ACCESS_TOKEN
-```
-
-5. **Spend normalization**
-   - If Meta returns one row, use `data[1].spend`.
-   - If Meta returns multiple rows, aggregate all returned `spend` values for the
-     client/date.
-   - Convert blank spend to `0`.
-
-6. **Send to dashboard**
-   - Module: HTTP `Make a request` / `Send data`.
-   - Method: `POST`.
-   - URL: `https://YOUR_RAILWAY_APP_URL/api/ad-spend`.
-   - Headers:
-
-```text
-Authorization: Bearer YOUR_ADMIN_WEBHOOK_SECRET
-Content-Type: application/json
-```
-
-   - Raw JSON body:
-
-```json
-{
-  "client_name": "{{client_name}}",
-  "date": "{{formatDate(addDays(now; -1); \"YYYY-MM-DD\")}}",
-  "platform": "meta",
-  "amount": {{spend_total}}
-}
-```
-
-## Test
-
-Run the scenario for one active client and yesterday's date. A successful dashboard
-response is:
-
-```json
-{ "success": true }
-```
-
-Then open the dashboard, select the same client and date range, and confirm Meta
-spend appears.
-
-You can also test the dashboard endpoint before Make is finished:
-
-```bash
-node scripts/test-ad-spend-webhook.mjs --client "Exact Dashboard Client Name" --amount 12.34
-node scripts/test-ad-spend-webhook.mjs --client "Exact Dashboard Client Name" --amount 12.34 --url https://YOUR_RAILWAY_APP_URL --send
-```
-
-The first command is a dry run. The second command posts to `/api/ad-spend`.
-
-## Backfill
-
-After daily sync is confirmed, backfill history by looping over dates and sending
-the same payload shape for each client/day. Because the dashboard endpoint upserts,
-it is safe to rerun a date when Meta adjusts reported spend.
-
-Generate a Make-friendly date list:
-
-```bash
-node scripts/generate-meta-backfill-days.mjs 2026-05-01 2026-05-16 > data/import/meta-backfill-dates.csv
-```
-
-Use that date list as the backfill iterator in Make, replacing the scenario's
-`addDays(now; -1)` date expression with the iterated `date` value.
-
-## Ad-Level Insights
-
-Use this when you want campaign/adset/ad performance history, including best ads by
-click and cost metrics.
-
-Endpoint:
-
-```text
-POST https://YOUR_RAILWAY_APP_URL/api/meta-ad-insights
-Authorization: Bearer YOUR_ADMIN_WEBHOOK_SECRET
-Content-Type: application/json
-```
-
-Meta Insights request:
+1. **Scheduler** — daily after Meta finalizes yesterday's data.
+2. **Client config** — active rows from your map.
+3. **Iterator** — one client at a time.
+4. **Meta Ads Insights** — `level=ad`, `time_increment=1`, yesterday's date range.
 
 ```text
 GET https://graph.facebook.com/v20.0/act_{{meta_ad_account_id}}/insights
@@ -174,10 +53,15 @@ time_range={"since":"{{date}}","until":"{{date}}"}
 access_token=YOUR_META_ACCESS_TOKEN
 ```
 
-For daily live sync, set `date` to yesterday. For a backfill, iterate over one date
-at a time so failed days can be retried safely.
+5. **HTTP POST** to the dashboard:
 
-Make can post Meta's returned `data[]` array directly with the client context:
+```text
+POST https://YOUR_RAILWAY_APP_URL/api/meta-ad-insights
+Authorization: Bearer YOUR_ADMIN_WEBHOOK_SECRET
+Content-Type: application/json
+```
+
+Body with client context and Meta's `data[]` array:
 
 ```json
 {
@@ -186,7 +70,7 @@ Make can post Meta's returned `data[]` array directly with the client context:
 }
 ```
 
-The API also accepts one row at a time:
+Or one row at a time:
 
 ```json
 {
@@ -210,7 +94,42 @@ The API also accepts one row at a time:
 }
 ```
 
-Rows upsert by `client + date + account + campaign + adset + ad`, so daily syncs
-and historical backfills can be rerun without duplicating rows.
+Rows upsert by `client + date + account + campaign + adset + ad`. Reruns replace the
+same ad/day without duplicating.
 
-Blueprint: `make-blueprints/ccm-meta-ad-insights.blueprint.json`.
+## Test
+
+After one successful POST, open the dashboard for that client and date range and confirm
+Meta spend and CPL update.
+
+```bash
+curl -X POST "https://YOUR_RAILWAY_APP_URL/api/meta-ad-insights" \
+  -H "Authorization: Bearer YOUR_ADMIN_WEBHOOK_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"client_name":"Exact Name","date":"2026-05-16","account_id":"123","campaign_id":"c1","adset_id":"s1","ad_id":"a1","spend":10}'
+```
+
+## Backfill
+
+Iterate dates in Make (or use `scripts/generate-meta-backfill-days.mjs`) and POST the
+same payload shape per client/day. Ad-level backfill replaces or adds rows per ad;
+daily KPI totals are the sum of all ads (plus any migrated daily-total rows) for that day.
+
+```bash
+node scripts/generate-meta-backfill-days.mjs 2026-05-01 2026-05-16 > data/import/meta-backfill-dates.csv
+```
+
+## One-time sheet migration
+
+If Meta spend was previously imported into `ad_spend`:
+
+```bash
+node scripts/migrate-ad-spend-to-meta-insights.mjs --dry-run
+node scripts/migrate-ad-spend-to-meta-insights.mjs
+node scripts/migrate-ad-spend-to-meta-insights.mjs --delete-meta-ad-spend
+```
+
+## Deprecated
+
+- `POST /api/ad-spend` with `platform: "meta"` returns **400** — use `/api/meta-ad-insights`.
+- `import-ad-spend.mjs` / Facebook Data CSV for Meta — use migration script above, then Make only.

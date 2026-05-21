@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { calculateMetrics } from '@/lib/metrics';
+import { fetchCombinedSpendForMetrics } from '@/lib/spend';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 
 export async function GET(req: Request) {
@@ -28,18 +29,24 @@ export async function GET(req: Request) {
   if (end_date)   eventsQuery = eventsQuery.lte('occurred_at', `${end_date}T23:59:59.999Z`);
   eventsQuery = eventsQuery.limit(100000);
 
-  let spendQuery = ctx.service.from('ad_spend').select('amount, platform');
+  const [{ data: events, error: eventsError }, spendRows] = await Promise.all([
+    eventsQuery,
+    fetchCombinedSpendForMetrics(ctx.service, {
+      client_id,
+      client_ids: liveClientIds,
+      start_date,
+      end_date,
+    }).then(
+      (rows) => ({ data: rows, error: null }),
+      (error: Error) => ({ data: null, error }),
+    ),
+  ]);
 
-  if (client_id) spendQuery = spendQuery.eq('client_id', client_id);
-  else if (liveClientIds) spendQuery = spendQuery.in('client_id', liveClientFilter(liveClientIds));
-  if (start_date) spendQuery = spendQuery.gte('spend_date', start_date);
-  if (end_date)   spendQuery = spendQuery.lte('spend_date', end_date);
+  if (eventsError || spendRows.error)
+    return NextResponse.json(
+      { error: eventsError?.message ?? spendRows.error?.message },
+      { status: 500 },
+    );
 
-  const [{ data: events, error: eventsError }, { data: spendRows, error: spendError }] =
-    await Promise.all([eventsQuery, spendQuery]);
-
-  if (eventsError || spendError)
-    return NextResponse.json({ error: eventsError?.message ?? spendError?.message }, { status: 500 });
-
-  return NextResponse.json(calculateMetrics(events ?? [], spendRows ?? []));
+  return NextResponse.json(calculateMetrics(events ?? [], spendRows.data ?? []));
 }

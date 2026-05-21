@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 type Client = { id: string; name: string };
 
 type Props = {
-  type: "leads" | "dials" | "appointments" | "speed_to_lead" | "ad_spend";
+  type: "leads" | "dials" | "appointments" | "speed_to_lead" | "ad_spend" | "meta_ad_insights";
   clients: Client[];
   preset: string;
   startDate: string;
@@ -63,6 +63,18 @@ const COLUMNS: Record<string, { key: string; label: string }[]> = {
     { key: "platform", label: "Platform" },
     { key: "amount", label: "Amount" },
   ],
+  meta_ad_insights: [
+    { key: "client", label: "Client" },
+    { key: "insight_date", label: "Date" },
+    { key: "campaign_name", label: "Campaign" },
+    { key: "ad_id", label: "Ad ID" },
+    { key: "spend", label: "Spend" },
+    { key: "impressions", label: "Impressions" },
+    { key: "clicks", label: "Clicks" },
+    { key: "cpm", label: "CPM" },
+    { key: "cpc", label: "CPC" },
+    { key: "ctr", label: "CTR" },
+  ],
 };
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -80,15 +92,15 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 
 function formatCell(key: string, value: unknown): string {
   if (value === null || value === undefined) return "—";
-  if (key === "occurred_at" || key === "scheduled_at" || key === "spend_date") {
+  if (key === "occurred_at" || key === "scheduled_at" || key === "spend_date" || key === "insight_date") {
     return new Date(value as string).toLocaleDateString("en-US", {
       month: "short", day: "numeric", year: "numeric",
-      ...(key !== "spend_date" ? { hour: "2-digit", minute: "2-digit" } : {}),
+      ...(key !== "spend_date" && key !== "insight_date" ? { hour: "2-digit", minute: "2-digit" } : {}),
     });
   }
   if (key === "is_pickup" || key === "is_conversation") return value ? "✓" : "✗";
   if (key === "speed_to_lead_seconds") return ((value as number) / 60).toFixed(1);
-  if (key === "amount") return `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+  if (key === "amount" || key === "spend") return `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
   if (key === "event_type") return EVENT_TYPE_LABELS[value as string] ?? String(value);
   if (key === "platform") return (value as string).replace("_", " ").toUpperCase();
   if (key === "client") {

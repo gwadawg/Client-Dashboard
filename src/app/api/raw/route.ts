@@ -7,7 +7,7 @@ export async function GET(req: Request) {
   if (isAuthError(ctx)) return ctx;
 
   const { searchParams } = new URL(req.url);
-  const type = searchParams.get('type'); // leads | dials | appointments | speed_to_lead | ad_spend
+  const type = searchParams.get('type'); // leads | dials | appointments | speed_to_lead | ad_spend | meta_ad_insights
   const client_id = searchParams.get('client_id');
   const live_only = searchParams.get('live_only') === 'true';
   const start_date = searchParams.get('start_date');
@@ -23,17 +23,38 @@ export async function GET(req: Request) {
     liveClientIds = await getLiveClientIds(ctx.service);
   }
 
+  if (type === 'meta_ad_insights') {
+    let q = ctx.service
+      .from('meta_ad_insights')
+      .select(
+        'id, insight_date, account_id, campaign_id, campaign_name, adset_id, ad_id, spend, impressions, clicks, cpm, cpc, ctr, clients(name)',
+        { count: 'exact' },
+      )
+      .order('insight_date', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (client_id) q = q.eq('client_id', client_id);
+    else if (liveClientIds) q = q.in('client_id', liveClientFilter(liveClientIds));
+    if (start_date) q = q.gte('insight_date', start_date);
+    if (end_date) q = q.lte('insight_date', end_date);
+
+    const { data, error, count } = await q;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ rows: data, total: count });
+  }
+
   if (type === 'ad_spend') {
     let q = ctx.service
       .from('ad_spend')
       .select('id, spend_date, platform, amount, clients(name)', { count: 'exact' })
+      .neq('platform', 'meta')
       .order('spend_date', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (client_id) q = q.eq('client_id', client_id);
     else if (liveClientIds) q = q.in('client_id', liveClientFilter(liveClientIds));
     if (start_date) q = q.gte('spend_date', start_date);
-    if (end_date)   q = q.lte('spend_date', end_date);
+    if (end_date) q = q.lte('spend_date', end_date);
 
     const { data, error, count } = await q;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

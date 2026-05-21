@@ -174,6 +174,19 @@ create table if not exists meta_ad_insights (
   unique(client_id, insight_date, account_id, campaign_id, adset_id, ad_id)
 );
 
+-- Daily Meta spend rollup (query via PostgREST as daily_meta_spend)
+create or replace view daily_meta_spend as
+select
+  client_id,
+  insight_date as spend_date,
+  sum(spend) as amount
+from meta_ad_insights
+group by client_id, insight_date;
+
+grant select on daily_meta_spend to service_role;
+grant select on daily_meta_spend to authenticated;
+grant select on daily_meta_spend to anon;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 7. Setter Availability (recurring weekly windows per agent)
 -- ─────────────────────────────────────────────────────────────────────────────

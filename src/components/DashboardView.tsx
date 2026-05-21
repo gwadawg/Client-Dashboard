@@ -37,6 +37,7 @@ type View =
   | "appointments"
   | "speed_to_lead"
   | "ad_spend"
+  | "meta_ad_insights"
   | "heatmap_show"
   | "heatmap_pickup"
   | "heatmap_leads"
@@ -66,7 +67,8 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "dials",          label: "All Dials",      group: "Raw Data"  },
   { view: "appointments",   label: "Appointments",   group: "Raw Data"  },
   { view: "speed_to_lead",  label: "Speed to Lead",  group: "Raw Data"  },
-  { view: "ad_spend",       label: "Ad Spend",       group: "Raw Data"  },
+  { view: "meta_ad_insights", label: "Meta Ads",       group: "Raw Data"  },
+  { view: "ad_spend",         label: "Other Ad Spend", group: "Raw Data"  },
   { view: "heatmap_show",   label: "Show Rate",      group: "Heat Maps"   },
   { view: "heatmap_pickup", label: "Pick Up Rate",   group: "Heat Maps"   },
   { view: "heatmap_leads",  label: "New Leads",      group: "Heat Maps"   },
@@ -96,7 +98,8 @@ const NAV_ICONS: Record<View, string> = {
   dials:         "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
   appointments:  "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
   speed_to_lead: "M13 10V3L4 14h7v7l9-11h-7z",
-  ad_spend:      "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+  ad_spend:         "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+  meta_ad_insights: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
   heatmap_show:  "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   heatmap_pickup:"M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   heatmap_leads: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
@@ -276,7 +279,7 @@ export default function DashboardView() {
   const heatmapEnd = heatmapDays > 0 ? today : undefined;
 
   const isHeatmap = view.startsWith("heatmap_");
-  const isRaw = ["leads", "dials", "appointments", "speed_to_lead", "ad_spend"].includes(view);
+  const isRaw = ["leads", "dials", "appointments", "speed_to_lead", "ad_spend", "meta_ad_insights"].includes(view);
   const isAgentView = ["agent_stats", "agent_credit_queue", "agent_scorecards", "recordings"].includes(view);
   const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Credit", "Agent Stats", "Admin"];
   const dashboardScopeClients = getDashboardScopeClients(clients, selectedClientId);
@@ -508,7 +511,7 @@ export default function DashboardView() {
           )}
           {isRaw && view !== "leads" && (
             <RawDataTable
-              type={view as "dials" | "appointments" | "speed_to_lead" | "ad_spend"}
+              type={view as "dials" | "appointments" | "speed_to_lead" | "ad_spend" | "meta_ad_insights"}
               clients={clients}
               preset={preset}
               startDate={dateStart}

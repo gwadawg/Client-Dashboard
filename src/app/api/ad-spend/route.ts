@@ -15,8 +15,20 @@ export async function POST(req: Request) {
     if (!date || !platform || amount === undefined) {
       return NextResponse.json({ error: 'date, platform, and amount are required' }, { status: 400 });
     }
-    if (!['meta', 'google', 'local_services'].includes(platform)) {
-      return NextResponse.json({ error: 'platform must be "meta", "google", or "local_services"' }, { status: 400 });
+    if (platform === 'meta') {
+      return NextResponse.json(
+        {
+          error:
+            'Meta spend must use POST /api/meta-ad-insights. ad_spend is for google and local_services only.',
+        },
+        { status: 400 },
+      );
+    }
+    if (!['google', 'local_services'].includes(platform)) {
+      return NextResponse.json(
+        { error: 'platform must be "google" or "local_services"' },
+        { status: 400 },
+      );
     }
 
     let client_id = payload.client_id as string | undefined;
