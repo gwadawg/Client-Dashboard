@@ -92,49 +92,8 @@ const NAV: { view: View; label: string; group?: string }[] = [
 
 const VALID_VIEWS = new Set<View>(NAV.map(item => item.view));
 
-const OVERVIEW_VIEWS: View[] = ["dashboard", "dial_analytics", "goals", "client_health"];
-
 function viewFromParam(param: string | null): View {
   return param && VALID_VIEWS.has(param as View) ? (param as View) : "dashboard";
-}
-
-function OverviewTabs({
-  view,
-  onSelect,
-}: {
-  view: View;
-  onSelect: (v: View) => void;
-}) {
-  const tabs = NAV.filter(n => OVERVIEW_VIEWS.includes(n.view));
-  return (
-    <div
-      className="flex flex-wrap gap-1 p-1 rounded-xl mb-6 w-fit max-w-full"
-      style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}
-      role="tablist"
-      aria-label="Overview"
-    >
-      {tabs.map(tab => {
-        const active = view === tab.view;
-        return (
-          <button
-            key={tab.view}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onSelect(tab.view)}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
-            style={
-              active
-                ? { background: "rgba(245,158,11,0.15)", color: "#f59e0b" }
-                : { color: "#64748b" }
-            }
-          >
-            {tab.label}
-          </button>
-        );
-      })}
-    </div>
-  );
 }
 
 const NAV_ICONS: Record<View, string> = {
@@ -528,10 +487,6 @@ export default function DashboardView() {
 
         {/* Content */}
         <main className="flex-1 p-6 md:p-8 overflow-auto" style={{ background: "#080f1e" }}>
-
-          {OVERVIEW_VIEWS.includes(view) && (
-            <OverviewTabs view={view} onSelect={goToView} />
-          )}
 
           {/* ── Dashboard KPIs ── */}
           {view === "dashboard" && (
