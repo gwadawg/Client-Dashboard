@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RawDataTable from "./RawDataTable";
 import LeadProfilesTable from "./LeadProfilesTable";
 import HeatMap from "./HeatMap";
@@ -18,6 +18,7 @@ import UserManager from "./UserManager";
 import AgentCreditQueue from "./AgentCreditQueue";
 import CostTrendCharts from "./CostTrendCharts";
 import ClientHealthDashboard from "./ClientHealthDashboard";
+import DialAnalytics from "./DialAnalytics";
 import KpiSections from "./kpi/KpiSections";
 import KpiSection from "./kpi/KpiSection";
 import type { MetricsResult } from "@/lib/metrics";
@@ -47,6 +48,7 @@ type View =
   | "agent_scorecards"
   | "recordings"
   | "goals"
+  | "dial_analytics"
   | "client_health"
   | "admin_agents"
   | "admin_clients"
@@ -65,6 +67,7 @@ const PRESET_LABELS: Record<Preset, string> = {
 
 const NAV: { view: View; label: string; group?: string }[] = [
   { view: "dashboard",      label: "Dashboard",     group: "Overview"  },
+  { view: "dial_analytics", label: "Dial Analytics", group: "Overview"  },
   { view: "leads",          label: "New Leads",      group: "Raw Data"  },
   { view: "dials",          label: "All Dials",      group: "Raw Data"  },
   { view: "appointments",   label: "Appointments",   group: "Raw Data"  },
@@ -89,10 +92,49 @@ const NAV: { view: View; label: string; group?: string }[] = [
 
 const VALID_VIEWS = new Set<View>(NAV.map(item => item.view));
 
-function getInitialView(): View {
-  if (typeof window === "undefined") return "dashboard";
-  const requested = new URLSearchParams(window.location.search).get("view");
-  return requested && VALID_VIEWS.has(requested as View) ? (requested as View) : "dashboard";
+const OVERVIEW_VIEWS: View[] = ["dashboard", "dial_analytics", "goals", "client_health"];
+
+function viewFromParam(param: string | null): View {
+  return param && VALID_VIEWS.has(param as View) ? (param as View) : "dashboard";
+}
+
+function OverviewTabs({
+  view,
+  onSelect,
+}: {
+  view: View;
+  onSelect: (v: View) => void;
+}) {
+  const tabs = NAV.filter(n => OVERVIEW_VIEWS.includes(n.view));
+  return (
+    <div
+      className="flex flex-wrap gap-1 p-1 rounded-xl mb-6 w-fit max-w-full"
+      style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}
+      role="tablist"
+      aria-label="Overview"
+    >
+      {tabs.map(tab => {
+        const active = view === tab.view;
+        return (
+          <button
+            key={tab.view}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onSelect(tab.view)}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+            style={
+              active
+                ? { background: "rgba(245,158,11,0.15)", color: "#f59e0b" }
+                : { color: "#64748b" }
+            }
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 const NAV_ICONS: Record<View, string> = {
@@ -116,6 +158,7 @@ const NAV_ICONS: Record<View, string> = {
   agent_scorecards: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
   recordings:       "M15.536 8.464a5 5 0 010 7.072M12 18.364a9 9 0 010-12.728M8.464 15.536a5 5 0 010-7.072",
   goals:            "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+  dial_analytics:   "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
   client_health:    "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
 };
 
@@ -223,7 +266,10 @@ function ShareReports({ clients }: { clients: Client[] }) {
 }
 
 export default function DashboardView() {
-  const [view, setView] = useState<View>(getInitialView);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [view, setView] = useState<View>(() => viewFromParam(searchParams.get("view")));
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [preset, setPreset] = useState<Preset>("this_month");
@@ -237,7 +283,21 @@ export default function DashboardView() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [renderDate] = useState(() => new Date());
   const presetRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
+
+  const goToView = (next: View) => {
+    setView(next);
+    setSidebarOpen(false);
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "dashboard") params.delete("view");
+    else params.set("view", next);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
+  useEffect(() => {
+    const fromUrl = viewFromParam(searchParams.get("view"));
+    setView(current => (current === fromUrl ? current : fromUrl));
+  }, [searchParams]);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -334,7 +394,7 @@ export default function DashboardView() {
                 return (
                   <button
                     key={item.view}
-                    onClick={() => { setView(item.view); setSidebarOpen(false); }}
+                    onClick={() => goToView(item.view)}
                     className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-3 transition-all duration-150 mb-0.5"
                     style={active
                       ? { background: "rgba(245,158,11,0.12)", color: "#f59e0b", borderLeft: "2px solid #f59e0b" }
@@ -392,9 +452,9 @@ export default function DashboardView() {
           </h1>
 
           {/* Dashboard, raw data, and agent/recording views filters */}
-          {(view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "client_health" || view === "recordings") && !view.startsWith("admin_") && (
+          {(view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "dial_analytics" || view === "client_health" || view === "recordings") && !view.startsWith("admin_") && (
             <>
-              {view === "dashboard" && (
+              {(view === "dashboard" || view === "dial_analytics") && (
                 <Select value={selectedClientId} onChange={v => setSelectedClientId(v)}>
                   <option value="">All Clients</option>
                   <option value="__live__">Live Clients</option>
@@ -468,6 +528,10 @@ export default function DashboardView() {
 
         {/* Content */}
         <main className="flex-1 p-6 md:p-8 overflow-auto" style={{ background: "#080f1e" }}>
+
+          {OVERVIEW_VIEWS.includes(view) && (
+            <OverviewTabs view={view} onSelect={goToView} />
+          )}
 
           {/* ── Dashboard KPIs ── */}
           {view === "dashboard" && (
@@ -558,6 +622,15 @@ export default function DashboardView() {
           {/* ── Goal Tracker ── */}
           {view === "goals" && (
             <GoalTracker clients={clients} startDate={dateStart} endDate={dateEnd} />
+          )}
+
+          {view === "dial_analytics" && (
+            <DialAnalytics
+              startDate={dateStart}
+              endDate={dateEnd}
+              clientId={selectedClientId === "__live__" ? undefined : selectedClientId || undefined}
+              liveOnly={selectedClientId === "__live__"}
+            />
           )}
 
           {view === "client_health" && (
