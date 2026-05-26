@@ -531,7 +531,6 @@ export default function DashboardView() {
           {/* ── Agent Stats ── */}
           {view === "agent_stats" && (
             <AgentStats
-              clients={clients}
               preset={preset}
               startDate={dateStart}
               endDate={dateEnd}
@@ -548,7 +547,7 @@ export default function DashboardView() {
 
           {/* ── Agent Scorecards ── */}
           {view === "agent_scorecards" && (
-            <AgentScorecards clients={clients} startDate={dateStart} endDate={dateEnd} />
+            <AgentScorecards startDate={dateStart} endDate={dateEnd} />
           )}
 
           {/* ── Call Recordings ── */}

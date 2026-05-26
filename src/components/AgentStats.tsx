@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-type Client = { id: string; name: string };
-
 type AgentRow = {
   agent_name: string;
   dials: number;
@@ -19,23 +17,18 @@ type AgentRow = {
 };
 
 type Props = {
-  clients: Client[];
   preset: string;
   startDate: string;
   endDate: string;
 };
 
-export default function AgentStats({ clients, preset, startDate, endDate }: Props) {
+export default function AgentStats({ preset, startDate, endDate }: Props) {
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [clientFilter, setClientFilter] = useState("");
-
-  useEffect(() => { setClientFilter(""); }, [preset]);
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (clientFilter) params.set("clientId", clientFilter);
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
 
@@ -43,7 +36,7 @@ export default function AgentStats({ clients, preset, startDate, endDate }: Prop
       .then(r => r.json())
       .then(d => { setAgents(d.agents ?? []); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [clientFilter, startDate, endDate]);
+  }, [preset, startDate, endDate]);
 
   const statCols = [
     { key: "dials", label: "Dials" },
@@ -60,21 +53,11 @@ export default function AgentStats({ clients, preset, startDate, endDate }: Prop
 
   return (
     <div className="space-y-8">
-      {/* Header + filter */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Agent Stats</h2>
-          <p className="text-sm mt-0.5" style={{ color: "#475569" }}>Performance breakdown by agent</p>
-        </div>
-        <select
-          value={clientFilter}
-          onChange={e => setClientFilter(e.target.value)}
-          className="px-4 py-2 rounded-lg text-sm font-medium outline-none"
-          style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", minWidth: "11rem" }}
-        >
-          <option value="">All Clients</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+      <div>
+        <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Agent Stats</h2>
+        <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
+          Performance for agents on your roster (all clients combined)
+        </p>
       </div>
 
       {/* Agent stats table */}

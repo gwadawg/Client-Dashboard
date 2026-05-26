@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-type Client = { id: string; name: string };
 type AgentRow = {
   agent_name: string;
   dials: number;
@@ -18,7 +17,7 @@ type AgentRow = {
 };
 type Goal = { agent_name: string | null; metric: string; target: number; period: string };
 
-type Props = { clients: Client[]; startDate: string; endDate: string };
+type Props = { startDate: string; endDate: string };
 
 function Ring({ pct, color, size = 56 }: { pct: number; color: string; size?: number }) {
   const r = (size - 8) / 2;
@@ -35,50 +34,38 @@ function Ring({ pct, color, size = 56 }: { pct: number; color: string; size?: nu
   );
 }
 
-export default function AgentScorecards({ clients, startDate, endDate }: Props) {
+export default function AgentScorecards({ startDate, endDate }: Props) {
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(false);
-  const [clientFilter, setClientFilter] = useState("");
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (clientFilter) params.set("clientId", clientFilter);
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
 
     Promise.all([
       fetch(`/api/agent-stats?${params}`).then(r => r.json()),
-      clientFilter ? fetch(`/api/goals?clientId=${clientFilter}`).then(r => r.json()) : Promise.resolve({ goals: [] }),
+      fetch("/api/goals").then(r => r.json()),
     ]).then(([statsData, goalsData]) => {
       setAgents(statsData.agents ?? []);
       setGoals(goalsData.goals ?? []);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [clientFilter, startDate, endDate]);
+  }, [startDate, endDate]);
 
   function getTarget(agentName: string, metric: string) {
     return goals.find(g => g.agent_name === agentName && g.metric === metric && g.period === "daily")?.target ?? null;
   }
 
-  const selectStyle = {
-    background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)",
-    color: "#e2e8f0", borderRadius: "0.5rem", padding: "0.5rem 1rem",
-    fontSize: "0.875rem", outline: "none",
-  } as React.CSSProperties;
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Agent Scorecards</h2>
-          <p className="text-sm mt-0.5" style={{ color: "#475569" }}>Today's performance + period totals and response time</p>
-        </div>
-        <select style={selectStyle} value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
-          <option value="">All Clients</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+      <div>
+        <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Agent Scorecards</h2>
+        <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
+          Today&apos;s performance and period totals for agents on your roster
+        </p>
       </div>
 
       {loading ? (
