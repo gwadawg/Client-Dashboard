@@ -20,6 +20,9 @@ type LeadCounts = {
   proposals: number;
   loan_processing: number;
   closed: number;
+  proposals_made: number;
+  submissions_made: number;
+  funded_loans: number;
 };
 
 type TimelineItem = {
@@ -53,6 +56,9 @@ type LeadProfile = {
   property_value: string | null;
   b1_age: string | null;
   b2_age: string | null;
+  has_proposal_made: boolean;
+  has_submission_made: boolean;
+  has_loan_funded: boolean;
   counts: LeadCounts;
   timeline: TimelineItem[];
 };
@@ -75,8 +81,11 @@ const EVENT_LABELS: Record<string, string> = {
   live_transfer: "Live Transfer",
   claimed: "Claimed",
   proposal_sent: "Proposal",
+  proposal_made: "Proposal",
   loan_processing: "Submitted",
+  submission_made: "Submitted",
   closed: "Funded",
+  loan_funded: "Funded",
   lo_audit: "LO audit",
   out_of_state_lead: "Out of State",
 };
@@ -155,11 +164,11 @@ function downloadLeadsPageCsv(rows: LeadProfile[], page: number) {
         String(c.no_shows),
         String(c.lo_bailed),
         String(c.cancellations),
-        String(c.closed),
-        String(c.loan_processing),
+        String(c.funded_loans),
+        String(c.submissions_made),
         String(c.callbacks),
         String(c.claimed),
-        String(c.proposals),
+        String(c.proposals_made),
         String(c.live_transfers),
       ]
         .map(csvEscape)
@@ -255,11 +264,12 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
   const [clientFilter, setClientFilter] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [capped, setCapped] = useState(false);
+  const [conversionFilter, setConversionFilter] = useState("");
 
   useEffect(() => {
     setPage(1);
     setExpanded(new Set());
-  }, [clientFilter, startDate, endDate]);
+  }, [clientFilter, startDate, endDate, conversionFilter]);
 
   useEffect(() => {
     setLoading(true);
@@ -268,6 +278,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
     else if (clientFilter) params.set("client_id", clientFilter);
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
+    if (conversionFilter) params.set("conversion_event", conversionFilter);
 
     fetch(`/api/raw/leads?${params}`)
       .then((r) => r.json())
@@ -278,7 +289,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [clientFilter, page, startDate, endDate]);
+  }, [clientFilter, page, startDate, endDate, conversionFilter]);
 
   const totalPages = Math.ceil(total / 50);
 
@@ -312,6 +323,22 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
               {c.name}
             </option>
           ))}
+        </select>
+        <select
+          value={conversionFilter}
+          onChange={(e) => setConversionFilter(e.target.value)}
+          className="px-4 py-2 rounded-lg text-sm font-medium outline-none"
+          style={{
+            background: "#0f2040",
+            border: "1px solid rgba(255,255,255,0.12)",
+            color: "#e2e8f0",
+            minWidth: "12rem",
+          }}
+        >
+          <option value="">All Conversion Stages</option>
+          <option value="proposal_made">Has Proposal</option>
+          <option value="submission_made">Has Submission</option>
+          <option value="loan_funded">Has Funded Loan</option>
         </select>
         <span className="text-sm" style={{ color: "#334155" }}>
           {total.toLocaleString()} leads
@@ -427,6 +454,9 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
                           <Flag on={row.is_qualified} label="Q" color="#22c55e" />
                           <Flag on={row.is_hot} label="Hot" color="#ef4444" />
                           <Flag on={row.is_out_of_state} label="OOS" color="#a78bfa" />
+                          <Flag on={row.has_proposal_made} label="Proposal" color="#38bdf8" />
+                          <Flag on={row.has_submission_made} label="Submission" color="#f59e0b" />
+                          <Flag on={row.has_loan_funded} label="Funded" color="#22c55e" />
                         </div>
                       </td>
                       <td className="px-4 py-2.5">
@@ -437,11 +467,11 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
                           <CountPill label="no-shows" value={c.no_shows} accent="#f87171" />
                           <CountPill label="LO bailed" value={c.lo_bailed} accent="#fb923c" />
                           <CountPill label="cancelled" value={c.cancellations} />
-                          <CountPill label="funded" value={c.closed} accent="#f59e0b" />
-                          <CountPill label="in processing" value={c.loan_processing} />
+                          <CountPill label="funded" value={c.funded_loans} accent="#f59e0b" />
+                          <CountPill label="submissions" value={c.submissions_made} />
                           <CountPill label="callbacks" value={c.callbacks} />
                           <CountPill label="claimed" value={c.claimed} accent="#f59e0b" />
-                          <CountPill label="proposals" value={c.proposals} />
+                          <CountPill label="proposals" value={c.proposals_made} />
                         </div>
                       </td>
                     </tr>

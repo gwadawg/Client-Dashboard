@@ -4,9 +4,10 @@
  *
  *   node scripts/import-historical-events.mjs
  *   node scripts/import-historical-events.mjs --dry-run
+ *   node scripts/import-historical-events.mjs ./data/import/custom.csv
  */
 
-import { createReadStream, readFileSync } from 'fs';
+import { createReadStream, existsSync, readFileSync } from 'fs';
 import { createInterface } from 'readline';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -162,13 +163,33 @@ async function upsertClient(row, clientMap) {
   }
 }
 
+function parseRawJson(row) {
+  const fallback = { lead_id: row.lead_id, ad_name: row.ad_name, ad_set_name: row.ad_set_name };
+  if (!row.raw_json?.trim()) return fallback;
+  try {
+    return JSON.parse(row.raw_json);
+  } catch {
+    return { ...fallback, raw_json_invalid: true };
+  }
+}
+
+function normalizeEventType(eventType) {
+  if (eventType === 'proposal_sent') return 'proposal_made';
+  if (eventType === 'loan_processing') return 'submission_made';
+  if (eventType === 'closed') return 'loan_funded';
+  return eventType;
+}
+
 function rowToEvent(row, clientMap) {
   const client_id = clientMap.get(row.client_name?.trim());
   if (!client_id) return null;
 
+  const speed = row.speed_to_lead_seconds?.trim();
+  const scheduled = row.scheduled_at?.trim();
+
   const event = {
     client_id,
-    event_type: row.event_type,
+    event_type: normalizeEventType(row.event_type),
     occurred_at: row.occurred_at,
     ghl_contact_id: row.ghl_contact_id || row.lead_id || null,
     lead_name: row.lead_name || null,
@@ -181,7 +202,17 @@ function rowToEvent(row, clientMap) {
     is_pickup: row.is_pickup ? parseBool(row.is_pickup) : null,
     is_conversation: row.is_conversation ? parseBool(row.is_conversation) : null,
     call_status: row.call_status || null,
-    raw: row.raw_json ? JSON.parse(row.raw_json) : { lead_id: row.lead_id, ad_name: row.ad_name, ad_set_name: row.ad_set_name },
+    speed_to_lead_seconds: speed ? Number(speed) : null,
+    direction: row.direction?.trim() || null,
+    recording_url: row.recording_url?.trim() || null,
+    call_summary: row.call_summary?.trim() || null,
+    phone_number_used: row.phone_number_used?.trim() || null,
+    scheduled_at: scheduled || null,
+    external_id: row.external_id?.trim() || null,
+    calendar_name: row.calendar_name?.trim() || null,
+    stage_booked: row.stage_booked?.trim() || null,
+    agent_name: row.agent_name?.trim() || null,
+    raw: parseRawJson(row),
   };
 
   if (event.event_type !== 'lead') {
@@ -200,14 +231,45 @@ async function insertBatch(batch) {
   if (status !== 201) throw new Error(`events insert ${status}: ${data}`);
 }
 
+/** Default import bundle: leads + optional tab outputs (if files exist). */
+const DEFAULT_EVENT_FILES = [
+  '05_events_all_combined.csv',
+  '07_events_appts.csv',
+  '08_events_dials.csv',
+  '09_events_mlo.csv',
+  '10_events_claimed.csv',
+  '11_events_lo_audit.csv',
+  '12_events_qualified_leads.csv',
+  '13_events_live_transfer.csv',
+  '14_events_hot_leads.csv',
+];
+
 async function main() {
-  const combinedPath = resolve(IMPORT_DIR, '05_events_all_combined.csv');
+  const argFiles = process.argv.slice(2).filter((a) => a !== '--dry-run' && !a.startsWith('--'));
   const clientsPath = resolve(IMPORT_DIR, '01_clients.csv');
 
   console.log(DRY_RUN ? 'DRY RUN\n' : 'Importing historical events…\n');
 
+  const eventPaths =
+    argFiles.length > 0
+      ? argFiles.map((p) => resolve(p))
+      : DEFAULT_EVENT_FILES.map((f) => resolve(IMPORT_DIR, f)).filter((p) => existsSync(p));
+
+  if (!eventPaths.length) {
+    console.error(
+      'No event CSVs found. Run transform scripts first or pass file paths:\n  node scripts/import-historical-events.mjs ./data/import/05_events_all_combined.csv',
+    );
+    process.exit(1);
+  }
+
+  console.log('Event files:', eventPaths.map((p) => p.replace(IMPORT_DIR + '/', '')).join(', '));
+
   const clientRows = await readCsv(clientsPath);
-  const eventRows = await readCsv(combinedPath);
+  let eventRows = [];
+  for (const p of eventPaths) {
+    const part = await readCsv(p);
+    eventRows = eventRows.concat(part);
+  }
 
   const clientMap = await loadClients();
   console.log(`Upserting ${clientRows.length} clients…`);

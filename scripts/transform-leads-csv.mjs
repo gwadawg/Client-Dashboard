@@ -2,7 +2,10 @@
  * Transform Waiz "New Leads" sheet CSV → Supabase-ready import files.
  *
  * Usage:
- *   node scripts/transform-leads-csv.mjs "/path/to/Call Center - Waiz - New Leads.csv"
+ *   node scripts/transform-leads-csv.mjs "/path/to/New Leads.csv"
+ *
+ * Default: **lead rows only** in `05_events_all_combined.csv` (use Appt1 / Dials / MLO for funnel).
+ * Optional: `--with-flag-events` → also emit synthetic events from Appt/Spoken/Offer/Closed columns.
  *
  * Outputs: data/import/
  */
@@ -15,7 +18,10 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = resolve(__dirname, '../data/import');
 
-const INPUT = process.argv[2] ?? resolve(process.env.HOME, 'Downloads/Call Center - Waiz - New Leads.csv');
+const argvRest = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const INPUT =
+  argvRest[0] ?? resolve(process.env.HOME, 'Downloads/Call Center - Waiz - New Leads.csv');
+const WITH_FLAG_EVENTS = process.argv.includes('--with-flag-events');
 
 function parseCsv(text) {
   const rows = [];
@@ -277,29 +283,31 @@ const leadEvents = [...profiles.values()].map((p) => ({
 }));
 
 const conversionEvents = [];
-for (const p of profiles.values()) {
-  const base = {
-    client_name: p.client_name,
-    occurred_at: p.occurred_at,
-    ghl_contact_id: p.ghl_contact_id,
-    lead_id: p.lead_id,
-    lead_name: p.lead_name,
-    lead_phone: p.lead_phone,
-    lead_email: p.lead_email,
-  };
-  if (p.appt) conversionEvents.push({ ...base, event_type: 'appointment_booked' });
-  if (p.spoken) {
-    conversionEvents.push({
-      ...base,
-      event_type: 'dial',
-      duration_seconds: '120',
-      is_pickup: 'true',
-      is_conversation: 'true',
-      call_status: 'completed',
-    });
+if (WITH_FLAG_EVENTS) {
+  for (const p of profiles.values()) {
+    const base = {
+      client_name: p.client_name,
+      occurred_at: p.occurred_at,
+      ghl_contact_id: p.ghl_contact_id,
+      lead_id: p.lead_id,
+      lead_name: p.lead_name,
+      lead_phone: p.lead_phone,
+      lead_email: p.lead_email,
+    };
+    if (p.appt) conversionEvents.push({ ...base, event_type: 'appointment_booked' });
+    if (p.spoken) {
+      conversionEvents.push({
+        ...base,
+        event_type: 'dial',
+        duration_seconds: '120',
+        is_pickup: 'true',
+        is_conversation: 'true',
+        call_status: 'completed',
+      });
+    }
+    if (p.offer) conversionEvents.push({ ...base, event_type: 'proposal_sent' });
+    if (p.closed) conversionEvents.push({ ...base, event_type: 'closed' });
   }
-  if (p.offer) conversionEvents.push({ ...base, event_type: 'proposal_sent' });
-  if (p.closed) conversionEvents.push({ ...base, event_type: 'closed' });
 }
 
 writeCsv(
@@ -377,5 +385,9 @@ console.log(`Skipped:        ${skipped} (no client name)`);
 console.log(`Unique leads:   ${profiles.size}`);
 console.log(`Client names:   ${new Set([...profiles.values()].map((p) => p.client_name)).size} (see 01_clients.csv from transform-clients.mjs)`);
 console.log(`Lead events:    ${leadEvents.length}`);
-console.log(`Conversion evt: ${conversionEvents.length}`);
+console.log(
+  `Conversion evt: ${conversionEvents.length}${
+    WITH_FLAG_EVENTS ? '' : ' (use --with-flag-events only if not importing Appt1/Dials/MLO)'
+  }`,
+);
 console.log(`\nWrote files to: ${OUT_DIR}/`);

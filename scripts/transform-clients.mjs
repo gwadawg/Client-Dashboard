@@ -6,9 +6,14 @@
  *   node scripts/transform-clients.mjs \
  *     "/path/to/Project Info.csv" \
  *     "/path/to/New Leads.csv"
+ *
+ * Project Info only (no Leads file — every Project Name becomes a client row):
+ *   node scripts/transform-clients.mjs "/path/to/Project Info.csv"
+ *   # or explicit:
+ *   node scripts/transform-clients.mjs --project-only "/path/to/Project Info.csv"
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { parseCsv, writeCsv } from './lib/csv.mjs';
@@ -16,12 +21,16 @@ import { parseCsv, writeCsv } from './lib/csv.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = resolve(__dirname, '../data/import');
 
+const argv = process.argv.slice(2).filter((a) => a !== '--project-only');
+const forceProjectOnly = process.argv.includes('--project-only');
+
 const PROJECT_INFO =
-  process.argv[2] ??
-  resolve(process.env.HOME, 'Downloads/Call Center - Waiz - Project Info.csv');
+  argv[0] ?? resolve(process.env.HOME, 'Downloads/Call Center - Waiz - Project Info.csv');
 const LEADS_CSV =
-  process.argv[3] ??
-  resolve(process.env.HOME, 'Downloads/Call Center - Waiz - New Leads.csv');
+  argv[1] ?? resolve(process.env.HOME, 'Downloads/Call Center - Waiz - New Leads.csv');
+
+/** One CSV path only → treat as Project Info and skip Leads (all projects become clients). */
+const projectOnly = forceProjectOnly || (argv.length === 1 && argv[0]);
 
 function normKey(name) {
   return (name ?? '').trim().toLowerCase();
@@ -43,7 +52,17 @@ function collectLeadAccounts(table) {
 }
 
 const projectTable = parseCsv(readFileSync(PROJECT_INFO, 'utf-8'));
-const leadsTable = parseCsv(readFileSync(LEADS_CSV, 'utf-8'));
+
+let leadsTable;
+if (projectOnly || !existsSync(LEADS_CSV)) {
+  if (!projectOnly && !existsSync(LEADS_CSV)) {
+    console.warn(`Leads CSV not found: ${LEADS_CSV}`);
+    console.warn('Building 01_clients.csv from Project Info only.\n');
+  }
+  leadsTable = [['Account']];
+} else {
+  leadsTable = parseCsv(readFileSync(LEADS_CSV, 'utf-8'));
+}
 
 const pHeaders = projectTable[0].map((h) => h.trim());
 const col = (name) => pHeaders.findIndex((h) => h.toLowerCase() === name.toLowerCase());

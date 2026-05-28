@@ -75,6 +75,9 @@ type LeadCounts = {
   proposals: number;
   loan_processing: number;
   closed: number;
+  proposals_made: number;
+  submissions_made: number;
+  funded_loans: number;
 };
 
 type LeadProfile = {
@@ -92,9 +95,16 @@ type LeadProfile = {
   property_value: string | null;
   b1_age: string | null;
   b2_age: string | null;
+  has_proposal_made: boolean;
+  has_submission_made: boolean;
+  has_loan_funded: boolean;
   counts: LeadCounts;
   timeline: TimelineItem[];
 };
+
+const PROPOSAL_EVENT_TYPES = new Set(['proposal_made', 'proposal_sent']);
+const SUBMISSION_EVENT_TYPES = new Set(['submission_made', 'loan_processing']);
+const FUNDED_EVENT_TYPES = new Set(['loan_funded', 'closed']);
 
 /** Pull first matching key from webhook `raw` jsonb. */
 function pickRaw(raw: unknown, keys: string[]): unknown {
@@ -202,6 +212,9 @@ function emptyCounts(): LeadCounts {
     proposals: 0,
     loan_processing: 0,
     closed: 0,
+    proposals_made: 0,
+    submissions_made: 0,
+    funded_loans: 0,
   };
 }
 
@@ -237,13 +250,19 @@ function bumpCounts(counts: LeadCounts, eventType: string, row: EventRow) {
       counts.claimed++;
       break;
     case 'proposal_sent':
+    case 'proposal_made':
       counts.proposals++;
+      counts.proposals_made++;
       break;
     case 'loan_processing':
+    case 'submission_made':
       counts.loan_processing++;
+      counts.submissions_made++;
       break;
     case 'closed':
+    case 'loan_funded':
       counts.closed++;
+      counts.funded_loans++;
       break;
     default:
       break;
@@ -278,6 +297,7 @@ export async function GET(req: Request) {
   const live_only = searchParams.get('live_only') === 'true';
   const start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
+  const conversion_event = searchParams.get('conversion_event');
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
 
   let liveClientIds: string[] | null = null;
@@ -324,6 +344,9 @@ export async function GET(req: Request) {
         property_value: null,
         b1_age: null,
         b2_age: null,
+        has_proposal_made: false,
+        has_submission_made: false,
+        has_loan_funded: false,
         counts: emptyCounts(),
         timeline: [],
       });
@@ -332,6 +355,9 @@ export async function GET(req: Request) {
     const profile = profiles.get(key)!;
     profile.timeline.push(toTimelineItem(row));
     bumpCounts(profile.counts, row.event_type, row);
+    if (PROPOSAL_EVENT_TYPES.has(row.event_type)) profile.has_proposal_made = true;
+    if (SUBMISSION_EVENT_TYPES.has(row.event_type)) profile.has_submission_made = true;
+    if (FUNDED_EVENT_TYPES.has(row.event_type)) profile.has_loan_funded = true;
 
     if (row.lead_name && !profile.lead_name) profile.lead_name = row.lead_name;
     if (row.lead_email && !profile.lead_email) profile.lead_email = row.lead_email;
@@ -363,9 +389,17 @@ export async function GET(req: Request) {
     );
   }
 
-  const sorted = Array.from(profiles.values()).sort(
+  let sorted = Array.from(profiles.values()).sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
+
+  if (conversion_event === 'proposal_made') {
+    sorted = sorted.filter((p) => p.has_proposal_made);
+  } else if (conversion_event === 'submission_made') {
+    sorted = sorted.filter((p) => p.has_submission_made);
+  } else if (conversion_event === 'loan_funded') {
+    sorted = sorted.filter((p) => p.has_loan_funded);
+  }
 
   const total = sorted.length;
   const offset = (page - 1) * PAGE_SIZE;

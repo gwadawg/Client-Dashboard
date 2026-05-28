@@ -21,9 +21,11 @@ import ClientHealthDashboard from "./ClientHealthDashboard";
 import DialAnalytics from "./DialAnalytics";
 import KpiSections from "./kpi/KpiSections";
 import KpiSection from "./kpi/KpiSection";
+import KpiCard from "./kpi/KpiCard";
 import type { MetricsResult } from "@/lib/metrics";
 import {
   DEFAULT_REPORTING_TYPE,
+  formatKpiValue,
   normalizeReportingType,
   type ReportingType,
 } from "@/lib/kpi-layouts";
@@ -509,6 +511,23 @@ export default function DashboardView() {
                 )}
 
                 <KpiSections metrics={metrics} reportingType={dashboardReportingType} />
+
+                {dashboardReportingType === "RM" && (
+                  <KpiSection
+                    title="Conversions"
+                    showDivider
+                    footnote="Counts use unique leads per stage in the selected date range. Cost metrics are total spend divided by each conversion-stage unique lead count."
+                  >
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                      <KpiCard label="Proposals Made" value={formatKpiValue(metrics.proposals_made, "int")} />
+                      <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} />
+                      <KpiCard label="Funded Loans" value={formatKpiValue(metrics.funded_loans, "int")} accent />
+                      <KpiCard label="Cost per Proposal" value={formatKpiValue(metrics.cp_proposal_made, "money")} />
+                      <KpiCard label="Cost per Submission" value={formatKpiValue(metrics.cp_submission_made, "money")} />
+                      <KpiCard label="Cost per Funded" value={formatKpiValue(metrics.cp_loan_funded, "money")} />
+                    </div>
+                  </KpiSection>
+                )}
 
                 {dashboardReportingType === "RM" && (
                   <KpiSection title="Trends" showDivider>

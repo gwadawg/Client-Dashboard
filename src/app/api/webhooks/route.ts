@@ -15,8 +15,16 @@ function isTruthyPayloadFlag(value: unknown): boolean {
 const VALID_EVENT_TYPES = [
   'dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked',
   'live_transfer', 'proposal_sent', 'loan_processing', 'closed', 'out_of_state_lead',
+  'proposal_made', 'submission_made', 'loan_funded',
   'appointment_cancelled', 'lo_bailed', 'lo_audit', 'claimed',
 ] as const;
+
+function normalizeEventType(eventType: string): string {
+  if (eventType === 'proposal_sent') return 'proposal_made';
+  if (eventType === 'loan_processing') return 'submission_made';
+  if (eventType === 'closed') return 'loan_funded';
+  return eventType;
+}
 
 /** Empty string from Make is not valid for timestamptz — use null or omit for DB. */
 function nullIfInvalidTimestamptz(value: unknown): string | null {
@@ -33,12 +41,42 @@ function occurredAtOrNow(value: unknown): string {
   return nullIfInvalidTimestamptz(value) ?? new Date().toISOString();
 }
 
-/** Non-empty trimmed string, or null — avoids "" in uuid/text columns used for lookups. */
-function jsonStringField(v: unknown): string | null {
+/** Quote-only / control-char garbage from broken Make JSON → treat as empty. */
+const QUOTE_ONLY_VALUE = /^["'`\s]+$/;
+
+/** Safe string for DB columns; null when empty or not JSON-safe text. */
+function jsonSafeString(v: unknown): string | null {
   if (v == null) return null;
-  if (typeof v !== 'string') return String(v).trim() || null;
-  const t = v.trim();
-  return t === '' ? null : t;
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  if (typeof v !== 'string') return null;
+
+  let s = v.trim();
+  if (!s || QUOTE_ONLY_VALUE.test(s)) return null;
+
+  s = s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim();
+  if (!s || QUOTE_ONLY_VALUE.test(s)) return null;
+
+  return s;
+}
+
+/** Non-empty safe string, or null — used for lookups and text columns. */
+function jsonStringField(v: unknown): string | null {
+  return jsonSafeString(v);
+}
+
+/** Walk payload: invalid strings become "" so ingest never depends on messy Make values. */
+function sanitizeWebhookPayload(value: unknown): unknown {
+  if (typeof value === 'string') return jsonSafeString(value) ?? '';
+  if (Array.isArray(value)) return value.map(sanitizeWebhookPayload);
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = sanitizeWebhookPayload(v);
+    }
+    return out;
+  }
+  return value;
 }
 
 function numberField(v: unknown): number | null {
@@ -59,6 +97,39 @@ function booleanField(v: unknown): boolean | null {
   return null;
 }
 
+/** Fixes common Make/GHL JSON typos (e.g. empty state sent as """"). */
+function repairWebhookJson(text: string): string {
+  let s = text.trim();
+  s = s.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+  s = s.replace(/:\s*"{2,}(?=\s*[,}])/g, ': ""');
+  s = s.replace(/,\s*"{2,}(?=\s*[,}])/g, ', ""');
+  s = s.replace(/,\s*([}\]])/g, '$1');
+  return s;
+}
+
+function parseWebhookBody(text: string):
+  | { ok: true; payload: Record<string, unknown> }
+  | { ok: false; detail: string } {
+  const candidates = [text.trim(), repairWebhookJson(text)];
+  let lastDetail = 'parse error';
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        lastDetail = 'JSON must be one object';
+        continue;
+      }
+      return {
+        ok: true,
+        payload: sanitizeWebhookPayload(parsed) as Record<string, unknown>,
+      };
+    } catch (e) {
+      lastDetail = e instanceof Error ? e.message : 'parse error';
+    }
+  }
+  return { ok: false, detail: lastDetail };
+}
+
 export async function POST(req: Request) {
   try {
     if (!validateWebhookSecret(req)) {
@@ -71,32 +142,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Empty request body' }, { status: 400 });
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch (e) {
-      const detail = e instanceof Error ? e.message : 'parse error';
+    const body = parseWebhookBody(trimmed);
+    if (!body.ok) {
       return NextResponse.json(
         {
           error: 'Body is not valid JSON',
-          detail,
+          detail: body.detail,
           hint:
-            'In Make: use Raw / JSON body (not form fields). Mapped values must sit inside the JSON with valid string quotes.',
+            'In Make: use Raw body (not jsonString) or ifempty() for empty fields. Common fix: "state": "" not "state": """".',
         },
         { status: 400 },
       );
     }
 
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return NextResponse.json(
-        {
-          error: 'JSON must be one object, e.g. {"event_type":"lead","client_name":"..."}',
-        },
-        { status: 400 },
-      );
-    }
-
-    const payload = parsed as Record<string, unknown>;
+    const payload = body.payload;
     const service = createServiceClient();
 
     const eventType = payload.event_type;
@@ -110,11 +169,11 @@ export async function POST(req: Request) {
       );
     }
 
+    const normalizedEventType = normalizeEventType(eventType);
+
     // Resolve client_id by name or id
     let client_id = payload.client_id as string | undefined;
-    const client_name_raw = payload.client_name;
-    const client_name =
-      typeof client_name_raw === 'string' ? client_name_raw.trim() : undefined;
+    const client_name = jsonStringField(payload.client_name) ?? undefined;
 
     if (!client_id && client_name) {
       const { data: client, error: clientErr } = await service
@@ -141,11 +200,12 @@ export async function POST(req: Request) {
 
     // Follow-up hook: qualified/hot often arrive after the first "new lead" payload. Update the
     // existing lead row rather than inserting a second lead (which would inflate Total Leads).
-    if (eventType === 'lead' && isTruthyPayloadFlag(payload.update_flags_only)) {
-      if (!payload.ghl_contact_id) {
+    if (normalizedEventType === 'lead' && isTruthyPayloadFlag(payload.update_flags_only)) {
+      const ghlContactId = jsonStringField(payload.ghl_contact_id);
+      if (!ghlContactId) {
         return NextResponse.json(
           { error: 'ghl_contact_id is required when update_flags_only is true' },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -154,7 +214,7 @@ export async function POST(req: Request) {
         .select('id, raw, is_qualified, is_hot, is_out_of_state')
         .eq('client_id', client_id)
         .eq('event_type', 'lead')
-        .eq('ghl_contact_id', payload.ghl_contact_id)
+        .eq('ghl_contact_id', ghlContactId)
         .order('occurred_at', { ascending: true })
         .limit(1);
 
@@ -199,7 +259,11 @@ export async function POST(req: Request) {
         typeof existing.raw === 'object' && existing.raw !== null && !Array.isArray(existing.raw)
           ? (existing.raw as Record<string, unknown>)
           : {};
-      updates.raw = { ...prevRaw, ...payload, _flags_updated_at: new Date().toISOString() };
+      updates.raw = {
+        ...prevRaw,
+        ...(sanitizeWebhookPayload(payload) as Record<string, unknown>),
+        _flags_updated_at: new Date().toISOString(),
+      };
 
       const { error: updErr } = await service
         .from('events')
@@ -212,18 +276,15 @@ export async function POST(req: Request) {
 
     // Auto-compute speed_to_lead_seconds on the first dial to a contact
     let speed_to_lead_seconds = payload.speed_to_lead_seconds ?? null;
-    if (
-      eventType === 'dial' &&
-      speed_to_lead_seconds === null &&
-      payload.ghl_contact_id
-    ) {
+    const dialGhlContactId = jsonStringField(payload.ghl_contact_id);
+    if (eventType === 'dial' && speed_to_lead_seconds === null && dialGhlContactId) {
       const [{ data: priorDial }, { data: leadEvent }] = await Promise.all([
         service
           .from('events')
           .select('id')
           .eq('client_id', client_id)
           .eq('event_type', 'dial')
-          .eq('ghl_contact_id', payload.ghl_contact_id)
+          .eq('ghl_contact_id', dialGhlContactId)
           .limit(1)
           .maybeSingle(),
         service
@@ -231,7 +292,7 @@ export async function POST(req: Request) {
           .select('occurred_at')
           .eq('client_id', client_id)
           .eq('event_type', 'lead')
-          .eq('ghl_contact_id', payload.ghl_contact_id)
+          .eq('ghl_contact_id', dialGhlContactId)
           .order('occurred_at', { ascending: true })
           .limit(1)
           .maybeSingle(),
@@ -264,7 +325,7 @@ export async function POST(req: Request) {
 
     const { error } = await service.from('events').insert({
       client_id,
-      event_type: eventType,
+      event_type: normalizedEventType,
       occurred_at: occurredAtOrNow(payload.occurred_at),
       duration_seconds,
       is_pickup,
@@ -277,27 +338,31 @@ export async function POST(req: Request) {
         ? parseYnFlag(payload.is_out_of_state ?? payload.out_of_state)
         : null,
       speed_to_lead_seconds,
-      ghl_contact_id: payload.ghl_contact_id ?? null,
+      ghl_contact_id: jsonStringField(payload.ghl_contact_id),
       scheduled_at: nullIfInvalidTimestamptz(payload.scheduled_at),
       external_id,
       calendar_name: jsonStringField(payload.calendar_name),
       calendar_id,
-      lead_name: payload.lead_name ?? null,
-      lead_phone: payload.lead_phone ?? null,
-      lead_email: payload.lead_email ?? null,
-      agent_name: payload.agent_name ?? null,
-      direction: payload.direction ?? null,
-      call_status: payload.call_status ?? null,
-      recording_url: payload.recording_url ?? null,
-      call_summary: payload.call_summary ?? null,
-      phone_number_used: payload.phone_number_used ?? null,
+      lead_name: jsonStringField(payload.lead_name),
+      lead_phone: jsonStringField(payload.lead_phone),
+      lead_email: jsonStringField(payload.lead_email),
+      agent_name: jsonStringField(payload.agent_name),
+      direction: jsonStringField(payload.direction),
+      call_status: jsonStringField(payload.call_status),
+      recording_url: jsonStringField(payload.recording_url),
+      call_summary: jsonStringField(payload.call_summary),
+      phone_number_used: jsonStringField(payload.phone_number_used),
       dial_source,
-      stage_booked: payload.stage_booked ?? null,
+      stage_booked: jsonStringField(payload.stage_booked),
       raw: payload,
     });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      normalized_event_type: normalizedEventType,
+      source_event_type: eventType,
+    });
   } catch (e) {
     console.error('[webhooks] POST failed', e);
     const detail = e instanceof Error ? e.message : String(e);

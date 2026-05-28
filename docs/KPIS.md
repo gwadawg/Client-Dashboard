@@ -30,9 +30,12 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **Cancel Rate** | Cancelled vs scheduled | `Cancellations ÷ (Appointments Booked + Cancellations) × 100` | Appointments |
 | **Live Transfers** | Live transfer to client/agent | `COUNT(live_transfer events)` | Live Transfers tab |
 | **Total Conversations** | Meaningful completed calls (2 min+) plus client-claimed conversations | `COUNT(dials WHERE is_conversation = true) + COUNT(claimed events)` | Conversations / Claimed tab |
-| **Proposals Sent** | Offer made / proposal stage | `COUNT(proposal_sent)` | MLO / Pipeline |
-| **Submitted (in processing)** | Deal submitted, not yet funded | `COUNT(loan_processing)` | MLO `Submitted` |
-| **Funded (closed)** | Deal closed; client received funds | `COUNT(closed)` | MLO `Closed` |
+| **Proposals Made** | Offer made / proposal stage | `COUNT(unique leads with proposal_made)` | MLO / Pipeline |
+| **Submissions** | Deal submitted, not yet funded | `COUNT(unique leads with submission_made)` | MLO `Submitted` |
+| **Funded Loans** | Deal closed; client received funds | `COUNT(unique leads with loan_funded)` | MLO `Closed` |
+| **Cost per Proposal** | Spend efficiency at proposal stage | `Ad Spend ÷ Proposals Made` | Spend + Pipeline |
+| **Cost per Submission** | Spend efficiency at submission stage | `Ad Spend ÷ Submissions` | Spend + Pipeline |
+| **Cost per Funded Loan** | Spend efficiency at funded stage | `Ad Spend ÷ Funded Loans` | Spend + Pipeline |
 
 ### Formula notes
 
@@ -97,7 +100,7 @@ HE clients keep a minimal dashboard (appointments + calling stats). Operational 
 | **Claimed** (client-handled) | `claimed` | `POST /api/webhooks` |
 | **LO audit** | `lo_audit` | Internal cadence tracking — **not** a client KPI |
 | **Live Transfers** | `live_transfer` *(planned)* | `POST /api/webhooks` |
-| **Pipeline / MLO** | `proposal_sent`, `loan_processing`, `closed` | `POST /api/webhooks` |
+| **Pipeline / MLO** | `proposal_made`, `submission_made`, `loan_funded` | `POST /api/webhooks` |
 | **Callbacks** (callback calendar) | `callback_booked` | `POST /api/webhooks` |
 | **Ad spend** | — | `POST /api/ad-spend` |
 
@@ -254,7 +257,7 @@ Document your live Make scenario to match one approach:
 | Qualified / Hot / Out of State | Yes | `is_qualified`, `is_hot`, `is_out_of_state` on lead webhooks |
 | Live Transfers | Yes | `event_type: live_transfer` |
 | Claimed | Yes | `event_type: claimed` |
-| Proposals Sent / Closed | Yes | `event_type: proposal_sent`, `closed` |
+| Conversions (Proposal / Submission / Funded) | Yes | Canonical `proposal_made`, `submission_made`, `loan_funded` (legacy aliases normalized) |
 | Goals (targets) | Partial | Requires `goals` table in Supabase |
 
 **Code references:**

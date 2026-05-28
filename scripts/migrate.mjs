@@ -123,7 +123,9 @@ await runSQL(`
   ALTER TABLE events ADD CONSTRAINT events_event_type_check CHECK (
     event_type IN (
       'dial', 'lead', 'appointment_booked', 'appointment_cancelled', 'show', 'no_show', 'callback_booked',
-      'live_transfer', 'proposal_sent', 'closed', 'out_of_state_lead'
+      'live_transfer', 'proposal_sent', 'loan_processing', 'closed',
+      'proposal_made', 'submission_made', 'loan_funded',
+      'out_of_state_lead'
     )
   );
 `, 'Add client KPI fields and event types');
@@ -133,7 +135,9 @@ await runSQL(`
   ALTER TABLE events ADD CONSTRAINT events_event_type_check CHECK (
     event_type IN (
       'dial', 'lead', 'appointment_booked', 'appointment_cancelled', 'show', 'no_show', 'callback_booked',
-      'live_transfer', 'proposal_sent', 'closed', 'out_of_state_lead'
+      'live_transfer', 'proposal_sent', 'loan_processing', 'closed',
+      'proposal_made', 'submission_made', 'loan_funded',
+      'out_of_state_lead'
     )
   );
 `, 'Add appointment_cancelled event type');
@@ -143,5 +147,18 @@ await runSQL(`
   CREATE UNIQUE INDEX IF NOT EXISTS clients_ghl_location_id_key
     ON clients (ghl_location_id) WHERE ghl_location_id IS NOT NULL;
 `, 'Add clients.ghl_location_id');
+
+await runSQL(`
+  ALTER TABLE events DROP CONSTRAINT IF EXISTS events_event_type_check;
+  ALTER TABLE events ADD CONSTRAINT events_event_type_check CHECK (
+    event_type IN (
+      'dial', 'lead', 'appointment_booked', 'appointment_cancelled', 'show', 'no_show', 'callback_booked',
+      'live_transfer', 'proposal_sent', 'loan_processing', 'closed',
+      'proposal_made', 'submission_made', 'loan_funded',
+      'out_of_state_lead',
+      'lo_bailed', 'lo_audit', 'claimed'
+    )
+  );
+`, 'Add Waiz event types: lo_bailed, loan_processing, lo_audit');
 
 console.log('\nAll migrations complete.');

@@ -85,8 +85,11 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   lo_bailed: "LO bailed",
   callback_booked: "Callback",
   proposal_sent: "Proposal",
+  proposal_made: "Proposal",
   loan_processing: "Submitted",
+  submission_made: "Submitted",
   closed: "Funded",
+  loan_funded: "Funded",
   lo_audit: "LO audit",
 };
 

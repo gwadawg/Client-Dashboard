@@ -1,5 +1,5 @@
 {
-    "name": "CCM - Meta Ad Spend → Supabase",
+    "name": "CCM - Meta Ads Daily Spend → Dashboard",
     "flow": [
         {
             "id": 1,
@@ -10,12 +10,12 @@
             },
             "mapper": {},
             "metadata": {
-                "designer": { "x": 0, "y": 0 },
+                "designer": { "x": 0, "y": 0, "name": "Client Config Row" },
                 "restore": {
                     "parameters": {
                         "__IMTHOOK__": {
                             "data": { "editable": "false" },
-                            "label": "Meta Spend Webhook — trigger daily via Make schedule"
+                            "label": "Replace with Scheduler + client map iterator"
                         }
                     }
                 },
@@ -23,7 +23,7 @@
                     {
                         "name": "__IMTHOOK__",
                         "type": "hook:app#call-center-mastery-qeqot53",
-                        "label": "Webhook",
+                        "label": "Client Config",
                         "required": true
                     }
                 ]
@@ -38,13 +38,63 @@
                 "useNewZLibDeCompression": true
             },
             "mapper": {
-                "url": "https://wm-os-production.up.railway.app/api/ad-spend",
+                "url": "https://graph.facebook.com/v20.0/act_{{replace(1.meta_ad_account_id; \"act_\"; \"\")}}/insights",
+                "serializeUrl": false,
+                "method": "GET",
+                "headers": [],
+                "qs": [
+                    {
+                        "name": "fields",
+                        "value": "spend"
+                    },
+                    {
+                        "name": "level",
+                        "value": "account"
+                    },
+                    {
+                        "name": "time_increment",
+                        "value": "1"
+                    },
+                    {
+                        "name": "time_range",
+                        "value": "{\"since\":\"{{formatDate(addDays(now; -1); \"YYYY-MM-DD\")}}\",\"until\":\"{{formatDate(addDays(now; -1); \"YYYY-MM-DD\")}}\"}"
+                    },
+                    {
+                        "name": "access_token",
+                        "value": "REPLACE_WITH_META_ACCESS_TOKEN"
+                    }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "authUser": "",
+                "authPass": "",
+                "timeout": "",
+                "shareCookies": false,
+                "ca": "",
+                "useMtls": false,
+                "contentType": "application/json",
+                "data": ""
+            },
+            "metadata": {
+                "designer": { "x": 300, "y": 0, "name": "Fetch Meta Insights" }
+            }
+        },
+        {
+            "id": 3,
+            "module": "http:ActionSendData",
+            "version": 3,
+            "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompression": true
+            },
+            "mapper": {
+                "url": "https://YOUR_RAILWAY_APP_URL/api/ad-spend",
                 "serializeUrl": false,
                 "method": "POST",
                 "headers": [
                     {
                         "name": "Authorization",
-                        "value": "Bearer Gabe0322!"
+                        "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET"
                     },
                     {
                         "name": "Content-Type",
@@ -53,7 +103,7 @@
                 ],
                 "qs": [],
                 "bodyType": "raw",
-                "parseResponse": false,
+                "parseResponse": true,
                 "authUser": "",
                 "authPass": "",
                 "timeout": "",
@@ -61,23 +111,24 @@
                 "ca": "",
                 "useMtls": false,
                 "contentType": "application/json",
-                "data": "{\"client_name\": \"REPLACE_WITH_CLIENT_NAME\", \"date\": \"{{formatDate(addDays(now; -1); \\\"YYYY-MM-DD\\\")}}\", \"platform\": \"meta\", \"amount\": {{1.spend}}}"
+                "data": "{\"client_name\":\"{{1.client_name}}\",\"date\":\"{{formatDate(addDays(now; -1); \\\"YYYY-MM-DD\\\")}}\",\"platform\":\"meta\",\"amount\":{{sum(map(2.data; \"spend\"))}}}"
             },
             "metadata": {
-                "designer": { "x": 300, "y": 0, "name": "Send to Supabase" }
+                "designer": { "x": 600, "y": 0, "name": "Send Daily Spend to Dashboard" }
             }
         }
     ],
     "metadata": {
-        "instant": true,
+        "instant": false,
         "version": 1,
+        "notes": "Import this as a starting template. Replace module 1 with a daily scheduler plus client map iterator, then provide client_name and meta_ad_account_id to modules 2 and 3. See docs/META_ADS_SPEND_IMPORT.md.",
         "scenario": {
             "roundtrips": 1,
             "maxErrors": 3,
             "autoCommit": true,
             "autoCommitTriggerLast": true,
-            "sequential": false,
-            "confidential": false,
+            "sequential": true,
+            "confidential": true,
             "dataloss": false,
             "dlq": false,
             "freshVariables": false

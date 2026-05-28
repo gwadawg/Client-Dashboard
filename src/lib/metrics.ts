@@ -1,5 +1,10 @@
 export type EventRow = {
+  client_id?: string | null;
   event_type: string;
+  ghl_contact_id?: string | null;
+  lead_phone?: string | null;
+  lead_email?: string | null;
+  lead_name?: string | null;
   is_pickup: boolean | null;
   is_conversation: boolean | null;
   speed_to_lead_seconds: number | null;
@@ -61,6 +66,12 @@ export type MetricsResult = {
   total_conversations: number;
   proposals_sent: number;
   closed: number;
+  proposals_made: number;
+  submissions_made: number;
+  funded_loans: number;
+  cp_proposal_made: number;
+  cp_submission_made: number;
+  cp_loan_funded: number;
   /** Sum of all spend (Meta from meta_ad_insights + Google / Local Services from ad_spend). */
   ad_spend: number;
   /** Meta / Facebook spend only (sum of meta_ad_insights). */
@@ -82,6 +93,38 @@ export type MetricsResult = {
   speed_to_lead_min: number;
 };
 
+const PROPOSAL_EVENT_TYPES = new Set(['proposal_made', 'proposal_sent']);
+const SUBMISSION_EVENT_TYPES = new Set(['submission_made', 'loan_processing']);
+const FUNDED_EVENT_TYPES = new Set(['loan_funded', 'closed']);
+
+function normalizePhoneForKey(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+function leadIdentityKey(event: EventRow): string | null {
+  const clientId = event.client_id ?? '';
+  const ghl = (event.ghl_contact_id ?? '').trim();
+  if (ghl) return `${clientId}|ghl:${ghl}`;
+  const phone = normalizePhoneForKey(event.lead_phone);
+  if (phone) return `${clientId}|phone:${phone}`;
+  const email = (event.lead_email ?? '').trim().toLowerCase();
+  if (email) return `${clientId}|email:${email}`;
+  const name = (event.lead_name ?? '').trim().toLowerCase();
+  if (name) return `${clientId}|name:${name}`;
+  return null;
+}
+
+function uniqueLeadCountForEvents(events: EventRow[], eventTypes: Set<string>): number {
+  const leadKeys = new Set<string>();
+  for (const event of events) {
+    if (!eventTypes.has(event.event_type)) continue;
+    const key = leadIdentityKey(event);
+    if (!key) continue;
+    leadKeys.add(key);
+  }
+  return leadKeys.size;
+}
+
 export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): MetricsResult {
   const leadEvents = events.filter(e => e.event_type === 'lead');
   const leads = leadEvents.length;
@@ -96,7 +139,7 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
   const shows = events.filter(e => e.event_type === 'show').length;
   const no_shows = events.filter(e => e.event_type === 'no_show').length;
   const lo_bailed = events.filter(e => e.event_type === 'lo_bailed').length;
-  const loan_processing = events.filter(e => e.event_type === 'loan_processing').length;
+  const loan_processing = events.filter(e => SUBMISSION_EVENT_TYPES.has(e.event_type)).length;
   const scheduled_total = booked + cancelled;
   const dials = events.filter(e => e.event_type === 'dial');
   const dial_count = dials.length;
@@ -105,8 +148,11 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
   const callbacks = events.filter(e => e.event_type === 'callback_booked').length;
   const live_transfers = events.filter(e => e.event_type === 'live_transfer').length;
   const claimed = events.filter(e => e.event_type === 'claimed').length;
-  const proposals_sent = events.filter(e => e.event_type === 'proposal_sent').length;
-  const closed = events.filter(e => e.event_type === 'closed').length;
+  const proposals_sent = events.filter(e => PROPOSAL_EVENT_TYPES.has(e.event_type)).length;
+  const closed = events.filter(e => FUNDED_EVENT_TYPES.has(e.event_type)).length;
+  const proposals_made = uniqueLeadCountForEvents(events, PROPOSAL_EVENT_TYPES);
+  const submissions_made = uniqueLeadCountForEvents(events, SUBMISSION_EVENT_TYPES);
+  const funded_loans = uniqueLeadCountForEvents(events, FUNDED_EVENT_TYPES);
 
   const ad_spend = spendRows.reduce((sum, r) => sum + Number(r.amount), 0);
   const ad_spend_meta = spendRows
@@ -143,6 +189,12 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
     total_conversations: conversations + claimed,
     proposals_sent,
     closed,
+    proposals_made,
+    submissions_made,
+    funded_loans,
+    cp_proposal_made: proposals_made > 0 ? ad_spend / proposals_made : 0,
+    cp_submission_made: submissions_made > 0 ? ad_spend / submissions_made : 0,
+    cp_loan_funded: funded_loans > 0 ? ad_spend / funded_loans : 0,
     ad_spend,
     ad_spend_meta,
     cpl: leads > 0 ? ad_spend / leads : 0,

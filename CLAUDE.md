@@ -17,7 +17,7 @@ pipeline) plus operational metrics (dials, pickups, speed-to-lead, ad spend, CPL
 | Total Leads | Count of `lead` events |
 | Qualified / Hot / Out of State Leads | Count with flag (manual tags from GHL) |
 | Appointments Booked | Count of `appointment_booked` |
-| Booking Rate | Booked ÷ Leads |
+| Booking Rate | Booked ÷ Qualified Leads |
 | Shows / No Shows | Count of `show` / `no_show` |
 | Show Rate | **Shows ÷ Appointments Booked** |
 | Live Transfers | Count of `live_transfer` events |

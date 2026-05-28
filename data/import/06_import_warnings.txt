@@ -1,0 +1,7 @@
+No Location ID for project: "Andy Zhao"
+No Location ID for project: "Troy Simington"
+No Location ID for project: "Secure Retirement Mortgage"
+No Location ID for project: "Tim Woods"
+No Location ID for project: "Shore Capital"
+Duplicate GHL Location ID "DFX8UjbvAYjuHO8c7C17": "Reverse Mortgage Northwest" and "Pam Curtis"
+Duplicate GHL Location ID "GUx5bD71dlQslT7RrY9f": "Nina Penny" and "Ken Walker"

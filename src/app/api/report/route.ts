@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 
   let eventsQuery = service
     .from('events')
-    .select('event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state')
+    .select('client_id, event_type, ghl_contact_id, lead_phone, lead_email, lead_name, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state')
     .eq('client_id', client.id);
 
   if (start_date) eventsQuery = eventsQuery.gte('occurred_at', `${start_date}T00:00:00.000Z`);
