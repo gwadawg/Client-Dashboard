@@ -150,8 +150,18 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
   const claimed = events.filter(e => e.event_type === 'claimed').length;
   const proposals_sent = events.filter(e => PROPOSAL_EVENT_TYPES.has(e.event_type)).length;
   const closed = events.filter(e => FUNDED_EVENT_TYPES.has(e.event_type)).length;
-  const proposals_made = uniqueLeadCountForEvents(events, PROPOSAL_EVENT_TYPES);
-  const submissions_made = uniqueLeadCountForEvents(events, SUBMISSION_EVENT_TYPES);
+  // Funnel rollup: reaching a later stage implies every earlier stage.
+  // Funded ⇒ also counts as submitted + proposed; Submitted ⇒ also counts as proposed.
+  // Implied stages are derived here at read time so the event log stays truthful
+  // (no synthetic proposal/submission rows) and counts stay deduped by lead.
+  const submissionOrBeyondTypes = new Set([...SUBMISSION_EVENT_TYPES, ...FUNDED_EVENT_TYPES]);
+  const proposalOrBeyondTypes = new Set([
+    ...PROPOSAL_EVENT_TYPES,
+    ...SUBMISSION_EVENT_TYPES,
+    ...FUNDED_EVENT_TYPES,
+  ]);
+  const proposals_made = uniqueLeadCountForEvents(events, proposalOrBeyondTypes);
+  const submissions_made = uniqueLeadCountForEvents(events, submissionOrBeyondTypes);
   const funded_loans = uniqueLeadCountForEvents(events, FUNDED_EVENT_TYPES);
 
   const ad_spend = spendRows.reduce((sum, r) => sum + Number(r.amount), 0);
@@ -313,6 +323,124 @@ export function toCostTrendPoints(buckets: DailyCostBucket[]): CostTrendPoint[] 
     cp_qualified: b.qualified_leads > 0 ? b.spend / b.qualified_leads : null,
     cp_conversation: b.client_conversations > 0 ? b.spend / b.client_conversations : null,
   }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-client KPI timeline (drop-off detection)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type KpiTimelineEventRow = {
+  event_type: string;
+  occurred_at: string;
+  is_qualified?: boolean | null;
+};
+
+export type KpiTimelineBucket = {
+  /** Bucket start date (YYYY-MM-DD): the day, or the Monday of the week. */
+  date: string;
+  spend: number;
+  leads: number;
+  qualified_leads: number;
+  booked: number;
+  shows: number;
+  cpconv: number | null;
+  cpql: number | null;
+  cpl: number | null;
+  show_rate: number | null;
+  booking_rate: number | null;
+  lead_to_qual: number | null;
+};
+
+type RawCounts = {
+  date: string;
+  spend: number;
+  leads: number;
+  qualified_leads: number;
+  booked: number;
+  shows: number;
+};
+
+function emptyCounts(date: string): RawCounts {
+  return { date, spend: 0, leads: 0, qualified_leads: 0, booked: 0, shows: 0 };
+}
+
+function finalizeBucket(c: RawCounts): KpiTimelineBucket {
+  return {
+    date: c.date,
+    spend: c.spend,
+    leads: c.leads,
+    qualified_leads: c.qualified_leads,
+    booked: c.booked,
+    shows: c.shows,
+    cpconv: c.shows > 0 ? c.spend / c.shows : null,
+    cpql: c.qualified_leads > 0 ? c.spend / c.qualified_leads : null,
+    cpl: c.leads > 0 ? c.spend / c.leads : null,
+    show_rate: c.booked > 0 ? (c.shows / c.booked) * 100 : null,
+    booking_rate: c.qualified_leads > 0 ? (c.booked / c.qualified_leads) * 100 : null,
+    lead_to_qual: c.leads > 0 ? (c.qualified_leads / c.leads) * 100 : null,
+  };
+}
+
+/**
+ * Build a per-day or per-week KPI timeline for a single client so the team can
+ * see exactly when an account fell off. Derived rates are recomputed per bucket
+ * (never averaged) so they stay mathematically correct.
+ */
+export function buildClientKpiTimeline(
+  events: KpiTimelineEventRow[],
+  spendRows: TrendSpendRow[],
+  rangeStart: string,
+  rangeEnd: string,
+  granularity: 'day' | 'week' = 'week',
+): KpiTimelineBucket[] {
+  const byDate = new Map<string, RawCounts>();
+  for (const date of eachDateInRange(rangeStart, rangeEnd)) {
+    byDate.set(date, emptyCounts(date));
+  }
+
+  for (const row of spendRows) {
+    const bucket = byDate.get(row.spend_date);
+    if (bucket) bucket.spend += Number(row.amount);
+  }
+
+  for (const e of events) {
+    const date = utcDateKey(e.occurred_at);
+    const bucket = byDate.get(date);
+    if (!bucket) continue;
+    if (e.event_type === 'lead') {
+      bucket.leads++;
+      if (e.is_qualified === true) bucket.qualified_leads++;
+    } else if (e.event_type === 'appointment_booked') {
+      bucket.booked++;
+    } else if (e.event_type === 'show') {
+      bucket.shows++;
+    }
+  }
+
+  const daily = eachDateInRange(rangeStart, rangeEnd).map(date => byDate.get(date)!);
+
+  if (granularity === 'day') {
+    return daily.map(finalizeBucket);
+  }
+
+  const byWeek = new Map<string, RawCounts>();
+  for (const row of daily) {
+    const key = weekStartKey(row.date);
+    let bucket = byWeek.get(key);
+    if (!bucket) {
+      bucket = emptyCounts(key);
+      byWeek.set(key, bucket);
+    }
+    bucket.spend += row.spend;
+    bucket.leads += row.leads;
+    bucket.qualified_leads += row.qualified_leads;
+    bucket.booked += row.booked;
+    bucket.shows += row.shows;
+  }
+
+  return [...byWeek.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(finalizeBucket);
 }
 
 /** Parse GHL/sheet Y/N or boolean flags on webhook payloads. */

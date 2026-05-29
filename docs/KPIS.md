@@ -30,8 +30,8 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **Cancel Rate** | Cancelled vs scheduled | `Cancellations ÷ (Appointments Booked + Cancellations) × 100` | Appointments |
 | **Live Transfers** | Live transfer to client/agent | `COUNT(live_transfer events)` | Live Transfers tab |
 | **Total Conversations** | Meaningful completed calls (2 min+) plus client-claimed conversations | `COUNT(dials WHERE is_conversation = true) + COUNT(claimed events)` | Conversations / Claimed tab |
-| **Proposals Made** | Offer made / proposal stage | `COUNT(unique leads with proposal_made)` | MLO / Pipeline |
-| **Submissions** | Deal submitted, not yet funded | `COUNT(unique leads with submission_made)` | MLO `Submitted` |
+| **Proposals Made** | Reached proposal stage **or beyond** | `COUNT(unique leads with proposal_made OR submission_made OR loan_funded)` | MLO / Pipeline |
+| **Submissions** | Reached submission stage **or beyond** | `COUNT(unique leads with submission_made OR loan_funded)` | MLO `Submitted` |
 | **Funded Loans** | Deal closed; client received funds | `COUNT(unique leads with loan_funded)` | MLO `Closed` |
 | **Cost per Proposal** | Spend efficiency at proposal stage | `Ad Spend ÷ Proposals Made` | Spend + Pipeline |
 | **Cost per Submission** | Spend efficiency at submission stage | `Ad Spend ÷ Submissions` | Spend + Pipeline |
@@ -43,6 +43,7 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 - **Show rate (client reporting):** `Shows ÷ Appointments Booked`, not shows ÷ (shows + no-shows only). Pending appointments stay in the denominator until they are marked show, no-show, LO bailed, or cancelled.
 - **Cancel rate:** `Cancellations ÷ (Appointments Booked + Cancellations)`. Use the same GHL **appointment ID** (`external_id`) on book and cancel. Prefer `/api/webhooks/appointment-status` with `status: "cancelled"` so the original booking row is updated (see `ccm-appt-cancelled.blueprint.json`).
 - **Appts to take place:** `Booked − Shows − No Shows − Cancellations − LO bailed` (pending / unresolved slots).
+- **Conversion funnel rollup:** Reaching a later stage implies every earlier stage. A lead with only `loan_funded` still counts toward Submissions and Proposals; a lead with only `submission_made` still counts toward Proposals. Implied stages are derived at read time (in `src/lib/metrics.ts`) — we do **not** insert synthetic proposal/submission rows, and each lead is counted once per stage.
 - **Qualified / Hot:** Manually tagged in GHL or the setter team — there is no automatic qualification rule.
 - **Total conversations:** Do not count failed or zero-duration calls. Use **completed** status and **duration > 120 seconds** (2 minutes), matching the Daily Summary definition. `claimed` events also count because they represent the client manually speaking with or messaging a lead outside the setter workflow.
 
