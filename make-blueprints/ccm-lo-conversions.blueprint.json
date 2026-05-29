@@ -1,0 +1,205 @@
+{
+    "name": "CCM - LO Conversions (Proposal / Submission / Funded) → Supabase",
+    "flow": [
+        {
+            "id": 1,
+            "module": "app#call-center-mastery-qeqot5:watchEventsManualPlacement",
+            "version": 1,
+            "parameters": {
+                "__IMTHOOK__": 0
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": { "x": 0, "y": 0 },
+                "restore": {
+                    "parameters": {
+                        "__IMTHOOK__": {
+                            "data": { "editable": "false" },
+                            "label": "LO Conversion Webhook — fire from GHL pipeline stage change (Proposal / Submitted / Funded)"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTHOOK__",
+                        "type": "hook:app#call-center-mastery-qeqot53",
+                        "label": "Webhook",
+                        "required": true
+                    }
+                ]
+            }
+        },
+        {
+            "id": 10,
+            "module": "builtin:BasicRouter",
+            "version": 1,
+            "mapper": null,
+            "metadata": {
+                "designer": { "x": 300, "y": 0, "name": "Route by pipeline stage" }
+            },
+            "routes": [
+                {
+                    "flow": [
+                        {
+                            "id": 2,
+                            "module": "http:ActionSendData",
+                            "version": 3,
+                            "parameters": {
+                                "handleErrors": false,
+                                "useNewZLibDeCompression": true
+                            },
+                            "filter": {
+                                "name": "Stage = Proposal",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{lower(trim(1.pipeline_stage))}}",
+                                            "b": "proposal",
+                                            "o": "text:contains"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": {
+                                "url": "https://wm-os-production.up.railway.app/api/webhooks",
+                                "serializeUrl": false,
+                                "method": "POST",
+                                "headers": [
+                                    { "name": "Authorization", "value": "Bearer Gabe0322!" },
+                                    { "name": "Content-Type", "value": "application/json" }
+                                ],
+                                "qs": [],
+                                "bodyType": "raw",
+                                "parseResponse": false,
+                                "authUser": "",
+                                "authPass": "",
+                                "timeout": "",
+                                "shareCookies": false,
+                                "ca": "",
+                                "useMtls": false,
+                                "contentType": "application/json",
+                                "data": "{\"event_type\": \"proposal_made\", \"client_name\": \"{{trim(1.location.name)}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"lead_name\": \"{{1.full_name}}\", \"lead_phone\": \"{{1.phone}}\", \"lead_email\": \"{{1.email}}\", \"agent_name\": \"{{1.user.name}}\", \"occurred_at\": \"{{formatDate(now; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\"}"
+                            },
+                            "metadata": {
+                                "designer": { "x": 600, "y": -150, "name": "Proposal Made → Supabase" }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "flow": [
+                        {
+                            "id": 3,
+                            "module": "http:ActionSendData",
+                            "version": 3,
+                            "parameters": {
+                                "handleErrors": false,
+                                "useNewZLibDeCompression": true
+                            },
+                            "filter": {
+                                "name": "Stage = Submitted",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{lower(trim(1.pipeline_stage))}}",
+                                            "b": "submit",
+                                            "o": "text:contains"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": {
+                                "url": "https://wm-os-production.up.railway.app/api/webhooks",
+                                "serializeUrl": false,
+                                "method": "POST",
+                                "headers": [
+                                    { "name": "Authorization", "value": "Bearer Gabe0322!" },
+                                    { "name": "Content-Type", "value": "application/json" }
+                                ],
+                                "qs": [],
+                                "bodyType": "raw",
+                                "parseResponse": false,
+                                "authUser": "",
+                                "authPass": "",
+                                "timeout": "",
+                                "shareCookies": false,
+                                "ca": "",
+                                "useMtls": false,
+                                "contentType": "application/json",
+                                "data": "{\"event_type\": \"submission_made\", \"client_name\": \"{{trim(1.location.name)}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"lead_name\": \"{{1.full_name}}\", \"lead_phone\": \"{{1.phone}}\", \"lead_email\": \"{{1.email}}\", \"agent_name\": \"{{1.user.name}}\", \"occurred_at\": \"{{formatDate(now; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\"}"
+                            },
+                            "metadata": {
+                                "designer": { "x": 600, "y": 0, "name": "Submission Made → Supabase" }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "flow": [
+                        {
+                            "id": 4,
+                            "module": "http:ActionSendData",
+                            "version": 3,
+                            "parameters": {
+                                "handleErrors": false,
+                                "useNewZLibDeCompression": true
+                            },
+                            "filter": {
+                                "name": "Stage = Funded",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{lower(trim(1.pipeline_stage))}}",
+                                            "b": "fund",
+                                            "o": "text:contains"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": {
+                                "url": "https://wm-os-production.up.railway.app/api/webhooks",
+                                "serializeUrl": false,
+                                "method": "POST",
+                                "headers": [
+                                    { "name": "Authorization", "value": "Bearer Gabe0322!" },
+                                    { "name": "Content-Type", "value": "application/json" }
+                                ],
+                                "qs": [],
+                                "bodyType": "raw",
+                                "parseResponse": false,
+                                "authUser": "",
+                                "authPass": "",
+                                "timeout": "",
+                                "shareCookies": false,
+                                "ca": "",
+                                "useMtls": false,
+                                "contentType": "application/json",
+                                "data": "{\"event_type\": \"loan_funded\", \"client_name\": \"{{trim(1.location.name)}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"lead_name\": \"{{1.full_name}}\", \"lead_phone\": \"{{1.phone}}\", \"lead_email\": \"{{1.email}}\", \"agent_name\": \"{{1.user.name}}\", \"occurred_at\": \"{{formatDate(now; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\"}"
+                            },
+                            "metadata": {
+                                "designer": { "x": 600, "y": 150, "name": "Loan Funded → Supabase" }
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "metadata": {
+        "instant": true,
+        "version": 1,
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": false,
+            "confidential": false,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": { "orphans": [] },
+        "zone": "eu1.make.com"
+    }
+}
