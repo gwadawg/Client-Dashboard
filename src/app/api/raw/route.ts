@@ -12,6 +12,7 @@ export async function GET(req: Request) {
   const live_only = searchParams.get('live_only') === 'true';
   const start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
+  const search = searchParams.get('search')?.trim();
   const page = parseInt(searchParams.get('page') ?? '1');
   const limit = 100;
   const offset = (page - 1) * limit;
@@ -82,6 +83,12 @@ export async function GET(req: Request) {
   else if (liveClientIds) q = q.in('client_id', liveClientFilter(liveClientIds));
   if (start_date) q = q.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   q = q.lte('occurred_at', `${end_date}T23:59:59.999Z`);
+
+  if (search) {
+    // Sanitize chars that have special meaning in PostgREST or() / ilike filters
+    const safe = search.replace(/[,()*]/g, ' ').trim();
+    if (safe) q = q.or(`lead_name.ilike.%${safe}%,lead_phone.ilike.%${safe}%,lead_email.ilike.%${safe}%`);
+  }
 
   if (type === 'speed_to_lead') q = q.not('speed_to_lead_seconds', 'is', null);
 

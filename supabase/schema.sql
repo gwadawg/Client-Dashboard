@@ -242,7 +242,61 @@ create table if not exists pd_schedule (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 11. Indexes
+-- 11. Client Health Snapshots (frozen periodic verdicts — progress baselines)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists client_health_snapshots (
+  id                  uuid    primary key default gen_random_uuid(),
+  client_id           uuid    not null references clients(id) on delete cascade,
+  period_start        date    not null,
+  period_end          date    not null,
+  window_code         text,                 -- W7 | W14 | W30 | custom
+  cpconv              numeric,
+  cpql                numeric,
+  cpl                 numeric,
+  conversation_yield  numeric,
+  show_rate           numeric,
+  booking_rate        numeric,
+  lead_to_qual        numeric,
+  attention_score     numeric,
+  worst_tier          text,                 -- critical | below | at | above | insufficient
+  primary_constraint  text,
+  constraint_label    text,
+  metrics             jsonb,                -- full MetricsResult snapshot
+  ai_diagnosis        jsonb,                -- latest AI verdict for this period (optional)
+  created_by          uuid    references auth.users(id) on delete set null,
+  created_at          timestamptz default now()
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 12. Client Action Logs (interventions + outcomes, the change history)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists client_action_logs (
+  id                   uuid    primary key default gen_random_uuid(),
+  client_id            uuid    not null references clients(id) on delete cascade,
+  created_by           uuid    references auth.users(id) on delete set null,
+  created_at           timestamptz default now(),
+  title                text    not null,
+  layer                text,             -- L1 | L2 | L3 | L4 | DATA
+  constraint_label     text,
+  change_description   text,
+  hypothesis           text,
+  baseline_snapshot_id uuid    references client_health_snapshots(id) on delete set null,
+  success_metric       text,             -- which KPI must move, e.g. cpconv / show_rate
+  baseline_value       numeric,
+  target_value         numeric,
+  status               text    not null default 'planned',
+  review_date          date,
+  outcome_value        numeric,
+  outcome_notes        text,
+  outcome_recorded_at  timestamptz,
+  ai_generated         boolean not null default false,
+  constraint client_action_logs_status_check check (
+    status in ('planned', 'in_progress', 'measuring', 'succeeded', 'failed', 'abandoned')
+  )
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 13. Indexes
 -- ─────────────────────────────────────────────────────────────────────────────
 create index if not exists events_client_occurred  on events(client_id, occurred_at desc);
 create index if not exists events_type             on events(event_type);
@@ -256,3 +310,6 @@ create index if not exists meta_ad_insights_campaign    on meta_ad_insights(clie
 create index if not exists meta_ad_insights_ad          on meta_ad_insights(client_id, ad_id);
 create index if not exists watch_schedule_date     on watch_schedule(scheduled_date);
 create index if not exists pd_schedule_date        on pd_schedule(scheduled_date);
+create index if not exists client_health_snapshots_client_period on client_health_snapshots(client_id, period_end desc);
+create index if not exists client_action_logs_client_created     on client_action_logs(client_id, created_at desc);
+create index if not exists client_action_logs_status             on client_action_logs(status);

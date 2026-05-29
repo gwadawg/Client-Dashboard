@@ -35,11 +35,40 @@ export type ClientHealthSnapshot = {
   lead_to_qualified_pct: number;
   close_rate_pct: number;
   cpql: number;
+  /** Cost per qualified conversation (= ad spend ÷ shows). The verdict metric. */
+  cpconv: number;
+  /** Conversation yield = shows ÷ qualified leads (= Booked/QL × Show). */
+  conversation_yield: number;
   grades: KpiGrade[];
   worst_tier: HealthTier;
   attention_score: number;
   constraint: ConstraintLayer;
   constraint_label: string;
+};
+
+/** Funnel layer that owns a constraint, used for ordering and ownership. */
+export type FunnelLayer = 'L1' | 'L2' | 'L3' | 'L4' | 'DATA' | 'NONE';
+
+export type FixStep = {
+  owner: string;
+  action: string;
+  timebox?: string;
+  successMetric?: string;
+};
+
+/** Plain-English diagnosis + ordered fix steps for a client's primary constraint. */
+export type ConstraintGuidance = {
+  layer: FunnelLayer;
+  /** One-line "biggest fallout". */
+  headline: string;
+  /** Plain-English explanation of what is wrong, with the actual numbers. */
+  whatsWrong: string;
+  fixSteps: FixStep[];
+  doNotDo: string[];
+  /** Human-readable CPConv arithmetic: "spend ÷ shows = $X". */
+  cpconvMath: string;
+  /** Cross-check via CPQL ÷ CY. */
+  crossCheck: string;
 };
 
 export type ClientHealthRow = {
@@ -123,6 +152,11 @@ export function buildClientHealthSnapshot(
     metrics.shows > 0 ? (metrics.closed / metrics.shows) * 100 : 0;
   const cpql =
     metrics.qualified_leads > 0 ? metrics.ad_spend / metrics.qualified_leads : 0;
+  // CPConv = ad spend ÷ shows (the verdict metric — same arithmetic as cost per show).
+  const cpconv = metrics.shows > 0 ? metrics.ad_spend / metrics.shows : 0;
+  // Conversation yield = shows ÷ qualified leads (= Booked/QL × Show Rate).
+  const conversation_yield =
+    metrics.qualified_leads > 0 ? metrics.shows / metrics.qualified_leads : 0;
 
   const grades: KpiGrade[] = [
     gradeKpi(
@@ -192,6 +226,8 @@ export function buildClientHealthSnapshot(
     lead_to_qualified_pct,
     close_rate_pct,
     cpql,
+    cpconv,
+    conversation_yield,
     grades,
     worst_tier,
     attention_score,
@@ -269,6 +305,245 @@ function inferConstraint(
     return { constraint: 'insufficient_data', constraint_label: 'Not enough volume to grade' };
   }
   return { constraint: 'healthy', constraint_label: 'Within KPI range — monitor' };
+}
+
+const CONSTRAINT_LAYER: Record<ConstraintLayer, FunnelLayer> = {
+  lead_quality: 'L2',
+  lead_cost: 'L1',
+  call_center: 'L3',
+  show_rate: 'L4',
+  data_issue: 'DATA',
+  healthy: 'NONE',
+  insufficient_data: 'NONE',
+};
+
+/**
+ * Turn a computed snapshot into a plain-English "what's wrong / what to do"
+ * payload. The numbers come from the deterministic engine; this only frames
+ * them and attaches the right levers + owners from the diagnostic playbook.
+ */
+export function buildConstraintGuidance(snapshot: ClientHealthSnapshot): ConstraintGuidance {
+  const m = snapshot.metrics;
+  const layer = CONSTRAINT_LAYER[snapshot.constraint];
+
+  const cpconvMath =
+    m.shows > 0
+      ? `${formatMoney(m.ad_spend)} spend ÷ ${m.shows} show${m.shows === 1 ? '' : 's'} = ${formatMoney(snapshot.cpconv)} CPConv`
+      : `No shows in period — CPConv cannot be computed (${formatMoney(m.ad_spend)} spend, 0 shows)`;
+
+  const crossCheck =
+    snapshot.conversation_yield > 0 && snapshot.cpql > 0
+      ? `Cross-check: CPQL ${formatMoney(snapshot.cpql)} ÷ CY ${snapshot.conversation_yield.toFixed(3)} = ${formatMoney(
+          snapshot.cpql / snapshot.conversation_yield,
+        )}`
+      : 'Cross-check unavailable (need qualified leads + shows).';
+
+  const base = { layer, cpconvMath, crossCheck };
+
+  switch (snapshot.constraint) {
+    case 'lead_quality':
+      return {
+        ...base,
+        headline: 'Lead quality — too few leads qualify',
+        whatsWrong: `Only ${snapshot.lead_to_qualified_pct.toFixed(0)}% of leads qualify (target ≥ 50%). The ads are attracting the wrong people, so spend is wasted before the call center ever gets a fair shot. CPQL is ${formatMoney(
+          snapshot.cpql,
+        )}.`,
+        fixSteps: [
+          {
+            owner: 'Media buyer (L1–L2)',
+            action: 'Pull disqualification reasons and tighten audience/targeting toward the qualifying archetype.',
+            timebox: '7 days',
+            successMetric: 'Lead-to-qualified ≥ 50%',
+          },
+          {
+            owner: 'Media buyer (L2)',
+            action: 'Sharpen ad message + landing-page match so the offer self-selects qualified leads.',
+            timebox: '7 days',
+          },
+          {
+            owner: 'CSR manager (L3)',
+            action: 'Confirm qualification criteria are applied consistently on calls (not too loose).',
+          },
+        ],
+        doNotDo: [
+          'Do not blame the call center yet — fix targeting first.',
+          'Do not just cut budget; that lowers volume without fixing quality.',
+        ],
+      };
+    case 'lead_cost':
+      return {
+        ...base,
+        headline: 'Lead cost — qualified leads are too expensive',
+        whatsWrong: `CPL is ${formatMoney(m.cpl)} and CPQL is ${formatMoney(
+          snapshot.cpql,
+        )} — both above target. Leads qualify fine, they just cost too much, which drags CPConv to ${formatMoney(
+          snapshot.cpconv,
+        )}.`,
+        fixSteps: [
+          {
+            owner: 'Media buyer (L1)',
+            action: 'Rotate 3–5 fresh creatives and widen the audience to lower acquisition cost.',
+            timebox: '7 days',
+            successMetric: `CPQL → ≤ ${formatMoney(20)}`,
+          },
+          {
+            owner: 'Media buyer (L1)',
+            action: 'Check frequency/fatigue; pause the worst-performing ad sets by CPQL.',
+            timebox: '7 days',
+          },
+        ],
+        doNotDo: [
+          'Do not tighten qualification — leads already qualify; that would only cut volume.',
+        ],
+      };
+    case 'call_center':
+      return {
+        ...base,
+        headline: 'Call center — leads qualify but are not converting to booked appointments',
+        whatsWrong: `Lead cost is healthy (CPQL ${formatMoney(
+          snapshot.cpql,
+        )}) but booking rate is ${m.appt_booking_rate.toFixed(
+          0,
+        )}% and pickup rate is ${m.pickup_pct.toFixed(0)}%. The constraint is in dialing or the booking script.`,
+        fixSteps: [
+          {
+            owner: 'CSR manager (L3)',
+            action: 'Diagnose contact vs booking split — if pickup is low, fix dial cadence/times; if booking is low, fix the script.',
+            timebox: '5 business days',
+            successMetric: 'Booking rate ≥ 28% of qualified leads',
+          },
+          {
+            owner: 'CSR manager (L3)',
+            action: 'Audit speed-to-lead and number of dial attempts per lead.',
+            timebox: '5 business days',
+          },
+        ],
+        doNotDo: [
+          'Do not change the ad campaign — the upstream funnel is healthy (G-1).',
+        ],
+      };
+    case 'show_rate':
+      return {
+        ...base,
+        headline: 'Show rate — booked appointments are not showing up',
+        whatsWrong: `Booking is healthy but only ${m.show_pct.toFixed(
+          0,
+        )}% of the ${m.booked_appointments} booked appointments showed. The fallout is between booking and the consultation.`,
+        fixSteps: [
+          {
+            owner: 'Client success (L4)',
+            action: 'Audit and strengthen the GHL reminder/confirmation sequence (SMS + call) before each appointment.',
+            timebox: '5 business days',
+            successMetric: 'Show rate ≥ 60%',
+          },
+          {
+            owner: 'Client success (L4)',
+            action: 'Prefer near-term slots and confirm LO pre-call prep so leads do not go cold.',
+            timebox: '5 business days',
+          },
+        ],
+        doNotDo: [
+          'Do not re-diagnose ads or booking — those layers are clear.',
+        ],
+      };
+    case 'data_issue':
+      return {
+        ...base,
+        headline: 'Data / attribution — metrics look fine but CPConv is off',
+        whatsWrong: `Every upstream metric reads At KPI, yet CPConv is ${formatMoney(
+          snapshot.cpconv,
+        )}. That pattern points to a tracking/disposition gap, not an operational failure.`,
+        fixSteps: [
+          {
+            owner: 'Ops / Founder',
+            action: 'Validate appointment dispositions, spend reconciliation, and show/no-show logging before any operational change.',
+            timebox: 'Immediate',
+          },
+          {
+            owner: 'Founder',
+            action: 'Escalate — no funnel changes until attribution is confirmed.',
+            timebox: 'Same day',
+          },
+        ],
+        doNotDo: [
+          'Do not make ads, booking, or show-rate changes until the data is trusted (G-2).',
+        ],
+      };
+    case 'insufficient_data':
+      return {
+        ...base,
+        headline: 'Not enough volume to grade',
+        whatsWrong:
+          'This account does not have enough leads/appointments in the selected period to produce a reliable verdict. Treat any tier as provisional.',
+        fixSteps: [
+          {
+            owner: 'Client success',
+            action: 'Widen the date range or wait for more volume before diagnosing.',
+          },
+        ],
+        doNotDo: ['Do not act on a single low-volume week.'],
+      };
+    case 'healthy':
+    default:
+      return {
+        ...base,
+        headline: 'Healthy — within KPI range',
+        whatsWrong: `CPConv is ${formatMoney(
+          snapshot.cpconv,
+        )} and all layers are at or above target. The funnel is working.`,
+        fixSteps: [
+          {
+            owner: 'Client success',
+            action: 'Log weekly and monitor the last-7-day trend for early slides.',
+          },
+        ],
+        doNotDo: [
+          'Do not chase CPL or pause campaigns over a single upstream metric while CPConv is healthy (G-1).',
+        ],
+      };
+  }
+}
+
+export type SuccessMetricKey =
+  | 'cpconv'
+  | 'cpql'
+  | 'cpl'
+  | 'show_rate'
+  | 'booking_rate'
+  | 'lead_to_qual'
+  | 'conversation_yield';
+
+export const SUCCESS_METRIC_META: Record<
+  SuccessMetricKey,
+  { label: string; lowerIsBetter: boolean; unit: 'money' | 'pct' | 'ratio' }
+> = {
+  cpconv: { label: 'CPConv (cost / show)', lowerIsBetter: true, unit: 'money' },
+  cpql: { label: 'Cost per qualified lead', lowerIsBetter: true, unit: 'money' },
+  cpl: { label: 'Cost per lead', lowerIsBetter: true, unit: 'money' },
+  show_rate: { label: 'Show rate', lowerIsBetter: false, unit: 'pct' },
+  booking_rate: { label: 'Booking rate', lowerIsBetter: false, unit: 'pct' },
+  lead_to_qual: { label: 'Lead-to-qualified', lowerIsBetter: false, unit: 'pct' },
+  conversation_yield: { label: 'Conversation yield', lowerIsBetter: false, unit: 'ratio' },
+};
+
+/** Pull a single success-metric value out of a computed snapshot. */
+export function metricValue(snapshot: ClientHealthSnapshot, key: SuccessMetricKey): number {
+  switch (key) {
+    case 'cpconv':
+      return snapshot.cpconv;
+    case 'cpql':
+      return snapshot.cpql;
+    case 'cpl':
+      return snapshot.metrics.cpl;
+    case 'show_rate':
+      return snapshot.metrics.show_pct;
+    case 'booking_rate':
+      return snapshot.metrics.appt_booking_rate;
+    case 'lead_to_qual':
+      return snapshot.lead_to_qualified_pct;
+    case 'conversation_yield':
+      return snapshot.conversation_yield;
+  }
 }
 
 export function compareHealthTrend(

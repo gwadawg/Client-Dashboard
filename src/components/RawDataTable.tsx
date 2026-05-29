@@ -120,8 +120,22 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [clientFilter, setClientFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  useEffect(() => { setPage(1); }, [type, clientFilter, preset, startDate, endDate]);
+  // Search only applies to lead-based event types
+  const searchable = ["leads", "dials", "appointments", "speed_to_lead"].includes(type);
+
+  // Debounce the search input to avoid a request on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Reset search when switching to a non-searchable tab
+  useEffect(() => { if (!searchable) setSearch(""); }, [searchable]);
+
+  useEffect(() => { setPage(1); }, [type, clientFilter, debouncedSearch, preset, startDate, endDate]);
 
   useEffect(() => {
     setLoading(true);
@@ -130,12 +144,13 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
     else if (clientFilter) params.set("client_id", clientFilter);
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
+    if (searchable && debouncedSearch) params.set("search", debouncedSearch);
 
     fetch(`/api/raw?${params}`)
       .then(r => r.json())
       .then(d => { setRows(d.rows ?? []); setTotal(d.total ?? 0); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [type, clientFilter, page, startDate, endDate]);
+  }, [type, clientFilter, page, startDate, endDate, debouncedSearch, searchable]);
 
   const cols = COLUMNS[type] ?? [];
   const totalPages = Math.ceil(total / 100);
@@ -154,6 +169,31 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
           <option value="__live__">Live Clients</option>
           {allClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+
+        {searchable && (
+          <div className="relative">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search name, phone or email…"
+              className="pl-9 pr-8 py-2 rounded-lg text-sm outline-none"
+              style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", minWidth: "16rem" }}
+            />
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: "#475569" }}>⌕</span>
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-sm leading-none"
+                style={{ color: "#64748b" }}
+                aria-label="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
+
         <span className="text-sm" style={{ color: "#334155" }}>{total.toLocaleString()} rows</span>
       </div>
 

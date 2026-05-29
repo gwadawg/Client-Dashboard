@@ -20,6 +20,7 @@ import {
   type HealthTier,
   type KpiKey,
 } from "@/lib/client-health";
+import ClientHealthDetail from "./ClientHealthDetail";
 
 type Props = {
   startDate: string;
@@ -94,6 +95,7 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
   const [chartMetric, setChartMetric] = useState<SortKey>("priority");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [hideInactive, setHideInactive] = useState(true);
+  const [detail, setDetail] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (!startDate || !endDate) return;
@@ -177,6 +179,18 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
     fontSize: "0.875rem",
     outline: "none",
   } as React.CSSProperties;
+
+  if (detail) {
+    return (
+      <ClientHealthDetail
+        clientId={detail.id}
+        clientName={detail.name}
+        startDate={startDate}
+        endDate={endDate}
+        onBack={() => setDetail(null)}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -445,6 +459,14 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
                                 {row.current.attention_score}
                               </p>
                             )}
+                            <button
+                              type="button"
+                              onClick={() => setDetail({ id: row.client_id, name: row.client_name })}
+                              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+                              style={{ background: "rgba(96,165,250,0.15)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.3)" }}
+                            >
+                              Open diagnosis & action log →
+                            </button>
                           </td>
                         </tr>
                       )}
