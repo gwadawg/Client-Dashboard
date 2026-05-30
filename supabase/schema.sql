@@ -304,6 +304,11 @@ create index if not exists events_external_id_idx  on events(external_id)  where
 create index if not exists events_calendar_id_idx  on events(calendar_id)  where calendar_id is not null;
 create index if not exists events_agent_name_idx   on events(agent_name)   where agent_name is not null;
 create index if not exists events_lead_phone_idx   on events(lead_phone)   where lead_phone is not null;
+-- One conversion event per contact per stage (idempotent LO pipeline ingest)
+create unique index if not exists events_conversion_unique
+  on events (client_id, event_type, ghl_contact_id)
+  where event_type in ('proposal_made','submission_made','loan_funded')
+    and ghl_contact_id is not null;
 create index if not exists ad_spend_client_date    on ad_spend(client_id, spend_date desc);
 create index if not exists meta_ad_insights_client_date on meta_ad_insights(client_id, insight_date desc);
 create index if not exists meta_ad_insights_campaign    on meta_ad_insights(client_id, campaign_id);

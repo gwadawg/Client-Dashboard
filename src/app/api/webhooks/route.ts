@@ -357,7 +357,21 @@ export async function POST(req: Request) {
       raw: payload,
     });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      // Duplicate conversion (same client + contact + stage) is expected when GHL
+      // re-fires a pipeline update. The events_conversion_unique index blocks the
+      // insert; treat it as a successful no-op so Make never sees an error.
+      if (error.code === '23505') {
+        return NextResponse.json({
+          success: true,
+          duplicate: true,
+          skipped: true,
+          normalized_event_type: normalizedEventType,
+          source_event_type: eventType,
+        });
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
     return NextResponse.json({
       success: true,
       normalized_event_type: normalizedEventType,
