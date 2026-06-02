@@ -14,6 +14,7 @@ import GoalTracker from "./GoalTracker";
 import AgentScorecards from "./AgentScorecards";
 import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
+import BillingManager from "./BillingManager";
 import UserManager from "./UserManager";
 import AgentCreditQueue from "./AgentCreditQueue";
 import CostTrendCharts from "./CostTrendCharts";
@@ -54,6 +55,7 @@ type View =
   | "client_health"
   | "admin_agents"
   | "admin_clients"
+  | "admin_billing"
   | "admin_share"
   | "admin_users"
   | "schedule";
@@ -87,6 +89,7 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "client_health",    label: "Client Success",    group: "Overview"    },
   { view: "admin_agents",     label: "Agent Roster",      group: "Admin"       },
   { view: "admin_clients",    label: "Client Roster",     group: "Admin"       },
+  { view: "admin_billing",    label: "Client Billing",    group: "Admin"       },
   { view: "schedule",         label: "Power Dialer Schedule", group: "Admin"    },
   { view: "admin_share",      label: "Share Reports",     group: "Admin"       },
   { view: "admin_users",      label: "Users",             group: "Admin"       },
@@ -113,6 +116,7 @@ const NAV_ICONS: Record<View, string> = {
   agent_credit_queue: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
   admin_agents:     "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
   admin_clients:    "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
+  admin_billing:    "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",
   admin_share:      "M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z",
   admin_users:      "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
   schedule:         "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
@@ -614,6 +618,7 @@ export default function DashboardView() {
           {/* ── Admin ── */}
           {view === "admin_agents"  && <AgentAdmin />}
           {view === "admin_clients" && <ClientRoster />}
+          {view === "admin_billing" && <BillingManager />}
           {view === "schedule"      && <SetterSchedule clients={clients} />}
           {view === "admin_share"   && <ShareReports clients={clients} />}
           {view === "admin_users"   && <UserManager />}
