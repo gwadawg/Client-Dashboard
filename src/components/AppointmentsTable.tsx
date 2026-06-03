@@ -180,7 +180,10 @@ export default function AppointmentsTable({ clients: allClients, startDate, endD
           {pendingOnly ? "● Pending only" : "Pending only"}
         </button>
 
-        <span className="text-sm" style={{ color: "#334155" }}>{total.toLocaleString()} appointments</span>
+        <span className="text-sm" style={{ color: "#334155" }}>
+          {total.toLocaleString()} appointments
+          {debouncedSearch && <span style={{ color: "#475569" }}> · searching all dates</span>}
+        </span>
       </div>
 
       {error && (

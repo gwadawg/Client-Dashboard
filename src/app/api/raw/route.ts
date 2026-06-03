@@ -221,17 +221,20 @@ async function getGroupedAppointments(ctx: AuthCtx, p: GroupedParams) {
     }
 
     // Default: DB-paginate bookings, then attach each page row's status.
+    // When searching, span ALL appointments (ignore the date filter) so a lookup
+    // finds the person regardless of when their appointment was booked.
+    const safeSearch = p.search ? p.search.replace(/[,()*]/g, ' ').trim() : '';
     let bq = ctx.service
       .from('events')
       .select(BOOKING_SELECT, { count: 'exact' })
       .eq('event_type', 'appointment_booked');
     if (p.client_id) bq = bq.eq('client_id', p.client_id);
     else if (p.liveClientIds) bq = bq.in('client_id', liveClientFilter(p.liveClientIds));
-    if (p.start_date) bq = bq.gte('occurred_at', `${p.start_date}T00:00:00.000Z`);
-    if (p.end_date) bq = bq.lte('occurred_at', `${p.end_date}T23:59:59.999Z`);
-    if (p.search) {
-      const safe = p.search.replace(/[,()*]/g, ' ').trim();
-      if (safe) bq = bq.or(`lead_name.ilike.%${safe}%,lead_phone.ilike.%${safe}%,lead_email.ilike.%${safe}%`);
+    if (!safeSearch) {
+      if (p.start_date) bq = bq.gte('occurred_at', `${p.start_date}T00:00:00.000Z`);
+      if (p.end_date) bq = bq.lte('occurred_at', `${p.end_date}T23:59:59.999Z`);
+    } else {
+      bq = bq.or(`lead_name.ilike.%${safeSearch}%,lead_phone.ilike.%${safeSearch}%,lead_email.ilike.%${safeSearch}%`);
     }
 
     const { data: bookings, error, count } = await bq
