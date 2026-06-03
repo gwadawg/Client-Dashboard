@@ -14,7 +14,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const allowed = [
     'name', 'is_live', 'reporting_type',
     // Billing fields (editable from the Client Billing tab)
-    'mrr', 'billing_type', 'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
+    'mrr', 'billing_type', 'launch_date', 'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
   ];
   const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend']);
   const updates: Record<string, unknown> = {};
@@ -29,7 +29,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .from('clients')
     .update(updates)
     .eq('id', id)
-    .select('id, name, is_live, reporting_type, share_token, created_at, mrr, billing_type, date_signed, contract_end_date, contract_term_months, daily_adspend')
+    .select('id, name, is_live, reporting_type, share_token, created_at, mrr, billing_type, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend')
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

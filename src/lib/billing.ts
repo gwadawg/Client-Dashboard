@@ -11,6 +11,8 @@ export const DUE_SOON_DAYS = 7;
 
 export interface BillingClient {
   billing_type?: string | null;
+  // The billing day is anchored to the launch date (falls back to date_signed).
+  launch_date?: string | null;
   date_signed?: string | null;
 }
 
@@ -45,32 +47,52 @@ function addOneMonth(base: Date, anchorDay: number): Date {
   return new Date(Date.UTC(year, month, day));
 }
 
+// The next occurrence of `anchorDay` on or after `from` (used to project the
+// upcoming billing date for a client that has never been billed yet, so a
+// client launched months ago shows their next anniversary, not a stale date).
+function nextOccurrence(anchorDay: number, from: Date): Date {
+  let year = from.getUTCFullYear();
+  let month = from.getUTCMonth();
+  const fromUtc = Date.UTC(year, month, from.getUTCDate());
+  let cand = new Date(Date.UTC(year, month, Math.min(anchorDay, daysInMonth(year, month))));
+  if (cand.getTime() < fromUtc) {
+    month += 1;
+    if (month > 11) { month = 0; year += 1; }
+    cand = new Date(Date.UTC(year, month, Math.min(anchorDay, daysInMonth(year, month))));
+  }
+  return cand;
+}
+
 /**
  * The next date this client should be billed, or null when there is no
- * recurring schedule (PIF, or an unknown/missing billing type).
+ * recurring schedule.
  *
- * - monthly / pif_monthly: one month after the last billing, on the anchor day
- *   (taken from date_signed). If never billed, the first expected bill is the
- *   signing date.
+ * The billing day is anchored to the launch date (falls back to date_signed,
+ * then the last billing). Any client that is not explicitly PIF recurs monthly
+ * on that day — including clients with no billing_type set yet — so the whole
+ * active roster projects and can be adjusted.
+ *
+ * - Already billed: one month after the last billing, on the anchor day.
+ * - Never billed: the next launch-day anniversary on or after today (so a
+ *   client launched long ago shows an upcoming date, not a stale overdue one).
  * - pif: one-time, so there is no recurring "next" date.
  */
 export function computeNextBillingDate(
   client: BillingClient,
   lastBilling?: BillingRow | null,
+  today: Date = new Date(),
 ): string | null {
   const type = (client.billing_type ?? "").toLowerCase();
-  if (type !== "monthly" && type !== "pif_monthly") return null;
+  if (type === "pif") return null;
 
-  const anchorSource = client.date_signed ?? lastBilling?.billed_on ?? null;
-  const anchorDay = anchorSource ? parseYmd(anchorSource).getUTCDate() : 1;
+  const anchorSource = client.launch_date ?? client.date_signed ?? lastBilling?.billed_on ?? null;
+  if (!anchorSource) return null;
+  const anchorDay = parseYmd(anchorSource).getUTCDate();
 
   if (lastBilling?.billed_on) {
     return formatYmd(addOneMonth(parseYmd(lastBilling.billed_on), anchorDay));
   }
-  if (client.date_signed) {
-    return formatYmd(parseYmd(client.date_signed));
-  }
-  return null;
+  return formatYmd(nextOccurrence(anchorDay, today));
 }
 
 /**

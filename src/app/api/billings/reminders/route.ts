@@ -3,7 +3,7 @@ import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { computeNextBillingDate, deriveStatus, type BillingRow } from '@/lib/billing';
 
-const CLIENT_BILLING_FIELDS = 'id, name, is_live, mrr, billing_type, date_signed';
+const CLIENT_BILLING_FIELDS = 'id, name, is_live, mrr, billing_type, launch_date, date_signed';
 const BILLING_FIELDS = 'client_id, billed_on, status';
 const CLICKUP_API = 'https://api.clickup.com/api/v2';
 
@@ -13,6 +13,7 @@ type ReminderClient = {
   is_live: boolean | null;
   mrr: number | null;
   billing_type: string | null;
+  launch_date: string | null;
   date_signed: string | null;
 };
 

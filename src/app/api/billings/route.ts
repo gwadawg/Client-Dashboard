@@ -3,7 +3,7 @@ import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { computeNextBillingDate, deriveStatus, type BillingRow } from '@/lib/billing';
 
 const CLIENT_BILLING_FIELDS =
-  'id, name, is_live, mrr, billing_type, date_signed, contract_end_date, contract_term_months, daily_adspend';
+  'id, name, is_live, mrr, billing_type, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend';
 
 const BILLING_FIELDS =
   'id, client_id, billed_on, period_start, period_end, amount, status, paid_on, method, invoice_ref, note, created_at';

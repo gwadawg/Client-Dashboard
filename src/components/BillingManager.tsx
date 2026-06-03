@@ -23,6 +23,7 @@ type ClientBilling = {
   is_live: boolean | null;
   mrr: number | null;
   billing_type: string | null;
+  launch_date: string | null;
   date_signed: string | null;
   contract_end_date: string | null;
   next_billing_date: string | null;
@@ -83,7 +84,7 @@ export default function BillingManager() {
   const [totals, setTotals] = useState<Totals | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-  const [showSetup, setShowSetup] = useState(false);
+  const [showSetup, setShowSetup] = useState(true);
 
   async function load() {
     const res = await fetch("/api/billings");
@@ -167,8 +168,9 @@ export default function BillingManager() {
         }
       }
 
-      // Forecast: only when nothing is outstanding (otherwise collect that first).
-      if (openRows.length === 0 && c.next_billing_date && c.next_billing_status) {
+      // Forecast: active (live) clients only, and only when nothing is
+      // outstanding (otherwise collect that first).
+      if (c.is_live && openRows.length === 0 && c.next_billing_date && c.next_billing_status) {
         const row: ForecastRow = {
           kind: "forecast",
           client: c,
@@ -195,7 +197,7 @@ export default function BillingManager() {
       <div>
         <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Billing</h2>
         <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-          Work billings by disposition: collect what is past due, bill what is coming up, and keep the paid history.
+          Every active client is projected onto a monthly billing day anchored to their launch date. Collect what is past due, bill what is coming up, and keep the paid history. Set per-client type or amount in Billing setup below.
         </p>
       </div>
 
@@ -236,7 +238,7 @@ export default function BillingManager() {
           className="w-full flex items-center justify-between px-4 py-3 text-left"
           style={{ background: "#0a1628", color: "#cbd5e1" }}
         >
-          <span className="text-sm font-semibold">Billing setup (type, monthly amount, date signed)</span>
+          <span className="text-sm font-semibold">Active clients — billing schedule (anchored to launch date)</span>
           <span className="text-xs" style={{ color: "#475569" }}>{showSetup ? "Hide" : "Show"}</span>
         </button>
         {showSetup && <SetupTable clients={clients} busy={busy} onUpdate={updateClientField} />}
@@ -453,41 +455,50 @@ function SetupTable({
   busy: string | null;
   onUpdate: (clientId: string, field: string, value: string) => void;
 }) {
-  const sorted = [...clients].sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = clients.filter(c => c.is_live).sort((a, b) => a.name.localeCompare(b.name));
+  const missing = sorted.filter(c => !c.next_billing_date).length;
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr style={{ background: "#081225" }}>
-          {["Client", "Billing type", "Monthly $", "Date signed", "Next billing"].map((h, i) => (
-            <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {sorted.map((c, i) => {
-          const isBusy = busy === `cfg-${c.id}`;
-          return (
-            <tr key={c.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-              <td className="px-4 py-2.5 font-medium" style={{ color: "#e2e8f0" }}>{c.name}</td>
-              <td className="px-4 py-2.5">
-                <select value={c.billing_type ?? ""} disabled={isBusy} onChange={e => onUpdate(c.id, "billing_type", e.target.value)} className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer" style={fieldStyle()}>
-                  <option value="">—</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="pif">PIF</option>
-                  <option value="pif_monthly">PIF + Monthly</option>
-                </select>
-              </td>
-              <td className="px-4 py-2.5">
-                <input type="number" defaultValue={c.mrr ?? ""} disabled={isBusy} onBlur={e => { if (String(c.mrr ?? "") !== e.target.value) onUpdate(c.id, "mrr", e.target.value); }} placeholder="0" className="px-2 py-1 rounded-lg text-xs outline-none w-24" style={fieldStyle()} />
-              </td>
-              <td className="px-4 py-2.5">
-                <input type="date" value={c.date_signed ?? ""} disabled={isBusy} onChange={e => onUpdate(c.id, "date_signed", e.target.value)} className="px-2 py-1 rounded-lg text-xs outline-none" style={fieldStyle()} />
-              </td>
-              <td className="px-4 py-2.5 text-xs" style={{ color: "#94a3b8" }}>{c.next_billing_date ?? "—"}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div>
+      {missing > 0 && (
+        <p className="text-xs px-4 py-2" style={{ color: "#f59e0b", background: "rgba(245,158,11,0.06)" }}>
+          {missing} active client{missing === 1 ? "" : "s"} have no launch date yet — set it below to project their billing day.
+        </p>
+      )}
+      <table className="w-full text-sm">
+        <thead>
+          <tr style={{ background: "#081225" }}>
+            {["Client", "Billing type", "Monthly $", "Launch date", "Next billing", "When"].map((h, i) => (
+              <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((c, i) => {
+            const isBusy = busy === `cfg-${c.id}`;
+            return (
+              <tr key={c.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                <td className="px-4 py-2.5 font-medium" style={{ color: "#e2e8f0" }}>{c.name}</td>
+                <td className="px-4 py-2.5">
+                  <select value={c.billing_type ?? ""} disabled={isBusy} onChange={e => onUpdate(c.id, "billing_type", e.target.value)} className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer" style={fieldStyle()}>
+                    <option value="">Monthly (default)</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="pif">PIF</option>
+                    <option value="pif_monthly">PIF + Monthly</option>
+                  </select>
+                </td>
+                <td className="px-4 py-2.5">
+                  <input type="number" defaultValue={c.mrr ?? ""} disabled={isBusy} onBlur={e => { if (String(c.mrr ?? "") !== e.target.value) onUpdate(c.id, "mrr", e.target.value); }} placeholder="0" className="px-2 py-1 rounded-lg text-xs outline-none w-24" style={fieldStyle()} />
+                </td>
+                <td className="px-4 py-2.5">
+                  <input type="date" value={c.launch_date ?? ""} disabled={isBusy} onChange={e => onUpdate(c.id, "launch_date", e.target.value)} className="px-2 py-1 rounded-lg text-xs outline-none" style={fieldStyle()} />
+                </td>
+                <td className="px-4 py-2.5 text-xs" style={{ color: c.next_billing_date ? "#cbd5e1" : "#475569" }}>{c.next_billing_date ?? "needs launch date"}</td>
+                <td className="px-4 py-2.5 text-xs" style={{ color: "#94a3b8" }}>{c.next_billing_date ? relativeLabel(c.next_billing_date) : "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
