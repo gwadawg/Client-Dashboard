@@ -209,6 +209,7 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
   const [customEnd, setCustomEnd] = useState("");
   const [metrics, setMetrics] = useState<MetricsResult | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
+  const [overduePending, setOverduePending] = useState<number | null>(null);
   const [showPresetMenu, setShowPresetMenu] = useState(false);
   const [heatmapDays, setHeatmapDays] = useState(0);
   const [heatmapClientId, setHeatmapClientId] = useState("");
@@ -259,6 +260,20 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
       .then(d => { setMetrics(d); setMetricsLoading(false); })
       .catch(() => setMetricsLoading(false));
   }, [view, selectedClientId, preset, customStart, customEnd]);
+
+  // Past-due, un-dispositioned appointment backlog. Deliberately keyed only on
+  // the client selection (not the date preset) so it stays a running total.
+  useEffect(() => {
+    if (view !== "dashboard") return;
+    const params = new URLSearchParams();
+    if (selectedClientId === "__live__") params.set("live_only", "true");
+    else if (selectedClientId) params.set("client_id", selectedClientId);
+    setOverduePending(null);
+    fetch(`/api/metrics/overdue-appointments?${params}`)
+      .then(r => r.json())
+      .then(d => setOverduePending(typeof d.count === "number" ? d.count : null))
+      .catch(() => setOverduePending(null));
+  }, [view, selectedClientId]);
 
   async function handleSignOut() {
     const supabase = createBrowserSupabaseClient();
@@ -476,7 +491,29 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
 
           {/* ── Dashboard KPIs ── */}
           {firstVisibleView && view === "dashboard" && (
-            metricsLoading ? (
+            <div className="space-y-8 max-w-7xl">
+            {overduePending != null && overduePending > 0 && (
+              <button
+                type="button"
+                onClick={() => goToView("appointments")}
+                className="w-full flex items-center gap-4 text-left rounded-xl px-5 py-4 transition-colors"
+                style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.45)" }}
+              >
+                <div className="flex items-center justify-center rounded-lg shrink-0" style={{ width: "2.75rem", height: "2.75rem", background: "rgba(245,158,11,0.16)" }}>
+                  <span className="text-xl font-bold" style={{ color: "#fbbf24" }}>{overduePending}</span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold" style={{ color: "#fbbf24" }}>
+                    {overduePending} past-due appointment{overduePending === 1 ? "" : "s"} awaiting disposition
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: "#a16207" }}>
+                    Their scheduled date has passed but they aren&apos;t marked show, no-show, cancelled, or LO bailed — this drags down show rate. Click to review. (All-time total, ignores the date filter.)
+                  </p>
+                </div>
+                <span className="ml-auto text-sm font-medium shrink-0 hidden sm:inline" style={{ color: "#fbbf24" }}>Review →</span>
+              </button>
+            )}
+            {metricsLoading ? (
               <div className="flex items-center justify-center py-24">
                 <div className="flex items-center gap-3" style={{ color: "#334155" }}>
                   <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -487,7 +524,7 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
                 </div>
               </div>
             ) : metrics ? (
-              <div className="space-y-8 max-w-7xl">
+              <div className="space-y-8">
                 {dashboardHasMixedReportingTypes && (
                   <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#64748b", background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
                     Mixed RM/HE selection detected. Showing the full RM dashboard for this combined view.
@@ -524,7 +561,8 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
                   </KpiSection>
                 )}
               </div>
-            ) : null
+            ) : null}
+            </div>
           )}
 
           {/* ── Raw Data Tables ── */}

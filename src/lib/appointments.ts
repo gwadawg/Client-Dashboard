@@ -1,4 +1,5 @@
 import type { createServiceClient } from './supabase';
+import { liveClientFilter } from './db-helpers';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
@@ -300,4 +301,80 @@ export async function setAppointmentOutcome(
       appointment_event_id: bookedRow.id,
     },
   };
+}
+
+// Fetch every row matching `build`, paging past PostgREST's per-request cap.
+async function fetchAllRows<R>(
+  build: (from: number, to: number) => PromiseLike<{ data: R[] | null; error: { message: string } | null }>,
+  hardCap = 20000,
+): Promise<R[]> {
+  const chunk = 1000;
+  const rows: R[] = [];
+  for (let from = 0; from < hardCap; from += chunk) {
+    const { data, error } = await build(from, from + chunk - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < chunk) break;
+  }
+  return rows;
+}
+
+// Count appointments whose scheduled date has already passed but still have no
+// outcome (show / no_show / appointment_cancelled / lo_bailed). These are the
+// "past due, not dispositioned" appointments that silently drag down show rate.
+//
+// Deliberately NOT time-window scoped: it always reflects the full backlog,
+// independent of any dashboard date filter. Scoped only by client (or live set).
+export async function countOverdueUndispositioned(
+  service: ServiceClient,
+  opts: { clientId?: string | null; liveClientIds?: string[] | null },
+): Promise<number> {
+  const nowIso = new Date().toISOString();
+
+  const scopeClient = <T extends {
+    eq: (c: string, v: string) => T;
+    in: (c: string, v: string[]) => T;
+  }>(q: T): T => {
+    if (opts.clientId) return q.eq('client_id', opts.clientId);
+    if (opts.liveClientIds) return q.in('client_id', liveClientFilter(opts.liveClientIds));
+    return q;
+  };
+
+  // Bookings whose scheduled time is already in the past.
+  const bookings = await fetchAllRows<{ id: string; external_id: string | null }>((from, to) => {
+    let q = service
+      .from('events')
+      .select('id, external_id')
+      .eq('event_type', 'appointment_booked')
+      .not('scheduled_at', 'is', null)
+      .lt('scheduled_at', nowIso);
+    q = scopeClient(q);
+    return q.range(from, to);
+  });
+  if (bookings.length === 0) return 0;
+
+  // Every outcome in the same client scope (no date bound — an outcome resolves
+  // its booking whenever it was recorded).
+  const outcomes = await fetchAllRows<{ external_id: string | null; raw: unknown }>((from, to) => {
+    let q = service.from('events').select('external_id, raw').in('event_type', [...OUTCOME_EVENT_TYPES]);
+    q = scopeClient(q);
+    return q.range(from, to);
+  });
+
+  const byExternal = new Set<string>();
+  const byBookingId = new Set<string>();
+  for (const o of outcomes) {
+    if (o.external_id) byExternal.add(o.external_id);
+    const linked = (o.raw as { appointment_event_id?: string } | null)?.appointment_event_id;
+    if (linked) byBookingId.add(linked);
+  }
+
+  let count = 0;
+  for (const b of bookings) {
+    if (b.external_id && byExternal.has(b.external_id)) continue;
+    if (byBookingId.has(b.id)) continue;
+    count++;
+  }
+  return count;
 }
