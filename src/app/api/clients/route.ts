@@ -3,7 +3,7 @@ import { getAuthContext, isAuthError, requirePermission, requireAnyPermission } 
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 
 const DETAIL_FIELDS =
-  'id, name, is_live, reporting_type, share_token, created_at, lifecycle_status, mrr, billing_type, launch_date, date_signed, contract_term_months, contract_end_date, performance_terms, billing_email, primary_contact';
+  'id, name, is_live, reporting_type, share_token, created_at, lifecycle_status, mrr, billing_type, billing_day, launch_date, date_signed, contract_term_months, contract_end_date, performance_terms, billing_email, primary_contact';
 
 // GET is intentionally open to any authenticated user: the client list powers
 // the global client-filter dropdown on nearly every tab, so it is a shared
@@ -60,9 +60,9 @@ export async function POST(req: Request) {
     name: name.trim(),
     reporting_type: normalizeReportingType(reporting_type),
   };
-  const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend']);
+  const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend', 'billing_day']);
   const optional = [
-    'is_live', 'lifecycle_status', 'mrr', 'billing_type', 'launch_date',
+    'is_live', 'lifecycle_status', 'mrr', 'billing_type', 'billing_day', 'launch_date',
     'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
     'performance_terms', 'billing_email', 'primary_contact',
   ] as const;

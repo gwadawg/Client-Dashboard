@@ -11,7 +11,10 @@ export const DUE_SOON_DAYS = 7;
 
 export interface BillingClient {
   billing_type?: string | null;
-  // The billing day is anchored to the launch date (falls back to date_signed).
+  // Explicit day-of-month (1-31) to bill on; when set it is the source of truth
+  // for the billing day and overrides the launch-date day.
+  billing_day?: number | null;
+  // Fallback anchor for the billing day when billing_day is not set.
   launch_date?: string | null;
   date_signed?: string | null;
 }
@@ -104,13 +107,14 @@ function nextOccurrence(anchorDay: number, from: Date): Date {
  * The next date this client should be billed, or null when there is no
  * recurring schedule.
  *
- * The billing day is anchored to the launch date (falls back to date_signed,
- * then the last billing). Any client that is not explicitly PIF recurs monthly
- * on that day — including clients with no billing_type set yet — so the whole
- * active roster projects and can be adjusted.
+ * The billing day comes from the explicit billing_day when set; otherwise it is
+ * anchored to the launch date (falls back to date_signed, then the last
+ * billing). Any client that is not explicitly PIF recurs monthly on that day —
+ * including clients with no billing_type set yet — so the whole active roster
+ * projects and can be adjusted.
  *
  * - Already billed: one month after the last billing, on the anchor day.
- * - Never billed: the next launch-day anniversary on or after today (so a
+ * - Never billed: the next billing-day anniversary on or after today (so a
  *   client launched long ago shows an upcoming date, not a stale overdue one).
  * - pif: one-time, so there is no recurring "next" date.
  */
@@ -122,9 +126,16 @@ export function computeNextBillingDate(
   const type = (client.billing_type ?? "").toLowerCase();
   if (type === "pif") return null;
 
-  const anchorSource = client.launch_date ?? client.date_signed ?? lastBilling?.billed_on ?? null;
-  if (!anchorSource) return null;
-  const anchorDay = parseYmd(anchorSource).getUTCDate();
+  // Explicit billing_day is the source of truth; fall back to the day-of-month
+  // of the launch date, then date signed, then the last billing.
+  let anchorDay: number | null = null;
+  if (typeof client.billing_day === "number" && client.billing_day >= 1 && client.billing_day <= 31) {
+    anchorDay = client.billing_day;
+  } else {
+    const anchorSource = client.launch_date ?? client.date_signed ?? lastBilling?.billed_on ?? null;
+    if (!anchorSource) return null;
+    anchorDay = parseYmd(anchorSource).getUTCDate();
+  }
 
   if (lastBilling?.billed_on) {
     return formatYmd(addOneMonth(parseYmd(lastBilling.billed_on), anchorDay));

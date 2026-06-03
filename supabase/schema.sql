@@ -148,6 +148,15 @@ alter table clients add column if not exists clickup_task_id        text;
 alter table clients add column if not exists performance_terms      text;
 alter table clients add column if not exists billing_email          text;
 alter table clients add column if not exists primary_contact        text;
+alter table clients add column if not exists billing_day            smallint;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'clients_billing_day_check') then
+    alter table clients add constraint clients_billing_day_check
+      check (billing_day is null or (billing_day >= 1 and billing_day <= 31));
+  end if;
+end $$;
 
 do $$
 begin

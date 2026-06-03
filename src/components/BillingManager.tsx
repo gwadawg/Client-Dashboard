@@ -29,6 +29,7 @@ type ClientBilling = {
   lifecycle_status: string | null;
   mrr: number | null;
   billing_type: string | null;
+  billing_day: number | null;
   launch_date: string | null;
   date_signed: string | null;
   contract_end_date: string | null;
@@ -653,7 +654,7 @@ function SetupTable({
       <table className="w-full text-sm">
         <thead>
           <tr style={{ background: "#081225" }}>
-            {["Client", "Billing type", "Monthly $", "Launch date", "Next billing", "When", "Lifecycle"].map((h, i) => (
+            {["Client", "Billing type", "Monthly $", "Billing day", "Launch date", "Next billing", "When", "Lifecycle"].map((h, i) => (
               <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
             ))}
           </tr>
@@ -674,6 +675,9 @@ function SetupTable({
                 </td>
                 <td className="px-4 py-2.5">
                   <input type="number" defaultValue={c.mrr ?? ""} disabled={isBusy} onBlur={e => { if (String(c.mrr ?? "") !== e.target.value) onPatch(c.id, { mrr: e.target.value }); }} placeholder="0" className="px-2 py-1 rounded-lg text-xs outline-none w-24" style={fieldStyle()} />
+                </td>
+                <td className="px-4 py-2.5">
+                  <input type="number" min={1} max={31} defaultValue={c.billing_day ?? ""} disabled={isBusy} onBlur={e => { if (String(c.billing_day ?? "") !== e.target.value) onPatch(c.id, { billing_day: e.target.value }); }} placeholder="—" title="Day of month (1-31); blank = launch day" className="px-2 py-1 rounded-lg text-xs outline-none w-16" style={fieldStyle()} />
                 </td>
                 <td className="px-4 py-2.5">
                   <input type="date" value={c.launch_date ?? ""} disabled={isBusy} onChange={e => onPatch(c.id, { launch_date: e.target.value })} className="px-2 py-1 rounded-lg text-xs outline-none" style={fieldStyle()} />

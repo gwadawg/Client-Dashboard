@@ -11,6 +11,7 @@ type Client = {
   lifecycle_status?: string | null;
   mrr?: number | null;
   billing_type?: string | null;
+  billing_day?: number | null;
   launch_date?: string | null;
   date_signed?: string | null;
   contract_term_months?: number | null;
@@ -138,14 +139,14 @@ export default function ClientRoster() {
         <table className="text-sm" style={{ minWidth: 1400 }}>
           <thead>
             <tr style={{ background: "#0a1628" }}>
-              {["Client", "Contact", "Billing email", "Type", "Lifecycle", "Status", "Billing type", "MRR", "Launch", "Signed", "Term (mo)", "Contract end", "Performance terms", "Total paid", ""].map((h, i) => (
+              {["Client", "Contact", "Billing email", "Type", "Lifecycle", "Status", "Billing type", "MRR", "Billing day", "Launch", "Signed", "Term (mo)", "Contract end", "Performance terms", "Total paid", ""].map((h, i) => (
                 <th key={i} className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "#334155" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {clients.length === 0 ? (
-              <tr><td colSpan={15} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
+              <tr><td colSpan={16} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
             ) : clients.map((c, i) => (
               <ClientRow
                 key={c.id}
@@ -246,6 +247,9 @@ function ClientRow({
         <input type="number" defaultValue={c.mrr ?? ""} disabled={busy} onBlur={onBlurField("mrr", String(c.mrr ?? ""))} placeholder="0" className="px-2 py-1 rounded-lg text-sm outline-none w-24" style={fieldStyle()} />
       </td>
       <td className={cell}>
+        <input type="number" min={1} max={31} defaultValue={c.billing_day ?? ""} disabled={busy} onBlur={onBlurField("billing_day", String(c.billing_day ?? ""))} placeholder="—" title="Day of month (1-31)" className="px-2 py-1 rounded-lg text-sm outline-none w-16" style={fieldStyle()} />
+      </td>
+      <td className={cell}>
         <input type="date" value={c.launch_date ?? ""} disabled={busy} onChange={e => onPatch(c.id, { launch_date: e.target.value })} className="px-2 py-1 rounded-lg text-xs outline-none" style={fieldStyle()} />
       </td>
       <td className={cell}>
@@ -288,6 +292,7 @@ function AddClientForm({
   const [lifecycle, setLifecycle] = useState("onboarding");
   const [billingType, setBillingType] = useState("");
   const [mrr, setMrr] = useState("");
+  const [billingDay, setBillingDay] = useState("");
   const [launchDate, setLaunchDate] = useState("");
   const [dateSigned, setDateSigned] = useState("");
   const [contractTerm, setContractTerm] = useState("");
@@ -307,6 +312,7 @@ function AddClientForm({
       is_live: lifecycle === "active",
       billing_type: billingType,
       mrr,
+      billing_day: billingDay,
       launch_date: launchDate,
       date_signed: dateSigned,
       contract_term_months: contractTerm,
@@ -344,6 +350,7 @@ function AddClientForm({
           </select>
         </Field>
         <Field label="Monthly $ (base)"><input type="number" value={mrr} onChange={e => setMrr(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
+        <Field label="Billing day (1-31)"><input type="number" min={1} max={31} value={billingDay} onChange={e => setBillingDay(e.target.value)} placeholder="defaults to launch day" className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
         <Field label="Launch date (billing anchor)"><input type="date" value={launchDate} onChange={e => setLaunchDate(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
         <Field label="Date signed"><input type="date" value={dateSigned} onChange={e => setDateSigned(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
         <Field label="Contract term (months)"><input type="number" value={contractTerm} onChange={e => setContractTerm(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
