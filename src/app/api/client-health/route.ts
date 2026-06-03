@@ -2,12 +2,16 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import {
   buildClientHealthSnapshot,
+  buildRecentLeading,
   compareHealthTrend,
   getPriorPeriod,
   groupEventsByClient,
   groupSpendByClient,
+  maturedWindow,
+  recentWindow,
   type ClientEventWithDate,
   type ClientHealthRow,
+  type ClientKpiBenchmarks,
 } from '@/lib/client-health';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 
@@ -36,11 +40,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'start_date and end_date are required' }, { status: 400 });
   }
 
-  const prior = getPriorPeriod(start_date, end_date);
+  // Verdict (Baseline) is graded on the MATURED slice of the selected window so
+  // lag-sensitive KPIs (CPConv, close, show) reflect resolved cohorts only. The
+  // Recent window is the freshest slice, used for leading-indicator early warning.
+  const matured = maturedWindow(start_date, end_date);
+  const verdictPrior = matured.empty ? null : getPriorPeriod(matured.start, matured.end);
+  const recent = recentWindow(start_date, end_date);
 
   let clientQuery = ctx.service
     .from('clients')
-    .select('id, name, is_live')
+    .select('id, name, is_live, kpi_benchmarks')
     .order('name');
 
   if (live_only) clientQuery = clientQuery.eq('is_live', true);
@@ -50,7 +59,10 @@ export async function GET(req: Request) {
     liveClientIds = await getLiveClientIds(ctx.service);
   }
 
-  const rangeStart = prior?.start ?? start_date;
+  // Fetch the widest range we might slice: the full-window prior start (so trend
+  // has data) through the selected end.
+  const fetchPrior = getPriorPeriod(start_date, end_date);
+  const rangeStart = fetchPrior?.start ?? start_date;
   const rangeEnd = end_date;
 
   let eventsQuery = ctx.service.from('events').select(EVENT_SELECT);
@@ -85,53 +97,64 @@ export async function GET(req: Request) {
   }
 
   const allEvents = (events ?? []) as ClientEventWithDate[];
-  const currentEvents = allEvents.filter(
-    e => e.occurred_at >= `${start_date}T00:00:00.000Z` && e.occurred_at <= `${end_date}T23:59:59.999Z`,
-  );
-  const priorEvents =
-    prior != null
-      ? allEvents.filter(
-          e =>
-            e.occurred_at >= `${prior.start}T00:00:00.000Z` &&
-            e.occurred_at <= `${prior.end}T23:59:59.999Z`,
-        )
-      : [];
+  const inRange = (e: ClientEventWithDate, s: string, en: string) =>
+    e.occurred_at >= `${s}T00:00:00.000Z` && e.occurred_at <= `${en}T23:59:59.999Z`;
+
+  // Verdict events = matured slice (empty when the window is too recent to mature).
+  const verdictEvents = matured.empty
+    ? []
+    : allEvents.filter(e => inRange(e, matured.start, matured.end));
+  const priorEvents = verdictPrior
+    ? allEvents.filter(e => inRange(e, verdictPrior.start, verdictPrior.end))
+    : [];
+  const recentEvents = allEvents.filter(e => inRange(e, recent.start, recent.end));
 
   const spendRows = [...metaSpend, ...nonMetaSpend];
-  const currentSpend = spendRows.filter(
-    r => r.spend_date >= start_date && r.spend_date <= end_date,
-  );
-  const priorSpend =
-    prior != null
-      ? spendRows.filter(r => r.spend_date >= prior.start && r.spend_date <= prior.end)
-      : [];
+  const verdictSpend = matured.empty
+    ? []
+    : spendRows.filter(r => r.spend_date >= matured.start && r.spend_date <= matured.end);
+  const priorSpend = verdictPrior
+    ? spendRows.filter(r => r.spend_date >= verdictPrior.start && r.spend_date <= verdictPrior.end)
+    : [];
 
-  const currentByClient = groupEventsByClient(currentEvents);
+  const currentByClient = groupEventsByClient(verdictEvents);
   const priorByClient = groupEventsByClient(priorEvents);
+  const recentByClient = groupEventsByClient(recentEvents);
   const currentSpendByClient = groupSpendByClient(
-    currentSpend.map(({ client_id, amount, platform }) => ({ client_id, amount, platform })),
+    verdictSpend.map(({ client_id, amount, platform }) => ({ client_id, amount, platform })),
   );
   const priorSpendByClient = groupSpendByClient(
     priorSpend.map(({ client_id, amount, platform }) => ({ client_id, amount, platform })),
   );
 
   const rows: ClientHealthRow[] = (clients ?? []).map(c => {
+    const benchmarks = (c.kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
     const current = buildClientHealthSnapshot(
       currentByClient.get(c.id) ?? [],
       currentSpendByClient.get(c.id) ?? [],
+      benchmarks,
     );
     const priorSnapshot =
-      prior != null
+      verdictPrior != null
         ? buildClientHealthSnapshot(
             priorByClient.get(c.id) ?? [],
             priorSpendByClient.get(c.id) ?? [],
+            benchmarks,
           )
         : null;
+    const recentLeading = buildRecentLeading(
+      recentByClient.get(c.id) ?? [],
+      recent.start,
+      recent.end,
+      recent.window_days,
+    );
     const { trend, trend_delta_score } = compareHealthTrend(current, priorSnapshot);
     const has_activity =
       current.metrics.new_leads > 0 ||
       current.metrics.booked_appointments > 0 ||
-      current.metrics.ad_spend > 0;
+      current.metrics.ad_spend > 0 ||
+      recentLeading.leads > 0 ||
+      recentLeading.dials > 0;
 
     return {
       client_id: c.id,
@@ -142,12 +165,22 @@ export async function GET(req: Request) {
       trend,
       trend_delta_score,
       has_activity,
+      recent: recentLeading,
     };
   });
 
   return NextResponse.json({
     period: { start: start_date, end: end_date },
-    prior_period: prior,
+    prior_period: verdictPrior,
+    maturity: {
+      days: matured.maturity_days,
+      matured_through: matured.matured_through,
+      clamped: matured.clamped,
+      empty: matured.empty,
+      recent_window_days: recent.window_days,
+      recent_start: recent.start,
+      recent_end: recent.end,
+    },
     clients: rows,
   });
 }

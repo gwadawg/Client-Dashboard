@@ -3,9 +3,13 @@ import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import {
   buildClientHealthSnapshot,
   buildConstraintGuidance,
+  buildRecentLeading,
   compareHealthTrend,
   getPriorPeriod,
+  maturedWindow,
+  recentWindow,
   type ClientHealthSnapshot,
+  type ClientKpiBenchmarks,
 } from '@/lib/client-health';
 import { fetchCombinedSpendForMetrics } from '@/lib/spend';
 import type { EventRow } from '@/lib/metrics';
@@ -33,12 +37,17 @@ export async function GET(
     return NextResponse.json({ error: 'start_date and end_date are required' }, { status: 400 });
   }
 
-  const prior = getPriorPeriod(start_date, end_date);
-  const rangeStart = prior?.start ?? start_date;
+  // Matched to the dashboard: verdict on the matured slice, plus a recent
+  // leading-indicator window.
+  const matured = maturedWindow(start_date, end_date);
+  const verdictPrior = matured.empty ? null : getPriorPeriod(matured.start, matured.end);
+  const recent = recentWindow(start_date, end_date);
+  const fetchPrior = getPriorPeriod(start_date, end_date);
+  const rangeStart = fetchPrior?.start ?? start_date;
 
-  const [{ data: client, error: clientError }, { data: events, error: eventsError }, currentSpend, priorSpend] =
+  const [{ data: client, error: clientError }, { data: events, error: eventsError }, currentSpend, priorSpendData] =
     await Promise.all([
-      ctx.service.from('clients').select('id, name, is_live').eq('id', clientId).single(),
+      ctx.service.from('clients').select('id, name, is_live, kpi_benchmarks').eq('id', clientId).single(),
       ctx.service
         .from('events')
         .select(EVENT_SELECT)
@@ -46,12 +55,18 @@ export async function GET(
         .gte('occurred_at', `${rangeStart}T00:00:00.000Z`)
         .lte('occurred_at', `${end_date}T23:59:59.999Z`)
         .limit(200000),
-      fetchCombinedSpendForMetrics(ctx.service, { client_id: clientId, start_date, end_date }),
-      prior
+      matured.empty
+        ? Promise.resolve([])
+        : fetchCombinedSpendForMetrics(ctx.service, {
+            client_id: clientId,
+            start_date: matured.start,
+            end_date: matured.end,
+          }),
+      verdictPrior
         ? fetchCombinedSpendForMetrics(ctx.service, {
             client_id: clientId,
-            start_date: prior.start,
-            end_date: prior.end,
+            start_date: verdictPrior.start,
+            end_date: verdictPrior.end,
           })
         : Promise.resolve([]),
     ]);
@@ -64,19 +79,19 @@ export async function GET(
   }
 
   const allEvents = (events ?? []) as DatedEventRow[];
-  const currentEvents = allEvents.filter(
-    e => e.occurred_at >= `${start_date}T00:00:00.000Z` && e.occurred_at <= `${end_date}T23:59:59.999Z`,
-  );
-  const priorEvents = prior
-    ? allEvents.filter(
-        e => e.occurred_at >= `${prior.start}T00:00:00.000Z` && e.occurred_at <= `${prior.end}T23:59:59.999Z`,
-      )
-    : [];
+  const inRange = (e: DatedEventRow, s: string, en: string) =>
+    e.occurred_at >= `${s}T00:00:00.000Z` && e.occurred_at <= `${en}T23:59:59.999Z`;
 
-  const current = buildClientHealthSnapshot(currentEvents, currentSpend);
-  const priorSnapshot: ClientHealthSnapshot | null = prior
-    ? buildClientHealthSnapshot(priorEvents, priorSpend)
+  const verdictEvents = matured.empty ? [] : allEvents.filter(e => inRange(e, matured.start, matured.end));
+  const priorEvents = verdictPrior ? allEvents.filter(e => inRange(e, verdictPrior.start, verdictPrior.end)) : [];
+  const recentEvents = allEvents.filter(e => inRange(e, recent.start, recent.end));
+
+  const benchmarks = ((client as { kpi_benchmarks?: unknown }).kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
+  const current = buildClientHealthSnapshot(verdictEvents, currentSpend, benchmarks);
+  const priorSnapshot: ClientHealthSnapshot | null = verdictPrior
+    ? buildClientHealthSnapshot(priorEvents, priorSpendData, benchmarks)
     : null;
+  const recentLeading = buildRecentLeading(recentEvents, recent.start, recent.end, recent.window_days);
   const { trend, trend_delta_score } = compareHealthTrend(current, priorSnapshot);
   const guidance = buildConstraintGuidance(current);
 
@@ -85,9 +100,19 @@ export async function GET(
     client_name: client.name,
     is_live: client.is_live !== false,
     period: { start: start_date, end: end_date },
-    prior_period: prior,
+    prior_period: verdictPrior,
+    maturity: {
+      days: matured.maturity_days,
+      matured_through: matured.matured_through,
+      clamped: matured.clamped,
+      empty: matured.empty,
+      recent_window_days: recent.window_days,
+      recent_start: recent.start,
+      recent_end: recent.end,
+    },
     current,
     prior: priorSnapshot,
+    recent: recentLeading,
     trend,
     trend_delta_score,
     guidance,

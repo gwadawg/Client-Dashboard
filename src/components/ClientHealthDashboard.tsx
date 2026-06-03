@@ -57,8 +57,8 @@ const TREND_ICONS: Record<ClientHealthRow["trend"], { symbol: string; color: str
 
 const CHART_METRICS: { key: SortKey; label: string }[] = [
   { key: "priority", label: "Attention score" },
-  { key: "show_rate", label: "Show rate %" },
-  { key: "cps", label: "Cost per show" },
+  { key: "show_rate", label: "Show rate % (true)" },
+  { key: "cps", label: "Cost per conversation" },
   { key: "leads", label: "Total leads" },
 ];
 
@@ -88,6 +88,15 @@ function KpiDot({ tier }: { tier: HealthTier }) {
 export default function ClientHealthDashboard({ startDate, endDate }: Props) {
   const [rows, setRows] = useState<ClientHealthRow[]>([]);
   const [priorLabel, setPriorLabel] = useState<string>("");
+  const [maturity, setMaturity] = useState<{
+    days: number;
+    matured_through: string;
+    clamped: boolean;
+    empty: boolean;
+    recent_window_days: number;
+    recent_start: string;
+    recent_end: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [liveOnly, setLiveOnly] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("priority");
@@ -106,6 +115,7 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
       .then(r => r.json())
       .then(d => {
         setRows(d.clients ?? []);
+        setMaturity(d.maturity ?? null);
         if (d.prior_period) {
           setPriorLabel(`${d.prior_period.start} → ${d.prior_period.end}`);
         } else {
@@ -132,10 +142,10 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
         return dir * (computePriorityScore(a) - computePriorityScore(b));
       }
       if (sortKey === "show_rate") {
-        return dir * (a.current.metrics.show_pct - b.current.metrics.show_pct);
+        return dir * (a.current.metrics.net_show_pct - b.current.metrics.net_show_pct);
       }
       if (sortKey === "cps") {
-        return dir * (a.current.metrics.cps - b.current.metrics.cps);
+        return dir * (a.current.metrics.cp_conversation - b.current.metrics.cp_conversation);
       }
       if (sortKey === "leads") {
         return dir * (a.current.metrics.new_leads - b.current.metrics.new_leads);
@@ -158,8 +168,8 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
     return sorted.slice(0, 20).map(r => {
       let value = 0;
       if (chartMetric === "priority") value = computePriorityScore(r);
-      else if (chartMetric === "show_rate") value = r.current.metrics.show_pct;
-      else if (chartMetric === "cps") value = r.current.metrics.cps;
+      else if (chartMetric === "show_rate") value = r.current.metrics.net_show_pct;
+      else if (chartMetric === "cps") value = r.current.metrics.cp_conversation;
       else if (chartMetric === "leads") value = r.current.metrics.new_leads;
       return {
         name: r.client_name.length > 18 ? `${r.client_name.slice(0, 16)}…` : r.client_name,
@@ -218,6 +228,31 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
         </p>
       </div>
 
+      {/* Maturity / two-instrument explainer */}
+      {maturity ? (
+        <div
+          className="rounded-xl px-4 py-3 text-xs leading-relaxed"
+          style={{ background: "#0a1628", border: "1px solid rgba(56,189,248,0.18)", color: "#94a3b8" }}
+        >
+          {maturity.empty ? (
+            <>
+              <span style={{ color: "#38bdf8", fontWeight: 600 }}>Still maturing — no verdict yet.</span>{" "}
+              The selected range is more recent than the {maturity.days}-day maturity window, so lag-sensitive KPIs
+              (CPConv, show rate, close rate) can&apos;t be graded reliably. Use the <strong>Recent ({maturity.recent_window_days}d)</strong>{" "}
+              leading indicators below for early signal, or widen the date range for a verdict.
+            </>
+          ) : (
+            <>
+              <span style={{ color: "#38bdf8", fontWeight: 600 }}>Verdict = matured data through {maturity.matured_through}.</span>{" "}
+              The last {maturity.days} days are still resolving (bookings → appointments → outcomes), so they&apos;re
+              excluded from the graded verdict to keep CPConv / show / close honest. The{" "}
+              <strong>Recent ({maturity.recent_window_days}d)</strong> leading indicators (expand a client) are your
+              early-warning instrument.
+            </>
+          )}
+        </div>
+      ) : null}
+
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
@@ -247,7 +282,7 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
         <select style={selectStyle} value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}>
           <option value="priority">Sort: Attention (worst first)</option>
           <option value="show_rate">Sort: Show rate</option>
-          <option value="cps">Sort: Cost per show</option>
+          <option value="cps">Sort: Cost per conversation</option>
           <option value="leads">Sort: Lead volume</option>
           <option value="name">Sort: Name</option>
         </select>
@@ -336,7 +371,7 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                {["Client", "Status", "Constraint", "Trend", "Leads", "Qual %", "Book %", "Show %", "CPS", ""].map(h => (
+                {["Client", "Status", "Constraint", "Trend", "Leads", "Qual %", "Book %", "Show %", "CPConv", ""].map(h => (
                   <th
                     key={h}
                     className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest"
@@ -420,13 +455,13 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
                             <KpiDot tier={grade("show_rate")?.tier ?? "insufficient"} />
-                            {m.show_pct.toFixed(0)}%
+                            {m.net_show_pct.toFixed(0)}%
                           </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
                             <KpiDot tier={grade("cps")?.tier ?? "insufficient"} />
-                            ${Math.round(m.cps)}
+                            ${Math.round(m.cp_conversation)}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-xs" style={{ color: "#334155" }}>
@@ -454,10 +489,25 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
                             </div>
                             {row.prior && row.prior.metrics.new_leads + row.prior.metrics.booked_appointments > 0 && (
                               <p className="text-xs mt-2" style={{ color: "#475569" }}>
-                                Prior period: {row.prior.metrics.new_leads} leads · {row.prior.metrics.show_pct.toFixed(0)}% show · $
-                                {Math.round(row.prior.metrics.cps)} CPS · attention score {row.prior.attention_score} →{" "}
+                                Prior period: {row.prior.metrics.new_leads} leads · {row.prior.metrics.net_show_pct.toFixed(0)}% show · $
+                                {Math.round(row.prior.metrics.cp_conversation)} CPConv · attention score {row.prior.attention_score} →{" "}
                                 {row.current.attention_score}
                               </p>
+                            )}
+                            {row.recent && (
+                              <div className="mt-3">
+                                <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#38bdf8" }}>
+                                  Recent {row.recent.window_days}d (leading · early warning)
+                                </p>
+                                <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums" style={{ color: "#94a3b8" }}>
+                                  <span>{row.recent.leads} leads</span>
+                                  <span>{row.recent.dials} dials</span>
+                                  <span>{row.recent.pickup_pct.toFixed(0)}% pickup</span>
+                                  <span>{row.recent.lead_to_qualified_pct.toFixed(0)}% lead→qual</span>
+                                  <span>{row.recent.booking_rate.toFixed(0)}% booking</span>
+                                  <span>{row.recent.conversations} conversations</span>
+                                </div>
+                              </div>
                             )}
                             <button
                               type="button"

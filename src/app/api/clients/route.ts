@@ -3,7 +3,7 @@ import { getAuthContext, isAuthError, requirePermission, requireAnyPermission } 
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 
 const DETAIL_FIELDS =
-  'id, name, is_live, reporting_type, share_token, created_at, lifecycle_status, mrr, billing_type, billing_day, launch_date, date_signed, contract_term_months, contract_end_date, performance_terms, billing_email, primary_contact';
+  'id, name, is_live, reporting_type, share_token, created_at, lifecycle_status, mrr, billing_type, billing_day, launch_date, date_signed, contract_term_months, contract_end_date, performance_terms, billing_email, primary_contact, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note';
 
 // GET is intentionally open to any authenticated user: the client list powers
 // the global client-filter dropdown on nearly every tab, so it is a shared

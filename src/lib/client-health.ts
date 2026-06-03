@@ -35,9 +35,9 @@ export type ClientHealthSnapshot = {
   lead_to_qualified_pct: number;
   close_rate_pct: number;
   cpql: number;
-  /** Cost per qualified conversation (= ad spend ÷ shows). The verdict metric. */
+  /** Cost per conversation (= ad spend ÷ (live transfers + shows + claimed)). The verdict metric. */
   cpconv: number;
-  /** Conversation yield = shows ÷ qualified leads (= Booked/QL × Show). */
+  /** Conversation yield = conversations ÷ qualified leads (credits live transfers, not just shows). */
   conversation_yield: number;
   grades: KpiGrade[];
   worst_tier: HealthTier;
@@ -65,7 +65,7 @@ export type ConstraintGuidance = {
   whatsWrong: string;
   fixSteps: FixStep[];
   doNotDo: string[];
-  /** Human-readable CPConv arithmetic: "spend ÷ shows = $X". */
+  /** Human-readable CPConv arithmetic: "spend ÷ conversations = $X". */
   cpconvMath: string;
   /** Cross-check via CPQL ÷ CY. */
   crossCheck: string;
@@ -80,6 +80,27 @@ export type ClientHealthRow = {
   trend: 'improved' | 'worsened' | 'stable' | 'new' | 'insufficient';
   trend_delta_score: number;
   has_activity: boolean;
+  /** Leading-indicator snapshot of the most recent window (early-warning instrument). */
+  recent: RecentLeading | null;
+};
+
+/**
+ * Leading indicators over the most recent window. These resolve fast (no
+ * booking->appointment lag), so they're shown separately as an early-warning
+ * "Recent" instrument rather than folded into the matured verdict.
+ */
+export type RecentLeading = {
+  window_days: number;
+  start: string;
+  end: string;
+  leads: number;
+  qualified_leads: number;
+  dials: number;
+  pickup_pct: number;
+  lead_to_qualified_pct: number;
+  /** Live transfers + claimed + shows in the recent window. */
+  conversations: number;
+  booking_rate: number;
 };
 
 const TIER_WEIGHT: Record<HealthTier, number> = {
@@ -102,12 +123,67 @@ export const KPI_META: Record<KpiKey, { label: string; short: string }> = {
   lead_to_qualified: { label: 'Lead-to-Qualified %', short: 'Qual %' },
   pickup_rate: { label: 'Contact / Pickup Rate', short: 'Pickup' },
   booking_rate: { label: 'Booking Rate (÷ qualified)', short: 'Booking' },
-  show_rate: { label: 'Show Rate', short: 'Show' },
+  show_rate: { label: 'Show Rate (true, ex-LO-bail)', short: 'Show' },
   close_rate: { label: 'Close Rate', short: 'Close' },
   cpl: { label: 'Cost Per Lead', short: 'CPL' },
   cpql: { label: 'Cost Per Qualified Lead', short: 'CPQL' },
-  cps: { label: 'Cost Per Show (CQPCONV)', short: 'CPS' },
+  cps: { label: 'Cost Per Conversation (CPConv)', short: 'CPConv' },
 };
+
+export type Bands = { critical?: number; below?: number; at?: number };
+
+export type KpiBandSpec = {
+  bands: Bands;
+  /** true = higher value is better (rates); false = lower is better (costs). */
+  higherIsBetter: boolean;
+  /** unit of the threshold values, for the editor UI. */
+  unit: 'pct' | 'money';
+};
+
+/**
+ * Global default bands — the single source of truth for the grader and the
+ * per-client benchmark editor. Values calibrated against the live per-client
+ * distribution (see docs/CLIENT-HEALTH-REDESIGN.md §8.1). Per-client overrides
+ * are layered on top of these; anything not overridden falls back here.
+ */
+export const DEFAULT_KPI_BANDS: Record<KpiKey, KpiBandSpec> = {
+  lead_to_qualified: { bands: { critical: 40, below: 50, at: 65 }, higherIsBetter: true, unit: 'pct' },
+  pickup_rate:       { bands: { critical: 20, below: 30, at: 45 }, higherIsBetter: true, unit: 'pct' },
+  booking_rate:      { bands: { critical: 20, below: 25, at: 30 }, higherIsBetter: true, unit: 'pct' },
+  show_rate:         { bands: { critical: 55, below: 63, at: 70 }, higherIsBetter: true, unit: 'pct' },
+  close_rate:        { bands: { critical: 10, below: 20, at: 35 }, higherIsBetter: true, unit: 'pct' },
+  cpl:               { bands: { critical: 25, below: 20, at: 15 }, higherIsBetter: false, unit: 'money' },
+  cpql:              { bands: { critical: 35, below: 30, at: 20 }, higherIsBetter: false, unit: 'money' },
+  cps:               { bands: { critical: 200, below: 150, at: 100 }, higherIsBetter: false, unit: 'money' },
+};
+
+/** Minimum denominator per KPI before it can be graded (volume guard). */
+const KPI_MIN_DENOMINATOR: Record<KpiKey, number> = {
+  lead_to_qualified: 5,
+  pickup_rate: 20,
+  booking_rate: 5,
+  show_rate: 10,
+  close_rate: 10,
+  cpl: 5,
+  cpql: 3,
+  cps: 5,
+};
+
+/**
+ * Per-client manual benchmark overrides. Sparse: only the KPIs/bands a human has
+ * customized are present; everything else inherits DEFAULT_KPI_BANDS. Markets and
+ * client profiles differ, so a global truth is unfair — this lets each client be
+ * judged against its own bar while measurement stays identical.
+ */
+export type ClientKpiBenchmarks = Partial<Record<KpiKey, Bands>>;
+
+/** Merge a client's overrides over the global defaults for one KPI. */
+function resolveBands(key: KpiKey, overrides?: ClientKpiBenchmarks | null): KpiBandSpec {
+  const def = DEFAULT_KPI_BANDS[key];
+  const ov = overrides?.[key];
+  if (!ov) return def;
+  return { ...def, bands: { ...def.bands, ...ov } };
+}
 
 type ClientEventRow = EventRow & { client_id: string };
 type ClientSpendRow = SpendRow & { client_id: string };
@@ -132,6 +208,23 @@ function tierFromBands(
   return 'above';
 }
 
+/**
+ * Overall verdict tier. Replaces the old "worst-tier-wins", which let a single
+ * 'below' KPI nuke an otherwise-healthy account. New rule:
+ *   - Critical override: any single 'critical' (911) KPI surfaces as critical.
+ *   - Otherwise a volume-blind weighted average of tier weights (above=1, at=2,
+ *     below=3) maps to the overall tier, so one weak KPI among many strong ones
+ *     no longer dominates.
+ */
+function computeOverallTier(graded: KpiGrade[]): HealthTier {
+  if (graded.length === 0) return 'insufficient';
+  if (graded.some(g => g.tier === 'critical')) return 'critical';
+  const avg = graded.reduce((sum, g) => sum + TIER_WEIGHT[g.tier], 0) / graded.length;
+  if (avg < 1.5) return 'above';
+  if (avg < 2.5) return 'at';
+  return 'below';
+}
+
 function formatPct(n: number): string {
   return `${n.toFixed(1)}%`;
 }
@@ -144,6 +237,7 @@ function formatMoney(n: number): string {
 export function buildClientHealthSnapshot(
   events: EventRow[],
   spendRows: SpendRow[],
+  benchmarks?: ClientKpiBenchmarks | null,
 ): ClientHealthSnapshot {
   const metrics = calculateMetrics(events, spendRows);
   const lead_to_qualified_pct =
@@ -152,72 +246,45 @@ export function buildClientHealthSnapshot(
     metrics.shows > 0 ? (metrics.closed / metrics.shows) * 100 : 0;
   const cpql =
     metrics.qualified_leads > 0 ? metrics.ad_spend / metrics.qualified_leads : 0;
-  // CPConv = ad spend ÷ shows (the verdict metric — same arithmetic as cost per show).
-  const cpconv = metrics.shows > 0 ? metrics.ad_spend / metrics.shows : 0;
-  // Conversation yield = shows ÷ qualified leads (= Booked/QL × Show Rate).
+  // CPConv = ad spend ÷ conversations (live transfers + shows + claimed). The verdict
+  // metric. Previously this was shows-only (= CPS) mislabeled as CPConv; corrected to
+  // the conversation-inclusive definition so the live-transfer path is credited.
+  const cpconv = metrics.cp_conversation;
+  // A conversation = live transfer + show + claimed. Used as the CPConv denominator and
+  // for conversation yield below.
+  const conversation_count = metrics.live_transfers + metrics.claimed + metrics.shows;
+  // Conversation yield = conversations ÷ qualified leads (credits the live-transfer path,
+  // not just shows), keeping CPQL ÷ CY == CPConv consistent.
   const conversation_yield =
-    metrics.qualified_leads > 0 ? metrics.shows / metrics.qualified_leads : 0;
+    metrics.qualified_leads > 0 ? conversation_count / metrics.qualified_leads : 0;
+
+  // Grade one KPI against its resolved (default + per-client override) bands.
+  const grade = (key: KpiKey, value: number, display: string, denominator: number): KpiGrade => {
+    const spec = resolveBands(key, benchmarks);
+    return gradeKpi(
+      key,
+      value,
+      display,
+      tierFromBands(value, spec.bands, spec.higherIsBetter, KPI_MIN_DENOMINATOR[key], denominator),
+    );
+  };
 
   const grades: KpiGrade[] = [
-    gradeKpi(
-      'lead_to_qualified',
-      lead_to_qualified_pct,
-      formatPct(lead_to_qualified_pct),
-      tierFromBands(lead_to_qualified_pct, { critical: 40, below: 50, at: 65 }, true, 5, metrics.new_leads),
-    ),
-    gradeKpi(
-      'pickup_rate',
-      metrics.pickup_pct,
-      formatPct(metrics.pickup_pct),
-      tierFromBands(metrics.pickup_pct, { critical: 20, below: 30, at: 45 }, true, 20, metrics.outbound_dials),
-    ),
-    gradeKpi(
-      'booking_rate',
-      metrics.appt_booking_rate,
-      formatPct(metrics.appt_booking_rate),
-      tierFromBands(metrics.appt_booking_rate, { critical: 20, below: 25, at: 30 }, true, 5, metrics.qualified_leads),
-    ),
-    gradeKpi(
-      'show_rate',
-      metrics.show_pct,
-      formatPct(metrics.show_pct),
-      tierFromBands(metrics.show_pct, { critical: 51, below: 56, at: 70 }, true, 3, metrics.booked_appointments),
-    ),
-    gradeKpi(
-      'close_rate',
-      close_rate_pct,
-      formatPct(close_rate_pct),
-      tierFromBands(close_rate_pct, { critical: 10, below: 20, at: 35 }, true, 3, metrics.shows),
-    ),
-    gradeKpi(
-      'cpl',
-      metrics.cpl,
-      formatMoney(metrics.cpl),
-      tierFromBands(metrics.cpl, { critical: 25, below: 20, at: 15 }, false, 5, metrics.new_leads),
-    ),
-    gradeKpi(
-      'cpql',
-      cpql,
-      formatMoney(cpql),
-      tierFromBands(cpql, { critical: 35, below: 30, at: 20 }, false, 3, metrics.qualified_leads),
-    ),
-    gradeKpi(
-      'cps',
-      metrics.cps,
-      formatMoney(metrics.cps),
-      tierFromBands(metrics.cps, { critical: 225, below: 150, at: 80 }, false, 1, metrics.shows),
-    ),
+    grade('lead_to_qualified', lead_to_qualified_pct, formatPct(lead_to_qualified_pct), metrics.new_leads),
+    grade('pickup_rate', metrics.pickup_pct, formatPct(metrics.pickup_pct), metrics.outbound_dials),
+    grade('booking_rate', metrics.appt_booking_rate, formatPct(metrics.appt_booking_rate), metrics.qualified_leads),
+    // True (LO-bail-fair) show rate: shows / (shows + no_shows). Denominator is
+    // resolved appointments only, so still-pending recent bookings don't deflate it.
+    grade('show_rate', metrics.net_show_pct, formatPct(metrics.net_show_pct), metrics.shows + metrics.no_shows),
+    grade('close_rate', close_rate_pct, formatPct(close_rate_pct), metrics.shows),
+    grade('cpl', metrics.cpl, formatMoney(metrics.cpl), metrics.new_leads),
+    grade('cpql', cpql, formatMoney(cpql), metrics.qualified_leads),
+    // True CPConv (cost per conversation), the verdict metric.
+    grade('cps', cpconv, formatMoney(cpconv), conversation_count),
   ];
 
   const graded = grades.filter(g => g.tier !== 'insufficient');
-  const worst_tier: HealthTier =
-    graded.length === 0
-      ? 'insufficient'
-      : graded.reduce(
-          (worst, g) => (TIER_WEIGHT[g.tier] > TIER_WEIGHT[worst] ? g.tier : worst),
-          'above' as HealthTier,
-        );
-
+  const worst_tier = computeOverallTier(graded);
   const attention_score = graded.reduce((sum, g) => sum + TIER_WEIGHT[g.tier], 0);
   const { constraint, constraint_label } = inferConstraint(metrics, grades, lead_to_qualified_pct, cpql);
 
@@ -326,10 +393,11 @@ export function buildConstraintGuidance(snapshot: ClientHealthSnapshot): Constra
   const m = snapshot.metrics;
   const layer = CONSTRAINT_LAYER[snapshot.constraint];
 
+  const conversationCount = m.live_transfers + m.claimed + m.shows;
   const cpconvMath =
-    m.shows > 0
-      ? `${formatMoney(m.ad_spend)} spend ÷ ${m.shows} show${m.shows === 1 ? '' : 's'} = ${formatMoney(snapshot.cpconv)} CPConv`
-      : `No shows in period — CPConv cannot be computed (${formatMoney(m.ad_spend)} spend, 0 shows)`;
+    conversationCount > 0
+      ? `${formatMoney(m.ad_spend)} spend ÷ ${conversationCount} conversation${conversationCount === 1 ? '' : 's'} (live transfers + shows + claimed) = ${formatMoney(snapshot.cpconv)} CPConv`
+      : `No conversations in period — CPConv cannot be computed (${formatMoney(m.ad_spend)} spend, 0 conversations)`;
 
   const crossCheck =
     snapshot.conversation_yield > 0 && snapshot.cpql > 0
@@ -517,7 +585,7 @@ export const SUCCESS_METRIC_META: Record<
   SuccessMetricKey,
   { label: string; lowerIsBetter: boolean; unit: 'money' | 'pct' | 'ratio' }
 > = {
-  cpconv: { label: 'CPConv (cost / show)', lowerIsBetter: true, unit: 'money' },
+  cpconv: { label: 'CPConv (cost / conv)', lowerIsBetter: true, unit: 'money' },
   cpql: { label: 'Cost per qualified lead', lowerIsBetter: true, unit: 'money' },
   cpl: { label: 'Cost per lead', lowerIsBetter: true, unit: 'money' },
   show_rate: { label: 'Show rate', lowerIsBetter: false, unit: 'pct' },
@@ -567,6 +635,83 @@ export function computePriorityScore(row: ClientHealthRow): number {
   const spendBoost = Math.min(3, Math.log10(Math.max(1, row.current.metrics.ad_spend)) / 2);
   const criticalBonus = row.current.grades.filter(g => g.tier === 'critical').length * 2;
   return row.current.attention_score + spendBoost + criticalBonus;
+}
+
+/**
+ * Maturity cutoff (days). Lag analysis on live data showed 98.4% of appointments
+ * occur within 7 days of booking, and outcome events are dated at the appointment
+ * date. So lag-sensitive KPIs (CPConv, close rate, show rate) only become
+ * trustworthy once a cohort is ~7 days old. The verdict window excludes the most
+ * recent MATURITY_DAYS so spend and its resulting conversations/closes are aligned.
+ */
+export const MATURITY_DAYS = 7;
+
+/** Window (days) for the leading-indicator "Recent" early-warning instrument. */
+export const RECENT_WINDOW_DAYS = 14;
+
+function shiftDays(date: string, n: number): string {
+  const ms = new Date(`${date}T00:00:00.000Z`).getTime() + n * 86400000;
+  return new Date(ms).toISOString().split('T')[0];
+}
+
+function utcToday(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+/**
+ * Clamp the selected [start, end] back by `maturityDays` to get the matured
+ * verdict window. `empty` is true when the selected window is too recent to have
+ * any matured data (e.g. "Last 7 Days") — the verdict is then "still maturing"
+ * and the Recent instrument carries the signal.
+ */
+export function maturedWindow(
+  start: string,
+  end: string,
+  today: string = utcToday(),
+  maturityDays: number = MATURITY_DAYS,
+): { start: string; end: string; empty: boolean; clamped: boolean; matured_through: string; maturity_days: number } {
+  const cutoff = shiftDays(today, -maturityDays);
+  const maturedEnd = end < cutoff ? end : cutoff;
+  return {
+    start,
+    end: maturedEnd,
+    empty: maturedEnd < start,
+    clamped: maturedEnd < end,
+    matured_through: maturedEnd,
+    maturity_days: maturityDays,
+  };
+}
+
+/** The most recent slice of the selected window, clamped to its start. */
+export function recentWindow(
+  start: string,
+  end: string,
+  days: number = RECENT_WINDOW_DAYS,
+): { start: string; end: string; window_days: number } {
+  const candidate = shiftDays(end, -(days - 1));
+  return { start: candidate > start ? candidate : start, end, window_days: days };
+}
+
+/** Build the leading-indicator summary for the recent window (spend not needed). */
+export function buildRecentLeading(
+  events: EventRow[],
+  start: string,
+  end: string,
+  windowDays: number = RECENT_WINDOW_DAYS,
+): RecentLeading {
+  const m = calculateMetrics(events, []);
+  return {
+    window_days: windowDays,
+    start,
+    end,
+    leads: m.new_leads,
+    qualified_leads: m.qualified_leads,
+    dials: m.outbound_dials,
+    pickup_pct: m.pickup_pct,
+    lead_to_qualified_pct: m.new_leads > 0 ? (m.qualified_leads / m.new_leads) * 100 : 0,
+    conversations: m.live_transfers + m.claimed + m.shows,
+    booking_rate: m.appt_booking_rate,
+  };
 }
 
 export function getPriorPeriod(start: string, end: string): { start: string; end: string } | null {

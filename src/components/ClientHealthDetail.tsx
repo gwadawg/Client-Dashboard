@@ -9,7 +9,18 @@ import {
   type FunnelLayer,
   type HealthTier,
   type KpiKey,
+  type RecentLeading,
 } from "@/lib/client-health";
+
+type MaturityInfo = {
+  days: number;
+  matured_through: string;
+  clamped: boolean;
+  empty: boolean;
+  recent_window_days: number;
+  recent_start: string;
+  recent_end: string;
+};
 import ClientActionLog from "./ClientActionLog";
 import ClientTimelineChart from "./ClientTimelineChart";
 import ClientAiDiagnosis from "./ClientAiDiagnosis";
@@ -30,6 +41,8 @@ type DetailResponse = {
   prior_period: { start: string; end: string } | null;
   current: ClientHealthSnapshot;
   prior: ClientHealthSnapshot | null;
+  recent?: RecentLeading | null;
+  maturity?: MaturityInfo | null;
   trend: "improved" | "worsened" | "stable" | "new" | "insufficient";
   guidance: ConstraintGuidance;
 };
@@ -130,16 +143,40 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                   {data.period.start} → {data.period.end}
                   {data.prior_period ? ` · vs ${data.prior_period.start} → ${data.prior_period.end}` : ""}
                 </p>
+                {data.maturity ? (
+                  <p className="text-[11px] mt-1" style={{ color: "#38bdf8" }}>
+                    {data.maturity.empty
+                      ? `Still maturing — verdict needs data older than ${data.maturity.days}d; see Recent below.`
+                      : `Verdict matured through ${data.maturity.matured_through} (excludes last ${data.maturity.days}d still resolving).`}
+                  </p>
+                ) : null}
               </div>
               <TierBadge tier={data.current.worst_tier} />
             </div>
 
+            {data.recent ? (
+              <div className="mt-3 rounded-lg px-3 py-2" style={{ background: "#050c18", border: "1px solid rgba(56,189,248,0.18)" }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#38bdf8" }}>
+                  Recent {data.recent.window_days}d · leading indicators (early warning)
+                </p>
+                <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums" style={{ color: "#94a3b8" }}>
+                  <span>{data.recent.leads} leads</span>
+                  <span>{data.recent.dials} dials</span>
+                  <span>{data.recent.pickup_pct.toFixed(0)}% pickup</span>
+                  <span>{data.recent.lead_to_qualified_pct.toFixed(0)}% lead→qual</span>
+                  <span>{data.recent.booking_rate.toFixed(0)}% booking</span>
+                  <span>{data.recent.conversations} conversations</span>
+                </div>
+              </div>
+            ) : null}
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
               {[
-                { label: "CPConv (cost / show)", value: money(data.current.cpconv) },
+                { label: "CPConv (cost / conv)", value: money(data.current.cpconv) },
                 { label: "CPQL", value: money(data.current.cpql) },
                 { label: "Conversation yield", value: data.current.conversation_yield.toFixed(3) },
-                { label: "Leads / shows", value: `${data.current.metrics.new_leads} / ${data.current.metrics.shows}` },
+                { label: "Leads / convs", value: `${data.current.metrics.new_leads} / ${data.current.metrics.live_transfers + data.current.metrics.claimed + data.current.metrics.shows}` },
+                { label: "LO bail rate (client-side)", value: `${data.current.metrics.lo_bail_rate.toFixed(0)}%` },
               ].map(s => (
                 <div key={s.label} className="rounded-lg px-3 py-2" style={{ background: "#050c18" }}>
                   <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#475569" }}>
