@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
-import { computeNextBillingDate, deriveStatus, type BillingRow } from '@/lib/billing';
+import { computeNextBillingDate, deriveStatus, balanceOf, recordedState, type BillingRow } from '@/lib/billing';
 
 const CLIENT_BILLING_FIELDS =
-  'id, name, is_live, mrr, billing_type, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend';
+  'id, name, is_live, lifecycle_status, mrr, billing_type, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms';
 
 const BILLING_FIELDS =
-  'id, client_id, billed_on, period_start, period_end, amount, status, paid_on, method, invoice_ref, note, created_at';
-
-const OPEN_STATUSES = ['pending', 'overdue', 'failed'];
+  'id, client_id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, amount_paid, status, paid_on, method, invoice_ref, note, created_at';
 
 function todayYmd(): string {
   return new Date().toISOString().slice(0, 10);
@@ -55,6 +53,7 @@ export async function GET(req: Request) {
   const today = todayYmd();
   const monthStart = today.slice(0, 8) + '01';
 
+  const now = new Date();
   let activeMrr = 0;
   let billedThisMonth = 0;
   let overdueTotal = 0;
@@ -80,10 +79,11 @@ export async function GET(req: Request) {
   for (const b of billings) {
     const amount = Number(b.amount) || 0;
     if (b.billed_on >= monthStart && b.billed_on <= today) billedThisMonth += amount;
-    if (OPEN_STATUSES.includes(b.status)) {
-      openTotal += amount;
-      if (b.status === 'overdue' || b.billed_on < today) overdueTotal += amount;
-    }
+    const state = recordedState(b, now);
+    if (state === 'paid' || state === 'refunded') continue;
+    const balance = balanceOf(b);
+    openTotal += balance;
+    if (state === 'overdue' || state === 'failed') overdueTotal += balance;
   }
 
   return NextResponse.json({
@@ -105,20 +105,46 @@ export async function POST(req: Request) {
   if (denied) return denied;
 
   const body = await req.json();
-  const { client_id, billed_on, amount } = body;
+  const { client_id, billed_on } = body;
 
   if (!client_id) return NextResponse.json({ error: 'client_id is required' }, { status: 400 });
   if (!billed_on) return NextResponse.json({ error: 'billed_on is required' }, { status: 400 });
-  if (amount === undefined || amount === null || Number.isNaN(Number(amount)))
-    return NextResponse.json({ error: 'amount is required' }, { status: 400 });
+
+  // The total due is the sum of the breakdown. Fall back to a flat `amount` so
+  // older callers still work; that flat amount becomes the base.
+  const base = Number(body.base_amount ?? body.amount);
+  if (Number.isNaN(base))
+    return NextResponse.json({ error: 'base_amount (or amount) is required' }, { status: 400 });
+  const performance = Number(body.performance_amount) || 0;
+  const lateFee = Number(body.late_fee) || 0;
+  const amount = base + performance + lateFee;
+
+  // Paid-ness: an explicit "paid" status (or markPaid) settles the full amount;
+  // otherwise derive paid/partial/pending from how much was collected.
+  const wantsPaid = body.status === 'paid' || body.markPaid === true;
+  const amountPaid = wantsPaid ? amount : Number(body.amount_paid) || 0;
+  let status: string = body.status ?? 'pending';
+  if (!body.status) {
+    if (amount > 0 && amountPaid >= amount) status = 'paid';
+    else if (amountPaid > 0) status = 'partial';
+    else status = 'pending';
+  }
+
+  const dueDate = body.due_date || billed_on;
 
   const insert: Record<string, unknown> = {
     client_id,
     billed_on,
-    amount: Number(amount),
-    status: body.status ?? 'pending',
+    due_date: dueDate,
+    base_amount: base,
+    performance_amount: performance,
+    late_fee: lateFee,
+    amount,
+    amount_paid: amountPaid,
+    status,
     created_by: ctx.userId,
   };
+  if (status === 'paid' && !body.paid_on) insert.paid_on = billed_on;
   for (const k of ['period_start', 'period_end', 'paid_on', 'method', 'invoice_ref', 'note'] as const) {
     if (k in body && body[k] !== '') insert[k] = body[k];
   }

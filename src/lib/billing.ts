@@ -21,6 +21,43 @@ export interface BillingRow {
   status?: string | null;
 }
 
+// The amount-aware shape of a recorded billing used for balance + state.
+export interface BillingAmounts {
+  amount: number;
+  amount_paid?: number | null;
+  due_date?: string | null;
+  billed_on: string;
+  status?: string | null;
+}
+
+export type RecordedState = "paid" | "partial" | "overdue" | "pending" | "failed" | "refunded";
+
+/** Outstanding balance on a billing (never below zero). */
+export function balanceOf(b: { amount: number; amount_paid?: number | null }): number {
+  const due = Number(b.amount) || 0;
+  const paid = Number(b.amount_paid) || 0;
+  return Math.max(0, due - paid);
+}
+
+/**
+ * Effective state of a recorded billing, derived from how much is paid and how
+ * the due date sits against today. Explicit failed/refunded are preserved.
+ */
+export function recordedState(
+  b: BillingAmounts,
+  today: Date = new Date(),
+): RecordedState {
+  if (b.status === "failed" || b.status === "refunded") return b.status;
+  const balance = balanceOf(b);
+  const paid = Number(b.amount_paid) || 0;
+  if (balance <= 0) return "paid";
+  const dueRef = b.due_date ?? b.billed_on;
+  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const isOverdue = dueRef ? parseYmd(dueRef).getTime() < todayUtc : false;
+  if (isOverdue) return "overdue";
+  return paid > 0 ? "partial" : "pending";
+}
+
 function parseYmd(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d));

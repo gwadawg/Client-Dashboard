@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 
 // GET is intentionally open to any authenticated user: the client list powers
@@ -21,15 +21,34 @@ export async function GET() {
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, 'admin_clients');
+  // Allowed from the Client Roster (admin_clients) and the billing onboarding
+  // flow (admin_billing).
+  const denied = requireAnyPermission(ctx, ['admin_clients', 'admin_billing']);
   if (denied) return denied;
 
-  const { name, reporting_type } = await req.json();
+  const body = await req.json();
+  const { name, reporting_type } = body;
   if (!name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 });
+
+  const insert: Record<string, unknown> = {
+    name: name.trim(),
+    reporting_type: normalizeReportingType(reporting_type),
+  };
+  const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend']);
+  const optional = [
+    'is_live', 'lifecycle_status', 'mrr', 'billing_type', 'launch_date',
+    'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
+    'performance_terms',
+  ] as const;
+  for (const k of optional) {
+    if (!(k in body)) continue;
+    if (numericFields.has(k)) insert[k] = body[k] === '' || body[k] === null ? null : Number(body[k]);
+    else insert[k] = body[k] === '' ? null : body[k];
+  }
 
   const { data, error } = await ctx.service
     .from('clients')
-    .insert({ name: name.trim(), reporting_type: normalizeReportingType(reporting_type) })
+    .insert(insert)
     .select()
     .single();
 

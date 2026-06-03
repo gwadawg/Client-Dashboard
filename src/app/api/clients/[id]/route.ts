@@ -15,6 +15,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     'name', 'is_live', 'reporting_type',
     // Billing fields (editable from the Client Billing tab)
     'mrr', 'billing_type', 'launch_date', 'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
+    // Lifecycle (pause/churn/reactivate) + performance pricing note.
+    // churned_at is intentionally NOT here — the DB trigger owns it.
+    'lifecycle_status', 'performance_terms',
   ];
   const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend']);
   const updates: Record<string, unknown> = {};
@@ -29,7 +32,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .from('clients')
     .update(updates)
     .eq('id', id)
-    .select('id, name, is_live, reporting_type, share_token, created_at, mrr, billing_type, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend')
+    .select('id, name, is_live, reporting_type, share_token, created_at, mrr, billing_type, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, lifecycle_status, performance_terms')
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

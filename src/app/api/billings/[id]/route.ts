@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 const BILLING_FIELDS =
-  'id, client_id, billed_on, period_start, period_end, amount, status, paid_on, method, invoice_ref, note, created_at';
+  'id, client_id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, amount_paid, status, paid_on, method, invoice_ref, note, created_at';
 
-// PATCH /api/billings/[id] — mark paid / edit a billing row
+// PATCH /api/billings/[id] — mark paid / record a partial payment / adjust the
+// breakdown / extend the due date / re-disposition a billing row.
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -14,17 +15,63 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const body = await req.json();
 
-  const allowed = [
-    'billed_on', 'period_start', 'period_end', 'amount',
-    'status', 'paid_on', 'method', 'invoice_ref', 'note',
-  ];
+  // Load the current row so breakdown/total/status stay consistent when only a
+  // subset of fields is patched.
+  const { data: current, error: loadErr } = await ctx.service
+    .from('client_billings')
+    .select(BILLING_FIELDS)
+    .eq('id', id)
+    .single();
+  if (loadErr) return NextResponse.json({ error: loadErr.message }, { status: 404 });
+
   const updates: Record<string, unknown> = {};
-  for (const k of allowed) {
-    if (k in body) updates[k] = k === 'amount' ? Number(body[k]) : body[k];
+
+  for (const k of ['billed_on', 'due_date', 'period_start', 'period_end', 'method', 'invoice_ref', 'note'] as const) {
+    if (k in body) updates[k] = body[k];
   }
 
-  // Convenience: marking paid stamps today's date unless one is supplied.
-  if (updates.status === 'paid' && !('paid_on' in updates)) {
+  // Recompute the total when any breakdown piece is adjusted.
+  const touchesBreakdown = ['base_amount', 'performance_amount', 'late_fee'].some(k => k in body) || 'amount' in body;
+  const base = 'base_amount' in body ? Number(body.base_amount)
+    : Number(current.base_amount ?? current.amount) || 0;
+  const performance = 'performance_amount' in body ? Number(body.performance_amount)
+    : Number(current.performance_amount) || 0;
+  const lateFee = 'late_fee' in body ? Number(body.late_fee)
+    : Number(current.late_fee) || 0;
+  let amount = Number(current.amount) || 0;
+  if (touchesBreakdown) {
+    amount = base + performance + lateFee;
+    updates.base_amount = base;
+    updates.performance_amount = performance;
+    updates.late_fee = lateFee;
+    updates.amount = amount;
+  }
+
+  // Payment handling.
+  const wantsPaid = body.status === 'paid' || body.markPaid === true;
+  let amountPaid = Number(current.amount_paid) || 0;
+  if (wantsPaid) {
+    amountPaid = amount;
+    updates.amount_paid = amountPaid;
+  } else if ('amount_paid' in body) {
+    amountPaid = Number(body.amount_paid) || 0;
+    updates.amount_paid = amountPaid;
+  }
+
+  // Status: explicit wins; otherwise derive from how much is now paid.
+  if (body.status) {
+    updates.status = body.status;
+  } else if (wantsPaid) {
+    updates.status = 'paid';
+  } else if ('amount_paid' in body || touchesBreakdown) {
+    if (amount > 0 && amountPaid >= amount) updates.status = 'paid';
+    else if (amountPaid > 0) updates.status = 'partial';
+    else updates.status = 'pending';
+  }
+
+  if ('paid_on' in body) {
+    updates.paid_on = body.paid_on;
+  } else if (updates.status === 'paid' && !current.paid_on) {
     updates.paid_on = new Date().toISOString().slice(0, 10);
   }
 

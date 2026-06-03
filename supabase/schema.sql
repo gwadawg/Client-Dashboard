@@ -145,6 +145,7 @@ alter table clients add column if not exists zip_code               text;
 alter table clients add column if not exists timezone               text;
 alter table clients add column if not exists states_licensed        text[];
 alter table clients add column if not exists clickup_task_id        text;
+alter table clients add column if not exists performance_terms      text;
 
 do $$
 begin
@@ -512,28 +513,43 @@ create unique index if not exists business_metrics_key_period_dim
 --     + the latest row here; not stored. Reached via service role only (no RLS).
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists client_billings (
-  id           uuid    primary key default gen_random_uuid(),
-  client_id    uuid    not null references clients(id) on delete cascade,
-  billed_on    date    not null,                 -- date this billing was issued
-  period_start date,                             -- service period this covers
-  period_end   date,
-  amount       numeric not null,
-  status       text    not null default 'pending',  -- pending | paid | overdue | failed | refunded
-  paid_on      date,
-  method       text,                             -- card | ach | wire | stripe | manual
-  invoice_ref  text,                             -- external invoice / Stripe id
-  note         text,
-  created_by   uuid    references auth.users(id) on delete set null,
-  created_at   timestamptz default now()
+  id                 uuid    primary key default gen_random_uuid(),
+  client_id          uuid    not null references clients(id) on delete cascade,
+  billed_on          date    not null,                 -- date this billing was issued
+  due_date           date,                             -- when payment is due (extendable)
+  period_start       date,                             -- service period this covers
+  period_end         date,
+  amount             numeric not null,                 -- total due = base + performance + late_fee
+  base_amount        numeric,                          -- recurring base (defaults to clients.mrr)
+  performance_amount numeric default 0,                -- manual performance add-on
+  late_fee           numeric default 0,                -- late charge
+  amount_paid        numeric default 0,                -- actually collected (partial = 0 < paid < amount)
+  status             text    not null default 'pending',  -- pending | partial | paid | overdue | failed | refunded
+  paid_on            date,
+  method             text,                             -- card | ach | wire | stripe | manual
+  invoice_ref        text,                             -- external invoice / Stripe id
+  note               text,
+  created_by         uuid    references auth.users(id) on delete set null,
+  created_at         timestamptz default now()
 );
+
+-- Additive columns (so re-running on an older client_billings table backfills them)
+alter table client_billings add column if not exists due_date           date;
+alter table client_billings add column if not exists base_amount        numeric;
+alter table client_billings add column if not exists performance_amount numeric default 0;
+alter table client_billings add column if not exists late_fee           numeric default 0;
+alter table client_billings add column if not exists amount_paid        numeric default 0;
+update client_billings set base_amount = amount   where base_amount is null;
+update client_billings set due_date    = billed_on where due_date is null;
 
 do $$
 begin
-  if not exists (select 1 from pg_constraint where conname = 'client_billings_status_check') then
-    alter table client_billings add constraint client_billings_status_check check (
-      status in ('pending', 'paid', 'overdue', 'failed', 'refunded')
-    );
+  if exists (select 1 from pg_constraint where conname = 'client_billings_status_check') then
+    alter table client_billings drop constraint client_billings_status_check;
   end if;
+  alter table client_billings add constraint client_billings_status_check check (
+    status in ('pending', 'partial', 'paid', 'overdue', 'failed', 'refunded')
+  );
 end $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
