@@ -84,10 +84,7 @@ export async function POST(req: Request) {
     // booking, and we use it to confirm the appointment actually exists.
     const { data: bookedRow, error: bookedError } = await service
       .from('events')
-      .select(
-        'id, client_id, occurred_at, scheduled_at, calendar_name, calendar_id, ' +
-          'lead_name, lead_phone, lead_email, agent_name, ghl_contact_id, stage_booked',
-      )
+      .select('id, client_id, occurred_at, scheduled_at, calendar_name, calendar_id, lead_name, lead_phone, lead_email, agent_name, ghl_contact_id, stage_booked')
       .eq('external_id', external_id)
       .eq('event_type', 'appointment_booked')
       .order('occurred_at', { ascending: false })
