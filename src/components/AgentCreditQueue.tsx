@@ -57,6 +57,8 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentName, setSelectedAgentName] = useState("");
   const [clientFilter, setClientFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState<QueueStatus>("uncredited");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -67,6 +69,20 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
   const totalPages = Math.max(1, Math.ceil(total / 50));
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(prev => {
+        const next = search.trim();
+        if (prev !== next) {
+          setLoading(true);
+          setPage(1);
+        }
+        return next;
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const params = new URLSearchParams({ status, page: String(page) });
@@ -74,6 +90,7 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
     else if (clientFilter) params.set("client_id", clientFilter);
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
+    if (debouncedSearch) params.set("search", debouncedSearch);
 
     fetch(`/api/credit-queue?${params}`)
       .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
@@ -101,7 +118,7 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
     return () => {
       cancelled = true;
     };
-  }, [clientFilter, endDate, page, startDate, status]);
+  }, [clientFilter, debouncedSearch, endDate, page, startDate, status]);
 
   async function updateAgent(row: CreditEvent, agentName: string | null) {
     if (agentName !== null && !agentName.trim()) return;
@@ -146,6 +163,25 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
         </div>
 
         <div className="flex items-center gap-3 flex-wrap justify-end">
+          <div className="relative">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search lead, phone, calendar, agent..."
+              style={{ ...selectStyle, width: "16rem", paddingRight: search ? "2rem" : "1rem" }}
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute top-1/2 -translate-y-1/2"
+                style={{ right: "0.5rem", color: "#64748b", fontSize: "1rem", lineHeight: 1 }}
+              >
+                ×
+              </button>
+            )}
+          </div>
           <select
             style={selectStyle}
             value={clientFilter}

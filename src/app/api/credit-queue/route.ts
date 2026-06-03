@@ -17,6 +17,7 @@ export async function GET(req: Request) {
   const liveOnly = searchParams.get('live_only') === 'true';
   const startDate = searchParams.get('start_date');
   const endDate = searchParams.get('end_date');
+  const search = searchParams.get('search')?.trim() ?? '';
   const status = (searchParams.get('status') ?? 'uncredited') as CreditQueueStatus;
   const page = parseInt(searchParams.get('page') ?? '1', 10);
   const limit = 50;
@@ -47,6 +48,13 @@ export async function GET(req: Request) {
   if (endDate) query = query.lte('occurred_at', `${endDate}T23:59:59.999Z`);
   if (status === 'uncredited') query = query.or('agent_name.is.null,agent_name.eq.');
   if (status === 'credited') query = query.not('agent_name', 'is', null).neq('agent_name', '');
+  if (search) {
+    const escaped = search.replace(/[%,()]/g, ' ');
+    const term = `*${escaped}*`;
+    query = query.or(
+      `lead_name.ilike.${term},lead_phone.ilike.${term},calendar_name.ilike.${term},agent_name.ilike.${term}`
+    );
+  }
 
   const [{ data: rows, error, count }, { data: agents, error: agentsError }, { data: userData }] = await Promise.all([
     query,
