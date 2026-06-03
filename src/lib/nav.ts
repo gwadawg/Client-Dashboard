@@ -18,6 +18,7 @@ export type View =
   | "recordings"
   | "goals"
   | "dial_analytics"
+  | "media_buyer"
   | "client_health"
   | "admin_agents"
   | "admin_clients"
@@ -41,6 +42,7 @@ export const NAV_GROUPS = [
 export const NAV: NavItem[] = [
   { view: "dashboard",          label: "Dashboard",             group: "Overview"     },
   { view: "dial_analytics",     label: "Dial Analytics",        group: "Overview"     },
+  { view: "media_buyer",        label: "Media Buyer",           group: "Overview"     },
   { view: "leads",              label: "New Leads",             group: "Raw Data"     },
   { view: "dials",              label: "All Dials",             group: "Raw Data"     },
   { view: "appointments",       label: "Appointments",          group: "Raw Data"     },

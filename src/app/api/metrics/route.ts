@@ -24,7 +24,7 @@ export async function GET(req: Request) {
 
   let eventsQuery = ctx.service
     .from('events')
-    .select('client_id, event_type, ghl_contact_id, lead_phone, lead_email, lead_name, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state');
+    .select('client_id, event_type, ghl_contact_id, lead_phone, lead_email, lead_name, phone_number_used, agent_name, occurred_at, occurred_at_has_time, lead_created_at, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state');
 
   if (client_id) eventsQuery = eventsQuery.eq('client_id', client_id);
   else if (liveClientIds) eventsQuery = eventsQuery.in('client_id', liveClientFilter(liveClientIds));
@@ -32,24 +32,28 @@ export async function GET(req: Request) {
   if (end_date)   eventsQuery = eventsQuery.lte('occurred_at', `${end_date}T23:59:59.999Z`);
   eventsQuery = eventsQuery.limit(100000);
 
-  const [{ data: events, error: eventsError }, spendRows] = await Promise.all([
-    eventsQuery,
-    fetchCombinedSpendForMetrics(ctx.service, {
-      client_id,
-      client_ids: liveClientIds,
-      start_date,
-      end_date,
-    }).then(
-      (rows) => ({ data: rows, error: null }),
-      (error: Error) => ({ data: null, error }),
-    ),
-  ]);
+  const [{ data: events, error: eventsError }, spendRows, { data: availability, error: availabilityError }] =
+    await Promise.all([
+      eventsQuery,
+      fetchCombinedSpendForMetrics(ctx.service, {
+        client_id,
+        client_ids: liveClientIds,
+        start_date,
+        end_date,
+      }).then(
+        (rows) => ({ data: rows, error: null }),
+        (error: Error) => ({ data: null, error }),
+      ),
+      ctx.service.from('setter_availability').select('weekday, time_start, time_end, is_live'),
+    ]);
 
-  if (eventsError || spendRows.error)
+  if (eventsError || spendRows.error || availabilityError)
     return NextResponse.json(
-      { error: eventsError?.message ?? spendRows.error?.message },
+      { error: eventsError?.message ?? spendRows.error?.message ?? availabilityError?.message },
       { status: 500 },
     );
 
-  return NextResponse.json(calculateMetrics(events ?? [], spendRows.data ?? []));
+  return NextResponse.json(
+    calculateMetrics(events ?? [], spendRows.data ?? [], availability ?? []),
+  );
 }

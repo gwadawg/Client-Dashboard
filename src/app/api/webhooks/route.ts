@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { parseYnFlag } from '@/lib/metrics';
+import {
+  normalizeTimestamp,
+  normalizeTimeZone,
+  CALL_CENTER_TIMEZONE,
+  INGEST_SOURCE_TIMEZONE,
+} from '@/lib/time';
 
 function isTruthyPayloadFlag(value: unknown): boolean {
   if (value === true || value === 1) return true;
@@ -24,21 +30,6 @@ function normalizeEventType(eventType: string): string {
   if (eventType === 'loan_processing') return 'submission_made';
   if (eventType === 'closed') return 'loan_funded';
   return eventType;
-}
-
-/** Empty string from Make is not valid for timestamptz — use null or omit for DB. */
-function nullIfInvalidTimestamptz(value: unknown): string | null {
-  if (value == null) return null;
-  if (typeof value !== 'string') return null;
-  const t = value.trim();
-  if (t === '') return null;
-  const ms = Date.parse(t);
-  if (Number.isNaN(ms)) return null;
-  return new Date(ms).toISOString();
-}
-
-function occurredAtOrNow(value: unknown): string {
-  return nullIfInvalidTimestamptz(value) ?? new Date().toISOString();
 }
 
 /** Quote-only / control-char garbage from broken Make JSON → treat as empty. */
@@ -274,10 +265,61 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, updated: true, event_id: existing.id });
     }
 
-    // Auto-compute speed_to_lead_seconds on the first dial to a contact
+    // Resolve the client's timezone once — used to anchor offset-less timestamps so a
+    // naive "2026-06-03T20:18:12" is interpreted in a real zone, not the server's.
+    let clientTz = CALL_CENTER_TIMEZONE;
+    {
+      const { data: clientRow } = await service
+        .from('clients')
+        .select('timezone')
+        .eq('id', client_id)
+        .maybeSingle();
+      if (clientRow?.timezone) clientTz = clientRow.timezone;
+    }
+
+    // GHL sends the contact's own zone in the payload (e.g. timezone: "America/New_York"); HP
+    // sends an abbreviation like "est". normalizeTimeZone handles both → a real IANA zone (or
+    // null). It's the most accurate anchor for that lead's naive time, varying per subaccount.
+    const leadTz = normalizeTimeZone(payload.lead_timezone ?? payload.timezone);
+
+    // Anchor offset-less times to a real zone (naive "2026-06-03T20:18:12" otherwise becomes
+    // server-local and corrupts speed-to-lead). Priority: the contact's own zone from the
+    // payload → the shared ingest/Make zone for lead+dial → the client's zone for everything
+    // else. Timestamps that already carry an offset ignore all of this.
+    const occurredFallbackTz =
+      eventType === 'lead'
+        ? leadTz ?? INGEST_SOURCE_TIMEZONE
+        : eventType === 'dial'
+          ? INGEST_SOURCE_TIMEZONE
+          : clientTz;
+    const occ = normalizeTimestamp(payload.occurred_at, occurredFallbackTz);
+    const occurredAtIso = occ.iso ?? new Date().toISOString();
+    // now() is always precise; a parsed value keeps whatever precision the source provided.
+    const occurredHasTime = occ.iso === null ? true : occ.hasTime;
+
+    // The dialer (HP) payload carries the lead's real creation time (lead_created_date) with
+    // a time of day — the most reliable lead instant we get. Capture it (anchored to the
+    // dialer zone) so speed-to-lead works even when the lead event was ingested date-only.
+    let lead_created_at: string | null = null;
+    if (eventType === 'dial') {
+      const lc = normalizeTimestamp(
+        payload.lead_created_at ?? payload.lead_created_date,
+        leadTz ?? INGEST_SOURCE_TIMEZONE,
+      );
+      if (lc.iso && lc.hasTime) lead_created_at = lc.iso;
+    }
+
+    // Auto-compute speed_to_lead_seconds on the first dial to a contact. Prefer the lead's
+    // real creation time from the dial payload; fall back to a precise lead event. A date-only
+    // lead has no real time of day, so the elapsed time would be meaningless.
     let speed_to_lead_seconds = payload.speed_to_lead_seconds ?? null;
     const dialGhlContactId = jsonStringField(payload.ghl_contact_id);
-    if (eventType === 'dial' && speed_to_lead_seconds === null && dialGhlContactId) {
+    if (
+      eventType === 'dial' &&
+      speed_to_lead_seconds === null &&
+      occurredHasTime &&
+      dialGhlContactId
+    ) {
       const [{ data: priorDial }, { data: leadEvent }] = await Promise.all([
         service
           .from('events')
@@ -289,7 +331,7 @@ export async function POST(req: Request) {
           .maybeSingle(),
         service
           .from('events')
-          .select('occurred_at')
+          .select('occurred_at, occurred_at_has_time')
           .eq('client_id', client_id)
           .eq('event_type', 'lead')
           .eq('ghl_contact_id', dialGhlContactId)
@@ -298,11 +340,19 @@ export async function POST(req: Request) {
           .maybeSingle(),
       ]);
 
-      // Only set on first dial, and only when we have a lead event to measure from
-      if (!priorDial && leadEvent) {
-        const dialMs = new Date(occurredAtOrNow(payload.occurred_at)).getTime();
-        const leadMs = new Date(leadEvent.occurred_at).getTime();
-        if (dialMs > leadMs) speed_to_lead_seconds = Math.floor((dialMs - leadMs) / 1000);
+      // Only set on first dial. Lead instant: dial payload's lead_created_at if present,
+      // else the lead event (only when it carries a real timestamp).
+      if (!priorDial) {
+        let leadMs: number | null = null;
+        if (lead_created_at) {
+          leadMs = new Date(lead_created_at).getTime();
+        } else if (leadEvent && leadEvent.occurred_at_has_time !== false) {
+          leadMs = new Date(leadEvent.occurred_at).getTime();
+        }
+        const dialMs = new Date(occurredAtIso).getTime();
+        if (leadMs !== null && dialMs > leadMs) {
+          speed_to_lead_seconds = Math.floor((dialMs - leadMs) / 1000);
+        }
       }
     }
 
@@ -323,10 +373,29 @@ export async function POST(req: Request) {
       payload.dial_source ?? payload.software ?? payload.dialer_source ?? payload.call_source,
     );
 
+    // Ad / UTM attribution. ad_name is the cross-client join key for the Media
+    // Buyer view; Facebook commonly maps the ad name into utm_content via
+    // {{ad.name}}, so fall back to that when a dedicated ad_name is absent.
+    const utm_source = jsonStringField(payload.utm_source);
+    const utm_campaign = jsonStringField(payload.utm_campaign);
+    const utm_content = jsonStringField(payload.utm_content);
+    const ad_name = jsonStringField(
+      payload.ad_name ?? payload.adName ?? payload.utm_content,
+    );
+    const adset_name = jsonStringField(
+      payload.adset_name ?? payload.ad_set_name ?? payload.adSetName,
+    );
+    const campaign_name = jsonStringField(
+      payload.campaign_name ?? payload.campaignName ?? payload.utm_campaign,
+    );
+
     const { error } = await service.from('events').insert({
       client_id,
       event_type: normalizedEventType,
-      occurred_at: occurredAtOrNow(payload.occurred_at),
+      occurred_at: occurredAtIso,
+      occurred_at_has_time: occurredHasTime,
+      lead_created_at,
+      lead_timezone: leadTz,
       duration_seconds,
       is_pickup,
       is_conversation,
@@ -339,7 +408,7 @@ export async function POST(req: Request) {
         : null,
       speed_to_lead_seconds,
       ghl_contact_id: jsonStringField(payload.ghl_contact_id),
-      scheduled_at: nullIfInvalidTimestamptz(payload.scheduled_at),
+      scheduled_at: normalizeTimestamp(payload.scheduled_at, clientTz).iso,
       external_id,
       calendar_name: jsonStringField(payload.calendar_name),
       calendar_id,
@@ -354,6 +423,12 @@ export async function POST(req: Request) {
       phone_number_used: jsonStringField(payload.phone_number_used),
       dial_source,
       stage_booked: jsonStringField(payload.stage_booked),
+      ad_name,
+      adset_name,
+      campaign_name,
+      utm_source,
+      utm_campaign,
+      utm_content,
       raw: payload,
     });
 

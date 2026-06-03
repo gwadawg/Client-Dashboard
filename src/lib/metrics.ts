@@ -1,3 +1,10 @@
+import {
+  computeSpeedToLead,
+  type AvailabilityWindow,
+  type SpeedToLeadEventRow,
+} from '@/lib/speed-to-lead';
+import { CALL_CENTER_TIMEZONE } from '@/lib/time';
+
 export type EventRow = {
   client_id?: string | null;
   event_type: string;
@@ -5,6 +12,11 @@ export type EventRow = {
   lead_phone?: string | null;
   lead_email?: string | null;
   lead_name?: string | null;
+  phone_number_used?: string | null;
+  agent_name?: string | null;
+  occurred_at?: string | null;
+  occurred_at_has_time?: boolean | null;
+  lead_created_at?: string | null;
   is_pickup: boolean | null;
   is_conversation: boolean | null;
   speed_to_lead_seconds: number | null;
@@ -96,7 +108,14 @@ export type MetricsResult = {
   conversation_pct: number;
   callbacks: number;
   cb_pct: number;
+  /** Median minutes lead→first dial (precise timestamps + in-window leads only). */
   speed_to_lead_min: number;
+  /** Number of leads contributing to speed_to_lead_min. */
+  speed_to_lead_sample_size: number;
+  /** Leads excluded from speed-to-lead because they arrived off-hours. */
+  speed_to_lead_excluded_out_of_window: number;
+  /** Leads/dials excluded from speed-to-lead due to a missing precise timestamp. */
+  speed_to_lead_excluded_no_time: number;
 };
 
 const PROPOSAL_EVENT_TYPES = new Set(['proposal_made', 'proposal_sent']);
@@ -131,7 +150,12 @@ function uniqueLeadCountForEvents(events: EventRow[], eventTypes: Set<string>): 
   return leadKeys.size;
 }
 
-export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): MetricsResult {
+export function calculateMetrics(
+  events: EventRow[],
+  spendRows: SpendRow[],
+  availability: AvailabilityWindow[] = [],
+  timeZone: string = CALL_CENTER_TIMEZONE,
+): MetricsResult {
   const leadEvents = events.filter(e => e.event_type === 'lead');
   const leads = leadEvents.length;
   const qualified_leads = leadEvents.filter(e => e.is_qualified === true).length;
@@ -179,13 +203,23 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
     .filter(r => r.platform === 'meta')
     .reduce((sum, r) => sum + Number(r.amount), 0);
 
-  const speedReadings = dials
-    .filter(e => e.speed_to_lead_seconds != null)
-    .map(e => Number(e.speed_to_lead_seconds));
-  const speed_to_lead_min =
-    speedReadings.length > 0
-      ? speedReadings.reduce((a, b) => a + b, 0) / speedReadings.length / 60
-      : 0;
+  // Speed-to-lead: lead↔first-dial pairing, precise timestamps + in-window leads only,
+  // summarized as a median (see src/lib/speed-to-lead.ts).
+  const speedEvents: SpeedToLeadEventRow[] = events
+    .filter(e => typeof e.occurred_at === 'string')
+    .map(e => ({
+      event_type: e.event_type,
+      client_id: e.client_id ?? null,
+      ghl_contact_id: e.ghl_contact_id ?? null,
+      lead_phone: e.lead_phone ?? null,
+      phone_number_used: e.phone_number_used ?? null,
+      agent_name: e.agent_name ?? null,
+      occurred_at: e.occurred_at as string,
+      occurred_at_has_time: e.occurred_at_has_time ?? null,
+      lead_created_at: e.lead_created_at ?? null,
+    }));
+  const speed = computeSpeedToLead(speedEvents, availability, timeZone);
+  const speed_to_lead_min = speed.median_min ?? 0;
 
   const client_conversations = live_transfers + claimed + shows;
 
@@ -235,6 +269,9 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
     callbacks,
     cb_pct: leads > 0 ? (callbacks / leads) * 100 : 0,
     speed_to_lead_min,
+    speed_to_lead_sample_size: speed.sample_size,
+    speed_to_lead_excluded_out_of_window: speed.excluded_out_of_window,
+    speed_to_lead_excluded_no_time: speed.excluded_no_time,
   };
 }
 
@@ -410,7 +447,7 @@ function finalizeBucket(c: RawCounts): KpiTimelineBucket {
     shows: c.shows,
     no_shows: c.no_shows,
     client_conversations,
-    cpconv: c.shows > 0 ? c.spend / c.shows : null,
+    cpconv: client_conversations > 0 ? c.spend / client_conversations : null,
     cpql: c.qualified_leads > 0 ? c.spend / c.qualified_leads : null,
     cpl: c.leads > 0 ? c.spend / c.leads : null,
     show_rate: dispositioned > 0 ? (c.shows / dispositioned) * 100 : null,

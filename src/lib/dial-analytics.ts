@@ -1,4 +1,10 @@
 import { buildRosterMatcher, type RosterAgent } from "@/lib/agent-roster";
+import {
+  computeSpeedToLead,
+  type AvailabilityWindow,
+  type SpeedToLeadResult,
+} from "@/lib/speed-to-lead";
+import { CALL_CENTER_TIMEZONE } from "@/lib/time";
 
 export type DialEventRow = {
   agent_name: string | null;
@@ -10,6 +16,11 @@ export type DialEventRow = {
   speed_to_lead_seconds: number | null;
   occurred_at: string;
   dial_source: string | null;
+  ghl_contact_id: string | null;
+  lead_phone: string | null;
+  phone_number_used: string | null;
+  occurred_at_has_time: boolean | null;
+  lead_created_at: string | null;
 };
 
 export type ClientRef = {
@@ -29,7 +40,10 @@ export type DialAnalyticsSummary = {
   dials_per_lead: number;
   appointments: number;
   booking_rate: number;
+  /** Median minutes from lead to first dial (in-window, precise timestamps only). */
   avg_speed_to_lead_min: number | null;
+  /** Full speed-to-lead breakdown: median, sample size, and exclusion counts. */
+  speed_to_lead: SpeedToLeadResult;
   today_dials: number;
   today_pickups: number;
   period_days: number;
@@ -97,7 +111,6 @@ type AgentAcc = {
   pickups: number;
   conversations: number;
   appointments: number;
-  speed_readings: number[];
   today: { dials: number; pickups: number; appointments: number };
 };
 
@@ -119,11 +132,6 @@ function periodDays(startDate: string | null, endDate: string | null): number {
   return Math.max(1, Math.floor((end - start) / 86400000) + 1);
 }
 
-function avgSpeedMin(readings: number[]): number | null {
-  if (readings.length === 0) return null;
-  return Math.round((readings.reduce((a, b) => a + b, 0) / readings.length / 60) * 10) / 10;
-}
-
 function pct(num: number, den: number): number {
   return den > 0 ? Math.round((num / den) * 100) : 0;
 }
@@ -134,11 +142,17 @@ export function computeDialAnalytics(
   roster: RosterAgent[],
   startDate: string | null,
   endDate: string | null,
+  availability: AvailabilityWindow[] = [],
+  timeZone: string = CALL_CENTER_TIMEZONE,
 ): DialAnalyticsResult {
   const resolveAgent = buildRosterMatcher(roster);
   const clientById = new Map(clients.map(c => [c.id, c]));
   const days = periodDays(startDate, endDate);
   const todayStr = new Date().toISOString().split("T")[0];
+
+  // Speed-to-lead is computed honestly via lead↔first-dial pairing: precise timestamps
+  // only, in-window only, summarized as a median (see src/lib/speed-to-lead.ts).
+  const speed = computeSpeedToLead(events, availability, timeZone, resolveAgent);
 
   const agentMap = new Map<string, AgentAcc>();
   const clientMap = new Map<string, ClientAcc>();
@@ -151,7 +165,6 @@ export function computeDialAnalytics(
   let summaryLeads = 0;
   let summaryQualified = 0;
   let summaryAppointments = 0;
-  let summarySpeed: number[] = [];
   let todayDials = 0;
   let todayPickups = 0;
 
@@ -186,7 +199,6 @@ export function computeDialAnalytics(
     summaryDials++;
     if (row.is_pickup) summaryPickups++;
     if (row.is_conversation) summaryConversations++;
-    if (row.speed_to_lead_seconds != null) summarySpeed.push(Number(row.speed_to_lead_seconds));
     if (isToday) {
       todayDials++;
       if (row.is_pickup) todayPickups++;
@@ -209,7 +221,6 @@ export function computeDialAnalytics(
       agent.dials++;
       if (row.is_pickup) agent.pickups++;
       if (row.is_conversation) agent.conversations++;
-      if (row.speed_to_lead_seconds != null) agent.speed_readings.push(Number(row.speed_to_lead_seconds));
       if (isToday) {
         agent.today.dials++;
         if (row.is_pickup) agent.today.pickups++;
@@ -279,7 +290,7 @@ export function computeDialAnalytics(
       conversations: a.conversations,
       conversation_rate: pct(a.conversations, a.dials),
       appointments: a.appointments,
-      avg_speed_to_lead_min: avgSpeedMin(a.speed_readings),
+      avg_speed_to_lead_min: speed.by_agent[a.agent_name]?.median_min ?? null,
       dials_per_day: Math.round((a.dials / days) * 10) / 10,
       today: a.today,
     }))
@@ -316,7 +327,8 @@ export function computeDialAnalytics(
       dials_per_lead: summaryLeads > 0 ? Math.round((summaryDials / summaryLeads) * 10) / 10 : 0,
       appointments: summaryAppointments,
       booking_rate: pct(summaryAppointments, summaryQualified > 0 ? summaryQualified : summaryLeads),
-      avg_speed_to_lead_min: avgSpeedMin(summarySpeed),
+      avg_speed_to_lead_min: speed.median_min,
+      speed_to_lead: speed,
       today_dials: todayDials,
       today_pickups: todayPickups,
       period_days: days,
@@ -361,7 +373,6 @@ function resolveAgentName(
       pickups: 0,
       conversations: 0,
       appointments: 0,
-      speed_readings: [],
       today: { dials: 0, pickups: 0, appointments: 0 },
     };
     map.set(name, acc);

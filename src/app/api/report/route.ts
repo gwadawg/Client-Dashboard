@@ -25,24 +25,25 @@ export async function GET(req: Request) {
 
   let eventsQuery = service
     .from('events')
-    .select('client_id, event_type, ghl_contact_id, lead_phone, lead_email, lead_name, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state')
+    .select('client_id, event_type, ghl_contact_id, lead_phone, lead_email, lead_name, phone_number_used, agent_name, occurred_at, occurred_at_has_time, lead_created_at, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state')
     .eq('client_id', client.id);
 
   if (start_date) eventsQuery = eventsQuery.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsQuery = eventsQuery.lte('occurred_at', `${end_date}T23:59:59.999Z`);
 
-  const [{ data: events }, spendRows] = await Promise.all([
+  const [{ data: events }, spendRows, { data: availability }] = await Promise.all([
     eventsQuery,
     fetchCombinedSpendForMetrics(service, {
       client_id: client.id,
       start_date,
       end_date,
     }),
+    service.from('setter_availability').select('weekday, time_start, time_end, is_live'),
   ]);
 
   return NextResponse.json({
     client_name: client.name,
     reporting_type: normalizeReportingType(client.reporting_type),
-    ...calculateMetrics(events ?? [], spendRows),
+    ...calculateMetrics(events ?? [], spendRows, availability ?? []),
   });
 }

@@ -67,7 +67,7 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **Conversations (2 min+)** | Dial conversations only | `COUNT(dial WHERE is_conversation = true)` |
 | **Claimed** | Client manually spoke with/messaged the lead outside our booking flow | `COUNT(claimed)` |
 | **Conversation Rate** | Conversations per pickup | `Conversations ÷ Pickups × 100` |
-| **Speed to Lead** | Minutes from lead to first dial | `AVG(first_dial.occurred_at − lead.occurred_at)` per contact |
+| **Speed to Lead** | **Median** minutes from lead to first dial, counting only leads that arrive inside a live setter-availability window | `MEDIAN(first_dial.occurred_at − lead.occurred_at)` per contact, excluding leads with no precise timestamp and leads that arrive off-hours |
 | **Callback Requests** | Callback appointments booked | `COUNT(callback_booked)` |
 | **Callback Rate** | Callbacks per lead | `Callbacks ÷ Total Leads × 100` |
 | **Appts To Take Place** | Still scheduled (pending outcomes) | `Appointments Booked − Shows − No Shows − Cancellations − LO bailed` |
@@ -147,8 +147,13 @@ HE clients keep a minimal dashboard (appointments + calling stats). Operational 
 | Qualified | `qualified` *(planned)* | `raw` until column added |
 | Hot | `hot` *(planned)* | `raw` |
 | Out of State? | `out_of_state` *(planned)* | `raw` |
-| Ad Name / Ad Set | — | `raw` |
+| Ad Name | `ad_name` or `utm_content` | `ad_name` |
+| Ad Set | `adset_name` / `ad_set_name` | `adset_name` |
+| Campaign | `campaign_name` or `utm_campaign` | `campaign_name` |
+| UTM source/campaign/content | `utm_source`, `utm_campaign`, `utm_content` | `utm_source`, `utm_campaign`, `utm_content` |
 | LTV, Age, State, etc. | — | `raw` |
+
+**Ad attribution (Media Buyer view):** `ad_name` is the universal join key — the same Facebook ad names are reused across every client, so the Media Buyer leaderboard groups by `ad_name` globally. On lead ingest the webhook resolves `ad_name` from `ad_name` → `adName` → `utm_content` (Facebook commonly maps `{{ad.name}}` into `utm_content`). Send the ad name on the **lead** webhook so downstream appointments/shows/closes for that contact can be attributed back to the ad. Imported leads already carry `raw.ad_name`/`raw.ad_set_name`; run `node scripts/backfill-ad-attribution.mjs` once to copy those into the new columns.
 
 ### Appointment (`event_type: appointment_booked`)
 
@@ -291,6 +296,81 @@ Document your live Make scenario to match one approach:
 4. Send daily **ad spend** per client/platform.
 5. For speed-to-lead: reuse `ghl_contact_id` on lead and first dial for the same contact.
 6. Do **not** sync Daily Summary totals — validate against them only.
+
+### Speed-to-lead timestamps (critical)
+
+Speed-to-lead is only as accurate as the **lead's creation timestamp**. It must be a full
+date-time **with a timezone offset**, not a bare date.
+
+- **Lead scenario (Make.com):** map `occurred_at` from the GHL contact `dateAdded` field,
+  which is full ISO 8601 with offset (e.g. `2026-06-03T08:14:22-04:00`). Do **not** map a
+  date-only field (e.g. `2026-06-03`) — the app cannot recover the time of day and the lead
+  is excluded from speed-to-lead.
+  - **Easiest bulletproof option:** `{{formatDate(dateAdded; "YYYY-MM-DDTHH:mm:ssZ"; "UTC")}}`
+    → `2026-06-03T18:31:00+00:00`. UTC for every client, so per-subaccount zones don't matter.
+  - **Per-contact-zone option:** GHL also sends the contact's own zone as `timezone`
+    (e.g. `America/New_York`). If you map a naive ISO `occurred_at` (no offset) **and** pass
+    that zone as `lead_timezone` (or `timezone`), the app anchors the lead to its own zone.
+    Priority for offset-less lead times: payload `timezone` → `INGEST_SOURCE_TIMEZONE`.
+- **Dial scenario (Make.com / dialer):** send `occurred_at` as ISO 8601 with an offset too.
+  Both GHL and HP dials currently emit a naive `2026-06-03T20:18:12` in **US Eastern**, so the
+  app anchors offset-less lead + dial times to `INGEST_SOURCE_TIMEZONE` (default
+  `America/New_York`). This is independent of the agents' zone and the client's zone.
+- **Source of speed-to-lead:** the metric pairs each lead's created time to its **earliest
+  dial from any source** (GHL or HP). So the universal fix is to give every lead a precise
+  created time (below); the HP `lead_created_date` capture is only a fallback for HP-first leads.
+- A lead sent with only a date is stored with `events.occurred_at_has_time = false` and is
+  skipped by the speed-to-lead metric (it never produces a `speed_to_lead_seconds`).
+- The metric counts a lead only if it arrives inside a **live setter-availability window**,
+  evaluated in `CALL_CENTER_TIMEZONE` (the agents' shift zone, e.g. `America/Sao_Paulo`);
+  off-hours leads are excluded, not penalized. The lead's own zone and the client's zone do
+  not affect the elapsed minutes — a duration between two absolute instants is the same
+  everywhere; only the in-window check depends on the agents' zone.
+- **Historical caveat:** leads ingested before this fix were stored date-only (no time of
+  day), so their speed-to-lead is unrecoverable and excluded. The metric only becomes
+  meaningful for leads received after the Make `dateAdded` mapping is in place.
+
+---
+
+## Heat maps (lead-local time)
+
+The lead-volume, pickup-rate, and show-rate heat maps bucket each event by the **lead's own
+local time of day**, so "best hour to call" reflects the prospect's clock rather than UTC.
+
+- Each event is placed using the contact's IANA zone in `events.lead_timezone`, captured from
+  the GHL payload's **`timezone`** field at ingest (e.g. `America/New_York`).
+- Dials and appointments that don't carry their own zone are resolved from the matching
+  contact's lead, then fall back to `LEAD_DEFAULT_TIMEZONE` (default `America/New_York`).
+- **Make mapping:** add a `timezone` field to the lead webhook, mapped to the GHL contact's
+  timezone. (Client/sub-account `clients.timezone` is *not* used here — it's sparse and stored
+  as abbreviations like `EST`, which aren't valid IANA zones.)
+- Historical caveat: rows ingested before `lead_timezone` existed have no stored zone and use
+  the default; lead-volume is also date-only until the speed-to-lead `occurred_at` fix lands.
+
+---
+
+## Media Buyer (global ad performance)
+
+The **Media Buyer** view (Overview group) ranks Facebook ads **globally across all live clients**, grouped by `ad_name`. It joins two sources by ad name:
+
+- **Spend / platform metrics** from `meta_ad_insights` (spend, impressions, clicks, CTR, CPC, CPM), summed across clients.
+- **Funnel outcomes** attributed from `events`: the ad name on each `lead` builds a per-client contact → ad map (via `buildContactKey`), and that contact's later `appointment_booked` / `show` / `no_show` / `loan_funded` events inherit the lead's ad.
+
+| Metric | Formula (per ad name, summed across clients) |
+|--------|----------------------------------------------|
+| **Spend** | `SUM(meta_ad_insights.spend)` |
+| **Leads / Qualified / Closes** | `COUNT(attributed lead / qualified lead / loan_funded)` |
+| **CPL** | `Spend ÷ Leads` |
+| **Cost per Show** | `Spend ÷ Shows` |
+| **Cost per Close** | `Spend ÷ Closes` |
+| **Booking Rate** | `Appointments ÷ Qualified × 100` |
+| **Show Rate** | `Shows ÷ (Shows + No Shows) × 100` (net attendance) |
+
+Each ad can also have an **Ad Library** entry (`ad_library` table): a Google Drive link to the creative plus a summary and visual notes. This is curated manually and is the structured input a future "AI recreate this winning ad" feature will use.
+
+**Attribution caveat:** the leaderboard scopes events to the selected date range, so an appointment is attributed only when its originating lead also falls in range. Widen the range to capture lead → close journeys that span months.
+
+**Code references:** `src/lib/ad-performance.ts` (engine), `src/app/api/media-buyer/route.ts` (API), `src/app/api/ad-library/route.ts` (library CRUD), `src/components/MediaBuyer.tsx` (UI).
 
 ---
 

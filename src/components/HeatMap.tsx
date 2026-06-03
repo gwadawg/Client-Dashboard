@@ -69,7 +69,7 @@ function Legend({ type }: { type: string }) {
           <span className="text-xs font-semibold" style={{ color: tier.text }}>{tier.label}</span>
         </div>
       ))}
-      <span className="ml-auto text-xs" style={{ color: "#1e3a5f" }}>Times in UTC</span>
+      <span className="ml-auto text-xs" style={{ color: "#1e3a5f" }}>Times in lead&apos;s local zone</span>
     </div>
   );
 }
@@ -95,9 +95,9 @@ export default function HeatMap({ type, startDate, endDate, clientId, liveOnly }
   }, [type, startDate, endDate, clientId, liveOnly]);
 
   const TYPE_LABELS: Record<string, string> = {
-    new_leads:    "Lead volume by time of day",
-    pickup_rate:  "Pickup rate by time of dial",
-    show_rate:    "Show rate by scheduled appointment time",
+    new_leads:    "Lead volume by time of day (lead's local time)",
+    pickup_rate:  "Pickup rate by time of dial (lead's local time)",
+    show_rate:    "Show rate by appointment time (lead's local time)",
   };
 
   return (

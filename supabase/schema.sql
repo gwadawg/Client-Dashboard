@@ -72,6 +72,10 @@ create table if not exists clients (
   cs_status text,
   ad_status text,
 
+  -- Per-client KPI band overrides (Client Success). Sparse JSON:
+  -- { kpi_key: { critical?, below?, at? } }. Missing -> DEFAULT_KPI_BANDS.
+  kpi_benchmarks jsonb,
+
   -- Offer / identity
   offer               text,       -- RM | HE (mirrors reporting_type)
   nmls                text,
@@ -185,6 +189,16 @@ create unique index if not exists clients_clickup_task_id_key
 alter table clients
   add column if not exists reporting_type text not null default 'RM';
 
+-- Per-client KPI band overrides (Client Success). See src/lib/client-health.ts.
+alter table clients
+  add column if not exists kpi_benchmarks jsonb;
+
+-- Governance for the benchmark overrides above: who set them, when, and why, plus
+-- a basis for a >90-day staleness flag so per-client bars can't silently rot to green.
+alter table clients add column if not exists kpi_benchmarks_updated_at timestamptz;
+alter table clients add column if not exists kpi_benchmarks_updated_by uuid references auth.users(id) on delete set null;
+alter table clients add column if not exists kpi_benchmarks_note text;
+
 update clients
   set reporting_type = 'RM'
   where reporting_type is null or reporting_type not in ('RM', 'HE');
@@ -232,6 +246,15 @@ create table if not exists events (
   is_pickup          boolean,
   is_conversation    boolean,
   speed_to_lead_seconds numeric,
+  -- False when occurred_at came from a date-only source (no real time of day).
+  -- Speed-to-lead skips these rows. NULL = unknown/legacy.
+  occurred_at_has_time boolean,
+  -- Lead's real creation time, captured from the dialer payload (lead_created_date) on dial
+  -- rows. Speed-to-lead prefers this precise instant over a date-only lead event.
+  lead_created_at timestamptz,
+  -- The lead/contact's own IANA timezone (e.g. "America/New_York") from the GHL payload.
+  -- Heat maps bucket each event by the lead's LOCAL time of day using this zone.
+  lead_timezone text,
   direction          text,       -- inbound | outbound
   call_status        text,       -- completed | voicemail | canceled | no_answer
   recording_url      text,
@@ -271,6 +294,19 @@ create table if not exists events (
     )
   )
 );
+
+-- Additive columns (so re-running on an older events table backfills them)
+alter table events add column if not exists occurred_at_has_time boolean;
+alter table events add column if not exists lead_created_at timestamptz;
+alter table events add column if not exists lead_timezone text;
+
+-- Ad / UTM attribution (Media Buyer view). ad_name is the cross-client join key.
+alter table events add column if not exists ad_name      text;
+alter table events add column if not exists adset_name   text;
+alter table events add column if not exists campaign_name text;
+alter table events add column if not exists utm_source   text;
+alter table events add column if not exists utm_campaign text;
+alter table events add column if not exists utm_content  text;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 5. Ad Spend (daily Meta / Google / Local Services spend by client)
@@ -326,6 +362,30 @@ group by client_id, insight_date;
 grant select on daily_meta_spend to service_role;
 grant select on daily_meta_spend to authenticated;
 grant select on daily_meta_spend to anon;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 6b. Ad Library (manually curated Facebook ad creatives — Media Buyer view)
+--     Keyed by ad_name (same join key as meta_ad_insights / events). Stores a
+--     Google Drive link to the creative plus a summary and visual notes.
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists ad_library (
+  id            uuid    primary key default gen_random_uuid(),
+  ad_name       text    not null unique,
+  platform      text    not null default 'facebook',
+  status        text    not null default 'active',
+  summary       text,
+  visual_notes  text,
+  drive_url     text,
+  thumbnail_url text,
+  created_by    uuid    references auth.users(id) on delete set null,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  constraint ad_library_status_check check (
+    status in ('active', 'winner', 'paused', 'archived')
+  )
+);
+
+create index if not exists ad_library_status_idx on ad_library(status);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 7. Setter Availability (recurring weekly windows per agent)
@@ -594,6 +654,8 @@ create index if not exists events_external_id_idx  on events(external_id)  where
 create index if not exists events_calendar_id_idx  on events(calendar_id)  where calendar_id is not null;
 create index if not exists events_agent_name_idx   on events(agent_name)   where agent_name is not null;
 create index if not exists events_lead_phone_idx   on events(lead_phone)   where lead_phone is not null;
+create index if not exists events_ad_name_idx       on events(ad_name)      where ad_name is not null;
+create index if not exists events_lead_ad_name_idx  on events(ad_name)      where event_type = 'lead' and ad_name is not null;
 -- One conversion event per contact per stage (idempotent LO pipeline ingest)
 create unique index if not exists events_conversion_unique
   on events (client_id, event_type, ghl_contact_id)

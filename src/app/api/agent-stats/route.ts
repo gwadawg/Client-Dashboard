@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { buildRosterMatcher } from '@/lib/agent-roster';
+import { computeSpeedToLead, type SpeedToLeadEventRow } from '@/lib/speed-to-lead';
 
 type AgentAccumulator = {
   agent_name: string;
@@ -11,7 +12,6 @@ type AgentAccumulator = {
   callbacks: number;
   shows: number;
   no_shows: number;
-  speed_readings: number[];
 };
 
 function emptyAccumulator(name: string): AgentAccumulator {
@@ -24,7 +24,6 @@ function emptyAccumulator(name: string): AgentAccumulator {
     callbacks: 0,
     shows: 0,
     no_shows: 0,
-    speed_readings: [],
   };
 }
 
@@ -41,20 +40,34 @@ export async function GET(req: Request) {
 
   let eventsQuery = ctx.service
     .from('events')
-    .select('agent_name, event_type, is_pickup, is_conversation, speed_to_lead_seconds, occurred_at');
+    .select('agent_name, client_id, event_type, is_pickup, is_conversation, speed_to_lead_seconds, occurred_at, occurred_at_has_time, lead_created_at, ghl_contact_id, lead_phone, phone_number_used');
 
   if (startDate) eventsQuery = eventsQuery.gte('occurred_at', `${startDate}T00:00:00.000Z`);
   if (endDate) eventsQuery = eventsQuery.lte('occurred_at', `${endDate}T23:59:59.999Z`);
 
-  const [{ data: roster, error: rosterError }, { data, error }] = await Promise.all([
+  const [
+    { data: roster, error: rosterError },
+    { data, error },
+    { data: availability, error: availabilityError },
+  ] = await Promise.all([
     ctx.service.from('agents').select('name, phone').order('name'),
     eventsQuery,
+    ctx.service.from('setter_availability').select('weekday, time_start, time_end, is_live'),
   ]);
 
   if (rosterError) return NextResponse.json({ error: rosterError.message }, { status: 500 });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (availabilityError) return NextResponse.json({ error: availabilityError.message }, { status: 500 });
 
   const resolveAgent = buildRosterMatcher(roster ?? []);
+
+  // Per-agent speed-to-lead via the shared honest metric (in-window, precise, median).
+  const speed = computeSpeedToLead(
+    (data ?? []) as SpeedToLeadEventRow[],
+    availability ?? [],
+    undefined,
+    resolveAgent,
+  );
   const agentMap = new Map<string, AgentAccumulator>();
   for (const agent of roster ?? []) {
     agentMap.set(agent.name, emptyAccumulator(agent.name));
@@ -78,7 +91,6 @@ export async function GET(req: Request) {
       a.dials++;
       if (row.is_pickup) a.pickups++;
       if (row.is_conversation) a.conversations++;
-      if (row.speed_to_lead_seconds != null) a.speed_readings.push(Number(row.speed_to_lead_seconds));
       if (isToday) {
         t.dials++;
         if (row.is_pickup) t.pickups++;
@@ -111,9 +123,7 @@ export async function GET(req: Request) {
     .filter(a => hasActivity(a, todayMap.get(a.agent_name) ?? { dials: 0, pickups: 0, appointments: 0 }))
     .map(a => {
     const todayStats = todayMap.get(a.agent_name) ?? { dials: 0, pickups: 0, appointments: 0 };
-    const avg_speed = a.speed_readings.length > 0
-      ? Math.round(a.speed_readings.reduce((x, y) => x + y, 0) / a.speed_readings.length / 60 * 10) / 10
-      : null;
+    const avg_speed = speed.by_agent[a.agent_name]?.median_min ?? null;
     return {
       agent_name: a.agent_name,
       dials: a.dials,

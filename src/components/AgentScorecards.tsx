@@ -89,7 +89,7 @@ export default function AgentScorecards({ startDate, endDate }: Props) {
                   {a.avg_speed_to_lead_min != null && (
                     <span className="text-xs px-2 py-1 rounded-full"
                       style={{ background: "rgba(245,158,11,0.1)", color: "#f59e0b" }}>
-                      ⚡ {a.avg_speed_to_lead_min}m avg response
+                      ⚡ {a.avg_speed_to_lead_min}m median response
                     </span>
                   )}
                 </div>

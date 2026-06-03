@@ -25,6 +25,7 @@ import ShowQualityBar from "./ShowQualityBar";
 import ConversionFunnel from "./ConversionFunnel";
 import ClientHealthDashboard from "./ClientHealthDashboard";
 import DialAnalytics from "./DialAnalytics";
+import MediaBuyer from "./MediaBuyer";
 import KpiSections, { type SparkMap } from "./kpi/KpiSections";
 import KpiSection from "./kpi/KpiSection";
 import KpiCard from "./kpi/KpiCard";
@@ -102,6 +103,7 @@ const NAV_ICONS: Record<View, string> = {
   recordings:       "M15.536 8.464a5 5 0 010 7.072M12 18.364a9 9 0 010-12.728M8.464 15.536a5 5 0 010-7.072",
   goals:            "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   dial_analytics:   "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
+  media_buyer:      "M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z",
   client_health:    "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
 };
 
@@ -109,19 +111,38 @@ function ymd(d: Date): string {
   return d.toISOString().split("T")[0];
 }
 
+/**
+ * Format a Date as YYYY-MM-DD using LOCAL calendar fields. Presets like
+ * "today" / "this month" are local-calendar concepts; using the UTC `ymd`
+ * here shifted the boundary by a day near midnight for non-UTC operators.
+ */
+function ymdLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * "All Time" lower bound. A fixed floor well before any ingested data so the
+ * range stays bounded (the client-health API requires both dates) while still
+ * effectively meaning "everything".
+ */
+const ALL_TIME_START = "2000-01-01";
+
 function getDateRange(p: Preset): { start: string; end: string } {
   const now = new Date();
-  const today = ymd(now);
+  const today = ymdLocal(now);
   if (p === "today") return { start: today, end: today };
   if (p === "yesterday") {
-    const y = ymd(new Date(now.getTime() - 86400000));
+    const y = ymdLocal(new Date(now.getTime() - 86400000));
     return { start: y, end: y };
   }
   if (p === "this_week") {
     // Week starts Monday.
     const day = now.getDay();
     const diff = day === 0 ? -6 : 1 - day;
-    return { start: ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff)), end: today };
+    return { start: ymdLocal(new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff)), end: today };
   }
   if (p === "last_week") {
     const day = now.getDay();
@@ -129,25 +150,26 @@ function getDateRange(p: Preset): { start: string; end: string } {
     const thisMon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon);
     const lastMon = new Date(thisMon.getTime() - 7 * 86400000);
     const lastSun = new Date(thisMon.getTime() - 86400000);
-    return { start: ymd(lastMon), end: ymd(lastSun) };
+    return { start: ymdLocal(lastMon), end: ymdLocal(lastSun) };
   }
   if (p === "this_month") return {
-    start: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), end: today,
+    start: ymdLocal(new Date(now.getFullYear(), now.getMonth(), 1)), end: today,
   };
   if (p === "last_month") return {
-    start: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
-    end: ymd(new Date(now.getFullYear(), now.getMonth(), 0)),
+    start: ymdLocal(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+    end: ymdLocal(new Date(now.getFullYear(), now.getMonth(), 0)),
   };
   if (p === "this_quarter") {
     const q = Math.floor(now.getMonth() / 3);
-    return { start: ymd(new Date(now.getFullYear(), q * 3, 1)), end: today };
+    return { start: ymdLocal(new Date(now.getFullYear(), q * 3, 1)), end: today };
   }
-  if (p === "ytd") return { start: ymd(new Date(now.getFullYear(), 0, 1)), end: today };
-  if (p === "last_90") return { start: ymd(new Date(now.getTime() - 90 * 86400000)), end: today };
-  if (p === "last_30") return { start: ymd(new Date(now.getTime() - 30 * 86400000)), end: today };
-  if (p === "last_14") return { start: ymd(new Date(now.getTime() - 14 * 86400000)), end: today };
-  if (p === "last_7")  return { start: ymd(new Date(now.getTime() - 7 * 86400000)), end: today };
-  return { start: "", end: "" };
+  if (p === "ytd") return { start: ymdLocal(new Date(now.getFullYear(), 0, 1)), end: today };
+  if (p === "last_90") return { start: ymdLocal(new Date(now.getTime() - 90 * 86400000)), end: today };
+  if (p === "last_30") return { start: ymdLocal(new Date(now.getTime() - 30 * 86400000)), end: today };
+  if (p === "last_14") return { start: ymdLocal(new Date(now.getTime() - 14 * 86400000)), end: today };
+  if (p === "last_7")  return { start: ymdLocal(new Date(now.getTime() - 7 * 86400000)), end: today };
+  // all_time: bounded floor -> today, so the client-health view actually loads.
+  return { start: ALL_TIME_START, end: today };
 }
 
 /** Map the KPI timeline buckets onto the metric keys their cards use, for sparklines. */
@@ -525,9 +547,11 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
           </h1>
 
           {/* Dashboard, raw data, and agent/recording views filters */}
-          {(view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "dial_analytics" || view === "client_health" || view === "recordings") && !view.startsWith("admin_") && (
+          {/* Client Success owns its own standardized grading window, so the global
+              date picker is intentionally omitted for that view. */}
+          {(view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "dial_analytics" || view === "media_buyer" || view === "recordings") && !view.startsWith("admin_") && (
             <>
-              {(view === "dashboard" || view === "dial_analytics") && (
+              {(view === "dashboard" || view === "dial_analytics" || view === "media_buyer") && (
                 <ClientSelect value={selectedClientId} onChange={setSelectedClientId} clients={clients} />
               )}
 
@@ -782,9 +806,15 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
             />
           )}
 
-          {view === "client_health" && (
-            <ClientHealthDashboard startDate={dateStart} endDate={dateEnd} />
+          {view === "media_buyer" && (
+            <MediaBuyer
+              startDate={dateStart}
+              endDate={dateEnd}
+              clientId={selectedClientId === "__live__" ? undefined : selectedClientId || undefined}
+            />
           )}
+
+          {view === "client_health" && <ClientHealthDashboard />}
 
           {/* ── Admin ── */}
           {view === "admin_agents"  && <AgentAdmin />}

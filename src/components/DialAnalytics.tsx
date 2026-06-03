@@ -112,7 +112,7 @@ function AgentTable({ agents }: { agents: DialAnalyticsAgentRow[] }) {
               <SortHeader label="Pickup %" active={sortKey === "pickup_rate"} asc={sortAsc} onClick={() => toggle("pickup_rate")} />
               <SortHeader label="Convos" active={sortKey === "conversations"} asc={sortAsc} onClick={() => toggle("conversations")} />
               <SortHeader label="Appts" active={sortKey === "appointments"} asc={sortAsc} onClick={() => toggle("appointments")} />
-              <SortHeader label="Speed (min)" active={sortKey === "avg_speed_to_lead_min"} asc={sortAsc} onClick={() => toggle("avg_speed_to_lead_min")} />
+              <SortHeader label="Speed (med min)" active={sortKey === "avg_speed_to_lead_min"} asc={sortAsc} onClick={() => toggle("avg_speed_to_lead_min")} />
             </tr>
           </thead>
           <tbody>
@@ -395,8 +395,12 @@ export default function DialAnalytics({ startDate, endDate, clientId, liveOnly }
           <KpiCard label="Today (dials / pickups)" value={`${s.today_dials} / ${s.today_pickups}`} />
           <KpiCard label="Dials per Lead" value={String(s.dials_per_lead)} />
           <KpiCard
-            label="Speed to Lead (avg min)"
+            label="Speed to Lead (median min)"
             value={s.avg_speed_to_lead_min != null ? String(s.avg_speed_to_lead_min) : "—"}
+            hint={
+              `Median minutes from lead to first dial across ${s.speed_to_lead.sample_size} in-window lead${s.speed_to_lead.sample_size === 1 ? "" : "s"}. ` +
+              `Excluded: ${s.speed_to_lead.excluded_out_of_window} off-hours, ${s.speed_to_lead.excluded_no_time} missing precise timestamp.`
+            }
           />
           <KpiCard label="Appointments" value={s.appointments.toLocaleString()} />
           <KpiCard label="Booking Rate" value={`${s.booking_rate}%`} />
