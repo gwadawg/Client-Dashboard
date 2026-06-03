@@ -13,6 +13,7 @@ type Billing = {
   base_amount: number | null;
   performance_amount: number | null;
   late_fee: number | null;
+  discount: number | null;
   amount_paid: number | null;
   status: string;
   paid_on: string | null;
@@ -80,11 +81,13 @@ function breakdownLabel(b: Billing): string | null {
   const parts: string[] = [];
   const perf = Number(b.performance_amount) || 0;
   const late = Number(b.late_fee) || 0;
-  if (perf === 0 && late === 0) return null;
+  const disc = Number(b.discount) || 0;
+  if (perf === 0 && late === 0 && disc === 0) return null;
   parts.push(`base ${money(Number(b.base_amount ?? b.amount))}`);
   if (perf) parts.push(`perf ${money(perf)}`);
   if (late) parts.push(`late ${money(late)}`);
-  return parts.join(" + ");
+  if (disc) parts.push(`− disc ${money(disc)}`);
+  return parts.join(" + ").replace("+ −", "−");
 }
 
 function daysFromToday(dateStr: string | null): number | null {
@@ -116,6 +119,7 @@ type RecordOpts = {
   base: number;
   performance: number;
   lateFee: number;
+  discount?: number;
   billedOn: string;
   dueDate: string;
   method?: string;
@@ -186,6 +190,7 @@ export default function BillingManager() {
         base_amount: opts.base,
         performance_amount: opts.performance,
         late_fee: opts.lateFee,
+        discount: opts.discount ?? 0,
         method: opts.method || undefined,
         note: opts.note || undefined,
         status: opts.markPaid ? "paid" : undefined,
@@ -275,7 +280,7 @@ export default function BillingManager() {
           className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
           style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.25)" }}
         >
-          {showImport ? "Close" : "Import past payments"}
+          {showImport ? "Close" : "Record past payment"}
         </button>
       </div>
 
@@ -283,7 +288,7 @@ export default function BillingManager() {
         Need to add a client or fill in missing client data? Use the Client Roster tab — billing reads launch date, MRR, and lifecycle from there.
       </p>
 
-      {showImport && <ImportPanel onDone={load} />}
+      {showImport && <RecordPastPaymentForm clients={clients} busy={busy} onRecord={recordBilling} />}
 
       <div className="flex gap-4 flex-wrap">
         <StatCard label="Active MRR" value={money(totals?.active_mrr ?? 0)} color="#22c55e" />
@@ -739,117 +744,77 @@ function InactiveTable({
   );
 }
 
-type ImportSummary = {
-  dry_run: boolean;
-  inserted?: number;
-  matched_rows: number;
-  total_amount: number;
-  per_client: { name: string; count: number; total: number }[];
-  unmatched: string[];
-  skipped_invalid: number;
-  skipped_duplicate: number;
-};
+// Manually log a billing that happened a while back (e.g. if the billing tab
+// missed it). Records a fully-paid billing with retainer + performance, minus
+// any discount we extended.
+function RecordPastPaymentForm({
+  clients, busy, onRecord,
+}: {
+  clients: ClientBilling[];
+  busy: string | null;
+  onRecord: (client: ClientBilling, opts: RecordOpts) => void;
+}) {
+  const sorted = useMemo(() => [...clients].sort((a, b) => a.name.localeCompare(b.name)), [clients]);
+  const [clientId, setClientId] = useState("");
+  const [dueDate, setDueDate] = useState(todayYmd());
+  const [paymentDate, setPaymentDate] = useState(todayYmd());
+  const [retainer, setRetainer] = useState("");
+  const [performance, setPerformance] = useState("0");
+  const [discount, setDiscount] = useState("0");
+  const [justRecorded, setJustRecorded] = useState(false);
 
-function ImportPanel({ onDone }: { onDone: () => Promise<void> | void }) {
-  const [csv, setCsv] = useState("");
-  const [fileName, setFileName] = useState("");
-  const [summary, setSummary] = useState<ImportSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const client = sorted.find(c => c.id === clientId) ?? null;
+  const total = (Number(retainer) || 0) + (Number(performance) || 0) - (Number(discount) || 0);
+  const isBusy = client ? busy === `rec-${client.id}` : false;
+  const disabled = isBusy || !client || total <= 0 || !paymentDate;
 
-  async function readFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setFileName(file.name);
-    setSummary(null);
-    setError(null);
-    setCsv(await file.text());
-  }
-
-  async function send(dryRun: boolean) {
-    if (!csv.trim()) return;
-    setBusy(true);
-    setError(null);
-    const res = await fetch("/api/billings/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ csv, dryRun }),
+  function submit() {
+    if (!client) return;
+    onRecord(client, {
+      base: Number(retainer) || 0,
+      performance: Number(performance) || 0,
+      lateFee: 0,
+      discount: Number(discount) || 0,
+      billedOn: paymentDate,
+      dueDate: dueDate || paymentDate,
+      markPaid: true,
     });
-    const d = await res.json();
-    if (!res.ok) {
-      setError(d.error ?? "Import failed");
-      setBusy(false);
-      return;
-    }
-    setSummary(d as ImportSummary);
-    if (!dryRun) await onDone();
-    setBusy(false);
+    setJustRecorded(true);
+    setRetainer("");
+    setPerformance("0");
+    setDiscount("0");
   }
-
-  const committed = summary && !summary.dry_run;
 
   return (
     <div className="rounded-xl p-5 space-y-4" style={{ background: "#0a1628", border: "1px solid rgba(56,189,248,0.2)" }}>
       <div>
-        <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Import past payments (CSV)</h3>
+        <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Record a past payment</h3>
         <p className="text-xs mt-1" style={{ color: "#475569" }}>
-          Columns: <code style={{ color: "#94a3b8" }}>client, date, amount</code> (required), <code style={{ color: "#94a3b8" }}>method, note</code> (optional). Client must match a roster name exactly. Each row is logged as a fully-paid billing on its payment date. Duplicate rows (same client/date/amount) are skipped.
+          Log a billing from a while back (e.g. if it wasn&rsquo;t captured automatically). It is recorded as fully paid on the payment date. Total collected = retainer + performance − discount.
         </p>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <input type="file" accept=".csv,text/csv" onChange={readFile} className="text-xs" style={{ color: "#94a3b8" }} />
-        {fileName && <span className="text-xs" style={{ color: "#475569" }}>{fileName}</span>}
-        <button onClick={() => send(true)} disabled={busy || !csv.trim()} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#60a5fa", background: "rgba(96,165,250,0.1)", opacity: (busy || !csv.trim()) ? 0.5 : 1 }}>
-          {busy ? "Working…" : "Preview"}
-        </button>
-        <button onClick={() => send(false)} disabled={busy || !summary || summary.dry_run === false || summary.matched_rows === 0} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: (busy || !summary || summary.dry_run === false || summary.matched_rows === 0) ? 0.5 : 1 }}>
-          Import {summary && summary.dry_run ? `${summary.matched_rows} rows` : ""}
-        </button>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <LabeledInput label="Client">
+          <select value={clientId} onChange={e => { setClientId(e.target.value); setJustRecorded(false); }} className="px-2 py-1.5 rounded-lg text-sm outline-none cursor-pointer" style={fieldStyle()}>
+            <option value="">Select client…</option>
+            {sorted.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </LabeledInput>
+        <LabeledInput label="Due date of payment"><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></LabeledInput>
+        <LabeledInput label="Date payment conducted"><input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></LabeledInput>
+        <LabeledInput label="Total retainer"><input type="number" value={retainer} onChange={e => { setRetainer(e.target.value); setJustRecorded(false); }} placeholder="0" className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></LabeledInput>
+        <LabeledInput label="Total performance fee"><input type="number" value={performance} onChange={e => { setPerformance(e.target.value); setJustRecorded(false); }} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></LabeledInput>
+        <LabeledInput label="Amount discounted"><input type="number" value={discount} onChange={e => { setDiscount(e.target.value); setJustRecorded(false); }} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></LabeledInput>
       </div>
 
-      {error && <p className="text-xs" style={{ color: "#ef4444" }}>{error}</p>}
-
-      {summary && (
-        <div className="space-y-3">
-          <p className="text-sm" style={{ color: committed ? "#22c55e" : "#cbd5e1" }}>
-            {committed
-              ? `Imported ${summary.inserted} payment${summary.inserted === 1 ? "" : "s"} (${money(summary.total_amount)}).`
-              : `Preview: ${summary.matched_rows} matched row${summary.matched_rows === 1 ? "" : "s"}, ${money(summary.total_amount)} total.`}
-            {summary.skipped_duplicate > 0 && ` ${summary.skipped_duplicate} duplicate skipped.`}
-            {summary.skipped_invalid > 0 && ` ${summary.skipped_invalid} invalid skipped.`}
-          </p>
-
-          {summary.unmatched.length > 0 && (
-            <p className="text-xs px-3 py-2 rounded" style={{ color: "#f59e0b", background: "rgba(245,158,11,0.08)" }}>
-              Unmatched client name{summary.unmatched.length === 1 ? "" : "s"} (not imported — add or rename in the roster): {summary.unmatched.join(", ")}
-            </p>
-          )}
-
-          {summary.per_client.length > 0 && (
-            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr style={{ background: "#081225" }}>
-                    {["Client", "Payments", "Total"].map((h, i) => (
-                      <th key={i} className="text-left px-3 py-2 font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {summary.per_client.map((p, i) => (
-                    <tr key={p.name} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                      <td className="px-3 py-1.5" style={{ color: "#e2e8f0" }}>{p.name}</td>
-                      <td className="px-3 py-1.5" style={{ color: "#94a3b8" }}>{p.count}</td>
-                      <td className="px-3 py-1.5" style={{ color: "#cbd5e1" }}>{money(p.total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+      <div className="flex items-center gap-4 flex-wrap">
+        <span className="text-sm" style={{ color: "#cbd5e1" }}>Total collected: <strong style={{ color: "#e2e8f0" }}>{money(total)}</strong></span>
+        <button onClick={submit} disabled={disabled} className="text-xs font-semibold px-4 py-2 rounded-lg" style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", opacity: disabled ? 0.5 : 1 }}>
+          {isBusy ? "Recording…" : "Record payment"}
+        </button>
+        {justRecorded && !isBusy && <span className="text-xs" style={{ color: "#22c55e" }}>Recorded — see the Paid section below.</span>}
+      </div>
     </div>
   );
 }

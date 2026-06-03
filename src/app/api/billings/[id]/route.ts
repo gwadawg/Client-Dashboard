@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 const BILLING_FIELDS =
-  'id, client_id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, amount_paid, status, paid_on, method, invoice_ref, note, created_at';
+  'id, client_id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, amount_paid, status, paid_on, method, invoice_ref, note, created_at';
 
 // PATCH /api/billings/[id] — mark paid / record a partial payment / adjust the
 // breakdown / extend the due date / re-disposition a billing row.
@@ -31,19 +31,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   // Recompute the total when any breakdown piece is adjusted.
-  const touchesBreakdown = ['base_amount', 'performance_amount', 'late_fee'].some(k => k in body) || 'amount' in body;
+  const touchesBreakdown = ['base_amount', 'performance_amount', 'late_fee', 'discount'].some(k => k in body) || 'amount' in body;
   const base = 'base_amount' in body ? Number(body.base_amount)
     : Number(current.base_amount ?? current.amount) || 0;
   const performance = 'performance_amount' in body ? Number(body.performance_amount)
     : Number(current.performance_amount) || 0;
   const lateFee = 'late_fee' in body ? Number(body.late_fee)
     : Number(current.late_fee) || 0;
+  const discount = 'discount' in body ? Number(body.discount)
+    : Number(current.discount) || 0;
   let amount = Number(current.amount) || 0;
   if (touchesBreakdown) {
-    amount = base + performance + lateFee;
+    amount = base + performance + lateFee - discount;
     updates.base_amount = base;
     updates.performance_amount = performance;
     updates.late_fee = lateFee;
+    updates.discount = discount;
     updates.amount = amount;
   }
 
