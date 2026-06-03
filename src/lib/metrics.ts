@@ -54,6 +54,12 @@ export type MetricsResult = {
   shows: number;
   no_shows: number;
   show_pct: number;
+  /** True show rate: shows ÷ (shows + no-shows). Excludes cancellations, LO bails, and pending. */
+  net_show_pct: number;
+  /** LO bailed ÷ appointments booked. */
+  lo_bail_rate: number;
+  /** (claimed + shows + live transfers) ÷ qualified leads. */
+  conversation_rate: number;
   appointment_cancelled: number;
   cancel_rate: number;
   /** Partner LO did not attend scheduled appointment with lead (“bailed”). */
@@ -190,6 +196,9 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
     shows,
     no_shows,
     show_pct: booked > 0 ? (shows / booked) * 100 : 0,
+    net_show_pct: shows + no_shows > 0 ? (shows / (shows + no_shows)) * 100 : 0,
+    lo_bail_rate: booked > 0 ? (lo_bailed / booked) * 100 : 0,
+    conversation_rate: qualified_leads > 0 ? (client_conversations / qualified_leads) * 100 : 0,
     appointment_cancelled: cancelled,
     cancel_rate: scheduled_total > 0 ? (cancelled / scheduled_total) * 100 : 0,
     lo_bailed,
@@ -343,11 +352,15 @@ export type KpiTimelineBucket = {
   qualified_leads: number;
   booked: number;
   shows: number;
+  no_shows: number;
+  client_conversations: number;
   cpconv: number | null;
   cpql: number | null;
   cpl: number | null;
   show_rate: number | null;
+  net_show_rate: number | null;
   booking_rate: number | null;
+  conversation_rate: number | null;
   lead_to_qual: number | null;
 };
 
@@ -358,13 +371,27 @@ type RawCounts = {
   qualified_leads: number;
   booked: number;
   shows: number;
+  no_shows: number;
+  live_transfers: number;
+  claimed: number;
 };
 
 function emptyCounts(date: string): RawCounts {
-  return { date, spend: 0, leads: 0, qualified_leads: 0, booked: 0, shows: 0 };
+  return {
+    date,
+    spend: 0,
+    leads: 0,
+    qualified_leads: 0,
+    booked: 0,
+    shows: 0,
+    no_shows: 0,
+    live_transfers: 0,
+    claimed: 0,
+  };
 }
 
 function finalizeBucket(c: RawCounts): KpiTimelineBucket {
+  const client_conversations = c.live_transfers + c.claimed + c.shows;
   return {
     date: c.date,
     spend: c.spend,
@@ -372,11 +399,15 @@ function finalizeBucket(c: RawCounts): KpiTimelineBucket {
     qualified_leads: c.qualified_leads,
     booked: c.booked,
     shows: c.shows,
+    no_shows: c.no_shows,
+    client_conversations,
     cpconv: c.shows > 0 ? c.spend / c.shows : null,
     cpql: c.qualified_leads > 0 ? c.spend / c.qualified_leads : null,
     cpl: c.leads > 0 ? c.spend / c.leads : null,
     show_rate: c.booked > 0 ? (c.shows / c.booked) * 100 : null,
+    net_show_rate: c.shows + c.no_shows > 0 ? (c.shows / (c.shows + c.no_shows)) * 100 : null,
     booking_rate: c.qualified_leads > 0 ? (c.booked / c.qualified_leads) * 100 : null,
+    conversation_rate: c.qualified_leads > 0 ? (client_conversations / c.qualified_leads) * 100 : null,
     lead_to_qual: c.leads > 0 ? (c.qualified_leads / c.leads) * 100 : null,
   };
 }
@@ -414,6 +445,12 @@ export function buildClientKpiTimeline(
       bucket.booked++;
     } else if (e.event_type === 'show') {
       bucket.shows++;
+    } else if (e.event_type === 'no_show') {
+      bucket.no_shows++;
+    } else if (e.event_type === 'live_transfer') {
+      bucket.live_transfers++;
+    } else if (e.event_type === 'claimed') {
+      bucket.claimed++;
     }
   }
 
@@ -436,6 +473,9 @@ export function buildClientKpiTimeline(
     bucket.qualified_leads += row.qualified_leads;
     bucket.booked += row.booked;
     bucket.shows += row.shows;
+    bucket.no_shows += row.no_shows;
+    bucket.live_transfers += row.live_transfers;
+    bucket.claimed += row.claimed;
   }
 
   return [...byWeek.values()]

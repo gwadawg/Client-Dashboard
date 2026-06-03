@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RawDataTable from "./RawDataTable";
+import ClientSelect from "./ClientSelect";
 import AppointmentsTable from "./AppointmentsTable";
 import LeadProfilesTable from "./LeadProfilesTable";
 import HeatMap from "./HeatMap";
@@ -19,12 +20,15 @@ import BillingManager from "./BillingManager";
 import UserManager from "./UserManager";
 import AgentCreditQueue from "./AgentCreditQueue";
 import CostTrendCharts from "./CostTrendCharts";
+import RateTrendCharts from "./RateTrendCharts";
+import ShowQualityBar from "./ShowQualityBar";
+import ConversionFunnel from "./ConversionFunnel";
 import ClientHealthDashboard from "./ClientHealthDashboard";
 import DialAnalytics from "./DialAnalytics";
-import KpiSections from "./kpi/KpiSections";
+import KpiSections, { type SparkMap } from "./kpi/KpiSections";
 import KpiSection from "./kpi/KpiSection";
 import KpiCard from "./kpi/KpiCard";
-import type { MetricsResult } from "@/lib/metrics";
+import type { KpiTimelineBucket, MetricsResult } from "@/lib/metrics";
 import {
   DEFAULT_REPORTING_TYPE,
   formatKpiValue,
@@ -36,13 +40,35 @@ import { hasPermission, type AllowedPermissions } from "@/lib/permissions";
 
 type Client = { id: string; name: string; is_live?: boolean; reporting_type?: ReportingType };
 
-type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "all_time" | "custom";
+type Preset =
+  | "today"
+  | "yesterday"
+  | "this_week"
+  | "last_week"
+  | "this_month"
+  | "last_month"
+  | "this_quarter"
+  | "ytd"
+  | "last_7"
+  | "last_14"
+  | "last_30"
+  | "last_90"
+  | "all_time"
+  | "custom";
 
 const PRESET_LABELS: Record<Preset, string> = {
+  today: "Today",
+  yesterday: "Yesterday",
+  this_week: "This Week",
+  last_week: "Last Week",
   this_month: "This Month",
   last_month: "Last Month",
-  last_30: "Last 30 Days",
+  this_quarter: "This Quarter",
+  ytd: "Year to Date",
   last_7: "Last 7 Days",
+  last_14: "Last 14 Days",
+  last_30: "Last 30 Days",
+  last_90: "Last 90 Days",
   all_time: "All Time",
   custom: "Custom Range",
 };
@@ -79,19 +105,81 @@ const NAV_ICONS: Record<View, string> = {
   client_health:    "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
 };
 
+function ymd(d: Date): string {
+  return d.toISOString().split("T")[0];
+}
+
 function getDateRange(p: Preset): { start: string; end: string } {
   const now = new Date();
-  const today = now.toISOString().split("T")[0];
+  const today = ymd(now);
+  if (p === "today") return { start: today, end: today };
+  if (p === "yesterday") {
+    const y = ymd(new Date(now.getTime() - 86400000));
+    return { start: y, end: y };
+  }
+  if (p === "this_week") {
+    // Week starts Monday.
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    return { start: ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff)), end: today };
+  }
+  if (p === "last_week") {
+    const day = now.getDay();
+    const diffToMon = day === 0 ? -6 : 1 - day;
+    const thisMon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon);
+    const lastMon = new Date(thisMon.getTime() - 7 * 86400000);
+    const lastSun = new Date(thisMon.getTime() - 86400000);
+    return { start: ymd(lastMon), end: ymd(lastSun) };
+  }
   if (p === "this_month") return {
-    start: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0], end: today,
+    start: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), end: today,
   };
   if (p === "last_month") return {
-    start: new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split("T")[0],
-    end: new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split("T")[0],
+    start: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+    end: ymd(new Date(now.getFullYear(), now.getMonth(), 0)),
   };
-  if (p === "last_30") return { start: new Date(now.getTime() - 30 * 86400000).toISOString().split("T")[0], end: today };
-  if (p === "last_7")  return { start: new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0], end: today };
+  if (p === "this_quarter") {
+    const q = Math.floor(now.getMonth() / 3);
+    return { start: ymd(new Date(now.getFullYear(), q * 3, 1)), end: today };
+  }
+  if (p === "ytd") return { start: ymd(new Date(now.getFullYear(), 0, 1)), end: today };
+  if (p === "last_90") return { start: ymd(new Date(now.getTime() - 90 * 86400000)), end: today };
+  if (p === "last_30") return { start: ymd(new Date(now.getTime() - 30 * 86400000)), end: today };
+  if (p === "last_14") return { start: ymd(new Date(now.getTime() - 14 * 86400000)), end: today };
+  if (p === "last_7")  return { start: ymd(new Date(now.getTime() - 7 * 86400000)), end: today };
   return { start: "", end: "" };
+}
+
+/** Map the KPI timeline buckets onto the metric keys their cards use, for sparklines. */
+function buildSparkMap(series: KpiTimelineBucket[]): SparkMap {
+  if (!series.length) return {};
+  return {
+    new_leads: series.map(b => b.leads),
+    qualified_leads: series.map(b => b.qualified_leads),
+    booked_appointments: series.map(b => b.booked),
+    shows: series.map(b => b.shows),
+    no_shows: series.map(b => b.no_shows),
+    show_pct: series.map(b => b.show_rate),
+    net_show_pct: series.map(b => b.net_show_rate),
+    appt_booking_rate: series.map(b => b.booking_rate),
+    conversation_rate: series.map(b => b.conversation_rate),
+    ad_spend: series.map(b => b.spend),
+    cpl: series.map(b => b.cpl),
+    cp_qualified: series.map(b => b.cpql),
+    cp_conversation: series.map(b => b.cpconv),
+  };
+}
+
+/** Equal-length window immediately before [start, end]. Returns null for unbounded ranges. */
+function previousRange(start: string, end: string): { start: string; end: string } | null {
+  if (!start || !end) return null;
+  const startMs = new Date(`${start}T00:00:00.000Z`).getTime();
+  const endMs = new Date(`${end}T00:00:00.000Z`).getTime();
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) return null;
+  const lengthDays = Math.floor((endMs - startMs) / 86400000) + 1;
+  const prevEnd = new Date(startMs - 86400000);
+  const prevStart = new Date(prevEnd.getTime() - (lengthDays - 1) * 86400000);
+  return { start: ymd(prevStart), end: ymd(prevEnd) };
 }
 
 function Select({ value, onChange, children, className = "" }: {
@@ -208,6 +296,9 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [metrics, setMetrics] = useState<MetricsResult | null>(null);
+  const [prevMetrics, setPrevMetrics] = useState<MetricsResult | null>(null);
+  const [compare, setCompare] = useState(false);
+  const [sparkMap, setSparkMap] = useState<SparkMap | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [overduePending, setOverduePending] = useState<number | null>(null);
   const [showPresetMenu, setShowPresetMenu] = useState(false);
@@ -259,6 +350,39 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
       .then(r => r.json())
       .then(d => { setMetrics(d); setMetricsLoading(false); })
       .catch(() => setMetricsLoading(false));
+  }, [view, selectedClientId, preset, customStart, customEnd]);
+
+  // Previous-period comparison: fetch the equal-length window immediately before
+  // the current range so each KPI card can show a vs-prev delta.
+  useEffect(() => {
+    if (view !== "dashboard" || !compare) { setPrevMetrics(null); return; }
+    const { start, end } = preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
+    const prev = previousRange(start, end);
+    if (!prev) { setPrevMetrics(null); return; }
+    const params = new URLSearchParams();
+    if (selectedClientId === "__live__") params.set("live_only", "true");
+    else if (selectedClientId) params.set("client_id", selectedClientId);
+    params.set("start_date", prev.start);
+    params.set("end_date", prev.end);
+    fetch(`/api/metrics?${params}`)
+      .then(r => r.json())
+      .then(d => setPrevMetrics(d))
+      .catch(() => setPrevMetrics(null));
+  }, [view, compare, selectedClientId, preset, customStart, customEnd]);
+
+  // Per-card sparklines: pull the daily/weekly KPI timeline and map each series
+  // onto the metric key its card uses. Skipped for unbounded (all-time) ranges.
+  useEffect(() => {
+    if (view !== "dashboard") { setSparkMap(null); return; }
+    const { start, end } = preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
+    if (!start || !end) { setSparkMap(null); return; }
+    const params = new URLSearchParams({ start_date: start, end_date: end });
+    if (selectedClientId === "__live__") params.set("live_only", "true");
+    else if (selectedClientId) params.set("client_id", selectedClientId);
+    fetch(`/api/metrics/trends?${params}`)
+      .then(r => r.json())
+      .then(d => setSparkMap(buildSparkMap(d.kpiSeries ?? [])))
+      .catch(() => setSparkMap(null));
   }, [view, selectedClientId, preset, customStart, customEnd]);
 
   // Past-due, un-dispositioned appointment backlog. Deliberately keyed only on
@@ -404,11 +528,21 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
           {(view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "dial_analytics" || view === "client_health" || view === "recordings") && !view.startsWith("admin_") && (
             <>
               {(view === "dashboard" || view === "dial_analytics") && (
-                <Select value={selectedClientId} onChange={v => setSelectedClientId(v)}>
-                  <option value="">All Clients</option>
-                  <option value="__live__">Live Clients</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_live === false ? " (offline)" : ""}</option>)}
-                </Select>
+                <ClientSelect value={selectedClientId} onChange={setSelectedClientId} clients={clients} />
+              )}
+
+              {view === "dashboard" && preset !== "all_time" && (
+                <button
+                  type="button"
+                  onClick={() => setCompare(c => !c)}
+                  className="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={compare
+                    ? { background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.4)" }
+                    : { background: "#0f2040", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.12)" }}
+                  title="Show change vs. the previous equal-length period"
+                >
+                  {compare ? "✓ Compare" : "Compare"}
+                </button>
               )}
 
               <div className="relative" ref={presetRef}>
@@ -458,11 +592,7 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
           {/* Heat map controls */}
           {isHeatmap && (
             <>
-              <Select value={heatmapClientId} onChange={v => setHeatmapClientId(v)}>
-                <option value="">All Clients</option>
-                <option value="__live__">Live Clients</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_live === false ? " (offline)" : ""}</option>)}
-              </Select>
+              <ClientSelect value={heatmapClientId} onChange={setHeatmapClientId} clients={clients} />
               <Select value={heatmapDays} onChange={v => setHeatmapDays(Number(v))}>
                 <option value={0}>All Time</option>
                 <option value={7}>Last 7 days</option>
@@ -531,7 +661,14 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
                   </p>
                 )}
 
-                <KpiSections metrics={metrics} reportingType={dashboardReportingType} />
+                <KpiSections metrics={metrics} reportingType={dashboardReportingType} previous={compare ? prevMetrics : null} spark={sparkMap} />
+
+                <KpiSection title="Appointment Breakdown" showDivider>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <ShowQualityBar metrics={metrics} />
+                    <ConversionFunnel metrics={metrics} />
+                  </div>
+                </KpiSection>
 
                 {dashboardReportingType === "RM" && (
                   <KpiSection
@@ -550,8 +687,17 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
                   </KpiSection>
                 )}
 
+                <KpiSection title="Rate Trends" showDivider>
+                  <RateTrendCharts
+                    clientId={selectedClientId === "__live__" ? "" : selectedClientId}
+                    liveOnly={selectedClientId === "__live__"}
+                    startDate={dateStart}
+                    endDate={dateEnd}
+                  />
+                </KpiSection>
+
                 {dashboardReportingType === "RM" && (
-                  <KpiSection title="Trends" showDivider>
+                  <KpiSection title="Cost Trends" showDivider>
                     <CostTrendCharts
                       clientId={selectedClientId === "__live__" ? "" : selectedClientId}
                       liveOnly={selectedClientId === "__live__"}

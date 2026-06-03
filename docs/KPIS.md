@@ -25,9 +25,12 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **Shows** | Lead attended the appointment | `COUNT(show events)` or `Showed? = Y` | Appointments col J |
 | **No Shows** | Lead missed the appointment | `COUNT(no_show events)` or `Showed? = N` | Appointments col J |
 | **LO bailed** | Partner LO missed the appointment with the lead (not a lead no-show) | `COUNT(lo_bailed events)` or `Showed? = X` | Appointments col J |
-| **Show Rate** | Shows vs all bookings | `Shows ÷ Appointments Booked × 100` | Appointments |
+| **Show Rate** (of booked) | Shows vs all bookings (client-report rate) | `Shows ÷ Appointments Booked × 100` | Appointments |
+| **Net Show Rate** | True lead-attendance rate; ignores cancellations, LO bails, and pending | `Shows ÷ (Shows + No Shows) × 100` | Appointments |
+| **LO Bail Rate** | Share of bookings the partner LO missed | `LO bailed ÷ Appointments Booked × 100` | Appointments |
 | **Cancellations** | Appointments cancelled | `COUNT(appointment_cancelled)` | GHL cancel trigger |
 | **Cancel Rate** | Cancelled vs scheduled | `Cancellations ÷ (Appointments Booked + Cancellations) × 100` | Appointments |
+| **Conversation Rate** | Client-side conversations per qualified lead | `(Claimed + Shows + Live Transfers) ÷ Qualified Leads × 100` | Leads + Appointments + Live Transfers |
 | **Live Transfers** | Live transfer to client/agent | `COUNT(live_transfer events)` | Live Transfers tab |
 | **Total Conversations** | Meaningful completed calls (2 min+) plus client-claimed conversations | `COUNT(dials WHERE is_conversation = true) + COUNT(claimed events)` | Conversations / Claimed tab |
 | **Proposals Made** | Reached proposal stage **or beyond** | `COUNT(unique leads with proposal_made OR submission_made OR loan_funded)` | MLO / Pipeline |
@@ -41,6 +44,9 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 
 - **Booking rate:** Qualified leads only (leads you dial). Use the same date window for qualified leads and appointments. Filter both sides by the same client.
 - **Show rate (client reporting):** `Shows ÷ Appointments Booked`, not shows ÷ (shows + no-shows only). Pending appointments stay in the denominator until they are marked show, no-show, LO bailed, or cancelled.
+- **Net show rate (true attendance):** `Shows ÷ (Shows + No Shows)`. Use this to judge lead quality / setter performance: it excludes cancellations, LO bails, and pending appointments, so it isn't dragged down by outcomes the lead is not responsible for. Display it alongside the gross show rate — never replace the client-report rate with it.
+- **LO bail rate:** `LO bailed ÷ Appointments Booked`. Surfaces partner loan-officer no-shows (Showed? = X) as their own KPI rather than burying them in the show rate.
+- **Conversation rate:** `(Claimed + Shows + Live Transfers) ÷ Qualified Leads`. The numerator is the same "client conversations" figure used for Cost per Conversation.
 - **Cancel rate:** `Cancellations ÷ (Appointments Booked + Cancellations)`. Use the same GHL **appointment ID** (`external_id`) on book and cancel. Prefer `/api/webhooks/appointment-status` with `status: "cancelled"` so the original booking row is updated (see `ccm-appt-cancelled.blueprint.json`).
 - **Appts to take place:** `Booked − Shows − No Shows − Cancellations − LO bailed` (pending / unresolved slots).
 - **Conversion funnel rollup:** Reaching a later stage implies every earlier stage. A lead with only `loan_funded` still counts toward Submissions and Proposals; a lead with only `submission_made` still counts toward Proposals. Implied stages are derived at read time (in `src/lib/metrics.ts`) — we do **not** insert synthetic proposal/submission rows, and each lead is counted once per stage.
@@ -77,12 +83,16 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 
 ### RM dashboard layout (login → Dashboard)
 
-The main **Dashboard** view for RM clients shows four sections:
+The main **Dashboard** view for RM clients shows these sections:
 
 1. **Leads & Pipeline** — Total Leads, Qualified, Hot, Out of State, Claimed, Live Transfers  
-2. **Appointments** — Booked, booking rate, appts to take place, shows, no-shows, LO bailed, show rate, cancellations, cancel rate  
-3. **Acquisition Costs** — Total Spend, CPL, CPQL, CPH, Cost per Appointment, Cost per Conversation  
-4. **Trends** — Line charts for CPL, CPQL, and Cost per Conversation over the selected date range  
+2. **Appointments** — Booked, booking rate, appts to take place, shows, no-shows, LO bailed, cancellations  
+3. **Show Quality & Conversion** — Net Show Rate, Show Rate (of booked), Cancel Rate, LO Bail Rate, Conversation Rate  
+4. **Acquisition Costs** — Total Spend, CPL, CPQL, CPH, Cost per Appointment, Cost per Conversation  
+5. **Conversions** — Proposals Made, Submissions, Funded Loans, and per-stage cost  
+6. **Trends** — Line charts for CPL, CPQL, and Cost per Conversation over the selected date range  
+
+Rate cards carry an info tooltip with their formula. Show Quality groups all appointment rates together so the true (net) show rate reads at a glance separate from the client-report rate.
 
 HE clients keep a minimal dashboard (appointments + calling stats). Operational metrics (dials, show rate, booking rate, etc.) remain in other nav views.
 
@@ -251,7 +261,10 @@ Document your live Make scenario to match one approach:
 | Appointments Booked | Yes | `appointment_booked` |
 | Booking Rate | Yes | |
 | Shows / No Shows | Yes | |
-| Show Rate | Yes | `shows ÷ appointments booked` |
+| Show Rate (of booked) | Yes | `shows ÷ appointments booked` |
+| Net Show Rate | Yes | `shows ÷ (shows + no_shows)` — true attendance, excludes cancel/LO bail/pending |
+| LO Bail Rate | Yes | `lo_bailed ÷ appointments booked` |
+| Conversation Rate | Yes | `(claimed + shows + live_transfers) ÷ qualified_leads` |
 | Cancellations / Cancel Rate | Yes | `appointment_cancelled`; rate = cancel ÷ (booked + cancel) |
 | Outbound Dials, Pickups, CPL, etc. | Yes | See `src/lib/metrics.ts` |
 | Total Conversations (2 min+) | Yes | Dial conversations plus `claimed` events |

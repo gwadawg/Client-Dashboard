@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import {
+  buildClientKpiTimeline,
   buildDailyCostSeries,
   daysInRange,
   rollupCostSeriesToWeeks,
@@ -70,6 +71,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       granularity,
       series: toCostTrendPoints(buckets),
+      kpiSeries: buildClientKpiTimeline(events ?? [], spendRows, start_date, end_date, granularity),
     });
   } catch (e) {
     return NextResponse.json(
