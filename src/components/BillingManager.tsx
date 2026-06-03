@@ -138,7 +138,7 @@ export default function BillingManager() {
   const [busy, setBusy] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
-  const [showOnboard, setShowOnboard] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   async function load() {
     const res = await fetch("/api/billings");
@@ -205,18 +205,6 @@ export default function BillingManager() {
     setBusy(null);
   }
 
-  async function createClient(body: Record<string, unknown>) {
-    setBusy("create-client");
-    await fetch("/api/clients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    await load();
-    setBusy(null);
-    setShowOnboard(false);
-  }
-
   // Split everything into the disposition buckets. Recorded billings always show
   // (so money owed by paused/churned clients is still collected); forecasts are
   // only projected for active clients with nothing outstanding.
@@ -264,6 +252,12 @@ export default function BillingManager() {
     [clients],
   );
 
+  // All money ever collected (incl. partials and imported historical payments).
+  const totalCollected = useMemo(
+    () => clients.reduce((sum, c) => sum + c.billings.reduce((s, b) => s + (Number(b.amount_paid) || 0), 0), 0),
+    [clients],
+  );
+
   if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#334155" }}>Loading…</p>;
 
   return (
@@ -276,21 +270,26 @@ export default function BillingManager() {
           </p>
         </div>
         <button
-          onClick={() => setShowOnboard(s => !s)}
+          onClick={() => setShowImport(s => !s)}
           className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
-          style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)" }}
+          style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.25)" }}
         >
-          {showOnboard ? "Close" : "+ Onboard client"}
+          {showImport ? "Close" : "Import past payments"}
         </button>
       </div>
 
-      {showOnboard && <OnboardForm busy={busy} onCreate={createClient} />}
+      <p className="text-xs" style={{ color: "#475569" }}>
+        Need to add a client or fill in missing client data? Use the Client Roster tab — billing reads launch date, MRR, and lifecycle from there.
+      </p>
+
+      {showImport && <ImportPanel onDone={load} />}
 
       <div className="flex gap-4 flex-wrap">
         <StatCard label="Active MRR" value={money(totals?.active_mrr ?? 0)} color="#22c55e" />
         <StatCard label="Billed this month" value={money(totals?.billed_this_month ?? 0)} color="#e2e8f0" />
         <StatCard label="Past due (balance)" value={money(totals?.overdue_total ?? 0)} color="#ef4444" />
         <StatCard label="Open balance" value={money(totals?.open_total ?? 0)} color="#f59e0b" />
+        <StatCard label="Total collected" value={money(totalCollected)} color="#38bdf8" />
       </div>
 
       <WorklistSection
@@ -736,72 +735,117 @@ function InactiveTable({
   );
 }
 
-function OnboardForm({
-  busy, onCreate,
-}: {
-  busy: string | null;
-  onCreate: (body: Record<string, unknown>) => void;
-}) {
-  const [name, setName] = useState("");
-  const [mrr, setMrr] = useState("");
-  const [billingType, setBillingType] = useState("");
-  const [launchDate, setLaunchDate] = useState("");
-  const [dateSigned, setDateSigned] = useState("");
-  const [contractTerm, setContractTerm] = useState("");
-  const [contractEnd, setContractEnd] = useState("");
-  const [performanceTerms, setPerformanceTerms] = useState("");
-  const [lifecycle, setLifecycle] = useState("onboarding");
+type ImportSummary = {
+  dry_run: boolean;
+  inserted?: number;
+  matched_rows: number;
+  total_amount: number;
+  per_client: { name: string; count: number; total: number }[];
+  unmatched: string[];
+  skipped_invalid: number;
+  skipped_duplicate: number;
+};
 
-  const isBusy = busy === "create-client";
-  const disabled = isBusy || !name.trim();
+function ImportPanel({ onDone }: { onDone: () => Promise<void> | void }) {
+  const [csv, setCsv] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [summary, setSummary] = useState<ImportSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  function submit() {
-    onCreate({
-      name: name.trim(),
-      is_live: lifecycle === "active",
-      lifecycle_status: lifecycle,
-      mrr,
-      billing_type: billingType,
-      launch_date: launchDate,
-      date_signed: dateSigned,
-      contract_term_months: contractTerm,
-      contract_end_date: contractEnd,
-      performance_terms: performanceTerms,
-    });
+  async function readFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setSummary(null);
+    setError(null);
+    setCsv(await file.text());
   }
 
+  async function send(dryRun: boolean) {
+    if (!csv.trim()) return;
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/billings/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ csv, dryRun }),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      setError(d.error ?? "Import failed");
+      setBusy(false);
+      return;
+    }
+    setSummary(d as ImportSummary);
+    if (!dryRun) await onDone();
+    setBusy(false);
+  }
+
+  const committed = summary && !summary.dry_run;
+
   return (
-    <div className="rounded-xl p-5 space-y-4" style={{ background: "#0a1628", border: "1px solid rgba(34,197,94,0.2)" }}>
-      <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Onboard a new client</h3>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <LabeledInput label="Name"><input value={name} onChange={e => setName(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></LabeledInput>
-        <LabeledInput label="Monthly $ (base)"><input type="number" value={mrr} onChange={e => setMrr(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></LabeledInput>
-        <LabeledInput label="Billing type">
-          <select value={billingType} onChange={e => setBillingType(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none cursor-pointer" style={fieldStyle()}>
-            <option value="">Monthly (default)</option>
-            <option value="monthly">Monthly</option>
-            <option value="pif">PIF</option>
-            <option value="pif_monthly">PIF + Monthly</option>
-          </select>
-        </LabeledInput>
-        <LabeledInput label="Lifecycle">
-          <select value={lifecycle} onChange={e => setLifecycle(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none cursor-pointer" style={fieldStyle()}>
-            <option value="onboarding">Onboarding</option>
-            <option value="active">Active</option>
-            <option value="new_account">New account</option>
-          </select>
-        </LabeledInput>
-        <LabeledInput label="Launch date (billing anchor)"><input type="date" value={launchDate} onChange={e => setLaunchDate(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></LabeledInput>
-        <LabeledInput label="Date signed"><input type="date" value={dateSigned} onChange={e => setDateSigned(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></LabeledInput>
-        <LabeledInput label="Contract term (months)"><input type="number" value={contractTerm} onChange={e => setContractTerm(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></LabeledInput>
-        <LabeledInput label="Contract end"><input type="date" value={contractEnd} onChange={e => setContractEnd(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></LabeledInput>
-        <div className="col-span-2 md:col-span-4">
-          <LabeledInput label="Performance terms (how perf pricing is calculated)"><input value={performanceTerms} onChange={e => setPerformanceTerms(e.target.value)} placeholder="e.g. $X per booked appointment over 20/mo" className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
-        </div>
+    <div className="rounded-xl p-5 space-y-4" style={{ background: "#0a1628", border: "1px solid rgba(56,189,248,0.2)" }}>
+      <div>
+        <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Import past payments (CSV)</h3>
+        <p className="text-xs mt-1" style={{ color: "#475569" }}>
+          Columns: <code style={{ color: "#94a3b8" }}>client, date, amount</code> (required), <code style={{ color: "#94a3b8" }}>method, note</code> (optional). Client must match a roster name exactly. Each row is logged as a fully-paid billing on its payment date. Duplicate rows (same client/date/amount) are skipped.
+        </p>
       </div>
-      <button onClick={submit} disabled={disabled} className="text-xs font-semibold px-4 py-2 rounded-lg" style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", opacity: disabled ? 0.5 : 1 }}>
-        {isBusy ? "Creating…" : "Create client"}
-      </button>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <input type="file" accept=".csv,text/csv" onChange={readFile} className="text-xs" style={{ color: "#94a3b8" }} />
+        {fileName && <span className="text-xs" style={{ color: "#475569" }}>{fileName}</span>}
+        <button onClick={() => send(true)} disabled={busy || !csv.trim()} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#60a5fa", background: "rgba(96,165,250,0.1)", opacity: (busy || !csv.trim()) ? 0.5 : 1 }}>
+          {busy ? "Working…" : "Preview"}
+        </button>
+        <button onClick={() => send(false)} disabled={busy || !summary || summary.dry_run === false || summary.matched_rows === 0} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: (busy || !summary || summary.dry_run === false || summary.matched_rows === 0) ? 0.5 : 1 }}>
+          Import {summary && summary.dry_run ? `${summary.matched_rows} rows` : ""}
+        </button>
+      </div>
+
+      {error && <p className="text-xs" style={{ color: "#ef4444" }}>{error}</p>}
+
+      {summary && (
+        <div className="space-y-3">
+          <p className="text-sm" style={{ color: committed ? "#22c55e" : "#cbd5e1" }}>
+            {committed
+              ? `Imported ${summary.inserted} payment${summary.inserted === 1 ? "" : "s"} (${money(summary.total_amount)}).`
+              : `Preview: ${summary.matched_rows} matched row${summary.matched_rows === 1 ? "" : "s"}, ${money(summary.total_amount)} total.`}
+            {summary.skipped_duplicate > 0 && ` ${summary.skipped_duplicate} duplicate skipped.`}
+            {summary.skipped_invalid > 0 && ` ${summary.skipped_invalid} invalid skipped.`}
+          </p>
+
+          {summary.unmatched.length > 0 && (
+            <p className="text-xs px-3 py-2 rounded" style={{ color: "#f59e0b", background: "rgba(245,158,11,0.08)" }}>
+              Unmatched client name{summary.unmatched.length === 1 ? "" : "s"} (not imported — add or rename in the roster): {summary.unmatched.join(", ")}
+            </p>
+          )}
+
+          {summary.per_client.length > 0 && (
+            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: "#081225" }}>
+                    {["Client", "Payments", "Total"].map((h, i) => (
+                      <th key={i} className="text-left px-3 py-2 font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.per_client.map((p, i) => (
+                    <tr key={p.name} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                      <td className="px-3 py-1.5" style={{ color: "#e2e8f0" }}>{p.name}</td>
+                      <td className="px-3 py-1.5" style={{ color: "#94a3b8" }}>{p.count}</td>
+                      <td className="px-3 py-1.5" style={{ color: "#cbd5e1" }}>{money(p.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

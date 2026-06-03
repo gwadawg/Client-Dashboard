@@ -146,6 +146,8 @@ alter table clients add column if not exists timezone               text;
 alter table clients add column if not exists states_licensed        text[];
 alter table clients add column if not exists clickup_task_id        text;
 alter table clients add column if not exists performance_terms      text;
+alter table clients add column if not exists billing_email          text;
+alter table clients add column if not exists primary_contact        text;
 
 do $$
 begin
