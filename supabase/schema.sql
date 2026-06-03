@@ -541,6 +541,12 @@ create table if not exists client_billings (
   method             text,                             -- card | ach | wire | stripe | manual
   invoice_ref        text,                             -- external invoice / Stripe id
   note               text,
+  revenue_type       text,                             -- mrr | pif | performance | passthrough
+  revenue_segment    text,                             -- front_end (new cash) | back_end (recurring)
+  lead_source        text,                             -- Meta | Referral | Cold Call | Linkedin | ...
+  term_months        int,                              -- months covered (PIF lump sums)
+  processing_fee     numeric default 0,                -- payment processor fee
+  passthrough_amount numeric default 0,                -- ad-spend reimbursement (excluded from revenue)
   created_by         uuid    references auth.users(id) on delete set null,
   created_at         timestamptz default now()
 );
@@ -552,6 +558,12 @@ alter table client_billings add column if not exists performance_amount numeric 
 alter table client_billings add column if not exists late_fee           numeric default 0;
 alter table client_billings add column if not exists discount           numeric default 0;
 alter table client_billings add column if not exists amount_paid        numeric default 0;
+alter table client_billings add column if not exists revenue_type       text;
+alter table client_billings add column if not exists revenue_segment    text;
+alter table client_billings add column if not exists lead_source        text;
+alter table client_billings add column if not exists term_months        int;
+alter table client_billings add column if not exists processing_fee     numeric default 0;
+alter table client_billings add column if not exists passthrough_amount numeric default 0;
 update client_billings set base_amount = amount   where base_amount is null;
 update client_billings set due_date    = billed_on where due_date is null;
 
@@ -563,6 +575,14 @@ begin
   alter table client_billings add constraint client_billings_status_check check (
     status in ('pending', 'partial', 'paid', 'overdue', 'failed', 'refunded')
   );
+  if not exists (select 1 from pg_constraint where conname = 'client_billings_revenue_type_check') then
+    alter table client_billings add constraint client_billings_revenue_type_check
+      check (revenue_type is null or revenue_type in ('mrr', 'pif', 'performance', 'passthrough'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'client_billings_revenue_segment_check') then
+    alter table client_billings add constraint client_billings_revenue_segment_check
+      check (revenue_segment is null or revenue_segment in ('front_end', 'back_end'));
+  end if;
 end $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────

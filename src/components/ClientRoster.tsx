@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import ClientFile from "@/components/ClientFile";
 import { DEFAULT_REPORTING_TYPE, normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import {
   DEFAULT_KPI_BANDS,
@@ -88,6 +89,7 @@ export default function ClientRoster() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [benchmarksFor, setBenchmarksFor] = useState<string | null>(null);
+  const [fileFor, setFileFor] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
@@ -138,13 +140,6 @@ export default function ClientRoster() {
     setBusy(null);
   }
 
-  const stats = useMemo(() => {
-    const live = clients.filter(c => c.is_live).length;
-    const totalMrr = clients.reduce((s, c) => s + (c.is_live && typeof c.mrr === "number" ? c.mrr : 0), 0);
-    const totalPaid = clients.reduce((s, c) => s + (c.total_paid ?? 0), 0);
-    return { live, offline: clients.length - live, total: clients.length, totalMrr, totalPaid };
-  }, [clients]);
-
   if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#334155" }}>Loading…</p>;
 
   return (
@@ -167,14 +162,6 @@ export default function ClientRoster() {
 
       {showAdd && <AddClientForm busy={busy} onCreate={createClient} />}
 
-      <div className="flex gap-4 flex-wrap">
-        <Stat label="Live" value={String(stats.live)} color="#22c55e" />
-        <Stat label="Offline" value={String(stats.offline)} color="#ef4444" />
-        <Stat label="Total clients" value={String(stats.total)} color="#e2e8f0" />
-        <Stat label="Active MRR" value={money(stats.totalMrr)} color="#22c55e" />
-        <Stat label="Total collected" value={money(stats.totalPaid)} color="#38bdf8" />
-      </div>
-
       <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
         <table className="text-sm" style={{ minWidth: 1400 }}>
           <thead>
@@ -196,6 +183,7 @@ export default function ClientRoster() {
                 confirmingDelete={confirmDelete === c.id}
                 benchmarksOpen={benchmarksFor === c.id}
                 onPatch={patchClient}
+                onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
                 onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
                 onAskDelete={() => setConfirmDelete(c.id)}
                 onCancelDelete={() => setConfirmDelete(null)}
@@ -207,23 +195,18 @@ export default function ClientRoster() {
       </div>
 
       <p className="text-xs" style={{ color: "#334155" }}>
-        Offline clients are excluded when using the &ldquo;Live Clients&rdquo; filter on the dashboard. Pausing or churning a client is best done from the Client Billing tab so the schedule updates too.
+        Offline clients are excluded when using the &ldquo;Live Clients&rdquo; filter on the dashboard. Open a client&rsquo;s file to oversee their full billing history. Pausing or churning a client is best done from the Client Billing tab so the schedule updates too.
       </p>
-    </div>
-  );
-}
 
-function Stat({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="rounded-xl p-4 flex-1 min-w-[120px]" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <p className="text-xs uppercase tracking-wider mb-1" style={{ color: "#475569" }}>{label}</p>
-      <p className="text-xl font-bold" style={{ color }}>{value}</p>
+      {fileFor && (
+        <ClientFile key={fileFor.id} clientId={fileFor.id} fallbackName={fileFor.name} onClose={() => setFileFor(null)} />
+      )}
     </div>
   );
 }
 
 function ClientRow({
-  client, striped, busy, confirmingDelete, benchmarksOpen, onPatch, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
+  client, striped, busy, confirmingDelete, benchmarksOpen, onPatch, onOpenFile, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
 }: {
   client: Client;
   striped: boolean;
@@ -231,6 +214,7 @@ function ClientRow({
   confirmingDelete: boolean;
   benchmarksOpen: boolean;
   onPatch: (id: string, body: Record<string, unknown>) => void;
+  onOpenFile: () => void;
   onToggleBenchmarks: () => void;
   onAskDelete: () => void;
   onCancelDelete: () => void;
@@ -328,6 +312,7 @@ function ClientRow({
           </span>
         ) : (
           <span className="flex items-center justify-end gap-3">
+            <button onClick={onOpenFile} className="text-xs font-semibold" style={{ color: "#38bdf8" }} title="Open this client's file">Open file</button>
             <button
               onClick={onToggleBenchmarks}
               className="text-xs font-medium"

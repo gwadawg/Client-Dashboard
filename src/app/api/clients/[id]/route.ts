@@ -2,6 +2,41 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 
+const FILE_CLIENT_FIELDS =
+  'id, name, is_live, reporting_type, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, timezone, created_at, churned_at';
+
+const FILE_BILLING_FIELDS =
+  'id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, passthrough_amount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, created_at';
+
+// GET /api/clients/[id] — the client "file": the full client record plus its
+// complete billing/revenue history. Structured so more sections (success
+// reports, KPI history, notes) can be added over time.
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const denied = requireAnyPermission(ctx, ['admin_clients', 'admin_billing']);
+  if (denied) return denied;
+
+  const { id } = await params;
+
+  const [clientRes, billingsRes] = await Promise.all([
+    ctx.service.from('clients').select(FILE_CLIENT_FIELDS).eq('id', id).single(),
+    ctx.service
+      .from('client_billings')
+      .select(FILE_BILLING_FIELDS)
+      .eq('client_id', id)
+      .order('billed_on', { ascending: false }),
+  ]);
+
+  if (clientRes.error) {
+    const status = clientRes.error.code === 'PGRST116' ? 404 : 500;
+    return NextResponse.json({ error: clientRes.error.message }, { status });
+  }
+  if (billingsRes.error) return NextResponse.json({ error: billingsRes.error.message }, { status: 500 });
+
+  return NextResponse.json({ client: clientRes.data, billings: billingsRes.data ?? [] });
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;

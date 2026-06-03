@@ -41,13 +41,6 @@ type ClientBilling = {
   billings: Billing[];
 };
 
-type Totals = {
-  active_mrr: number;
-  billed_this_month: number;
-  overdue_total: number;
-  open_total: number;
-};
-
 const BILLING_STATUS_STYLE: Record<string, { color: string; bg: string }> = {
   paid: { color: "#22c55e", bg: "rgba(34,197,94,0.12)" },
   partial: { color: "#38bdf8", bg: "rgba(56,189,248,0.12)" },
@@ -138,7 +131,6 @@ function isActive(c: ClientBilling): boolean {
 
 export default function BillingManager() {
   const [clients, setClients] = useState<ClientBilling[]>([]);
-  const [totals, setTotals] = useState<Totals | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(true);
@@ -149,14 +141,13 @@ export default function BillingManager() {
     const res = await fetch("/api/billings");
     const d = await res.json();
     setClients(d.clients ?? []);
-    setTotals(d.totals ?? null);
     setLoading(false);
   }
 
   useEffect(() => {
     fetch("/api/billings")
       .then(r => r.json())
-      .then(d => { setClients(d.clients ?? []); setTotals(d.totals ?? null); setLoading(false); });
+      .then(d => { setClients(d.clients ?? []); setLoading(false); });
   }, []);
 
   async function patchBilling(id: string, body: Record<string, unknown>) {
@@ -258,12 +249,6 @@ export default function BillingManager() {
     [clients],
   );
 
-  // All money ever collected (incl. partials and imported historical payments).
-  const totalCollected = useMemo(
-    () => clients.reduce((sum, c) => sum + c.billings.reduce((s, b) => s + (Number(b.amount_paid) || 0), 0), 0),
-    [clients],
-  );
-
   if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#334155" }}>Loading…</p>;
 
   return (
@@ -289,14 +274,6 @@ export default function BillingManager() {
       </p>
 
       {showImport && <RecordPastPaymentForm clients={clients} busy={busy} onRecord={recordBilling} />}
-
-      <div className="flex gap-4 flex-wrap">
-        <StatCard label="Active MRR" value={money(totals?.active_mrr ?? 0)} color="#22c55e" />
-        <StatCard label="Billed this month" value={money(totals?.billed_this_month ?? 0)} color="#e2e8f0" />
-        <StatCard label="Past due (balance)" value={money(totals?.overdue_total ?? 0)} color="#ef4444" />
-        <StatCard label="Open balance" value={money(totals?.open_total ?? 0)} color="#f59e0b" />
-        <StatCard label="Total collected" value={money(totalCollected)} color="#38bdf8" />
-      </div>
 
       <WorklistSection
         title="Past Due"
@@ -345,15 +322,6 @@ export default function BillingManager() {
         </button>
         {showInactive && <InactiveTable clients={inactive} busy={busy} onPatch={patchClient} />}
       </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="rounded-xl p-5 flex-1 min-w-[160px]" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <p className="text-xs uppercase tracking-wider mb-1" style={{ color: "#475569" }}>{label}</p>
-      <p className="text-2xl font-bold" style={{ color }}>{value}</p>
     </div>
   );
 }
