@@ -60,6 +60,85 @@ export type SetOutcomeResult =
   | { ok: true; status: number; body: Record<string, unknown> }
   | { ok: false; status: number; body: Record<string, unknown> };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Outcome ↔ booking matching
+//
+// In practice almost no rows carry a GHL appointment id (external_id): bookings
+// and their outcomes are linked by the LEAD + APPOINTMENT TIME instead, because
+// an outcome row copies the booking's ghl_contact_id and scheduled_at. So the
+// reliable key is `ghl_contact_id|scheduled_at`, with external_id and the
+// booking's own event id (raw.appointment_event_id) as precise fallbacks.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function rawAppointmentEventId(raw: unknown): string | undefined {
+  return (raw as { appointment_event_id?: string } | null)?.appointment_event_id;
+}
+
+// Stable "same lead, same appointment time" key. Null when either part is
+// missing (those bookings fall back to id-based matching only).
+export function contactTimeKey(
+  ghlContactId: string | null | undefined,
+  scheduledAt: string | null | undefined,
+): string | null {
+  if (!ghlContactId || !scheduledAt) return null;
+  const t = new Date(scheduledAt).getTime();
+  if (Number.isNaN(t)) return null;
+  return `${ghlContactId}|${t}`;
+}
+
+export type OutcomeRecord = {
+  id?: string | null;
+  event_type?: string | null;
+  external_id?: string | null;
+  raw?: unknown;
+  ghl_contact_id?: string | null;
+  scheduled_at?: string | null;
+};
+
+export type BookingKey = {
+  id: string;
+  external_id?: string | null;
+  ghl_contact_id?: string | null;
+  scheduled_at?: string | null;
+};
+
+export type OutcomeIndex = {
+  byExternal: Map<string, OutcomeRecord>;
+  byApptEventId: Map<string, OutcomeRecord>;
+  byContactTime: Map<string, OutcomeRecord>;
+};
+
+export function buildOutcomeIndex(outcomes: OutcomeRecord[]): OutcomeIndex {
+  const byExternal = new Map<string, OutcomeRecord>();
+  const byApptEventId = new Map<string, OutcomeRecord>();
+  const byContactTime = new Map<string, OutcomeRecord>();
+  for (const o of outcomes) {
+    if (o.external_id) byExternal.set(o.external_id, o);
+    const linked = rawAppointmentEventId(o.raw);
+    if (linked) byApptEventId.set(linked, o);
+    const key = contactTimeKey(o.ghl_contact_id, o.scheduled_at);
+    if (key) byContactTime.set(key, o);
+  }
+  return { byExternal, byApptEventId, byContactTime };
+}
+
+// Find the outcome that resolves a booking, or undefined when it is still
+// un-dispositioned. Precise id matches win; otherwise lead + appointment time.
+export function matchOutcome(booking: BookingKey, index: OutcomeIndex): OutcomeRecord | undefined {
+  if (booking.external_id) {
+    const m = index.byExternal.get(booking.external_id);
+    if (m) return m;
+  }
+  const byId = index.byApptEventId.get(booking.id);
+  if (byId) return byId;
+  const key = contactTimeKey(booking.ghl_contact_id, booking.scheduled_at);
+  if (key) {
+    const m = index.byContactTime.get(key);
+    if (m) return m;
+  }
+  return undefined;
+}
+
 function findBookedByExternalId(service: ServiceClient, external_id: string) {
   return service
     .from('events')
@@ -175,20 +254,39 @@ export async function setAppointmentOutcome(
   }
 
   // 2) Find an existing outcome for THIS appointment so we update/delete rather
-  //    than duplicate. Key by appointment id when we have one; otherwise tie to
-  //    the specific booked row we matched.
-  let existingOutcomeQuery = service
-    .from('events')
-    .select('id, event_type')
-    .in('event_type', [...OUTCOME_EVENT_TYPES])
-    .order('occurred_at', { ascending: false })
-    .limit(1);
-  existingOutcomeQuery = outcomeExternalId
-    ? existingOutcomeQuery.eq('external_id', outcomeExternalId)
-    : existingOutcomeQuery.filter('raw->>appointment_event_id', 'eq', bookedRow.id);
+  //    than duplicate. Try precise id keys first (appointment id / booking event
+  //    id); fall back to lead + appointment time, since most historical outcomes
+  //    are only linked that way and we must not create a second outcome row.
+  let existingOutcome: { id: string; event_type: string } | null = null;
 
-  const { data: existingOutcome, error: outcomeError } = await existingOutcomeQuery.maybeSingle();
-  if (outcomeError) return { ok: false, status: 500, body: { error: outcomeError.message } };
+  {
+    let q = service
+      .from('events')
+      .select('id, event_type')
+      .in('event_type', [...OUTCOME_EVENT_TYPES])
+      .order('occurred_at', { ascending: false })
+      .limit(1);
+    q = outcomeExternalId
+      ? q.eq('external_id', outcomeExternalId)
+      : q.filter('raw->>appointment_event_id', 'eq', bookedRow.id);
+    const { data, error } = await q.maybeSingle();
+    if (error) return { ok: false, status: 500, body: { error: error.message } };
+    existingOutcome = data;
+  }
+
+  if (!existingOutcome && bookedRow.ghl_contact_id && bookedRow.scheduled_at) {
+    const { data, error } = await service
+      .from('events')
+      .select('id, event_type')
+      .in('event_type', [...OUTCOME_EVENT_TYPES])
+      .eq('ghl_contact_id', bookedRow.ghl_contact_id)
+      .eq('scheduled_at', bookedRow.scheduled_at)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) return { ok: false, status: 500, body: { error: error.message } };
+    existingOutcome = data;
+  }
 
   // 3a) Pending: remove any existing outcome row (revert to un-dispositioned).
   if (status === 'pending') {
@@ -342,10 +440,10 @@ export async function countOverdueUndispositioned(
   };
 
   // Bookings whose scheduled time is already in the past.
-  const bookings = await fetchAllRows<{ id: string; external_id: string | null }>((from, to) => {
+  const bookings = await fetchAllRows<BookingKey>((from, to) => {
     let q = service
       .from('events')
-      .select('id, external_id')
+      .select('id, external_id, ghl_contact_id, scheduled_at')
       .eq('event_type', 'appointment_booked')
       .not('scheduled_at', 'is', null)
       .lt('scheduled_at', nowIso);
@@ -356,25 +454,19 @@ export async function countOverdueUndispositioned(
 
   // Every outcome in the same client scope (no date bound — an outcome resolves
   // its booking whenever it was recorded).
-  const outcomes = await fetchAllRows<{ external_id: string | null; raw: unknown }>((from, to) => {
-    let q = service.from('events').select('external_id, raw').in('event_type', [...OUTCOME_EVENT_TYPES]);
+  const outcomes = await fetchAllRows<OutcomeRecord>((from, to) => {
+    let q = service
+      .from('events')
+      .select('external_id, raw, ghl_contact_id, scheduled_at')
+      .in('event_type', [...OUTCOME_EVENT_TYPES]);
     q = scopeClient(q);
     return q.range(from, to);
   });
 
-  const byExternal = new Set<string>();
-  const byBookingId = new Set<string>();
-  for (const o of outcomes) {
-    if (o.external_id) byExternal.add(o.external_id);
-    const linked = (o.raw as { appointment_event_id?: string } | null)?.appointment_event_id;
-    if (linked) byBookingId.add(linked);
-  }
-
+  const index = buildOutcomeIndex(outcomes);
   let count = 0;
   for (const b of bookings) {
-    if (b.external_id && byExternal.has(b.external_id)) continue;
-    if (byBookingId.has(b.id)) continue;
-    count++;
+    if (!matchOutcome(b, index)) count++;
   }
   return count;
 }
