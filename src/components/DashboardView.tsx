@@ -677,12 +677,12 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
                     footnote="Counts use unique leads per stage in the selected date range. Cost metrics are total spend divided by each conversion-stage unique lead count."
                   >
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                      <KpiCard label="Proposals Made" value={formatKpiValue(metrics.proposals_made, "int")} />
-                      <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} />
-                      <KpiCard label="Funded Loans" value={formatKpiValue(metrics.funded_loans, "int")} accent />
-                      <KpiCard label="Cost per Proposal" value={formatKpiValue(metrics.cp_proposal_made, "money")} />
-                      <KpiCard label="Cost per Submission" value={formatKpiValue(metrics.cp_submission_made, "money")} />
-                      <KpiCard label="Cost per Funded" value={formatKpiValue(metrics.cp_loan_funded, "money")} />
+                      <KpiCard label="Proposals Made" value={formatKpiValue(metrics.proposals_made, "int")} hint="Unique leads that reached the proposal stage or beyond (submitted/funded count too)." />
+                      <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} hint="Unique leads that reached the submission stage or beyond (funded count too)." />
+                      <KpiCard label="Funded Loans" value={formatKpiValue(metrics.funded_loans, "int")} accent hint="Unique leads with a funded loan — the deal closed." />
+                      <KpiCard label="Cost per Proposal" value={formatKpiValue(metrics.cp_proposal_made, "money")} hint="Total Spend ÷ Proposals Made." />
+                      <KpiCard label="Cost per Submission" value={formatKpiValue(metrics.cp_submission_made, "money")} hint="Total Spend ÷ Submissions." />
+                      <KpiCard label="Cost per Funded" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Funded Loans." />
                     </div>
                   </KpiSection>
                 )}
