@@ -147,9 +147,10 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]): Met
   const lo_bailed = events.filter(e => e.event_type === 'lo_bailed').length;
   const loan_processing = events.filter(e => SUBMISSION_EVENT_TYPES.has(e.event_type)).length;
   const scheduled_total = booked + cancelled;
-  // Appointments with any outcome recorded. Excludes still-pending / undispositioned
-  // bookings so the show rate isn't dragged down by appointments that haven't happened.
-  const dispositioned_appointments = shows + no_shows + lo_bailed + cancelled;
+  // Appointments that actually took place (or should have). Excludes still-pending
+  // bookings AND cancellations so the show rate reflects only appointments that were
+  // expected to happen — not ones that haven't happened or were called off.
+  const dispositioned_appointments = shows + no_shows + lo_bailed;
   const dials = events.filter(e => e.event_type === 'dial');
   const dial_count = dials.length;
   const pickups = dials.filter(e => e.is_pickup).length;
@@ -399,7 +400,7 @@ function emptyCounts(date: string): RawCounts {
 
 function finalizeBucket(c: RawCounts): KpiTimelineBucket {
   const client_conversations = c.live_transfers + c.claimed + c.shows;
-  const dispositioned = c.shows + c.no_shows + c.lo_bailed + c.cancelled;
+  const dispositioned = c.shows + c.no_shows + c.lo_bailed;
   return {
     date: c.date,
     spend: c.spend,

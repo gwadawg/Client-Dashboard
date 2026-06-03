@@ -25,7 +25,7 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **Shows** | Lead attended the appointment | `COUNT(show events)` or `Showed? = Y` | Appointments col J |
 | **No Shows** | Lead missed the appointment | `COUNT(no_show events)` or `Showed? = N` | Appointments col J |
 | **LO bailed** | Partner LO missed the appointment with the lead (not a lead no-show) | `COUNT(lo_bailed events)` or `Showed? = X` | Appointments col J |
-| **Show Rate** (of booked) | Shows vs all dispositioned bookings (excludes still-pending) | `Shows ÷ (Shows + No Shows + LO bailed + Cancelled) × 100` | Appointments |
+| **Show Rate** (of booked) | Shows vs appointments that took place (excludes pending + cancelled) | `Shows ÷ (Shows + No Shows + LO bailed) × 100` | Appointments |
 | **Net Show Rate** | True lead-attendance rate; ignores cancellations, LO bails, and pending | `Shows ÷ (Shows + No Shows) × 100` | Appointments |
 | **LO Bail Rate** | Share of bookings the partner LO missed | `LO bailed ÷ Appointments Booked × 100` | Appointments |
 | **Cancellations** | Appointments cancelled | `COUNT(appointment_cancelled)` | GHL cancel trigger |
@@ -43,7 +43,7 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 ### Formula notes
 
 - **Booking rate:** Qualified leads only (leads you dial). Use the same date window for qualified leads and appointments. Filter both sides by the same client.
-- **Show rate (of booked):** `Shows ÷ (Shows + No Shows + LO bailed + Cancelled)`. Only **dispositioned** appointments count — anything still pending (no outcome recorded yet) is excluded from the denominator so the rate isn't dragged down by appointments that haven't happened. LO bails and cancellations still count against it.
+- **Show rate (of booked):** `Shows ÷ (Shows + No Shows + LO bailed)`. Only appointments that actually took place count — anything still **pending** (no outcome yet) or **cancelled** is excluded from the denominator, so the rate isn't dragged down by appointments that never happened. LO bails still count against it (the slot was wasted).
 - **Net show rate (true attendance):** `Shows ÷ (Shows + No Shows)`. Use this to judge lead quality / setter performance: it excludes cancellations, LO bails, and pending appointments, so it isn't dragged down by outcomes the lead is not responsible for. Display it alongside the gross show rate.
 - **LO bail rate:** `LO bailed ÷ Appointments Booked`. Surfaces partner loan-officer no-shows (Showed? = X) as their own KPI rather than burying them in the show rate.
 - **Conversation rate:** `(Claimed + Shows + Live Transfers) ÷ Qualified Leads`. The numerator is the same "client conversations" figure used for Cost per Conversation.
@@ -249,7 +249,7 @@ Document your live Make scenario to match one approach:
 | **A — Outcome rows** | Keep `appointment_booked`; add separate `show` / `no_show` events | Sheet-style show rate (bookings stay in denominator) |
 | **B — Status update** | `POST /api/webhooks/appointment-status` flips row `appointment_booked` → `show` / `no_show` | Single row per appointment in DB |
 
-**Client show rate** uses **dispositioned appointments** (Shows + No Shows + LO bailed + Cancelled) in the denominator — still-pending bookings are excluded until they get an outcome. Prefer **Model A** or keep immutable booking counts so each outcome is recorded.
+**Client show rate** uses appointments that took place (Shows + No Shows + LO bailed) in the denominator — still-pending and cancelled bookings are excluded. Prefer **Model A** or keep immutable booking counts so each outcome is recorded.
 
 ---
 
@@ -261,7 +261,7 @@ Document your live Make scenario to match one approach:
 | Appointments Booked | Yes | `appointment_booked` |
 | Booking Rate | Yes | |
 | Shows / No Shows | Yes | |
-| Show Rate (of booked) | Yes | `shows ÷ (shows + no_shows + lo_bailed + cancelled)` — excludes still-pending |
+| Show Rate (of booked) | Yes | `shows ÷ (shows + no_shows + lo_bailed)` — excludes pending + cancelled |
 | Net Show Rate | Yes | `shows ÷ (shows + no_shows)` — true attendance, excludes cancel/LO bail/pending |
 | LO Bail Rate | Yes | `lo_bailed ÷ appointments booked` |
 | Conversation Rate | Yes | `(claimed + shows + live_transfers) ÷ qualified_leads` |

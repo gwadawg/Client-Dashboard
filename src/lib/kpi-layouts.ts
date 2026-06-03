@@ -85,7 +85,7 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
     variant: "grid",
     gridClassName: DEFAULT_GRID,
     footnote:
-      "Both show rates ignore appointments that have no outcome yet (still pending). Net Show Rate counts only lead attendance (Shows vs No Shows). Show Rate (of booked) also counts LO bails and cancellations against you.",
+      "Both show rates ignore appointments that never took place — anything still pending or cancelled is excluded. Net Show Rate counts only lead attendance (Shows vs No Shows); Show Rate (of booked) also counts LO bails against you.",
     cards: [
       {
         label: "Net Show Rate",
@@ -98,7 +98,7 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
         label: "Show Rate (of booked)",
         metric: "show_pct",
         format: "pct",
-        hint: "Shows ÷ all dispositioned appointments (Shows + No Shows + LO bailed + Cancelled). Still-pending appointments are excluded.",
+        hint: "Shows ÷ (Shows + No Shows + LO bailed). Excludes still-pending and cancelled appointments.",
       },
       {
         label: "Cancel Rate",
@@ -144,7 +144,7 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
     title: "Appointments",
     gridClassName: DEFAULT_GRID,
     footnote:
-      "Both show rates ignore appointments that have no outcome yet (still pending). Net Show Rate counts only lead attendance (Shows vs No Shows). Show Rate (of booked) also counts LO bails and cancellations against you.",
+      "Both show rates ignore appointments that never took place — anything still pending or cancelled is excluded. Net Show Rate counts only lead attendance (Shows vs No Shows); Show Rate (of booked) also counts LO bails against you.",
     cards: [
       { label: "Appointments Booked", metric: "booked_appointments", format: "int", hint: "Count of appointments booked in this range." },
       {
@@ -173,7 +173,7 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
         label: "Show Rate (of booked)",
         metric: "show_pct",
         format: "pct",
-        hint: "Shows ÷ all dispositioned appointments (Shows + No Shows + LO bailed + Cancelled). Still-pending appointments are excluded.",
+        hint: "Shows ÷ (Shows + No Shows + LO bailed). Excludes still-pending and cancelled appointments.",
       },
       {
         label: "LO Bail Rate",

@@ -28,7 +28,7 @@ type RateKey = "net_show_rate" | "show_rate" | "booking_rate" | "conversation_ra
 
 const CHARTS: { key: RateKey; title: string; subtitle: string; color: string }[] = [
   { key: "net_show_rate", title: "Net show rate", subtitle: "Shows ÷ (Shows + No-Shows)", color: "#34d399" },
-  { key: "show_rate", title: "Show rate (of booked)", subtitle: "Shows ÷ dispositioned appts (excl. pending)", color: "#3b82f6" },
+  { key: "show_rate", title: "Show rate (of booked)", subtitle: "Shows ÷ (Shows + No Shows + LO bailed)", color: "#3b82f6" },
   { key: "booking_rate", title: "Booking rate", subtitle: "Booked ÷ Qualified Leads", color: "#f59e0b" },
   { key: "conversation_rate", title: "Conversation rate", subtitle: "(Claimed + Shows + Live Transfers) ÷ Qualified", color: "#a78bfa" },
 ];
