@@ -15,6 +15,7 @@ import { Fragment } from "react";
 import {
   computePriorityScore,
   KPI_META,
+  MATURITY_DAYS,
   TIER_LABEL,
   type ClientHealthRow,
   type HealthTier,
@@ -22,12 +23,41 @@ import {
 } from "@/lib/client-health";
 import ClientHealthDetail from "./ClientHealthDetail";
 
+// The grading view owns its own date range, deliberately decoupled from the global
+// explore filter. A health verdict must use a consistent, defined period so a
+// client's tier is comparable across clients and over time — see
+// docs/CLIENT-HEALTH-REDESIGN.md §13.
 type Props = {
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
 };
 
 type SortKey = "priority" | "show_rate" | "cps" | "leads" | "name";
+
+/**
+ * Standardized grading windows. Each is a fixed trailing period that ends at the
+ * maturity cutoff (today − MATURITY_DAYS), so the verdict only reflects resolved
+ * cohorts (no perpetual "still maturing" caveat), and is compared to the prior
+ * equal-length period for the trend.
+ */
+type GradeWindow = "30d" | "60d" | "90d";
+const GRADE_WINDOW_DAYS: Record<GradeWindow, number> = { "30d": 30, "60d": 60, "90d": 90 };
+const GRADE_WINDOW_LABELS: Record<GradeWindow, string> = {
+  "30d": "Window: Last 30 days",
+  "60d": "Window: Last 60 days",
+  "90d": "Window: Last 90 days",
+};
+
+function ymdUTC(d: Date): string {
+  return d.toISOString().split("T")[0];
+}
+
+function gradingRange(win: GradeWindow): { start: string; end: string } {
+  const days = GRADE_WINDOW_DAYS[win];
+  const end = new Date(Date.now() - MATURITY_DAYS * 86400000);
+  const start = new Date(end.getTime() - (days - 1) * 86400000);
+  return { start: ymdUTC(start), end: ymdUTC(end) };
+}
 
 const TIER_STYLES: Record<HealthTier, { bg: string; text: string; border: string }> = {
   critical: { bg: "rgba(239,68,68,0.18)", text: "#f87171", border: "rgba(239,68,68,0.4)" },
@@ -85,7 +115,12 @@ function KpiDot({ tier }: { tier: HealthTier }) {
   );
 }
 
-export default function ClientHealthDashboard({ startDate, endDate }: Props) {
+export default function ClientHealthDashboard(_props: Props) {
+  const [gradeWindow, setGradeWindow] = useState<GradeWindow>("30d");
+  const { start: startDate, end: endDate } = useMemo(
+    () => gradingRange(gradeWindow),
+    [gradeWindow],
+  );
   const [rows, setRows] = useState<ClientHealthRow[]>([]);
   const [priorLabel, setPriorLabel] = useState<string>("");
   const [maturity, setMaturity] = useState<{
@@ -221,35 +256,30 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
           Client Success Overview
         </h2>
         <p className="text-sm mt-1 max-w-3xl" style={{ color: "#475569" }}>
-          All clients side-by-side, graded against Waiz KPI standards. Sorted by who needs attention first.
+          All clients side-by-side, graded against Waiz KPI standards over a fixed,
+          matured window{" "}
+          <span style={{ color: "#94a3b8" }}>({startDate} → {endDate})</span> so tiers stay
+          comparable across clients. Sorted by who needs attention first.
           {priorLabel ? (
             <span style={{ color: "#64748b" }}> Progress vs prior period ({priorLabel}).</span>
           ) : null}
         </p>
       </div>
 
-      {/* Maturity / two-instrument explainer */}
-      {maturity ? (
+      {/* Maturity warning — KPIs are graded on the selected range; this only flags
+          that the range includes recent days whose lag-sensitive KPIs may understate. */}
+      {maturity && (maturity.empty || maturity.clamped) ? (
         <div
           className="rounded-xl px-4 py-3 text-xs leading-relaxed"
           style={{ background: "#0a1628", border: "1px solid rgba(56,189,248,0.18)", color: "#94a3b8" }}
         >
-          {maturity.empty ? (
-            <>
-              <span style={{ color: "#38bdf8", fontWeight: 600 }}>Still maturing — no verdict yet.</span>{" "}
-              The selected range is more recent than the {maturity.days}-day maturity window, so lag-sensitive KPIs
-              (CPConv, show rate, close rate) can&apos;t be graded reliably. Use the <strong>Recent ({maturity.recent_window_days}d)</strong>{" "}
-              leading indicators below for early signal, or widen the date range for a verdict.
-            </>
-          ) : (
-            <>
-              <span style={{ color: "#38bdf8", fontWeight: 600 }}>Verdict = matured data through {maturity.matured_through}.</span>{" "}
-              The last {maturity.days} days are still resolving (bookings → appointments → outcomes), so they&apos;re
-              excluded from the graded verdict to keep CPConv / show / close honest. The{" "}
-              <strong>Recent ({maturity.recent_window_days}d)</strong> leading indicators (expand a client) are your
-              early-warning instrument.
-            </>
-          )}
+          <span style={{ color: "#38bdf8", fontWeight: 600 }}>Heads up — recent days are still resolving.</span>{" "}
+          KPIs below are graded on your selected range. Because that range includes days inside the{" "}
+          {maturity.days}-day maturity window, lag-sensitive KPIs (CPConv, show rate, close rate) may{" "}
+          <em>understate</em> until those cohorts finish resolving (bookings → appointments → outcomes).
+          Leading KPIs (leads, qualified %, booking rate) are unaffected. The{" "}
+          <strong>Recent ({maturity.recent_window_days}d)</strong> indicators (expand a client) are your
+          early-warning view.
         </div>
       ) : null}
 
@@ -279,6 +309,18 @@ export default function ClientHealthDashboard({ startDate, endDate }: Props) {
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-3">
+        <select
+          style={{ ...selectStyle, background: "#f59e0b", color: "#fff", border: "none", fontWeight: 600 }}
+          value={gradeWindow}
+          onChange={e => setGradeWindow(e.target.value as GradeWindow)}
+          title="Standardized grading window — independent of the global date filter. Compared to the prior equal period."
+        >
+          {(Object.keys(GRADE_WINDOW_LABELS) as GradeWindow[]).map(w => (
+            <option key={w} value={w} style={{ background: "#0f2040", color: "#e2e8f0" }}>
+              {GRADE_WINDOW_LABELS[w]}
+            </option>
+          ))}
+        </select>
         <select style={selectStyle} value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}>
           <option value="priority">Sort: Attention (worst first)</option>
           <option value="show_rate">Sort: Show rate</option>

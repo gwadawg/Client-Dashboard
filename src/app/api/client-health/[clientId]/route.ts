@@ -37,12 +37,12 @@ export async function GET(
     return NextResponse.json({ error: 'start_date and end_date are required' }, { status: 400 });
   }
 
-  // Matched to the dashboard: verdict on the matured slice, plus a recent
-  // leading-indicator window.
+  // Matched to the dashboard: grade on the EXACT selected range. Maturity is a
+  // non-blocking warning only, plus a recent leading-indicator window.
   const matured = maturedWindow(start_date, end_date);
-  const verdictPrior = matured.empty ? null : getPriorPeriod(matured.start, matured.end);
+  const verdictPrior = getPriorPeriod(start_date, end_date);
   const recent = recentWindow(start_date, end_date);
-  const fetchPrior = getPriorPeriod(start_date, end_date);
+  const fetchPrior = verdictPrior;
   const rangeStart = fetchPrior?.start ?? start_date;
 
   const [{ data: client, error: clientError }, { data: events, error: eventsError }, currentSpend, priorSpendData] =
@@ -55,13 +55,11 @@ export async function GET(
         .gte('occurred_at', `${rangeStart}T00:00:00.000Z`)
         .lte('occurred_at', `${end_date}T23:59:59.999Z`)
         .limit(200000),
-      matured.empty
-        ? Promise.resolve([])
-        : fetchCombinedSpendForMetrics(ctx.service, {
-            client_id: clientId,
-            start_date: matured.start,
-            end_date: matured.end,
-          }),
+      fetchCombinedSpendForMetrics(ctx.service, {
+        client_id: clientId,
+        start_date: start_date,
+        end_date: end_date,
+      }),
       verdictPrior
         ? fetchCombinedSpendForMetrics(ctx.service, {
             client_id: clientId,
@@ -82,7 +80,7 @@ export async function GET(
   const inRange = (e: DatedEventRow, s: string, en: string) =>
     e.occurred_at >= `${s}T00:00:00.000Z` && e.occurred_at <= `${en}T23:59:59.999Z`;
 
-  const verdictEvents = matured.empty ? [] : allEvents.filter(e => inRange(e, matured.start, matured.end));
+  const verdictEvents = allEvents.filter(e => inRange(e, start_date, end_date));
   const priorEvents = verdictPrior ? allEvents.filter(e => inRange(e, verdictPrior.start, verdictPrior.end)) : [];
   const recentEvents = allEvents.filter(e => inRange(e, recent.start, recent.end));
 

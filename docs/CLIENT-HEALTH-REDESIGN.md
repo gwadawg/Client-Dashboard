@@ -336,3 +336,31 @@ Adopting per-client bands without side-by-side validation (stakeholder call) lea
 - **Per-client envelope, not per-band:** one owner/date/reason covers a client's whole override set — deliberately lightweight (8 KPIs × per-band audit was rejected as upkeep-heavy, matching §5's "manual upkeep burden" risk).
 - **Verified before shipping (live read):** the CPConv denominator double-counts only ~2.2% (12 contacts with both a live transfer and a show — arguably two real touches anyway), so no fix needed. Separately, `claimed` events are **0 across all history** — the conversation north-star is effectively `live_transfers + shows` today; the code is forward-compatible, but whether `claimed` should be flowing is an open **ingestion** question (same class as the §8.1 `external_id` gap), not an app bug.
 - **Still open (process, not code):** validate each client's bands against actual churn/outcomes periodically (§10.3). Governance makes drift *visible*; it doesn't prove the numbers *predict* churn.
+
+---
+
+## 13. Grading-window & overall-tier policy — Revised (make the verdict legible)
+
+Three coordinated changes from operator feedback that the verdict was both *empty* (recent ranges graded to nothing) and *over-pessimistic* (one weak KPI buried healthy accounts).
+
+### 13.1 Grade on the selected range; maturity is a warning, not a suppressor
+
+Phase 2 (§9) clamped the verdict to the matured slice `[start, today − 7d]` and, when the selected window was more recent than 7 days, reported an **empty** verdict — every KPI rendered as 0 / "No activity in period." On a default "This Month" landing early in the month this looked broken.
+
+- Both client-health routes (`/api/client-health`, `/api/client-health/[clientId]`) now grade on the **exact selected `[start, end]`** and compare to the prior equal-length period.
+- `maturedWindow()` is still computed, but only drives a **non-blocking banner**: when the range includes days inside the maturity window, the UI warns that lag-sensitive KPIs (CPConv, show, close) may *understate* — it never blanks the numbers. The Recent (14d) leading strip is unchanged.
+
+### 13.2 Overall tier anchored on the CPConv north star (supersedes §10.2)
+
+§10.2's equal-weight average across all 8 KPIs let a few weak funnel metrics outvote a healthy bottom line, so nearly everything read "Below KPI."
+
+- `computeOverallTier` now **anchors the headline on CPConv (`cps`)** when it is gradeable. CPConv = total ad spend ÷ conversations, so it already integrates every upstream cost/conversion inefficiency — strong KPIs "carry" weak ones through the north star. Per-KPI tiers, the constraint, and `attention_score` are untouched, so weak spots still surface for triage.
+- Fallback: when CPConv has too little volume to grade, revert to the §10.2 volume-blind weighted average (critical override included).
+- **Worked example (live):** Community First National Bank — booking rate 12% (911) but CPConv $113 (At), because 104 live transfers carry conversations. Old rule → critical/below; new rule → **At KPI**, with the 12% still flagged as a red dot.
+
+### 13.3 Standardized grading window, decoupled from the global filter
+
+A health verdict needs a consistent, defined period (kpi-dashboard-design: KPIs are time-bound; tiers must be comparable). Sharing the one global explore filter made tiers depend on whatever range someone happened to pick.
+
+- `ClientHealthDashboard` now owns its date range: a **30 / 60 / 90-day** selector, each a **matured trailing window** ending at `today − MATURITY_DAYS` (resolved cohorts only, so §13.1's banner won't perpetually fire), compared to the prior equal period. Default = 30d.
+- The global date picker is omitted from the Client Success view in `DashboardView` (it remains on Dashboard / Dial Analytics / Media Buyer). The header prints the active window so the period is explicit.

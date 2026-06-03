@@ -143,11 +143,10 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                   {data.period.start} → {data.period.end}
                   {data.prior_period ? ` · vs ${data.prior_period.start} → ${data.prior_period.end}` : ""}
                 </p>
-                {data.maturity ? (
+                {data.maturity && (data.maturity.empty || data.maturity.clamped) ? (
                   <p className="text-[11px] mt-1" style={{ color: "#38bdf8" }}>
-                    {data.maturity.empty
-                      ? `Still maturing — verdict needs data older than ${data.maturity.days}d; see Recent below.`
-                      : `Verdict matured through ${data.maturity.matured_through} (excludes last ${data.maturity.days}d still resolving).`}
+                    Graded on selected range — includes the last {data.maturity.days}d still resolving, so
+                    CPConv / show / close may understate. See Recent below for leading signal.
                   </p>
                 ) : null}
               </div>

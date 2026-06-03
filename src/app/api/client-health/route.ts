@@ -40,11 +40,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'start_date and end_date are required' }, { status: 400 });
   }
 
-  // Verdict (Baseline) is graded on the MATURED slice of the selected window so
-  // lag-sensitive KPIs (CPConv, close, show) reflect resolved cohorts only. The
-  // Recent window is the freshest slice, used for leading-indicator early warning.
+  // KPIs are graded on the EXACT selected date range — the range the user picks is
+  // the grading instrument. Maturity is reported as a non-blocking warning (recent
+  // lag-sensitive KPIs may understate until cohorts resolve) but never suppresses
+  // the numbers. The Recent window remains the leading-indicator early-warning view.
   const matured = maturedWindow(start_date, end_date);
-  const verdictPrior = matured.empty ? null : getPriorPeriod(matured.start, matured.end);
+  const verdictPrior = getPriorPeriod(start_date, end_date);
   const recent = recentWindow(start_date, end_date);
 
   let clientQuery = ctx.service
@@ -100,19 +101,17 @@ export async function GET(req: Request) {
   const inRange = (e: ClientEventWithDate, s: string, en: string) =>
     e.occurred_at >= `${s}T00:00:00.000Z` && e.occurred_at <= `${en}T23:59:59.999Z`;
 
-  // Verdict events = matured slice (empty when the window is too recent to mature).
-  const verdictEvents = matured.empty
-    ? []
-    : allEvents.filter(e => inRange(e, matured.start, matured.end));
+  // Verdict events = the full selected range (honor the user's date selection).
+  const verdictEvents = allEvents.filter(e => inRange(e, start_date, end_date));
   const priorEvents = verdictPrior
     ? allEvents.filter(e => inRange(e, verdictPrior.start, verdictPrior.end))
     : [];
   const recentEvents = allEvents.filter(e => inRange(e, recent.start, recent.end));
 
   const spendRows = [...metaSpend, ...nonMetaSpend];
-  const verdictSpend = matured.empty
-    ? []
-    : spendRows.filter(r => r.spend_date >= matured.start && r.spend_date <= matured.end);
+  const verdictSpend = spendRows.filter(
+    r => r.spend_date >= start_date && r.spend_date <= end_date,
+  );
   const priorSpend = verdictPrior
     ? spendRows.filter(r => r.spend_date >= verdictPrior.start && r.spend_date <= verdictPrior.end)
     : [];

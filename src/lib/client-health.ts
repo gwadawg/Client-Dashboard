@@ -209,15 +209,29 @@ function tierFromBands(
 }
 
 /**
- * Overall verdict tier. Replaces the old "worst-tier-wins", which let a single
- * 'below' KPI nuke an otherwise-healthy account. New rule:
- *   - Critical override: any single 'critical' (911) KPI surfaces as critical.
- *   - Otherwise a volume-blind weighted average of tier weights (above=1, at=2,
- *     below=3) maps to the overall tier, so one weak KPI among many strong ones
- *     no longer dominates.
+ * Overall verdict tier — anchored on the north-star metric, Cost per Conversation
+ * (CPConv / `cps`).
+ *
+ * CPConv = total ad spend ÷ conversations, so it already integrates every upstream
+ * cost and conversion inefficiency into one bottom-line number: pricey leads or a
+ * leaky funnel necessarily show up as a higher CPConv. The practical effect is that
+ * strong KPIs "carry" weak ones through the north star — a single underperforming
+ * sub-metric no longer drags an otherwise-efficient account down to "Below". The
+ * individual KPI tiers, the constraint, and attention_score still surface those
+ * weak spots for triage; they just stop hijacking the headline.
+ *
+ * This replaces two earlier rules in turn: the original "worst-tier-wins" (one
+ * 'below' nuked the account) and the equal-weight average across all 8 KPIs (which
+ * let a few weak funnel metrics outvote a healthy north star).
+ *
+ * Fallback: when CPConv has too little volume to grade, there is no north-star
+ * signal, so we revert to the volume-blind weighted average of the gradeable KPIs
+ * (with the 911/critical override) rather than guessing.
  */
 function computeOverallTier(graded: KpiGrade[]): HealthTier {
   if (graded.length === 0) return 'insufficient';
+  const northStar = graded.find(g => g.key === 'cps');
+  if (northStar) return northStar.tier;
   if (graded.some(g => g.tier === 'critical')) return 'critical';
   const avg = graded.reduce((sum, g) => sum + TIER_WEIGHT[g.tier], 0) / graded.length;
   if (avg < 1.5) return 'above';
