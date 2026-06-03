@@ -29,7 +29,8 @@ export async function POST(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await service.from('profiles').update({ is_admin: true }).eq('id', data.user.id);
+  // The first account is the owner: full control and always unrestricted.
+  await service.from('profiles').update({ is_admin: true, is_owner: true }).eq('id', data.user.id);
 
   return NextResponse.json({ success: true });
 }

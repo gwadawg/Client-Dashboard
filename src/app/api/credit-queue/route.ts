@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 
 const CREDITABLE_EVENT_TYPES = ['appointment_booked', 'live_transfer', 'callback_booked'];
@@ -9,6 +9,8 @@ type CreditQueueStatus = 'uncredited' | 'credited' | 'all';
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'agent_credit_queue');
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const clientId = searchParams.get('client_id');

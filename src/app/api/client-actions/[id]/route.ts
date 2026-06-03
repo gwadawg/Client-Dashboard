@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 const MUTABLE_STATUSES = ['planned', 'in_progress', 'measuring', 'succeeded', 'failed', 'abandoned'];
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'client_health');
+  if (denied) return denied;
 
   const { id } = await params;
   const body = await req.json();
@@ -49,6 +51,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'client_health');
+  if (denied) return denied;
 
   const { id } = await params;
   const { error } = await ctx.service.from('client_action_logs').delete().eq('id', id);

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { computeNextBillingDate, deriveStatus, type BillingRow } from '@/lib/billing';
 
 const CLIENT_BILLING_FIELDS =
@@ -19,6 +19,8 @@ function todayYmd(): string {
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'admin_billing');
+  if (denied) return denied;
 
   const clientId = new URL(req.url).searchParams.get('client_id');
 
@@ -99,6 +101,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'admin_billing');
+  if (denied) return denied;
 
   const body = await req.json();
   const { client_id, billed_on, amount } = body;

@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'goals');
+  if (denied) return denied;
+
   const { id } = await params;
-  const service = createServiceClient();
-  const { error } = await service.from('goals').delete().eq('id', id);
+  const { error } = await ctx.service.from('goals').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }

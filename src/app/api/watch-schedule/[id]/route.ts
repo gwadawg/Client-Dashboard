@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'schedule');
+  if (denied) return denied;
 
   const { id } = await params;
   const { error } = await ctx.service.from('watch_schedule').delete().eq('id', id);

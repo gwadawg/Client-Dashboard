@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import {
   buildClientHealthSnapshot,
   buildConstraintGuidance,
@@ -21,6 +21,8 @@ export async function GET(
 ) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'client_health');
+  if (denied) return denied;
 
   const { clientId } = await params;
   const { searchParams } = new URL(req.url);

@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'admin_agents');
+  if (denied) return denied;
+
   const { id } = await params;
   const { phone, name } = await req.json();
   if (!phone && !name) {
@@ -11,8 +16,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (phone) updates.phone = phone.trim();
   if (name) updates.name = name.trim();
 
-  const service = createServiceClient();
-  const { data, error } = await service
+  const { data, error } = await ctx.service
     .from('agents')
     .update(updates)
     .eq('id', id)
@@ -23,9 +27,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'admin_agents');
+  if (denied) return denied;
+
   const { id } = await params;
-  const service = createServiceClient();
-  const { error } = await service.from('agents').delete().eq('id', id);
+  const { error } = await ctx.service.from('agents').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import {
   buildClientHealthSnapshot,
   compareHealthTrend,
@@ -24,6 +24,8 @@ type SpendByClientRow = {
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'client_health');
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const start_date = searchParams.get('start_date');

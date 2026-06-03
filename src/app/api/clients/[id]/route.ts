@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  // Editable from both the Client Roster and the Client Billing tabs.
+  const denied = requireAnyPermission(ctx, ['admin_clients', 'admin_billing']);
+  if (denied) return denied;
 
   const { id } = await params;
   const body = await req.json();

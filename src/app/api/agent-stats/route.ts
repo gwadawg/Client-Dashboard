@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { buildRosterMatcher } from '@/lib/agent-roster';
 
 type AgentAccumulator = {
@@ -31,6 +31,9 @@ function emptyAccumulator(name: string): AgentAccumulator {
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  // Powers both the Agent Stats table and the Scorecards view.
+  const denied = requireAnyPermission(ctx, ['agent_stats', 'agent_scorecards']);
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const startDate = searchParams.get('startDate');

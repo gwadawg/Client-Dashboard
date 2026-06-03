@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requireAnyPermission, requirePermission } from '@/lib/api-auth';
 
 export async function GET() {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  // The agent roster is also consumed by the Power Dialer Schedule view.
+  const denied = requireAnyPermission(ctx, ['admin_agents', 'schedule']);
+  if (denied) return denied;
 
   const { data, error } = await ctx.service
     .from('agents')
@@ -17,6 +20,8 @@ export async function GET() {
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'admin_agents');
+  if (denied) return denied;
 
   const { phone, name } = await req.json();
   if (!phone || !name) return NextResponse.json({ error: 'phone and name are required' }, { status: 400 });

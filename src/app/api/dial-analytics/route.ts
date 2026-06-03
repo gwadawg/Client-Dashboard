@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { getAuthContext, isAuthError } from "@/lib/api-auth";
+import { getAuthContext, isAuthError, requirePermission } from "@/lib/api-auth";
 import { getLiveClientIds, liveClientFilter } from "@/lib/db-helpers";
 import { computeDialAnalytics } from "@/lib/dial-analytics";
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, "dial_analytics");
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const client_id = searchParams.get("client_id");

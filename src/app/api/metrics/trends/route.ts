@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import {
   buildDailyCostSeries,
   daysInRange,
@@ -12,6 +12,8 @@ import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'dashboard');
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const client_id = searchParams.get('client_id');

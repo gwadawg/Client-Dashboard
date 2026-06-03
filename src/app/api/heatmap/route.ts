@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
+
+// Each heat map type is its own tab/permission.
+const HEATMAP_TYPE_VIEW: Record<string, string> = {
+  new_leads: 'heatmap_leads',
+  pickup_rate: 'heatmap_pickup',
+  show_rate: 'heatmap_show',
+};
 
 // Returns a 24×7 grid (hour-of-day × day-of-week) for heat map display.
 // type: new_leads | pickup_rate | show_rate
@@ -18,6 +25,11 @@ export async function GET(req: Request) {
   const end_date = searchParams.get('end_date');
 
   if (!type) return NextResponse.json({ error: 'type is required' }, { status: 400 });
+
+  const view = HEATMAP_TYPE_VIEW[type];
+  if (!view) return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
+  const denied = requirePermission(ctx, view);
+  if (denied) return denied;
 
   let liveClientIds: string[] | null = null;
   if (live_only && !client_id) {

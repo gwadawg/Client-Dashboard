@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 export async function GET() {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'schedule');
+  if (denied) return denied;
 
   const { data, error } = await ctx.service
     .from('setter_availability')
@@ -18,6 +20,8 @@ export async function GET() {
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'schedule');
+  if (denied) return denied;
 
   const { agent_id, weekday, time_start, time_end, is_live } = await req.json();
   if (!agent_id || !weekday || !time_start || !time_end)

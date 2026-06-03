@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import { buildContactKey, eventPhone } from '@/lib/contact-key';
 
@@ -291,6 +291,8 @@ function toTimelineItem(row: EventRow): TimelineItem {
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'leads');
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const client_id = searchParams.get('client_id');

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { calculateMetrics } from '@/lib/metrics';
 import { fetchCombinedSpendForMetrics } from '@/lib/spend';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
@@ -7,6 +7,9 @@ import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  // Shared by the Dashboard and the Goal Tracker (progress vs. targets).
+  const denied = requireAnyPermission(ctx, ['dashboard', 'goals']);
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const client_id = searchParams.get('client_id');

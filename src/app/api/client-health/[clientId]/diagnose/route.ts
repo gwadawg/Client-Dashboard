@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { fetchCombinedTrendSpend } from '@/lib/spend';
 import { runAiDiagnosis, type WindowMetrics } from '@/lib/ai-diagnose';
 
@@ -45,6 +45,8 @@ export async function POST(
 ) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'client_health');
+  if (denied) return denied;
 
   const { clientId } = await params;
   const body = await req.json().catch(() => ({}));

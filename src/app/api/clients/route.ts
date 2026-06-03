@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 
+// GET is intentionally open to any authenticated user: the client list powers
+// the global client-filter dropdown on nearly every tab, so it is a shared
+// lookup rather than admin-only data. Mutations below are gated to the admin tab.
 export async function GET() {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -18,6 +21,8 @@ export async function GET() {
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'admin_clients');
+  if (denied) return denied;
 
   const { name, reporting_type } = await req.json();
   if (!name?.trim()) return NextResponse.json({ error: 'name is required' }, { status: 400 });
@@ -35,6 +40,8 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'admin_clients');
+  if (denied) return denied;
 
   const { id } = await req.json();
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });

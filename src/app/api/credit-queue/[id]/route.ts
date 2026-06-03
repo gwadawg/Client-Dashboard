@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 const CREDITABLE_EVENT_TYPES = ['appointment_booked', 'live_transfer', 'callback_booked'];
 
@@ -10,6 +10,8 @@ type RouteContext = {
 export async function PATCH(req: Request, { params }: RouteContext) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'agent_credit_queue');
+  if (denied) return denied;
 
   const { id } = await params;
   const { agent_name } = await req.json();

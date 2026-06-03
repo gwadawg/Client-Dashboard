@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'recordings');
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const clientId  = searchParams.get('clientId');

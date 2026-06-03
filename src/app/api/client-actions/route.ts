@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 const SELECT = '*';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'client_health');
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const clientId = searchParams.get('client_id');
@@ -26,6 +28,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'client_health');
+  if (denied) return denied;
 
   const body = await req.json();
   const {

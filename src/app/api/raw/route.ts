@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
+
+// Each raw data type is its own tab/permission.
+const RAW_TYPE_VIEW: Record<string, string> = {
+  leads: 'leads',
+  dials: 'dials',
+  appointments: 'appointments',
+  speed_to_lead: 'speed_to_lead',
+  ad_spend: 'ad_spend',
+  meta_ad_insights: 'meta_ad_insights',
+};
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -18,6 +28,11 @@ export async function GET(req: Request) {
   const offset = (page - 1) * limit;
 
   if (!type) return NextResponse.json({ error: 'type is required' }, { status: 400 });
+
+  const view = RAW_TYPE_VIEW[type];
+  if (!view) return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
+  const denied = requirePermission(ctx, view);
+  if (denied) return denied;
 
   let liveClientIds: string[] | null = null;
   if (live_only && !client_id) {

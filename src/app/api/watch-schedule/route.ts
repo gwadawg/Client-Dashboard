@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'schedule');
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const week_start = searchParams.get('week_start');
@@ -27,6 +29,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'schedule');
+  if (denied) return denied;
 
   const { agent_id, scheduled_date, slot_hour } = await req.json();
   if (!agent_id || !scheduled_date || slot_hour === undefined) {

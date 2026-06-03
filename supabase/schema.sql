@@ -9,8 +9,19 @@
 create table if not exists profiles (
   id         uuid    primary key references auth.users(id) on delete cascade,
   is_admin   boolean not null default false,
+  -- Owner role: always unrestricted, the only role that bypasses permissions.
+  is_owner   boolean not null default false,
+  -- Legacy per-tab column (superseded by allowed_permissions).
+  allowed_views jsonb,
+  -- JSON array of permission keys (see src/lib/permissions.ts) this user may use,
+  -- covering both views and future features. NULL = no restriction (unrestricted).
+  allowed_permissions jsonb,
   created_at timestamptz default now()
 );
+
+alter table profiles add column if not exists allowed_views jsonb;
+alter table profiles add column if not exists is_owner boolean not null default false;
+alter table profiles add column if not exists allowed_permissions jsonb;
 
 create or replace function public.handle_new_user()
 returns trigger

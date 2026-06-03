@@ -30,35 +30,12 @@ import {
   normalizeReportingType,
   type ReportingType,
 } from "@/lib/kpi-layouts";
+import { NAV, NAV_GROUPS, type View } from "@/lib/nav";
+import { hasPermission, type AllowedPermissions } from "@/lib/permissions";
 
 type Client = { id: string; name: string; is_live?: boolean; reporting_type?: ReportingType };
 
 type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "all_time" | "custom";
-
-type View =
-  | "dashboard"
-  | "leads"
-  | "dials"
-  | "appointments"
-  | "speed_to_lead"
-  | "ad_spend"
-  | "meta_ad_insights"
-  | "heatmap_show"
-  | "heatmap_pickup"
-  | "heatmap_leads"
-  | "agent_stats"
-  | "agent_credit_queue"
-  | "agent_scorecards"
-  | "recordings"
-  | "goals"
-  | "dial_analytics"
-  | "client_health"
-  | "admin_agents"
-  | "admin_clients"
-  | "admin_billing"
-  | "admin_share"
-  | "admin_users"
-  | "schedule";
 
 const PRESET_LABELS: Record<Preset, string> = {
   this_month: "This Month",
@@ -68,32 +45,6 @@ const PRESET_LABELS: Record<Preset, string> = {
   all_time: "All Time",
   custom: "Custom Range",
 };
-
-const NAV: { view: View; label: string; group?: string }[] = [
-  { view: "dashboard",      label: "Dashboard",     group: "Overview"  },
-  { view: "dial_analytics", label: "Dial Analytics", group: "Overview"  },
-  { view: "leads",          label: "New Leads",      group: "Raw Data"  },
-  { view: "dials",          label: "All Dials",      group: "Raw Data"  },
-  { view: "appointments",   label: "Appointments",   group: "Raw Data"  },
-  { view: "speed_to_lead",  label: "Speed to Lead",  group: "Raw Data"  },
-  { view: "meta_ad_insights", label: "Meta Ads",       group: "Raw Data"  },
-  { view: "ad_spend",         label: "Other Ad Spend", group: "Raw Data"  },
-  { view: "heatmap_show",   label: "Show Rate",      group: "Heat Maps"   },
-  { view: "heatmap_pickup", label: "Pick Up Rate",   group: "Heat Maps"   },
-  { view: "heatmap_leads",  label: "New Leads",      group: "Heat Maps"   },
-  { view: "agent_stats",      label: "Agent Stats",      group: "Agent Stats" },
-  { view: "agent_credit_queue", label: "Credit Queue",   group: "Agent Credit" },
-  { view: "agent_scorecards", label: "Scorecards",        group: "Agent Stats" },
-  { view: "recordings",       label: "Call Recordings",   group: "Agent Stats" },
-  { view: "goals",            label: "Goal Tracker",      group: "Overview"    },
-  { view: "client_health",    label: "Client Success",    group: "Overview"    },
-  { view: "admin_agents",     label: "Agent Roster",      group: "Admin"       },
-  { view: "admin_clients",    label: "Client Roster",     group: "Admin"       },
-  { view: "admin_billing",    label: "Client Billing",    group: "Admin"       },
-  { view: "schedule",         label: "Power Dialer Schedule", group: "Admin"    },
-  { view: "admin_share",      label: "Share Reports",     group: "Admin"       },
-  { view: "admin_users",      label: "Users",             group: "Admin"       },
-];
 
 const VALID_VIEWS = new Set<View>(NAV.map(item => item.view));
 
@@ -230,11 +181,26 @@ function ShareReports({ clients }: { clients: Client[] }) {
   );
 }
 
-export default function DashboardView() {
+type DashboardViewProps = {
+  isOwner?: boolean;
+  allowedPermissions?: AllowedPermissions;
+};
+
+export default function DashboardView({ isOwner = false, allowedPermissions = null }: DashboardViewProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [view, setView] = useState<View>(() => viewFromParam(searchParams.get("view")));
+
+  const canSee = (v: View) => hasPermission(v, { isOwner, allowedPermissions });
+  const visibleNav = NAV.filter(item => canSee(item.view));
+  const firstVisibleView: View | undefined = visibleNav[0]?.view;
+
+  const resolveAllowedView = (requested: View): View => {
+    if (canSee(requested)) return requested;
+    return firstVisibleView ?? requested;
+  };
+
+  const [view, setView] = useState<View>(() => resolveAllowedView(viewFromParam(searchParams.get("view"))));
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [preset, setPreset] = useState<Preset>("this_month");
@@ -250,18 +216,20 @@ export default function DashboardView() {
   const presetRef = useRef<HTMLDivElement>(null);
 
   const goToView = (next: View) => {
-    setView(next);
+    const target = resolveAllowedView(next);
+    setView(target);
     setSidebarOpen(false);
     const params = new URLSearchParams(searchParams.toString());
-    if (next === "dashboard") params.delete("view");
-    else params.set("view", next);
+    if (target === "dashboard") params.delete("view");
+    else params.set("view", target);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
 
   useEffect(() => {
-    const fromUrl = viewFromParam(searchParams.get("view"));
+    const fromUrl = resolveAllowedView(viewFromParam(searchParams.get("view")));
     setView(current => (current === fromUrl ? current : fromUrl));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   useEffect(() => {
@@ -310,7 +278,7 @@ export default function DashboardView() {
   const isHeatmap = view.startsWith("heatmap_");
   const isRaw = ["leads", "dials", "appointments", "speed_to_lead", "ad_spend", "meta_ad_insights"].includes(view);
   const isAgentView = ["agent_stats", "agent_credit_queue", "agent_scorecards", "recordings"].includes(view);
-  const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Credit", "Agent Stats", "Admin"];
+  const groups = NAV_GROUPS.filter(group => visibleNav.some(n => n.group === group));
   const dashboardScopeClients = getDashboardScopeClients(clients, selectedClientId);
   const dashboardReportingType = resolveDashboardReportingType(clients, selectedClientId);
   const dashboardHasMixedReportingTypes =
@@ -354,7 +322,7 @@ export default function DashboardView() {
               <p className="text-[10px] font-bold uppercase tracking-widest px-3 mb-2" style={{ color: "#334155" }}>
                 {group}
               </p>
-              {NAV.filter(n => n.group === group).map(item => {
+              {visibleNav.filter(n => n.group === group).map(item => {
                 const active = view === item.view;
                 return (
                   <button
@@ -494,8 +462,19 @@ export default function DashboardView() {
         {/* Content */}
         <main className="flex-1 p-6 md:p-8 overflow-auto" style={{ background: "#080f1e" }}>
 
+          {!firstVisibleView && (
+            <div className="flex items-center justify-center py-24">
+              <div className="text-center max-w-sm">
+                <p className="text-sm font-medium" style={{ color: "#94a3b8" }}>No access</p>
+                <p className="text-xs mt-1" style={{ color: "#475569" }}>
+                  You don&apos;t have permission to view any tabs yet. Ask an admin to grant you access.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* ── Dashboard KPIs ── */}
-          {view === "dashboard" && (
+          {firstVisibleView && view === "dashboard" && (
             metricsLoading ? (
               <div className="flex items-center justify-center py-24">
                 <div className="flex items-center gap-3" style={{ color: "#334155" }}>

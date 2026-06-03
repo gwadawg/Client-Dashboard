@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -28,6 +28,8 @@ function getWeekDates(weekStart: string) {
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'schedule');
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const week_start = searchParams.get('week_start');
@@ -52,6 +54,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'schedule');
+  if (denied) return denied;
 
   const { week_start } = await req.json();
   if (!week_start) return NextResponse.json({ error: 'week_start required' }, { status: 400 });
