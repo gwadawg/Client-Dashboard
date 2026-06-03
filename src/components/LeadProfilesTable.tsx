@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { shortLeadId } from "@/lib/contact-key";
 
 type Client = { id: string; name: string };
 
@@ -54,11 +53,14 @@ type LeadProfile = {
   is_out_of_state: boolean;
   loan_amount: string | null;
   property_value: string | null;
+  ltv: number | null;
   b1_age: string | null;
   b2_age: string | null;
   has_proposal_made: boolean;
   has_submission_made: boolean;
   has_loan_funded: boolean;
+  ghl_contact_id: string | null;
+  ghl_location_id: string | null;
   counts: LeadCounts;
   timeline: TimelineItem[];
 };
@@ -106,6 +108,11 @@ function fmtPhone(phone: string | null) {
   return phone;
 }
 
+function ghlContactUrl(row: LeadProfile): string | null {
+  if (!row.ghl_location_id || !row.ghl_contact_id) return null;
+  return `https://app.gohighlevel.com/v2/location/${row.ghl_location_id}/contacts/detail/${row.ghl_contact_id}`;
+}
+
 function csvEscape(s: string): string {
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
@@ -120,6 +127,7 @@ function downloadLeadsPageCsv(rows: LeadProfile[], page: number) {
     "Email",
     "Loan amount",
     "Property value",
+    "LTV",
     "B1 age",
     "B2 age",
     "Lead created",
@@ -152,6 +160,7 @@ function downloadLeadsPageCsv(rows: LeadProfile[], page: number) {
         row.lead_email ?? "",
         row.loan_amount ?? "",
         row.property_value ?? "",
+        row.ltv != null ? `${row.ltv}%` : "",
         row.b1_age ?? "",
         row.b2_age ?? "",
         new Date(row.created_at).toISOString().slice(0, 10),
@@ -370,7 +379,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         <table className="w-full text-sm min-w-[1100px]">
           <thead>
             <tr style={{ background: "#050c18" }}>
-              {["", "Client", "Lead ID", "Name", "Phone", "Email", "Loan amt", "Prop. value", "B1 age", "B2 age", "Created", "Flags", "Activity"].map((h) => (
+              {["", "Client", "Name", "Flags", "Activity", "Loan amt", "Prop. value", "LTV", "B1 age", "B2 age", "Phone", "Email", "Created", "Contact"].map((h) => (
                 <th
                   key={h || "expand"}
                   className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
@@ -384,13 +393,13 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={13} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
+                <td colSpan={14} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
+                <td colSpan={14} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
                   No leads in this range
                 </td>
               </tr>
@@ -414,40 +423,8 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
                       <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#94a3b8" }}>
                         {row.client_name}
                       </td>
-                      <td
-                        className="px-4 py-2.5 font-mono text-xs whitespace-nowrap"
-                        style={{ color: "#64748b" }}
-                        title={row.contact_key}
-                      >
-                        {shortLeadId(row.contact_key)}
-                      </td>
                       <td className="px-4 py-2.5 whitespace-nowrap font-medium" style={{ color: "#e2e8f0" }}>
                         {row.lead_name ?? "—"}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#94a3b8" }}>
-                        {fmtPhone(row.lead_phone)}
-                      </td>
-                      <td
-                        className="px-4 py-2.5 whitespace-nowrap text-xs max-w-[10rem] truncate"
-                        style={{ color: "#94a3b8" }}
-                        title={row.lead_email ?? undefined}
-                      >
-                        {row.lead_email ?? "—"}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
-                        {row.loan_amount ?? "—"}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
-                        {row.property_value ?? "—"}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
-                        {row.b1_age ?? "—"}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
-                        {row.b2_age ?? "—"}
-                      </td>
-                      <td className="px-4 py-2.5 whitespace-nowrap text-xs" style={{ color: "#64748b" }}>
-                        {fmtDate(row.created_at, false)}
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1">
@@ -474,10 +451,56 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
                           <CountPill label="proposals" value={c.proposals_made} />
                         </div>
                       </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
+                        {row.loan_amount ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
+                        {row.property_value ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
+                        {row.ltv != null ? `${row.ltv}%` : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
+                        {row.b1_age ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs tabular-nums" style={{ color: "#94a3b8" }}>
+                        {row.b2_age ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#94a3b8" }}>
+                        {fmtPhone(row.lead_phone)}
+                      </td>
+                      <td
+                        className="px-4 py-2.5 whitespace-nowrap text-xs max-w-[10rem] truncate"
+                        style={{ color: "#94a3b8" }}
+                        title={row.lead_email ?? undefined}
+                      >
+                        {row.lead_email ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs" style={{ color: "#64748b" }}>
+                        {fmtDate(row.created_at, false)}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
+                        {(() => {
+                          const url = ghlContactUrl(row);
+                          return url ? (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                              style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#60a5fa" }}
+                            >
+                              Open in GHL ↗
+                            </a>
+                          ) : (
+                            <span className="text-xs" style={{ color: "#334155" }}>—</span>
+                          );
+                        })()}
+                      </td>
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={13} className="px-0 py-0" style={{ background: "#070f1a" }}>
+                        <td colSpan={14} className="px-0 py-0" style={{ background: "#070f1a" }}>
                           <table className="w-full">
                             <thead>
                               <tr>

@@ -34,13 +34,22 @@ type EventRow = {
   is_hot: boolean | null;
   is_out_of_state: boolean | null;
   raw: unknown;
-  clients: { name: string } | { name: string }[] | null;
+  clients:
+    | { name: string; ghl_location_id: string | null }
+    | { name: string; ghl_location_id: string | null }[]
+    | null;
 };
 
+function clientRecord(
+  clients: EventRow['clients'],
+): { name: string; ghl_location_id: string | null } | null {
+  if (!clients) return null;
+  if (Array.isArray(clients)) return clients[0] ?? null;
+  return clients;
+}
+
 function clientName(clients: EventRow['clients']): string {
-  if (!clients) return '—';
-  if (Array.isArray(clients)) return clients[0]?.name ?? '—';
-  return clients.name;
+  return clientRecord(clients)?.name ?? '—';
 }
 
 type TimelineItem = {
@@ -93,11 +102,14 @@ type LeadProfile = {
   is_out_of_state: boolean;
   loan_amount: string | null;
   property_value: string | null;
+  ltv: number | null;
   b1_age: string | null;
   b2_age: string | null;
   has_proposal_made: boolean;
   has_submission_made: boolean;
   has_loan_funded: boolean;
+  ghl_contact_id: string | null;
+  ghl_location_id: string | null;
   counts: LeadCounts;
   timeline: TimelineItem[];
 };
@@ -153,6 +165,45 @@ function extractPropertyValue(raw: unknown): string | null {
       'property_estimated_value',
     ]),
   );
+}
+
+/** Parse a raw value into a positive number, or null. */
+function toNumber(v: unknown): number | null {
+  if (v == null || typeof v === 'boolean') return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (t === '') return null;
+    const n = Number(t.replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function loanAmountNumber(raw: unknown): number | null {
+  return toNumber(
+    pickRaw(raw, ['loan_amount', 'loanAmount', 'mortgage_amount', 'mortgageAmount', 'requested_loan_amount']),
+  );
+}
+
+function propertyValueNumber(raw: unknown): number | null {
+  return toNumber(
+    pickRaw(raw, [
+      'property_value',
+      'propertyValue',
+      'home_value',
+      'homeValue',
+      'estimated_property_value',
+      'property_estimated_value',
+    ]),
+  );
+}
+
+function extractLtv(raw: unknown): number | null {
+  const loan = loanAmountNumber(raw);
+  const property = propertyValueNumber(raw);
+  if (loan == null || property == null || property <= 0) return null;
+  return Math.round((loan / property) * 100);
 }
 
 /** Ages as whole numbers or short labels (e.g. co-borrower not yet collected). */
@@ -310,7 +361,7 @@ export async function GET(req: Request) {
   let q = ctx.service
     .from('events')
     .select(
-      'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, raw, clients(name)',
+      'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, raw, clients(name, ghl_location_id)',
     )
     .order('occurred_at', { ascending: false })
     .limit(MAX_EVENTS);
@@ -344,11 +395,14 @@ export async function GET(req: Request) {
         is_out_of_state: false,
         loan_amount: null,
         property_value: null,
+        ltv: null,
         b1_age: null,
         b2_age: null,
         has_proposal_made: false,
         has_submission_made: false,
         has_loan_funded: false,
+        ghl_contact_id: null,
+        ghl_location_id: clientRecord(row.clients)?.ghl_location_id ?? null,
         counts: emptyCounts(),
         timeline: [],
       });
@@ -364,6 +418,10 @@ export async function GET(req: Request) {
     if (row.lead_name && !profile.lead_name) profile.lead_name = row.lead_name;
     if (row.lead_email && !profile.lead_email) profile.lead_email = row.lead_email;
     if (phone && !profile.lead_phone) profile.lead_phone = phone;
+    if (row.ghl_contact_id && !profile.ghl_contact_id) profile.ghl_contact_id = row.ghl_contact_id;
+    if (!profile.ghl_location_id) {
+      profile.ghl_location_id = clientRecord(row.clients)?.ghl_location_id ?? null;
+    }
 
     if (row.event_type === 'lead') {
       if (row.is_qualified === true) profile.is_qualified = true;
@@ -371,10 +429,12 @@ export async function GET(req: Request) {
       if (row.is_out_of_state === true) profile.is_out_of_state = true;
       const la = extractLoanAmount(row.raw);
       const pv = extractPropertyValue(row.raw);
+      const ltv = extractLtv(row.raw);
       const b1 = extractB1Age(row.raw);
       const b2 = extractB2Age(row.raw);
       if (la != null) profile.loan_amount = la;
       if (pv != null) profile.property_value = pv;
+      if (ltv != null) profile.ltv = ltv;
       if (b1 != null) profile.b1_age = b1;
       if (b2 != null) profile.b2_age = b2;
       if (new Date(row.occurred_at).getTime() < new Date(profile.created_at).getTime()) {
