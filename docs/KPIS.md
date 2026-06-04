@@ -383,3 +383,120 @@ Each ad can also have an **Ad Library** entry (`ad_library` table): a Google Dri
 | Ad spend | `spend_date` |
 
 Use the same client + date range when comparing booking rate across qualified leads and appointments.
+
+---
+
+## CEO / Business KPIs (Business view)
+
+The **Business** view (Overview group) is the agency-owner cockpit: recurring revenue, cash
+collected, churn/retention, and portfolio risk **across the whole client book** — not scoped to
+one client. It is powered by `src/lib/business-metrics.ts` (`src/app/api/business/route.ts`),
+which aggregates three tables:
+
+- `clients` — current `mrr`, `lifecycle_status`, `date_signed`, `churned_at`, `offer`, contract terms.
+- `client_status_history` — every lifecycle transition with `mrr_at_change` + `changed_at` (the churn / lost-MRR backbone).
+- `client_billings` — the append-only cash ledger (`amount`, `amount_paid`, `paid_on`, `revenue_segment`, `revenue_type`, `processing_fee`, `passthrough_amount`, `lead_source`).
+
+### Headline KPIs
+
+| KPI | Definition | Formula |
+|-----|------------|---------|
+| **Active MRR** | Current recurring revenue from active clients | `SUM(clients.mrr WHERE lifecycle_status = 'active')` |
+| **Net New MRR** (month) | Growth in recurring revenue this month | `New MRR − Lost MRR (± Expansion − Contraction)` |
+| **Cash Collected** (month) | Cash actually received this month | `SUM(amount_paid WHERE paid_on in month)` (excludes passthrough) |
+| **Gross Revenue Churn %** | Recurring revenue lost to churn | `Lost MRR ÷ MRR at month start × 100` |
+| **Active Clients** | Live recurring accounts | `COUNT(clients WHERE lifecycle_status = 'active')` |
+| **ARPA** | Average revenue per account | `Active MRR ÷ Active Clients` |
+
+### Revenue & cash (cash-collected basis)
+
+All cash KPIs use **cash actually collected** (`amount_paid`, dated by `paid_on`), not amounts billed,
+so the numbers match the bank. Passthrough (ad-spend reimbursement) is always excluded from revenue.
+
+| KPI | Definition |
+|-----|------------|
+| **New Cash Collected** | Cash collected this month on `revenue_segment = 'front_end'` billings — a new client's setup / PIF / first-contract payment. |
+| **New-Logo Cash** (cross-check) | Cash collected this month on each client's **first-ever** paid billing (`MIN(paid_on)` per client). A tagging-free sanity check on New Cash. |
+| **Recurring Cash Collected** | Cash collected on `revenue_segment = 'back_end'` billings. |
+| **Total Cash Collected** | `SUM(amount_paid)` for the month (front + back), excluding passthrough. |
+| **Net of Processing Fees** | `SUM(amount_paid − processing_fee)`. |
+| **Revenue by Type** | Split of collected cash by `revenue_type` (`mrr` / `pif` / `performance`). |
+| **Revenue by Lead Source** | Split of collected cash by `lead_source` (Meta / Referral / Cold Call / LinkedIn …) — where the agency's own clients come from. |
+| **Outstanding AR / Overdue** | Unpaid balances from `balanceOf` + `recordedState` (see `src/lib/billing.ts`). |
+
+### MRR movement (the MRR bridge)
+
+| KPI | Definition |
+|-----|------------|
+| **New MRR** | `SUM(clients.mrr)` for clients whose `date_signed` falls in the month. |
+| **Lost MRR** (churned) | `SUM(client_status_history.mrr_at_change WHERE new_status = 'churned')` in the month. |
+| **Expansion / Contraction MRR** | Best-effort now; becomes exact once `client_monthly_snapshots` accrue (a month-over-month MRR delta on retained clients). |
+| **Net New MRR** | `New + Expansion − Contraction − Lost`. |
+
+### Churn & retention
+
+| KPI | Definition |
+|-----|------------|
+| **Logo Churn Rate** | `Churned clients in month ÷ Active clients at month start × 100`. |
+| **Gross Revenue Churn Rate** | `Lost MRR ÷ MRR at month start × 100`. |
+| **Net Revenue Retention (NRR)** | `(Start MRR + Expansion − Contraction − Lost) ÷ Start MRR × 100` (partial until expansion is tracked). |
+| **Avg Client Tenure** | Mean months from `date_signed` to `churned_at` (or today for active). |
+
+### Clients & portfolio risk
+
+| KPI | Definition |
+|-----|------------|
+| **Lifecycle Funnel** | Client counts by `lifecycle_status`: new_account → onboarding → active → paused → off_boarding → churned. |
+| **New Clients Signed** | `COUNT(clients WHERE date_signed in month)`. |
+| **MRR by Offer** | Active MRR + client count split by `offer` (RM vs HE). |
+| **Revenue Concentration** | Top client's % of Active MRR, and top-5 % — single-client dependency risk. |
+| **Contracts Ending Soon** | Clients with `contract_end_date` within 60/90 days and their at-risk MRR. |
+
+### Unit economics & finance (input-driven)
+
+These light up per metric as soon as the relevant input exists. Inputs are imported (or typed into
+the **Edit inputs** modal) and stored in the `business_metrics` time-series table, keyed by month.
+Each missing-input metric shows a dimmed "needs data" card until its inputs are present.
+
+**Canonical input keys** (`BUSINESS_METRIC_KEYS` in `src/lib/business-metrics.ts`):
+
+| `metric_key` | Meaning |
+|--------------|---------|
+| `marketing_spend` | Agency client-acquisition spend for the month |
+| `operating_expenses` | Total company operating expenses for the month |
+| `delivery_costs` | Cost to deliver client work (COGS) for the month |
+| `cash_balance` | Cash on hand at month end |
+| `headcount` | Team headcount |
+
+**Derived metrics:**
+
+| KPI | Formula | Needs |
+|-----|---------|-------|
+| **CAC** | `marketing_spend ÷ new clients signed` | `marketing_spend` |
+| **ROAS** (new cash) | `New Cash Collected ÷ marketing_spend` | `marketing_spend` |
+| **LTV** | `ARPA × avg tenure (× gross margin if known)` | portfolio (live) |
+| **LTV : CAC** | `LTV ÷ CAC` | `marketing_spend` |
+| **CAC Payback** | `CAC ÷ (ARPA × gross margin)` | `marketing_spend` |
+| **Gross Margin** | `(Total Cash − delivery_costs) ÷ Total Cash` | `delivery_costs` |
+| **Operating Profit** | `Total Cash − operating_expenses` | `operating_expenses` |
+| **Profit Margin** | `Operating Profit ÷ Total Cash` | `operating_expenses` |
+| **Net Burn / Runway** | `cash_balance ÷ (operating_expenses − Total Cash)` | `cash_balance` + `operating_expenses` |
+| **Rule of 40** | `annualized MRR growth % + profit margin %` | `operating_expenses` |
+| **Revenue / Head** | `(Active MRR × 12) ÷ headcount` | `headcount` |
+| **Quick Ratio** | `(New + Expansion MRR) ÷ (Lost + Contraction MRR)` | live now (partial) |
+
+Read/write the inputs via `GET|POST /api/business/metrics` (`ceo`-guarded). An import job can POST the
+same body (`{ metric_key, month, value_numeric }`) to backfill history; the route upserts per
+`(metric_key, period_date, dimension)`. The **Acquisition & Profit Trend** chart appears automatically
+once any month carries `marketing_spend` or `operating_expenses`.
+
+### Data hygiene (keeps these KPIs automatic)
+
+The accuracy of the Business view depends on a small, consistent billing/lifecycle convention:
+
+1. **Tag every billing's segment.** Set `revenue_segment` to `front_end` (new-client cash: setup, PIF, first contract) or `back_end` (ongoing retainer) on each `client_billings` row, and set `revenue_type` (`mrr` / `pif` / `performance` / `passthrough`). New Cash reads `front_end`; the New-Logo Cash cross-check works even if a row is mis-tagged.
+2. **Record cash when it lands.** Fill `paid_on` and `amount_paid` so cash-collected KPIs match the bank. Mark `passthrough` so ad-spend reimbursements never inflate revenue.
+3. **Churn through lifecycle.** Set a client's `lifecycle_status = 'churned'` — the `log_client_status_change` trigger auto-appends a `client_status_history` row stamped with `mrr_at_change`, which is the Lost MRR source. Keep `clients.mrr` current so the snapshot of Active MRR and the lost amount are both right.
+4. **Snapshot monthly.** `POST /api/business/snapshot` (secret-guarded, scheduled monthly) freezes one `client_monthly_snapshots` row per active client. This is what unlocks accurate MRR-over-time, expansion/contraction, and cohort retention going forward.
+
+**Code references:** `src/lib/business-metrics.ts` (engine), `src/app/api/business/route.ts` (API), `src/app/api/business/snapshot/route.ts` (monthly snapshot writer), `src/components/CeoDashboard.tsx` (UI).

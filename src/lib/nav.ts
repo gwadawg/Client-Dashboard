@@ -3,6 +3,7 @@
 
 export type View =
   | "dashboard"
+  | "ceo"
   | "leads"
   | "dials"
   | "appointments"
@@ -41,6 +42,7 @@ export const NAV_GROUPS = [
 
 export const NAV: NavItem[] = [
   { view: "dashboard",          label: "Dashboard",             group: "Overview"     },
+  { view: "ceo",                label: "Business",              group: "Overview"     },
   { view: "dial_analytics",     label: "Dial Analytics",        group: "Overview"     },
   { view: "media_buyer",        label: "Media Buyer",           group: "Overview"     },
   { view: "leads",              label: "New Leads",             group: "Raw Data"     },
