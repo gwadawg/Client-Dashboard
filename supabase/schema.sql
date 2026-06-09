@@ -226,10 +226,14 @@ create unique index if not exists clients_ghl_location_id_key
 -- 3. Agents (setters)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists agents (
-  id         uuid primary key default gen_random_uuid(),
-  name       text not null,
-  phone      text not null unique,
-  created_at timestamptz default now()
+  id                    uuid primary key default gen_random_uuid(),
+  name                  text not null,
+  phone                 text not null unique,
+  base_salary           numeric(10,2) not null default 0,
+  pay_per_booking       numeric(10,2) not null default 0,
+  pay_per_show          numeric(10,2) not null default 0,
+  pay_per_live_transfer numeric(10,2) not null default 0,
+  created_at            timestamptz default now()
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ export type View =
   | "admin_agents"
   | "admin_clients"
   | "admin_billing"
+  | "admin_agent_payroll"
   | "admin_share"
   | "admin_users"
   | "schedule";
@@ -63,6 +64,7 @@ export const NAV: NavItem[] = [
   { view: "admin_agents",       label: "Agent Roster",          group: "Admin"        },
   { view: "admin_clients",      label: "Client Roster",         group: "Admin"        },
   { view: "admin_billing",      label: "Client Billing",        group: "Admin"        },
+  { view: "admin_agent_payroll", label: "Agent Payroll",        group: "Admin"        },
   { view: "schedule",           label: "Power Dialer Schedule", group: "Admin"        },
   { view: "admin_share",        label: "Share Reports",         group: "Admin"        },
   { view: "admin_users",        label: "Users",                 group: "Admin"        },

@@ -10,7 +10,7 @@ export async function GET() {
 
   const { data, error } = await ctx.service
     .from('agents')
-    .select('id, phone, name, created_at')
+    .select('id, phone, name, base_salary, pay_per_booking, pay_per_show, pay_per_live_transfer, created_at')
     .order('name');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -23,13 +23,19 @@ export async function POST(req: Request) {
   const denied = requirePermission(ctx, 'admin_agents');
   if (denied) return denied;
 
-  const { phone, name } = await req.json();
+  const body = await req.json();
+  const { phone, name } = body;
   if (!phone || !name) return NextResponse.json({ error: 'phone and name are required' }, { status: 400 });
+
+  const insert: Record<string, unknown> = { phone: phone.trim(), name: name.trim() };
+  for (const key of ['base_salary', 'pay_per_booking', 'pay_per_show', 'pay_per_live_transfer'] as const) {
+    if (body[key] != null && body[key] !== '') insert[key] = Number(body[key]) || 0;
+  }
 
   const { data, error } = await ctx.service
     .from('agents')
-    .insert({ phone: phone.trim(), name: name.trim() })
-    .select('id, phone, name, created_at')
+    .insert(insert)
+    .select('id, phone, name, base_salary, pay_per_booking, pay_per_show, pay_per_live_transfer, created_at')
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
