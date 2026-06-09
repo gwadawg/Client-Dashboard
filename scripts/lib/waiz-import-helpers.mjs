@@ -17,6 +17,59 @@ export function extractGhlContactId(url) {
   return m?.[1]?.trim() ?? '';
 }
 
+export function extractGhlLocationId(url) {
+  if (!url) return '';
+  const m = url.match(/\/location\/([^/]+)\/contacts/i);
+  return m?.[1]?.trim() ?? '';
+}
+
+export function isTruncatedContactId(id) {
+  return !id || id.includes('...') || id.length < 10;
+}
+
+/** DD/MM or DD/MM/YYYY → ISO noon UTC (Bernardo May sheet). */
+export function parseDateDMY(str, defaultYear = 2026) {
+  const s = (str ?? '').trim();
+  if (!s) return null;
+  const full = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (full) {
+    const day = Number(full[1]);
+    const month = Number(full[2]);
+    const year = Number(full[3]);
+    const d = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  const short = s.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (short) {
+    const day = Number(short[1]);
+    const month = Number(short[2]);
+    const d = new Date(Date.UTC(defaultYear, month - 1, day, 12, 0, 0));
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
+}
+
+/** GHL location id → dashboard client name (fallback when DB has no events for contact). */
+export const GHL_LOCATION_CLIENT = {
+  spnoefyjwHjlZVNRmvgI: 'Community First National Bank',
+  wKNRhfYaLqrVUCeyCSMJ: 'Jesse Beard',
+  Q0fqw1niqLqy3x5GbUwM: 'Shane Thompson',
+  EcXAjOgAvjdjEQlg7rg4: "Brian Thomas's Office",
+  stKKPNXZcMtCq1PkvHrj: "John Fagan's Office",
+  SWL7aKfJMRLwftRyOn93: 'Jameson Loans',
+  KoO1KHDSqgfQWBgThXkB: "Christian Parada's Office",
+  Ixy5QFDmgNJsq41hDHno: "JP Dauber's Office",
+  RCYWWNt2AT0QyPe0F6ua: "Ken Adler's Office",
+  GUx5bD71dlQslT7RrY9f: 'Ken Walker',
+  '9RPB1kTYjQbanFmcVPRe': "Lawrence Berggoetz's Office",
+  '6MXZx4Emm3iFf8DqDo1e': 'Angella Conrard',
+  '9JdOiL4xyXYSZ0aXIkv6': "David Victorian's office",
+};
+
+export function clientNameFromLocation(locationId) {
+  return GHL_LOCATION_CLIENT[locationId] ?? null;
+}
+
 function hashSlug(input) {
   return createHash('sha256').update(input).digest('hex').slice(0, 12);
 }
