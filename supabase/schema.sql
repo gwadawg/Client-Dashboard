@@ -94,6 +94,9 @@ create table if not exists clients (
   phone_live_transfer    text,
   phone_notifications    text,
   live_transfer_approved boolean default false,
+  contact_role           text,
+  appointment_settings   text,
+  facebook_page_name     text,
   slack_id               text,
   ghl_subaccount_url     text,
 
@@ -140,6 +143,9 @@ alter table clients add column if not exists phone                  text;
 alter table clients add column if not exists phone_live_transfer    text;
 alter table clients add column if not exists phone_notifications    text;
 alter table clients add column if not exists live_transfer_approved boolean default false;
+alter table clients add column if not exists contact_role           text;
+alter table clients add column if not exists appointment_settings   text;
+alter table clients add column if not exists facebook_page_name     text;
 alter table clients add column if not exists slack_id               text;
 alter table clients add column if not exists ghl_subaccount_url     text;
 alter table clients add column if not exists street_address         text;

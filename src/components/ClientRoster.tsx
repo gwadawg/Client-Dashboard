@@ -2,10 +2,12 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
+import KickOffCallWizard from "@/components/KickOffCallWizard";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
+import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import { DEFAULT_REPORTING_TYPE, normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import {
   DEFAULT_KPI_BANDS,
@@ -100,6 +102,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [showAdd, setShowAdd] = useState(false);
   const [benchmarksFor, setBenchmarksFor] = useState<string | null>(null);
   const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean; scrollToCalls?: boolean; openCheckinForm?: boolean } | null>(null);
+  const [kickoffFor, setKickoffFor] = useState<{ id: string; name: string } | null>(null);
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
   const [statusChange, setStatusChange] = useState<{
     id: string;
@@ -251,6 +254,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 showRevenue={showRevenue}
                 onPatch={patchClient}
                 onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
+                onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
                 onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
                 onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
                 onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
@@ -270,6 +274,15 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
       <p className="text-xs" style={{ color: "#334155" }}>
         Offline clients are excluded when using the &ldquo;Live Clients&rdquo; filter on the dashboard. Open a client&rsquo;s file to oversee their full billing history. Pausing or churning a client is best done from the Client Billing tab so the schedule updates too.
       </p>
+
+      {kickoffFor && (
+        <KickOffCallWizard
+          clientId={kickoffFor.id}
+          fallbackName={kickoffFor.name}
+          onClose={() => setKickoffFor(null)}
+          onCompleted={reload}
+        />
+      )}
 
       {fileFor && (
         <ClientFile
@@ -297,7 +310,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 }
 
 function ClientRow({
-  client, striped, busy, confirmingDelete, benchmarksOpen, showRevenue, onPatch, onOpenFile, onOpenNotes, onOpenCalls, onLogCheckin, onRequestLifecycleChange, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
+  client, striped, busy, confirmingDelete, benchmarksOpen, showRevenue, onPatch, onOpenFile, onOpenKickoff, onOpenNotes, onOpenCalls, onLogCheckin, onRequestLifecycleChange, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
 }: {
   client: Client;
   striped: boolean;
@@ -307,6 +320,7 @@ function ClientRow({
   showRevenue: boolean;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onOpenFile: () => void;
+  onOpenKickoff: () => void;
   onOpenNotes: () => void;
   onOpenCalls: () => void;
   onLogCheckin: () => void;
@@ -328,6 +342,8 @@ function ClientRow({
   const displayEmail = c.email ?? c.billing_email ?? "";
   const hasOverrides = !!c.kpi_benchmarks && Object.keys(c.kpi_benchmarks).length > 0;
   const stale = benchmarksStale(c);
+  const kickoffPending = isKickoffIncomplete(c, null);
+  const showKickoffAction = isKickoffLifecycle(c.lifecycle_status) || kickoffPending;
   const benchmarkColor = benchmarksOpen ? "#38bdf8" : stale ? "#f59e0b" : hasOverrides ? "#38bdf8" : "#475569";
   const benchmarkLabel = benchmarksOpen
     ? "Close bands"
@@ -503,6 +519,23 @@ function ClientRow({
           </span>
         ) : (
           <span className="flex items-center justify-end gap-3">
+            {showKickoffAction && (
+              <button
+                onClick={onOpenKickoff}
+                className="text-xs font-semibold flex items-center gap-1.5"
+                style={{ color: kickoffPending ? "#f59e0b" : "#22c55e" }}
+                title={kickoffPending ? "Kick-off call incomplete — open wizard" : "Open kick-off call wizard"}
+              >
+                Kick-off
+                {kickoffPending && (
+                  <span
+                    className="inline-block w-1.5 h-1.5 rounded-full"
+                    style={{ background: "#f59e0b" }}
+                    aria-label="Kick-off incomplete"
+                  />
+                )}
+              </button>
+            )}
             <button onClick={onOpenFile} className="text-xs font-semibold" style={{ color: "#38bdf8" }} title="Open this client's file">Open file</button>
             <button onClick={onLogCheckin} className="text-xs font-semibold" style={{ color: "#38bdf8" }} title="Log a client check-in call">Check-in</button>
             <button onClick={onOpenCalls} className="text-xs font-semibold" style={{ color: "#f59e0b" }} title="Add or view account calls">Calls</button>

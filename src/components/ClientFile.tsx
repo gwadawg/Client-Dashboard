@@ -27,8 +27,10 @@ import {
 import { formatStatesLicensed } from "@/lib/us-states";
 import { timezoneLabel } from "@/lib/us-timezones";
 import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileEditForm";
+import KickOffCallWizard from "@/components/KickOffCallWizard";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
+import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 
 // The client "file": a single place to oversee everything about one client.
 // Profile, billing history, lifecycle transitions, and ongoing notes.
@@ -84,6 +86,7 @@ type FileClient = {
   state: string | null;
   states_licensed: string[] | null;
   timezone: string | null;
+  ghl_location_id: string | null;
   created_at: string | null;
   churned_at: string | null;
 };
@@ -242,6 +245,7 @@ export default function ClientFile({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [statusChange, setStatusChange] = useState<{ targetStatus: string; pendingBody: Record<string, unknown> } | null>(null);
+  const [showKickoff, setShowKickoff] = useState(false);
   const notesRef = useRef<HTMLElement>(null);
   const callsRef = useRef<HTMLElement>(null);
 
@@ -559,9 +563,22 @@ export default function ClientFile({
   const name = client?.name ?? fallbackName;
   const lifecycle = client?.lifecycle_status ?? "—";
   const missingCount = countMissingFields(client);
+  const onboardingCall = calls.find(c => c.call_type === "onboarding") ?? null;
+  const kickoffPending = client ? isKickoffIncomplete(client, onboardingCall) : false;
 
   return (
     <>
+    {showKickoff && (
+      <KickOffCallWizard
+        clientId={clientId}
+        fallbackName={name}
+        onClose={() => setShowKickoff(false)}
+        onCompleted={() => {
+          load();
+          onUpdated?.();
+        }}
+      />
+    )}
     <StatusChangeModal
       open={!!statusChange}
       clientName={name}
@@ -639,6 +656,39 @@ export default function ClientFile({
           </div>
         ) : (
           <div className="px-6 py-5 space-y-7">
+            {(kickoffPending || isKickoffLifecycle(client?.lifecycle_status)) && (
+              <div
+                className="rounded-lg px-4 py-3 flex items-start justify-between gap-4 flex-wrap"
+                style={{
+                  background: kickoffPending ? "rgba(245,158,11,0.08)" : "rgba(34,197,94,0.08)",
+                  border: kickoffPending ? "1px solid rgba(245,158,11,0.25)" : "1px solid rgba(34,197,94,0.25)",
+                }}
+              >
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: kickoffPending ? "#f59e0b" : "#22c55e" }}>
+                    {kickoffPending ? "Kick-off call incomplete" : "Kick-off call wizard"}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
+                    {kickoffPending
+                      ? "Run the kick-off wizard to confirm client details and save the GHL location ID + recording."
+                      : "Open the kick-off wizard to review or update onboarding details with the client."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowKickoff(true)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                  style={{
+                    color: kickoffPending ? "#f59e0b" : "#22c55e",
+                    background: kickoffPending ? "rgba(245,158,11,0.12)" : "rgba(34,197,94,0.12)",
+                    border: kickoffPending ? "1px solid rgba(245,158,11,0.3)" : "1px solid rgba(34,197,94,0.3)",
+                  }}
+                >
+                  Open kick-off
+                </button>
+              </div>
+            )}
+
             <Section title="Overview">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
                 <Detail label="Sub-account name" value={client?.name} />

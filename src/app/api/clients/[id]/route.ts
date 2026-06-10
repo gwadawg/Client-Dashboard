@@ -23,7 +23,7 @@ const CLIENT_NOTES_FIELDS =
   'id, note_type, reason_code, body, created_at, created_by, updated_at, related_call_id';
 
 const FILE_CLIENT_FIELDS =
-  'id, name, is_live, reporting_type, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, states_licensed, timezone, created_at, churned_at';
+  'id, name, is_live, reporting_type, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, created_at, churned_at';
 
 const FILE_BILLING_FIELDS =
   'id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, passthrough_amount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, created_at';
@@ -131,10 +131,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // Identity / contact (Client Roster + Client File editor)
     'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'ghl_location_id',
     'phone', 'source', 'website', 'brokerage_name', 'nmls', 'state', 'states_licensed', 'timezone',
+    // Kick-off / ops fields
+    'phone_live_transfer', 'phone_notifications', 'live_transfer_approved',
+    'contact_role', 'appointment_settings', 'facebook_page_name',
     // Per-client KPI band overrides (Client Success benchmark editor)
     'kpi_benchmarks',
   ];
   const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend', 'billing_day']);
+  const booleanFields = new Set(['live_transfer_approved']);
   const updates: Record<string, unknown> = {};
   if ('states_licensed' in body) {
     updates.states_licensed = normalizeStatesLicensed(body.states_licensed);
@@ -145,6 +149,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!includeRevenue && revenueFields.has(k)) continue;
     if (k === 'reporting_type') updates[k] = normalizeReportingType(body[k]);
     else if (k === 'kpi_benchmarks') updates[k] = body[k] ?? null; // object or null, stored as-is
+    else if (booleanFields.has(k)) updates[k] = body[k] === true || body[k] === 'yes';
     else if (numericFields.has(k)) updates[k] = body[k] === '' || body[k] === null ? null : Number(body[k]);
     else updates[k] = body[k] === '' ? null : body[k];
   }
