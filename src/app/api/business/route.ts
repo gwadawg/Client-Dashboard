@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission, requireClientRevenue } from '@/lib/api-auth';
 import {
   computeBusinessMetrics,
   currentMonth,
@@ -28,6 +28,8 @@ export async function GET(req: Request) {
   if (isAuthError(ctx)) return ctx;
   const denied = requirePermission(ctx, 'ceo');
   if (denied) return denied;
+  const revenueDenied = requireClientRevenue(ctx);
+  if (revenueDenied) return revenueDenied;
 
   const url = new URL(req.url);
   const monthParam = url.searchParams.get('month');

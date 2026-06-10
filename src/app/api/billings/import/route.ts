@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission, requireClientRevenue } from '@/lib/api-auth';
 import { parseCsv } from '@/lib/csv';
 
 const BATCH = 200;
@@ -58,6 +58,8 @@ export async function POST(req: Request) {
   if (isAuthError(ctx)) return ctx;
   const denied = requirePermission(ctx, 'admin_billing');
   if (denied) return denied;
+  const revenueDenied = requireClientRevenue(ctx);
+  if (revenueDenied) return revenueDenied;
 
   const body = await req.json();
   const csv: string = body?.csv ?? '';

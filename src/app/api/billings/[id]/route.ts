@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission, requireClientRevenue } from '@/lib/api-auth';
 
 const BILLING_FIELDS =
   'id, client_id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, amount_paid, status, paid_on, method, invoice_ref, note, created_at';
@@ -11,6 +11,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (isAuthError(ctx)) return ctx;
   const denied = requirePermission(ctx, 'admin_billing');
   if (denied) return denied;
+  const revenueDenied = requireClientRevenue(ctx);
+  if (revenueDenied) return revenueDenied;
 
   const { id } = await params;
   const body = await req.json();
@@ -98,6 +100,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (isAuthError(ctx)) return ctx;
   const denied = requirePermission(ctx, 'admin_billing');
   if (denied) return denied;
+  const revenueDenied = requireClientRevenue(ctx);
+  if (revenueDenied) return revenueDenied;
 
   const { id } = await params;
   const { error } = await ctx.service.from('client_billings').delete().eq('id', id);

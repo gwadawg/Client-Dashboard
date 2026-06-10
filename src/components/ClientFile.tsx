@@ -90,6 +90,7 @@ export default function ClientFile({
 }) {
   const [client, setClient] = useState<FileClient | null>(null);
   const [billings, setBillings] = useState<FileBilling[]>([]);
+  const [canViewRevenue, setCanViewRevenue] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,7 +101,11 @@ export default function ClientFile({
       .then(d => {
         if (!active) return;
         if (d.error) setError(d.error);
-        else { setClient(d.client ?? null); setBillings(d.billings ?? []); }
+        else {
+          setClient(d.client ?? null);
+          setBillings(d.billings ?? []);
+          if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
+        }
         setLoading(false);
       })
       .catch(e => { if (active) { setError(String(e)); setLoading(false); } });
@@ -164,9 +169,9 @@ export default function ClientFile({
             {/* Overview */}
             <Section title="Overview">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
-                <Detail label="Primary contact" value={client?.primary_contact || client?.primary_contact_name} />
-                <Detail label="Billing email" value={client?.billing_email} />
-                <Detail label="Email" value={client?.email} />
+                <Detail label="Sub-account name" value={client?.name} />
+                <Detail label="Client name" value={client?.primary_contact_name || client?.primary_contact} />
+                <Detail label="Email" value={client?.email || client?.billing_email} />
                 <Detail label="Phone" value={client?.phone} />
                 <Detail label="Reporting type" value={client?.reporting_type} />
                 <Detail label="Lead source" value={client?.source} />
@@ -180,13 +185,13 @@ export default function ClientFile({
             <Section title="Billing setup">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
                 <Detail label="Billing type" value={billingTypeLabel(client?.billing_type)} />
-                <Detail label="Monthly $ (base)" value={money(client?.mrr)} />
+                {canViewRevenue && <Detail label="Monthly $ (base)" value={money(client?.mrr)} />}
                 <Detail label="Billing day" value={client?.billing_day ? `Day ${client.billing_day}` : "launch day"} />
                 <Detail label="Launch date" value={client?.launch_date} />
                 <Detail label="Date signed" value={client?.date_signed} />
                 <Detail label="Contract term" value={client?.contract_term_months ? `${client.contract_term_months} mo` : null} />
                 <Detail label="Contract end" value={client?.contract_end_date} />
-                <Detail label="Daily ad spend" value={money(client?.daily_adspend)} />
+                {canViewRevenue && <Detail label="Daily ad spend" value={money(client?.daily_adspend)} />}
                 <Detail label="Churned" value={client?.churned_at} />
               </div>
               {client?.performance_terms && (
@@ -196,15 +201,17 @@ export default function ClientFile({
               )}
             </Section>
 
-            {/* Billing & revenue history */}
-            <Section title={`Billing & revenue history (${summary.count})`}>
-              <div className="flex gap-3 flex-wrap mb-4">
-                <Chip label="Total collected" value={money(summary.collected)} color="#38bdf8" />
-                <Chip label="Retainer" value={money(summary.retainer)} color="#22c55e" />
-                <Chip label="Performance" value={money(summary.performance)} color="#a78bfa" />
-                {summary.passthrough > 0 && <Chip label="Passthrough" value={money(summary.passthrough)} color="#64748b" />}
-                <Chip label="Last payment" value={summary.lastPaidOn ?? "—"} color="#cbd5e1" />
-              </div>
+            {/* Billing history */}
+            <Section title={`Billing history (${summary.count})`}>
+              {canViewRevenue && (
+                <div className="flex gap-3 flex-wrap mb-4">
+                  <Chip label="Total collected" value={money(summary.collected)} color="#38bdf8" />
+                  <Chip label="Retainer" value={money(summary.retainer)} color="#22c55e" />
+                  <Chip label="Performance" value={money(summary.performance)} color="#a78bfa" />
+                  {summary.passthrough > 0 && <Chip label="Passthrough" value={money(summary.passthrough)} color="#64748b" />}
+                  <Chip label="Last payment" value={summary.lastPaidOn ?? "—"} color="#cbd5e1" />
+                </div>
+              )}
 
               {billings.length === 0 ? (
                 <p className="text-sm py-6 text-center" style={{ color: "#334155" }}>No billings logged for this client yet.</p>
@@ -213,7 +220,10 @@ export default function ClientFile({
                   <table className="w-full text-sm">
                     <thead>
                       <tr style={{ background: "#0a1628" }}>
-                        {["Date", "Type", "Cash", "Amount", "Status", "Method"].map((h, i) => (
+                        {(canViewRevenue
+                          ? ["Date", "Type", "Cash", "Amount", "Status", "Method"]
+                          : ["Date", "Type", "Status", "Method"]
+                        ).map((h, i) => (
                           <th key={i} className="text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
                         ))}
                       </tr>
@@ -236,8 +246,12 @@ export default function ClientFile({
                               {seg && <span className="ml-1.5 text-xs" style={{ color: "#475569" }}>· {seg}</span>}
                               {b.lead_source && <div className="text-xs mt-0.5" style={{ color: "#475569" }}>{b.lead_source}</div>}
                             </td>
-                            <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: isPassthrough ? "#64748b" : "#38bdf8" }}>{money(cash)}</td>
-                            <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#e2e8f0" }}>{money(b.amount)}</td>
+                            {canViewRevenue && (
+                              <>
+                                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: isPassthrough ? "#64748b" : "#38bdf8" }}>{money(cash)}</td>
+                                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#e2e8f0" }}>{money(b.amount)}</td>
+                              </>
+                            )}
                             <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ color: st.color, background: st.bg }}>{b.status}</span></td>
                             <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#94a3b8" }}>{b.method ?? "—"}</td>
                           </tr>
@@ -246,6 +260,9 @@ export default function ClientFile({
                     </tbody>
                   </table>
                 </div>
+              )}
+              {!canViewRevenue && billings.length > 0 && (
+                <p className="text-xs mt-3" style={{ color: "#475569" }}>Dollar amounts are hidden. Ask the account owner to grant &ldquo;View client revenue &amp; billing totals&rdquo; if you need them.</p>
               )}
             </Section>
           </div>

@@ -1,6 +1,6 @@
 import { createAuthClient, createServiceClient } from './supabase';
 import { NextResponse } from 'next/server';
-import { hasPermission, type AllowedPermissions } from './permissions';
+import { hasPermission, canViewClientRevenue, type AllowedPermissions } from './permissions';
 
 export type AuthContext = {
   userId: string;
@@ -62,6 +62,14 @@ export function requirePermission(ctx: AuthContext, key: string): NextResponse |
 export function requireAnyPermission(ctx: AuthContext, keys: string[]): NextResponse | null {
   const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
   if (keys.some(key => hasPermission(key, subject))) return null;
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+}
+
+/** Dollar amounts, MRR, billing totals, CEO revenue — owner or explicit grant only. */
+export function requireClientRevenue(ctx: AuthContext): NextResponse | null {
+  if (canViewClientRevenue({ isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions })) {
+    return null;
+  }
   return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 }
 

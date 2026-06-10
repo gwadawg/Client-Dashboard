@@ -39,7 +39,7 @@ import {
   type ReportingType,
 } from "@/lib/kpi-layouts";
 import { NAV, NAV_GROUPS, type View } from "@/lib/nav";
-import { hasPermission, type AllowedPermissions } from "@/lib/permissions";
+import { hasPermission, canViewClientRevenue, type AllowedPermissions } from "@/lib/permissions";
 
 type Client = { id: string; name: string; is_live?: boolean; reporting_type?: ReportingType };
 
@@ -307,6 +307,7 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
   const searchParams = useSearchParams();
 
   const canSee = (v: View) => hasPermission(v, { isOwner, allowedPermissions });
+  const canViewRevenue = canViewClientRevenue({ isOwner, allowedPermissions });
   const visibleNav = NAV.filter(item => canSee(item.view));
   const firstVisibleView: View | undefined = visibleNav[0]?.view;
 
@@ -818,14 +819,16 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
             />
           )}
 
-          {view === "ceo" && <CeoDashboard />}
+          {view === "ceo" && <CeoDashboard canViewRevenue={canViewRevenue} />}
 
           {view === "client_health" && <ClientHealthDashboard />}
 
           {/* ── Admin ── */}
           {view === "admin_agents"  && <AgentAdmin />}
-          {view === "admin_clients" && <ClientRoster />}
-          {view === "admin_billing" && <BillingManager />}
+          {view === "admin_clients" && (
+            <ClientRoster canViewRevenue={canViewRevenue} />
+          )}
+          {view === "admin_billing" && <BillingManager canViewRevenue={canViewRevenue} />}
           {view === "admin_agent_payroll" && (
             <AgentPayrollReport
               preset={preset}

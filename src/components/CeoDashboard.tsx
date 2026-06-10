@@ -248,7 +248,7 @@ function MrrWaterfall({ bridge }: { bridge: BusinessMetrics["mrrBridge"] }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function CeoDashboard() {
+export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenue?: boolean }) {
   const monthOptions = useMemo(() => recentMonths(18), []);
   const [month, setMonth] = useState(monthOptions[0]);
   const [data, setData] = useState<BusinessMetrics | null>(null);
@@ -258,6 +258,12 @@ export default function CeoDashboard() {
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    if (!canViewRevenue) {
+      setLoading(false);
+      setData(null);
+      setError(null);
+      return;
+    }
     let cancelled = false;
     queueMicrotask(() => {
       setLoading(true);
@@ -280,9 +286,20 @@ export default function CeoDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [month, reloadKey]);
+  }, [month, reloadKey, canViewRevenue]);
 
   const isCurrentMonth = month === monthOptions[0];
+
+  if (!canViewRevenue) {
+    return (
+      <div className="py-16 text-center space-y-2 px-4">
+        <p className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>Revenue data restricted</p>
+        <p className="text-sm max-w-md mx-auto" style={{ color: "#475569" }}>
+          The Business dashboard is only visible to the account owner and users with the &ldquo;View client revenue &amp; billing totals&rdquo; capability.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 max-w-7xl">

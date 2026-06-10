@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   VIEW_PERMISSIONS,
+  CAPABILITY_PERMISSIONS,
   PERMISSION_GROUPS,
   ALL_PERMISSION_KEYS,
   type PermissionDef,
@@ -140,6 +141,7 @@ function PermissionsEditor({
       </div>
 
       <PermissionSection title="Tabs" perms={VIEW_PERMISSIONS} selected={selected} onToggle={toggle} />
+      <PermissionSection title="Capabilities" perms={CAPABILITY_PERMISSIONS} selected={selected} onToggle={toggle} />
 
       <div className="flex items-center gap-3 pt-1">
         <button

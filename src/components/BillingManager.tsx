@@ -129,25 +129,31 @@ function isActive(c: ClientBilling): boolean {
   return c.is_live === true && c.lifecycle_status !== "paused" && c.lifecycle_status !== "churned";
 }
 
-export default function BillingManager() {
+export default function BillingManager({ canViewRevenue: initialCanViewRevenue = false }: { canViewRevenue?: boolean }) {
   const [clients, setClients] = useState<ClientBilling[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [canViewRevenue, setCanViewRevenue] = useState(initialCanViewRevenue);
 
   async function load() {
     const res = await fetch("/api/billings");
     const d = await res.json();
     setClients(d.clients ?? []);
+    if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
     setLoading(false);
   }
 
   useEffect(() => {
     fetch("/api/billings")
       .then(r => r.json())
-      .then(d => { setClients(d.clients ?? []); setLoading(false); });
+      .then(d => {
+        setClients(d.clients ?? []);
+        if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
+        setLoading(false);
+      });
   }, []);
 
   async function patchBilling(id: string, body: Record<string, unknown>) {
@@ -262,18 +268,25 @@ export default function BillingManager() {
         </div>
         <button
           onClick={() => setShowImport(s => !s)}
+          disabled={!canViewRevenue}
           className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
-          style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.25)" }}
+          style={{ color: canViewRevenue ? "#38bdf8" : "#334155", background: canViewRevenue ? "rgba(56,189,248,0.1)" : "rgba(255,255,255,0.04)", border: `1px solid ${canViewRevenue ? "rgba(56,189,248,0.25)" : "rgba(255,255,255,0.06)"}`, opacity: canViewRevenue ? 1 : 0.6 }}
         >
           {showImport ? "Close" : "Record past payment"}
         </button>
       </div>
 
+      {!canViewRevenue && (
+        <p className="text-xs px-3 py-2 rounded-lg" style={{ color: "#94a3b8", background: "rgba(148,163,184,0.08)", border: "1px solid rgba(148,163,184,0.15)" }}>
+          Billing schedules and status are visible; dollar amounts and payment actions require the &ldquo;View client revenue &amp; billing totals&rdquo; capability.
+        </p>
+      )}
+
       <p className="text-xs" style={{ color: "#475569" }}>
         Need to add a client or fill in missing client data? Use the Client Roster tab — billing reads launch date, MRR, and lifecycle from there.
       </p>
 
-      {showImport && <RecordPastPaymentForm clients={clients} busy={busy} onRecord={recordBilling} />}
+      {showImport && canViewRevenue && <RecordPastPaymentForm clients={clients} busy={busy} onRecord={recordBilling} />}
 
       <WorklistSection
         title="Past Due"
@@ -281,6 +294,7 @@ export default function BillingManager() {
         emptyText="Nothing past due. Nice."
         rows={pastDue}
         busy={busy}
+        canViewRevenue={canViewRevenue}
         onPatch={patchBilling}
         onDelete={deleteBilling}
         onRecord={recordBilling}
@@ -292,12 +306,13 @@ export default function BillingManager() {
         emptyText="No upcoming billings on the schedule."
         rows={upcoming}
         busy={busy}
+        canViewRevenue={canViewRevenue}
         onPatch={patchBilling}
         onDelete={deleteBilling}
         onRecord={recordBilling}
       />
 
-      <PaidSection rows={paid} busy={busy} onPatch={patchBilling} onDelete={deleteBilling} />
+      <PaidSection rows={paid} busy={busy} canViewRevenue={canViewRevenue} onPatch={patchBilling} onDelete={deleteBilling} />
 
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
         <button
@@ -308,7 +323,7 @@ export default function BillingManager() {
           <span className="text-sm font-semibold">Active clients — billing schedule (anchored to launch date)</span>
           <span className="text-xs" style={{ color: "#475569" }}>{showSetup ? "Hide" : "Show"}</span>
         </button>
-        {showSetup && <SetupTable clients={clients} busy={busy} onPatch={patchClient} />}
+        {showSetup && <SetupTable clients={clients} busy={busy} canViewRevenue={canViewRevenue} onPatch={patchClient} />}
       </div>
 
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -320,7 +335,7 @@ export default function BillingManager() {
           <span className="text-sm font-semibold">Paused / Churned clients <span style={{ color: "#475569" }}>({inactive.length})</span></span>
           <span className="text-xs" style={{ color: "#475569" }}>{showInactive ? "Hide" : "Show"}</span>
         </button>
-        {showInactive && <InactiveTable clients={inactive} busy={busy} onPatch={patchClient} />}
+        {showInactive && <InactiveTable clients={inactive} busy={busy} canViewRevenue={canViewRevenue} onPatch={patchClient} />}
       </div>
     </div>
   );
@@ -332,17 +347,22 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function WorklistSection({
-  title, accent, emptyText, rows, busy, onPatch, onDelete, onRecord,
+  title, accent, emptyText, rows, busy, canViewRevenue, onPatch, onDelete, onRecord,
 }: {
   title: string;
   accent: string;
   emptyText: string;
   rows: WorkRow[];
   busy: string | null;
+  canViewRevenue: boolean;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onDelete: (id: string) => void;
   onRecord: (client: ClientBilling, opts: RecordOpts) => void;
 }) {
+  const headers = canViewRevenue
+    ? ["Client", "Amount", "Paid", "Balance", "Due date", "When", "State", "Action"]
+    : ["Client", "Due date", "When", "State", "Action"];
+  const colSpan = headers.length;
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
@@ -354,16 +374,16 @@ function WorklistSection({
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#0a1628" }}>
-              {["Client", "Amount", "Paid", "Balance", "Due date", "When", "State", "Action"].map((h, i) => (
+              {headers.map((h, i) => (
                 <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-6 text-center text-xs" style={{ color: "#334155" }}>{emptyText}</td></tr>
+              <tr><td colSpan={colSpan} className="px-4 py-6 text-center text-xs" style={{ color: "#334155" }}>{emptyText}</td></tr>
             ) : rows.map((r, i) => (
-              <WorkRowView key={r.kind === "forecast" ? `f-${r.client.id}` : r.billing.id} row={r} striped={i % 2 === 0} busy={busy} onPatch={onPatch} onDelete={onDelete} onRecord={onRecord} />
+              <WorkRowView key={r.kind === "forecast" ? `f-${r.client.id}` : r.billing.id} row={r} striped={i % 2 === 0} busy={busy} canViewRevenue={canViewRevenue} onPatch={onPatch} onDelete={onDelete} onRecord={onRecord} />
             ))}
           </tbody>
         </table>
@@ -373,23 +393,25 @@ function WorklistSection({
 }
 
 function WorkRowView({
-  row, striped, busy, onPatch, onDelete, onRecord,
+  row, striped, busy, canViewRevenue, onPatch, onDelete, onRecord,
 }: {
   row: WorkRow;
   striped: boolean;
   busy: string | null;
+  canViewRevenue: boolean;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onDelete: (id: string) => void;
   onRecord: (client: ClientBilling, opts: RecordOpts) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const rowBg = striped ? "#080f1e" : "#060d1a";
+  const colSpan = canViewRevenue ? 8 : 5;
 
   const dueDate = row.kind === "forecast" ? row.date : (row.billing.due_date ?? row.billing.billed_on);
   const amount = row.kind === "forecast" ? row.amount : row.billing.amount;
   const paid = row.kind === "forecast" ? null : (Number(row.billing.amount_paid) || 0);
   const balance = row.kind === "forecast" ? null : balanceOf(row.billing);
-  const sub = row.kind === "recorded" ? breakdownLabel(row.billing) : null;
+  const sub = row.kind === "recorded" && canViewRevenue ? breakdownLabel(row.billing) : null;
 
   return (
     <>
@@ -398,9 +420,13 @@ function WorkRowView({
           <span className="font-medium" style={{ color: "#e2e8f0" }}>{row.client.name}</span>
           {sub && <div className="text-xs mt-0.5" style={{ color: "#475569" }}>{sub}</div>}
         </td>
-        <td className="px-4 py-3" style={{ color: "#e2e8f0" }}>{money(amount)}</td>
-        <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{paid === null ? "—" : money(paid)}</td>
-        <td className="px-4 py-3" style={{ color: balance && balance > 0 ? "#f59e0b" : "#94a3b8" }}>{balance === null ? "—" : money(balance)}</td>
+        {canViewRevenue && (
+          <>
+            <td className="px-4 py-3" style={{ color: "#e2e8f0" }}>{money(amount)}</td>
+            <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{paid === null ? "—" : money(paid)}</td>
+            <td className="px-4 py-3" style={{ color: balance && balance > 0 ? "#f59e0b" : "#94a3b8" }}>{balance === null ? "—" : money(balance)}</td>
+          </>
+        )}
         <td className="px-4 py-3" style={{ color: "#cbd5e1" }}>{dueDate ?? "—"}</td>
         <td className="px-4 py-3 text-xs" style={{ color: "#94a3b8" }}>{relativeLabel(dueDate)}</td>
         <td className="px-4 py-3">
@@ -409,14 +435,18 @@ function WorkRowView({
             : <StatusBadge status={recordedState(row.billing)} />}
         </td>
         <td className="px-4 py-3 text-right whitespace-nowrap">
-          <button onClick={() => setExpanded(e => !e)} className="text-xs font-semibold" style={{ color: "#60a5fa" }}>
-            {expanded ? "Close" : (row.kind === "forecast" ? "Record" : "Manage")}
-          </button>
+          {canViewRevenue ? (
+            <button onClick={() => setExpanded(e => !e)} className="text-xs font-semibold" style={{ color: "#60a5fa" }}>
+              {expanded ? "Close" : (row.kind === "forecast" ? "Record" : "Manage")}
+            </button>
+          ) : (
+            <span className="text-xs" style={{ color: "#334155" }}>—</span>
+          )}
         </td>
       </tr>
-      {expanded && (
+      {expanded && canViewRevenue && (
         <tr style={{ background: "#04101f" }}>
-          <td colSpan={8} className="px-4 py-4">
+          <td colSpan={colSpan} className="px-4 py-4">
             {row.kind === "forecast"
               ? <ForecastEditor row={row} busy={busy} onRecord={(c, o) => { onRecord(c, o); setExpanded(false); }} />
               : <RecordedEditor billing={row.billing} busy={busy} onPatch={onPatch} onDelete={onDelete} />}
@@ -550,13 +580,17 @@ function RecordedEditor({
 }
 
 function PaidSection({
-  rows, busy, onPatch, onDelete,
+  rows, busy, canViewRevenue, onPatch, onDelete,
 }: {
   rows: RecordedRow[];
   busy: string | null;
+  canViewRevenue: boolean;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onDelete: (id: string) => void;
 }) {
+  const headers = canViewRevenue
+    ? ["Client", "Amount", "Billed", "Paid on", "Method", "State", "Action"]
+    : ["Client", "Billed", "Paid on", "Method", "State"];
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
@@ -568,36 +602,40 @@ function PaidSection({
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#0a1628" }}>
-              {["Client", "Amount", "Billed", "Paid on", "Method", "State", "Action"].map((h, i) => (
+              {headers.map((h, i) => (
                 <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-6 text-center text-xs" style={{ color: "#334155" }}>No paid billings yet.</td></tr>
+              <tr><td colSpan={headers.length} className="px-4 py-6 text-center text-xs" style={{ color: "#334155" }}>No paid billings yet.</td></tr>
             ) : rows.map((r, i) => {
               const b = r.billing;
               const isBusy = busy === b.id;
-              const sub = breakdownLabel(b);
+              const sub = canViewRevenue ? breakdownLabel(b) : null;
               return (
                 <tr key={b.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                   <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>
                     {r.client.name}
                     {sub && <div className="text-xs mt-0.5" style={{ color: "#475569" }}>{sub}</div>}
                   </td>
-                  <td className="px-4 py-3" style={{ color: "#e2e8f0" }}>{money(b.amount)}</td>
+                  {canViewRevenue && (
+                    <td className="px-4 py-3" style={{ color: "#e2e8f0" }}>{money(b.amount)}</td>
+                  )}
                   <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{b.billed_on}</td>
                   <td className="px-4 py-3" style={{ color: "#cbd5e1" }}>{b.paid_on ?? "—"}</td>
                   <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{b.method ?? "—"}</td>
                   <td className="px-4 py-3"><StatusBadge status={b.status} /></td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    {b.status === "paid" && (
-                      <button onClick={() => onPatch(b.id, { status: "refunded" })} disabled={isBusy} className="text-xs font-semibold mr-3" style={{ color: "#94a3b8" }}>Refund</button>
-                    )}
-                    <button onClick={() => onPatch(b.id, { status: "pending", paid_on: null, amount_paid: 0 })} disabled={isBusy} className="text-xs mr-3" style={{ color: "#f59e0b" }}>Reopen</button>
-                    <button onClick={() => onDelete(b.id)} disabled={isBusy} className="text-xs" style={{ color: "#475569" }}>Remove</button>
-                  </td>
+                  {canViewRevenue && (
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {b.status === "paid" && (
+                        <button onClick={() => onPatch(b.id, { status: "refunded" })} disabled={isBusy} className="text-xs font-semibold mr-3" style={{ color: "#94a3b8" }}>Refund</button>
+                      )}
+                      <button onClick={() => onPatch(b.id, { status: "pending", paid_on: null, amount_paid: 0 })} disabled={isBusy} className="text-xs mr-3" style={{ color: "#f59e0b" }}>Reopen</button>
+                      <button onClick={() => onDelete(b.id)} disabled={isBusy} className="text-xs" style={{ color: "#475569" }}>Remove</button>
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -609,14 +647,18 @@ function PaidSection({
 }
 
 function SetupTable({
-  clients, busy, onPatch,
+  clients, busy, canViewRevenue, onPatch,
 }: {
   clients: ClientBilling[];
   busy: string | null;
+  canViewRevenue: boolean;
   onPatch: (clientId: string, body: Record<string, unknown>) => void;
 }) {
   const sorted = clients.filter(isActive).sort((a, b) => a.name.localeCompare(b.name));
   const missing = sorted.filter(c => !c.next_billing_date).length;
+  const headers = canViewRevenue
+    ? ["Client", "Billing type", "Monthly $", "Billing day", "Launch date", "Next billing", "When", "Lifecycle"]
+    : ["Client", "Billing type", "Billing day", "Launch date", "Next billing", "When", "Lifecycle"];
   return (
     <div>
       {missing > 0 && (
@@ -627,7 +669,7 @@ function SetupTable({
       <table className="w-full text-sm">
         <thead>
           <tr style={{ background: "#081225" }}>
-            {["Client", "Billing type", "Monthly $", "Billing day", "Launch date", "Next billing", "When", "Lifecycle"].map((h, i) => (
+            {headers.map((h, i) => (
               <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
             ))}
           </tr>
@@ -646,9 +688,11 @@ function SetupTable({
                     <option value="pif_monthly">PIF + Monthly</option>
                   </select>
                 </td>
-                <td className="px-4 py-2.5">
-                  <input type="number" defaultValue={c.mrr ?? ""} disabled={isBusy} onBlur={e => { if (String(c.mrr ?? "") !== e.target.value) onPatch(c.id, { mrr: e.target.value }); }} placeholder="0" className="px-2 py-1 rounded-lg text-xs outline-none w-24" style={fieldStyle()} />
-                </td>
+                {canViewRevenue && (
+                  <td className="px-4 py-2.5">
+                    <input type="number" defaultValue={c.mrr ?? ""} disabled={isBusy} onBlur={e => { if (String(c.mrr ?? "") !== e.target.value) onPatch(c.id, { mrr: e.target.value }); }} placeholder="0" className="px-2 py-1 rounded-lg text-xs outline-none w-24" style={fieldStyle()} />
+                  </td>
+                )}
                 <td className="px-4 py-2.5">
                   <input type="number" min={1} max={31} defaultValue={c.billing_day ?? ""} disabled={isBusy} onBlur={e => { if (String(c.billing_day ?? "") !== e.target.value) onPatch(c.id, { billing_day: e.target.value }); }} placeholder="—" title="Day of month (1-31); blank = launch day" className="px-2 py-1 rounded-lg text-xs outline-none w-16" style={fieldStyle()} />
                 </td>
@@ -671,20 +715,24 @@ function SetupTable({
 }
 
 function InactiveTable({
-  clients, busy, onPatch,
+  clients, busy, canViewRevenue, onPatch,
 }: {
   clients: ClientBilling[];
   busy: string | null;
+  canViewRevenue: boolean;
   onPatch: (clientId: string, body: Record<string, unknown>) => void;
 }) {
   if (clients.length === 0) {
     return <p className="px-4 py-6 text-center text-xs" style={{ color: "#334155" }}>No paused or churned clients.</p>;
   }
+  const headers = canViewRevenue
+    ? ["Client", "Status", "Outstanding balance", "Action"]
+    : ["Client", "Status", "Action"];
   return (
     <table className="w-full text-sm">
       <thead>
         <tr style={{ background: "#081225" }}>
-          {["Client", "Status", "Outstanding balance", "Action"].map((h, i) => (
+          {headers.map((h, i) => (
             <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
           ))}
         </tr>
@@ -700,7 +748,9 @@ function InactiveTable({
             <tr key={c.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
               <td className="px-4 py-2.5 font-medium" style={{ color: "#e2e8f0" }}>{c.name}</td>
               <td className="px-4 py-2.5"><StatusBadge status={c.lifecycle_status === "churned" ? "failed" : "pending"} /><span className="ml-2 text-xs" style={{ color: "#94a3b8" }}>{c.lifecycle_status ?? "inactive"}</span></td>
-              <td className="px-4 py-2.5" style={{ color: outstanding > 0 ? "#f59e0b" : "#94a3b8" }}>{money(outstanding)}</td>
+              {canViewRevenue && (
+                <td className="px-4 py-2.5" style={{ color: outstanding > 0 ? "#f59e0b" : "#94a3b8" }}>{money(outstanding)}</td>
+              )}
               <td className="px-4 py-2.5">
                 <button onClick={() => onPatch(c.id, { lifecycle_status: "active", is_live: true })} disabled={isBusy} className="text-xs font-semibold" style={{ color: "#22c55e" }}>Reactivate</button>
               </td>

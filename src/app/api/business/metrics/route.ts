@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission, requireClientRevenue } from '@/lib/api-auth';
 import { BUSINESS_METRIC_KEYS } from '@/lib/business-metrics';
 
 const FIELDS = 'id, metric_key, period_date, value_numeric, value_text, dimension, notes, created_at';
@@ -21,6 +21,8 @@ export async function GET(req: Request) {
   if (isAuthError(ctx)) return ctx;
   const denied = requirePermission(ctx, 'ceo');
   if (denied) return denied;
+  const revenueDenied = requireClientRevenue(ctx);
+  if (revenueDenied) return revenueDenied;
 
   const month = new URL(req.url).searchParams.get('month');
 
@@ -44,6 +46,8 @@ export async function POST(req: Request) {
   if (isAuthError(ctx)) return ctx;
   const denied = requirePermission(ctx, 'ceo');
   if (denied) return denied;
+  const revenueDenied = requireClientRevenue(ctx);
+  if (revenueDenied) return revenueDenied;
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body.metric_key !== 'string') {

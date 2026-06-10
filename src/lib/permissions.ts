@@ -24,7 +24,21 @@ export const VIEW_PERMISSIONS: PermissionDef[] = NAV.map(item => ({
   view: item.view,
 }));
 
-export const ALL_PERMISSION_KEYS: string[] = VIEW_PERMISSIONS.map(p => p.key);
+// Capabilities are not sidebar tabs — extra gates for sensitive data/actions.
+// Unlike tab permissions, these are never implied by allowed_permissions = null;
+// each must be explicitly granted (the owner always passes every check).
+export const CAPABILITY_PERMISSIONS: PermissionDef[] = [
+  {
+    key: "view_client_revenue",
+    label: "View client revenue & billing totals",
+    group: "Admin",
+    view: "admin_clients",
+  },
+];
+
+export const ALL_PERMISSIONS: PermissionDef[] = [...VIEW_PERMISSIONS, ...CAPABILITY_PERMISSIONS];
+
+export const ALL_PERMISSION_KEYS: string[] = ALL_PERMISSIONS.map(p => p.key);
 
 // Group ordering for the editor follows the canonical nav group order.
 export const PERMISSION_GROUPS: string[] = NAV_GROUPS.filter(g =>
@@ -49,10 +63,25 @@ export function hasPermission(key: string, subject: PermissionSubject): boolean 
   return subject.allowedPermissions.includes(key);
 }
 
+/** Grant keys (legacy `view_client_total_paid` still honored). */
+export const CLIENT_REVENUE_PERMISSION_KEYS = ['view_client_revenue', 'view_client_total_paid'] as const;
+
+/** Sensitive revenue data — owner only unless explicitly granted. */
+export function canViewClientRevenue(subject: PermissionSubject): boolean {
+  if (subject.isOwner) return true;
+  if (!Array.isArray(subject.allowedPermissions)) return false;
+  return subject.allowedPermissions.some(k =>
+    (CLIENT_REVENUE_PERMISSION_KEYS as readonly string[]).includes(k),
+  );
+}
+
+/** @deprecated use canViewClientRevenue */
+export const canViewClientTotalPaid = canViewClientRevenue;
+
 // Keep only valid, de-duplicated permission keys (or null for "no restriction").
 export function sanitizeAllowedPermissions(input: unknown): AllowedPermissions {
   if (input === null) return null;
   if (!Array.isArray(input)) return null;
-  const valid = new Set(ALL_PERMISSION_KEYS);
+  const valid = new Set([...ALL_PERMISSION_KEYS, 'view_client_total_paid']);
   return Array.from(new Set(input.filter((v): v is string => typeof v === "string" && valid.has(v))));
 }

@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
+import {
+  canViewClientRevenue,
+  redactBillingRows,
+  redactClientMoneyFields,
+} from '@/lib/client-revenue-access';
 
 const FILE_CLIENT_FIELDS =
   'id, name, is_live, reporting_type, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, timezone, created_at, churned_at';
@@ -34,7 +39,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
   if (billingsRes.error) return NextResponse.json({ error: billingsRes.error.message }, { status: 500 });
 
-  return NextResponse.json({ client: clientRes.data, billings: billingsRes.data ?? [] });
+  const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
+  const includeRevenue = canViewClientRevenue(subject);
+  const client = includeRevenue ? clientRes.data : redactClientMoneyFields(clientRes.data);
+  const billings = includeRevenue ? (billingsRes.data ?? []) : redactBillingRows(billingsRes.data);
+
+  return NextResponse.json({
+    client,
+    billings,
+    can_view_revenue: includeRevenue,
+  });
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -46,6 +60,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params;
   const body = await req.json();
+  const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
+  const includeRevenue = canViewClientRevenue(subject);
+  const revenueFields = new Set(['mrr', 'daily_adspend']);
+  if (!includeRevenue && Object.keys(body).some(k => revenueFields.has(k))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const allowed = [
     'name', 'is_live', 'reporting_type',
     // Billing fields (editable from the Client Billing tab)
@@ -54,7 +74,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // churned_at is intentionally NOT here — the DB trigger owns it.
     'lifecycle_status', 'performance_terms',
     // Identity / contact (Client Roster manager)
-    'billing_email', 'primary_contact',
+    'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'ghl_location_id',
     // Per-client KPI band overrides (Client Success benchmark editor)
     'kpi_benchmarks',
   ];
@@ -62,10 +82,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const updates: Record<string, unknown> = {};
   for (const k of allowed) {
     if (!(k in body)) continue;
+    if (!includeRevenue && revenueFields.has(k)) continue;
     if (k === 'reporting_type') updates[k] = normalizeReportingType(body[k]);
     else if (k === 'kpi_benchmarks') updates[k] = body[k] ?? null; // object or null, stored as-is
     else if (numericFields.has(k)) updates[k] = body[k] === '' || body[k] === null ? null : Number(body[k]);
     else updates[k] = body[k] === '' ? null : body[k];
+  }
+
+  // Keep email and billing_email identical — roster edits one field, both columns update.
+  if ('email' in body || 'billing_email' in body) {
+    const raw = 'email' in body ? body.email : body.billing_email;
+    const synced = raw === '' || raw == null ? null : raw;
+    updates.email = synced;
+    updates.billing_email = synced;
+  }
+  // Prefer primary_contact_name; mirror to legacy primary_contact for older readers.
+  if ('primary_contact_name' in body) {
+    updates.primary_contact = updates.primary_contact_name ?? null;
+  } else if ('primary_contact' in body) {
+    updates.primary_contact_name = updates.primary_contact ?? null;
   }
 
   // Governance stamp for the per-client KPI benchmark overrides: whenever the bands
@@ -89,9 +124,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .from('clients')
     .update(updates)
     .eq('id', id)
-    .select('id, name, is_live, reporting_type, share_token, created_at, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, lifecycle_status, performance_terms, billing_email, primary_contact, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note')
+    .select('id, name, is_live, reporting_type, share_token, created_at, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, lifecycle_status, performance_terms, email, billing_email, primary_contact, primary_contact_name, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id')
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ client: data });
+  const client = includeRevenue ? data : redactClientMoneyFields(data);
+  return NextResponse.json({ client });
 }

@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission, requireClientRevenue } from '@/lib/api-auth';
 import { computeNextBillingDate, deriveStatus, balanceOf, recordedState, type BillingRow } from '@/lib/billing';
+import {
+  canViewClientRevenue,
+  redactBillingRow,
+  redactBillingRows,
+  redactClientMoneyFields,
+} from '@/lib/client-revenue-access';
 
 const CLIENT_BILLING_FIELDS =
   'id, name, is_live, lifecycle_status, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms';
@@ -20,6 +26,9 @@ export async function GET(req: Request) {
   const denied = requirePermission(ctx, 'admin_billing');
   if (denied) return denied;
 
+  const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
+  const includeRevenue = canViewClientRevenue(subject);
+
   const clientId = new URL(req.url).searchParams.get('client_id');
 
   if (clientId) {
@@ -29,7 +38,8 @@ export async function GET(req: Request) {
       .eq('client_id', clientId)
       .order('billed_on', { ascending: false });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ billings: data });
+    const billings = includeRevenue ? (data ?? []) : redactBillingRows(data);
+    return NextResponse.json({ billings, can_view_revenue: includeRevenue });
   }
 
   const [clientsRes, billingsRes] = await Promise.all([
@@ -65,35 +75,44 @@ export async function GET(req: Request) {
     const nextBillingDate = computeNextBillingDate(c, lastBilling);
     const nextBillingStatus = deriveStatus(nextBillingDate, new Date());
 
-    if (c.is_live && typeof c.mrr === 'number') activeMrr += c.mrr;
+    if (includeRevenue && c.is_live && typeof c.mrr === 'number') activeMrr += c.mrr;
+
+    const clientRow = includeRevenue ? c : redactClientMoneyFields(c);
+    const billingRows = includeRevenue ? rows : redactBillingRows(rows);
+    const lastRow = includeRevenue ? lastBilling : (lastBilling ? redactBillingRow(lastBilling as unknown as Record<string, unknown>) : null);
 
     return {
-      ...c,
+      ...clientRow,
       next_billing_date: nextBillingDate,
       next_billing_status: nextBillingStatus,
-      last_billing: lastBilling,
-      billings: rows,
+      last_billing: lastRow,
+      billings: billingRows,
     };
   });
 
-  for (const b of billings) {
-    const amount = Number(b.amount) || 0;
-    if (b.billed_on >= monthStart && b.billed_on <= today) billedThisMonth += amount;
-    const state = recordedState(b, now);
-    if (state === 'paid' || state === 'refunded') continue;
-    const balance = balanceOf(b);
-    openTotal += balance;
-    if (state === 'overdue' || state === 'failed') overdueTotal += balance;
+  if (includeRevenue) {
+    for (const b of billings) {
+      const amount = Number(b.amount) || 0;
+      if (b.billed_on >= monthStart && b.billed_on <= today) billedThisMonth += amount;
+      const state = recordedState(b, now);
+      if (state === 'paid' || state === 'refunded') continue;
+      const balance = balanceOf(b);
+      openTotal += balance;
+      if (state === 'overdue' || state === 'failed') overdueTotal += balance;
+    }
   }
 
   return NextResponse.json({
     clients: enriched,
-    totals: {
-      active_mrr: activeMrr,
-      billed_this_month: billedThisMonth,
-      overdue_total: overdueTotal,
-      open_total: openTotal,
-    },
+    totals: includeRevenue
+      ? {
+          active_mrr: activeMrr,
+          billed_this_month: billedThisMonth,
+          overdue_total: overdueTotal,
+          open_total: openTotal,
+        }
+      : null,
+    can_view_revenue: includeRevenue,
   });
 }
 
@@ -103,6 +122,8 @@ export async function POST(req: Request) {
   if (isAuthError(ctx)) return ctx;
   const denied = requirePermission(ctx, 'admin_billing');
   if (denied) return denied;
+  const revenueDenied = requireClientRevenue(ctx);
+  if (revenueDenied) return revenueDenied;
 
   const body = await req.json();
   const { client_id, billed_on } = body;

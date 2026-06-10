@@ -25,11 +25,15 @@ type Client = {
   contract_end_date?: string | null;
   performance_terms?: string | null;
   billing_email?: string | null;
+  email?: string | null;
   primary_contact?: string | null;
+  primary_contact_name?: string | null;
   kpi_benchmarks?: ClientKpiBenchmarks | null;
   kpi_benchmarks_updated_at?: string | null;
   kpi_benchmarks_updated_by?: string | null;
   kpi_benchmarks_note?: string | null;
+  clickup_task_id?: string | null;
+  ghl_location_id?: string | null;
   total_paid?: number;
 };
 
@@ -82,7 +86,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export default function ClientRoster() {
+export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = false }: { canViewRevenue?: boolean }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -90,16 +94,24 @@ export default function ClientRoster() {
   const [showAdd, setShowAdd] = useState(false);
   const [benchmarksFor, setBenchmarksFor] = useState<string | null>(null);
   const [fileFor, setFileFor] = useState<{ id: string; name: string } | null>(null);
+  const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
       .then(r => r.json())
-      .then(d => { setClients(d.clients ?? []); setLoading(false); });
+      .then(d => {
+        setClients(d.clients ?? []);
+        if (typeof d.can_view_revenue === "boolean") setShowRevenue(d.can_view_revenue);
+        else if (typeof d.can_view_total_paid === "boolean") setShowRevenue(d.can_view_total_paid);
+        setLoading(false);
+      });
   }, []);
 
   async function reload() {
     const d = await (await fetch("/api/clients?detail=1")).json();
     setClients(d.clients ?? []);
+    if (typeof d.can_view_revenue === "boolean") setShowRevenue(d.can_view_revenue);
+    else if (typeof d.can_view_total_paid === "boolean") setShowRevenue(d.can_view_total_paid);
   }
 
   async function patchClient(id: string, body: Record<string, unknown>) {
@@ -148,7 +160,7 @@ export default function ClientRoster() {
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Roster</h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            The master record for every client. Add new clients, edit any field inline, and fill in anything missing on existing ones. Billing reads launch date, MRR, and lifecycle from here.
+            The master record for every client. Sub-account name is the GHL location name used in reporting filters; client name is the person or business contact. Billing reads launch date, MRR, and lifecycle from here.
           </p>
         </div>
         <button
@@ -160,20 +172,46 @@ export default function ClientRoster() {
         </button>
       </div>
 
-      {showAdd && <AddClientForm busy={busy} onCreate={createClient} />}
+      {showAdd && <AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} />}
 
       <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <table className="text-sm" style={{ minWidth: 1400 }}>
+        <table className="text-sm" style={{ minWidth: showRevenue ? 1600 : 1440 }}>
           <thead>
             <tr style={{ background: "#0a1628" }}>
-              {["Client", "Contact", "Billing email", "Type", "Lifecycle", "Status", "Billing type", "MRR", "Billing day", "Launch", "Signed", "Term (mo)", "Contract end", "Performance terms", "Total paid", ""].map((h, i) => (
-                <th key={i} className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: "#334155" }}>{h}</th>
+              {[
+                "Sub-account name",
+                "Client name",
+                "Email",
+                "Type",
+                "Lifecycle",
+                "Status",
+                "Billing type",
+                ...(showRevenue ? ["MRR"] : []),
+                "Billing day",
+                "Launch",
+                "Signed",
+                "Term (mo)",
+                "Contract end",
+                "Performance terms",
+                "GHL location",
+                "ClickUp",
+                ...(showRevenue ? ["Total paid"] : []),
+                "",
+              ].map((h, i) => (
+                <th
+                  key={i}
+                  className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
+                  style={{ color: "#334155" }}
+                  title={h === "Sub-account name" ? "GHL sub-account name — matches the client filter on the dashboard" : undefined}
+                >
+                  {h}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {clients.length === 0 ? (
-              <tr><td colSpan={16} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
+              <tr><td colSpan={showRevenue ? 18 : 16} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
             ) : clients.map((c, i) => (
               <ClientRow
                 key={c.id}
@@ -182,6 +220,7 @@ export default function ClientRoster() {
                 busy={busy === c.id}
                 confirmingDelete={confirmDelete === c.id}
                 benchmarksOpen={benchmarksFor === c.id}
+                showRevenue={showRevenue}
                 onPatch={patchClient}
                 onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
                 onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
@@ -206,13 +245,14 @@ export default function ClientRoster() {
 }
 
 function ClientRow({
-  client, striped, busy, confirmingDelete, benchmarksOpen, onPatch, onOpenFile, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
+  client, striped, busy, confirmingDelete, benchmarksOpen, showRevenue, onPatch, onOpenFile, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
 }: {
   client: Client;
   striped: boolean;
   busy: boolean;
   confirmingDelete: boolean;
   benchmarksOpen: boolean;
+  showRevenue: boolean;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onOpenFile: () => void;
   onToggleBenchmarks: () => void;
@@ -223,6 +263,8 @@ function ClientRow({
   const c = client;
   const rowBg = striped ? "#080f1e" : "#060d1a";
   const cell = "px-3 py-2 whitespace-nowrap";
+  const clientName = c.primary_contact_name ?? c.primary_contact ?? "";
+  const displayEmail = c.email ?? c.billing_email ?? "";
   const hasOverrides = !!c.kpi_benchmarks && Object.keys(c.kpi_benchmarks).length > 0;
   const stale = benchmarksStale(c);
   const benchmarkColor = benchmarksOpen ? "#38bdf8" : stale ? "#f59e0b" : hasOverrides ? "#38bdf8" : "#475569";
@@ -243,13 +285,40 @@ function ClientRow({
     <>
     <tr style={{ background: rowBg, borderTop: "1px solid rgba(255,255,255,0.04)" }}>
       <td className={cell}>
-        <input defaultValue={c.name ?? ""} disabled={busy} onBlur={onBlurField("name", c.name ?? "")} className="px-2 py-1 rounded-lg text-sm outline-none w-44 font-medium" style={fieldStyle()} />
+        <input
+          defaultValue={c.name ?? ""}
+          disabled={busy}
+          onBlur={onBlurField("name", c.name ?? "")}
+          placeholder="GHL sub-account name"
+          title="GHL sub-account name — what appears in the dashboard client filter"
+          className="px-2 py-1 rounded-lg text-sm outline-none w-44 font-medium"
+          style={fieldStyle()}
+        />
       </td>
       <td className={cell}>
-        <input defaultValue={c.primary_contact ?? ""} disabled={busy} onBlur={onBlurField("primary_contact", c.primary_contact ?? "")} placeholder="—" className="px-2 py-1 rounded-lg text-sm outline-none w-36" style={fieldStyle()} />
+        <input
+          defaultValue={clientName}
+          disabled={busy}
+          onBlur={(e) => {
+            if (e.target.value !== clientName) onPatch(c.id, { primary_contact_name: e.target.value });
+          }}
+          placeholder="Client / contact name"
+          title="The client's name (person or business contact)"
+          className="px-2 py-1 rounded-lg text-sm outline-none w-36"
+          style={fieldStyle()}
+        />
       </td>
       <td className={cell}>
-        <input defaultValue={c.billing_email ?? ""} disabled={busy} onBlur={onBlurField("billing_email", c.billing_email ?? "")} placeholder="—" className="px-2 py-1 rounded-lg text-sm outline-none w-48" style={fieldStyle()} />
+        <input
+          defaultValue={displayEmail}
+          disabled={busy}
+          onBlur={(e) => {
+            if (e.target.value !== displayEmail) onPatch(c.id, { email: e.target.value });
+          }}
+          placeholder="—"
+          className="px-2 py-1 rounded-lg text-sm outline-none w-48"
+          style={fieldStyle()}
+        />
       </td>
       <td className={cell}>
         <select value={normalizeReportingType(c.reporting_type)} disabled={busy} onChange={e => onPatch(c.id, { reporting_type: normalizeReportingType(e.target.value) })} className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer" style={fieldStyle()}>
@@ -282,9 +351,11 @@ function ClientRow({
           <option value="pif_monthly">PIF + Monthly</option>
         </select>
       </td>
-      <td className={cell}>
-        <input type="number" defaultValue={c.mrr ?? ""} disabled={busy} onBlur={onBlurField("mrr", String(c.mrr ?? ""))} placeholder="0" className="px-2 py-1 rounded-lg text-sm outline-none w-24" style={fieldStyle()} />
-      </td>
+      {showRevenue && (
+        <td className={cell}>
+          <input type="number" defaultValue={c.mrr ?? ""} disabled={busy} onBlur={onBlurField("mrr", String(c.mrr ?? ""))} placeholder="0" className="px-2 py-1 rounded-lg text-sm outline-none w-24" style={fieldStyle()} />
+        </td>
+      )}
       <td className={cell}>
         <input type="number" min={1} max={31} defaultValue={c.billing_day ?? ""} disabled={busy} onBlur={onBlurField("billing_day", String(c.billing_day ?? ""))} placeholder="—" title="Day of month (1-31)" className="px-2 py-1 rounded-lg text-sm outline-none w-16" style={fieldStyle()} />
       </td>
@@ -303,7 +374,36 @@ function ClientRow({
       <td className={cell}>
         <input defaultValue={c.performance_terms ?? ""} disabled={busy} onBlur={onBlurField("performance_terms", c.performance_terms ?? "")} placeholder="—" className="px-2 py-1 rounded-lg text-sm outline-none w-56" style={fieldStyle()} />
       </td>
-      <td className={cell} style={{ color: "#38bdf8" }}>{money(c.total_paid ?? 0)}</td>
+      <td className={cell}>
+        <input
+          defaultValue={c.ghl_location_id ?? ""}
+          disabled={busy}
+          onBlur={onBlurField("ghl_location_id", c.ghl_location_id ?? "")}
+          placeholder="GHL location id"
+          title="GHL subaccount location id — used to match lead webhooks"
+          className="px-2 py-1 rounded-lg text-sm outline-none w-36 font-mono text-xs"
+          style={fieldStyle()}
+        />
+      </td>
+      <td className={cell}>
+        {c.clickup_task_id ? (
+          <a
+            href={`https://app.clickup.com/t/${c.clickup_task_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-mono underline"
+            style={{ color: "#38bdf8" }}
+            title="Open ClickUp Client Hub task"
+          >
+            {c.clickup_task_id.slice(0, 8)}…
+          </a>
+        ) : (
+          <span className="text-xs" style={{ color: "#334155" }}>—</span>
+        )}
+      </td>
+      {showRevenue && (
+        <td className={cell} style={{ color: "#38bdf8" }}>{money(c.total_paid ?? 0)}</td>
+      )}
       <td className="px-3 py-2 text-right whitespace-nowrap">
         {confirmingDelete ? (
           <span className="flex items-center justify-end gap-2">
@@ -328,7 +428,7 @@ function ClientRow({
     </tr>
     {benchmarksOpen && (
       <tr style={{ background: "#050c18" }}>
-        <td colSpan={16} className="px-4 py-4">
+        <td colSpan={showRevenue ? 18 : 16} className="px-4 py-4">
           <BenchmarkEditor
             client={c}
             busy={busy}
@@ -474,14 +574,15 @@ function structuredCopy(b: ClientKpiBenchmarks | null | undefined): ClientKpiBen
 }
 
 function AddClientForm({
-  busy, onCreate,
+  busy, showRevenue, onCreate,
 }: {
   busy: string | null;
+  showRevenue: boolean;
   onCreate: (body: Record<string, unknown>) => void;
 }) {
   const [name, setName] = useState("");
-  const [primaryContact, setPrimaryContact] = useState("");
-  const [billingEmail, setBillingEmail] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [email, setEmail] = useState("");
   const [reportingType, setReportingType] = useState<ReportingType>(DEFAULT_REPORTING_TYPE);
   const [lifecycle, setLifecycle] = useState("onboarding");
   const [billingType, setBillingType] = useState("");
@@ -499,13 +600,13 @@ function AddClientForm({
   function submit() {
     onCreate({
       name: name.trim(),
-      primary_contact: primaryContact,
-      billing_email: billingEmail,
+      primary_contact_name: clientName,
+      email,
       reporting_type: reportingType,
       lifecycle_status: lifecycle,
       is_live: lifecycle === "active",
       billing_type: billingType,
-      mrr,
+      ...(showRevenue ? { mrr } : {}),
       billing_day: billingDay,
       launch_date: launchDate,
       date_signed: dateSigned,
@@ -519,9 +620,15 @@ function AddClientForm({
     <div className="rounded-xl p-5 space-y-4" style={{ background: "#0a1628", border: "1px solid rgba(34,197,94,0.2)" }}>
       <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Add a new client</h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Name"><input value={name} onChange={e => setName(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
-        <Field label="Primary contact"><input value={primaryContact} onChange={e => setPrimaryContact(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
-        <Field label="Billing email"><input value={billingEmail} onChange={e => setBillingEmail(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
+        <Field label="Sub-account name (GHL)">
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. James Office" className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} />
+        </Field>
+        <Field label="Client name">
+          <input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="e.g. James Boisdenghein" className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} />
+        </Field>
+        <Field label="Email">
+          <input value={email} onChange={e => setEmail(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} />
+        </Field>
         <Field label="Reporting type">
           <select value={reportingType} onChange={e => setReportingType(normalizeReportingType(e.target.value))} className="px-2 py-1.5 rounded-lg text-sm outline-none cursor-pointer" style={fieldStyle()}>
             <option value="RM">RM - Reverse Mortgage</option>
@@ -543,7 +650,9 @@ function AddClientForm({
             <option value="pif_monthly">PIF + Monthly</option>
           </select>
         </Field>
-        <Field label="Monthly $ (base)"><input type="number" value={mrr} onChange={e => setMrr(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
+        {showRevenue && (
+          <Field label="Monthly $ (base)"><input type="number" value={mrr} onChange={e => setMrr(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
+        )}
         <Field label="Billing day (1-31)"><input type="number" min={1} max={31} value={billingDay} onChange={e => setBillingDay(e.target.value)} placeholder="defaults to launch day" className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
         <Field label="Launch date (billing anchor)"><input type="date" value={launchDate} onChange={e => setLaunchDate(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
         <Field label="Date signed"><input type="date" value={dateSigned} onChange={e => setDateSigned(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} /></Field>
