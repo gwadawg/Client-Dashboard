@@ -99,7 +99,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [benchmarksFor, setBenchmarksFor] = useState<string | null>(null);
-  const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean; scrollToCalls?: boolean } | null>(null);
+  const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean; scrollToCalls?: boolean; openCheckinForm?: boolean } | null>(null);
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
   const [statusChange, setStatusChange] = useState<{
     id: string;
@@ -253,6 +253,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
                 onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
                 onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
+                onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
                 onRequestLifecycleChange={(id, name, targetStatus) =>
                   setStatusChange({ id, name, targetStatus })
                 }
@@ -272,11 +273,12 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 
       {fileFor && (
         <ClientFile
-          key={`${fileFor.id}-${fileFor.scrollToCalls ? "calls" : fileFor.scrollToNotes ? "notes" : "file"}`}
+          key={`${fileFor.id}-${fileFor.openCheckinForm ? "checkin" : fileFor.scrollToCalls ? "calls" : fileFor.scrollToNotes ? "notes" : "file"}`}
           clientId={fileFor.id}
           fallbackName={fileFor.name}
           scrollToNotes={fileFor.scrollToNotes}
           scrollToCalls={fileFor.scrollToCalls}
+          openCheckinForm={fileFor.openCheckinForm}
           onClose={() => setFileFor(null)}
           onUpdated={reload}
         />
@@ -295,7 +297,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 }
 
 function ClientRow({
-  client, striped, busy, confirmingDelete, benchmarksOpen, showRevenue, onPatch, onOpenFile, onOpenNotes, onOpenCalls, onRequestLifecycleChange, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
+  client, striped, busy, confirmingDelete, benchmarksOpen, showRevenue, onPatch, onOpenFile, onOpenNotes, onOpenCalls, onLogCheckin, onRequestLifecycleChange, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
 }: {
   client: Client;
   striped: boolean;
@@ -307,6 +309,7 @@ function ClientRow({
   onOpenFile: () => void;
   onOpenNotes: () => void;
   onOpenCalls: () => void;
+  onLogCheckin: () => void;
   onRequestLifecycleChange: (id: string, name: string, targetStatus: string) => void;
   onToggleBenchmarks: () => void;
   onAskDelete: () => void;
@@ -501,6 +504,7 @@ function ClientRow({
         ) : (
           <span className="flex items-center justify-end gap-3">
             <button onClick={onOpenFile} className="text-xs font-semibold" style={{ color: "#38bdf8" }} title="Open this client's file">Open file</button>
+            <button onClick={onLogCheckin} className="text-xs font-semibold" style={{ color: "#38bdf8" }} title="Log a client check-in call">Check-in</button>
             <button onClick={onOpenCalls} className="text-xs font-semibold" style={{ color: "#f59e0b" }} title="Add or view account calls">Calls</button>
             <button onClick={onOpenNotes} className="text-xs font-semibold" style={{ color: "#a78bfa" }} title="Add or view client notes">Notes</button>
             <button

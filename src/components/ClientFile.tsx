@@ -1,7 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import CheckinCallFormFields from "@/components/CheckinCallFormFields";
+import CheckinCallSummary from "@/components/CheckinCallSummary";
 import { CALL_TYPE_OPTIONS, callTypeLabel } from "@/lib/client-calls";
+import {
+  EMPTY_CHECKIN_FORM,
+  buildCheckinSummary,
+  draftToStored,
+  storedToDraft,
+  type CheckinFormData,
+  type StoredCheckinForm,
+} from "@/lib/checkin-form";
 import {
   LIFECYCLE_REASON_OPTIONS,
   NOTE_TYPE_OPTIONS,
@@ -12,6 +22,8 @@ import {
 import { formatStatesLicensed } from "@/lib/us-states";
 import { timezoneLabel } from "@/lib/us-timezones";
 import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileEditForm";
+import StatusChangeModal from "@/components/StatusChangeModal";
+import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 
 // The client "file": a single place to oversee everything about one client.
 // Profile, billing history, lifecycle transitions, and ongoing notes.
@@ -98,7 +110,25 @@ type ClientCall = {
   transcript: string | null;
   notes: string | null;
   attendees: string | null;
+  checkin_form: StoredCheckinForm | null;
   updated_at: string;
+};
+
+type ActivityRow = {
+  source_id: string;
+  activity_type: string;
+  occurred_at: string;
+  subtype: string | null;
+  summary: string | null;
+  source_table: string;
+};
+
+const ACTIVITY_STYLE: Record<string, { color: string; bg: string }> = {
+  lifecycle: { color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
+  call: { color: "#38bdf8", bg: "rgba(56,189,248,0.12)" },
+  note: { color: "#f472b6", bg: "rgba(244,114,182,0.12)" },
+  action: { color: "#fbbf24", bg: "rgba(251,191,36,0.12)" },
+  billing: { color: "#34d399", bg: "rgba(52,211,153,0.12)" },
 };
 
 const STATUS_STYLE: Record<string, { color: string; bg: string }> = {
@@ -156,6 +186,7 @@ export default function ClientFile({
   onUpdated,
   scrollToNotes = false,
   scrollToCalls = false,
+  openCheckinForm = false,
 }: {
   clientId: string;
   fallbackName: string;
@@ -163,6 +194,7 @@ export default function ClientFile({
   onUpdated?: () => void;
   scrollToNotes?: boolean;
   scrollToCalls?: boolean;
+  openCheckinForm?: boolean;
 }) {
   const [client, setClient] = useState<FileClient | null>(null);
   const [billings, setBillings] = useState<FileBilling[]>([]);
@@ -182,20 +214,25 @@ export default function ClientFile({
   const [transcript, setTranscript] = useState("");
   const [callNotes, setCallNotes] = useState("");
   const [attendees, setAttendees] = useState("");
+  const [checkinForm, setCheckinForm] = useState<CheckinFormData>({ ...EMPTY_CHECKIN_FORM });
   const [savingCall, setSavingCall] = useState(false);
   const [editingCallId, setEditingCallId] = useState<string | null>(null);
   const [expandedCallIds, setExpandedCallIds] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [activities, setActivities] = useState<ActivityRow[]>([]);
+  const [statusChange, setStatusChange] = useState<{ targetStatus: string; pendingBody: Record<string, unknown> } | null>(null);
   const notesRef = useRef<HTMLElement>(null);
   const callsRef = useRef<HTMLElement>(null);
 
   const load = useCallback(() => {
     setLoading(true);
-    return fetch(`/api/clients/${clientId}`)
-      .then(r => r.json())
-      .then(d => {
+    return Promise.all([
+      fetch(`/api/clients/${clientId}`).then(r => r.json()),
+      fetch(`/api/clients/${clientId}/activity?limit=80`).then(r => r.json()),
+    ])
+      .then(([d, activityRes]) => {
         if (d.error) {
           setError(d.error);
         } else {
@@ -207,6 +244,7 @@ export default function ClientFile({
           if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
           setError(null);
         }
+        setActivities(activityRes.activities ?? []);
         setLoading(false);
       })
       .catch(e => {
@@ -237,10 +275,16 @@ export default function ClientFile({
   }, [loading, scrollToNotes]);
 
   useEffect(() => {
-    if (!loading && scrollToCalls && callsRef.current) {
+    if (!loading && (scrollToCalls || openCheckinForm) && callsRef.current) {
       callsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [loading, scrollToCalls]);
+  }, [loading, scrollToCalls, openCheckinForm]);
+
+  useEffect(() => {
+    if (openCheckinForm) {
+      setCallType("checkin");
+    }
+  }, [openCheckinForm]);
 
   const summary = useMemo(() => {
     let collected = 0, retainer = 0, performance = 0, passthrough = 0;
@@ -256,6 +300,15 @@ export default function ClientFile({
   }, [billings]);
 
   async function submitCall() {
+    const storedCheckin = callType === "checkin" ? draftToStored(checkinForm) : null;
+    if (callType === "checkin" && !storedCheckin?.client_sentiment) {
+      alert("Client sentiment is required for check-in calls");
+      return;
+    }
+    const notes =
+      callNotes.trim()
+      || (storedCheckin ? buildCheckinSummary(storedCheckin) : "");
+
     setSavingCall(true);
     const res = await fetch(`/api/clients/${clientId}/calls`, {
       method: "POST",
@@ -265,8 +318,9 @@ export default function ClientFile({
         called_at: new Date(calledAt).toISOString(),
         recording_url: recordingUrl || undefined,
         transcript: transcript || undefined,
-        notes: callNotes || undefined,
+        notes: notes || undefined,
         attendees: attendees || undefined,
+        checkin_form: storedCheckin ?? undefined,
       }),
     });
     const d = await res.json();
@@ -281,6 +335,7 @@ export default function ClientFile({
     setTranscript("");
     setCallNotes("");
     setAttendees("");
+    setCheckinForm({ ...EMPTY_CHECKIN_FORM });
     await load();
     onUpdated?.();
     setSavingCall(false);
@@ -293,7 +348,17 @@ export default function ClientFile({
     transcript: string;
     notes: string;
     attendees: string;
+    checkin_form: CheckinFormData;
   }) {
+    const storedCheckin = form.call_type === "checkin" ? draftToStored(form.checkin_form) : null;
+    if (form.call_type === "checkin" && !storedCheckin?.client_sentiment) {
+      alert("Client sentiment is required for check-in calls");
+      return false;
+    }
+    const notes =
+      form.notes.trim()
+      || (storedCheckin ? buildCheckinSummary(storedCheckin) : "");
+
     const res = await fetch(`/api/clients/${clientId}/calls/${call.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -302,8 +367,9 @@ export default function ClientFile({
         called_at: new Date(form.called_at).toISOString(),
         recording_url: form.recording_url || null,
         transcript: form.transcript || null,
-        notes: form.notes || null,
+        notes: notes || null,
         attendees: form.attendees || null,
+        checkin_form: storedCheckin,
       }),
     });
     const d = await res.json();
@@ -353,11 +419,7 @@ export default function ClientFile({
     setSavingNote(false);
   }
 
-  async function saveProfile(body: Record<string, unknown>) {
-    if (!body.name) {
-      setSaveError("Sub-account name is required.");
-      return;
-    }
+  async function commitProfileSave(body: Record<string, unknown>) {
     setSavingProfile(true);
     setSaveError(null);
     const res = await fetch(`/api/clients/${clientId}`, {
@@ -372,9 +434,39 @@ export default function ClientFile({
       return;
     }
     setEditing(false);
+    setStatusChange(null);
     await load();
     onUpdated?.();
     setSavingProfile(false);
+  }
+
+  async function saveProfile(body: Record<string, unknown>) {
+    if (!body.name) {
+      setSaveError("Sub-account name is required.");
+      return;
+    }
+    const newLifecycle = typeof body.lifecycle_status === "string" ? body.lifecycle_status : null;
+    const currentLifecycle = client?.lifecycle_status ?? null;
+    if (
+      newLifecycle &&
+      newLifecycle !== currentLifecycle &&
+      requiresLifecycleFeedback(newLifecycle)
+    ) {
+      setStatusChange({ targetStatus: newLifecycle, pendingBody: body });
+      return;
+    }
+    await commitProfileSave(body);
+  }
+
+  async function confirmLifecycleChange(reason: string | null, note: string) {
+    if (!statusChange) return;
+    const body = {
+      ...statusChange.pendingBody,
+      is_live: statusChange.targetStatus === "active" ? true : false,
+      status_change_reason: reason,
+      status_change_note: note || undefined,
+    };
+    await commitProfileSave(body);
   }
 
   const name = client?.name ?? fallbackName;
@@ -382,6 +474,15 @@ export default function ClientFile({
   const missingCount = countMissingFields(client);
 
   return (
+    <>
+    <StatusChangeModal
+      open={!!statusChange}
+      clientName={name}
+      targetStatus={statusChange?.targetStatus ?? "paused"}
+      saving={savingProfile}
+      onConfirm={confirmLifecycleChange}
+      onCancel={() => setStatusChange(null)}
+    />
     <div className="fixed inset-0 z-50 flex justify-end" style={{ background: "rgba(2,6,15,0.6)" }} onClick={editing ? undefined : onClose}>
       <div
         className="h-full w-full overflow-y-auto"
@@ -466,6 +567,38 @@ export default function ClientFile({
                 <Detail label="Licensed in" value={formatStatesLicensed(client?.states_licensed)} wide missing={!client?.states_licensed?.length} />
                 <Detail label="Timezone" value={timezoneLabel(client?.timezone)} missing={!client?.timezone} />
               </div>
+            </Section>
+
+            <Section title="Account timeline">
+              {activities.length === 0 ? (
+                <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>
+                  No account activity yet — lifecycle changes, calls, notes, and billings appear here.
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                  {activities.map(a => {
+                    const style = ACTIVITY_STYLE[a.activity_type] ?? { color: "#94a3b8", bg: "rgba(148,163,184,0.1)" };
+                    return (
+                      <div
+                        key={`${a.source_table}-${a.source_id}-${a.occurred_at}`}
+                        className="rounded-lg px-3 py-2.5 flex gap-3 items-start"
+                        style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.04)" }}
+                      >
+                        <span
+                          className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
+                          style={{ color: style.color, background: style.bg }}
+                        >
+                          {a.activity_type}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs" style={{ color: "#64748b" }}>{formatDateTime(a.occurred_at)}</p>
+                          <p className="text-sm mt-0.5 break-words" style={{ color: "#cbd5e1" }}>{a.summary ?? "—"}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </Section>
 
             <Section title="Billing setup">
@@ -571,6 +704,15 @@ export default function ClientFile({
                     style={fieldStyle}
                   />
                 </label>
+
+                {callType === "checkin" && (
+                  <CheckinCallFormFields
+                    value={checkinForm}
+                    disabled={savingCall}
+                    onChange={setCheckinForm}
+                  />
+                )}
+
                 <label className="block">
                   <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Transcript</span>
                   <textarea
@@ -590,7 +732,7 @@ export default function ClientFile({
                     disabled={savingCall}
                     onChange={e => setCallNotes(e.target.value)}
                     rows={3}
-                    placeholder="Summary, action items, follow-ups…"
+                    placeholder={callType === "checkin" ? "Optional — auto-filled from check-in form if left blank" : "Summary, action items, follow-ups…"}
                     className="mt-1 resize-y"
                     style={fieldStyle}
                   />
@@ -601,13 +743,13 @@ export default function ClientFile({
                   disabled={savingCall}
                   className="text-xs font-semibold px-3 py-2 rounded-lg"
                   style={{
-                    color: "#f59e0b",
-                    background: "rgba(245,158,11,0.12)",
-                    border: "1px solid rgba(245,158,11,0.25)",
+                    color: callType === "checkin" ? "#38bdf8" : "#f59e0b",
+                    background: callType === "checkin" ? "rgba(56,189,248,0.12)" : "rgba(245,158,11,0.12)",
+                    border: callType === "checkin" ? "1px solid rgba(56,189,248,0.25)" : "1px solid rgba(245,158,11,0.25)",
                     opacity: savingCall ? 0.5 : 1,
                   }}
                 >
-                  {savingCall ? "Saving…" : "Add call"}
+                  {savingCall ? "Saving…" : callType === "checkin" ? "Save check-in" : "Add call"}
                 </button>
               </div>
 
@@ -777,6 +919,7 @@ export default function ClientFile({
         )}
       </div>
     </div>
+    </>
   );
 }
 
@@ -837,6 +980,7 @@ function ClientCallCard({
     transcript: string;
     notes: string;
     attendees: string;
+    checkin_form: CheckinFormData;
   }) => Promise<boolean>;
 }) {
   const [form, setForm] = useState({
@@ -846,6 +990,7 @@ function ClientCallCard({
     transcript: call.transcript ?? "",
     notes: call.notes ?? "",
     attendees: call.attendees ?? "",
+    checkin_form: storedToDraft(call.checkin_form),
   });
   const [saving, setSaving] = useState(false);
 
@@ -858,6 +1003,7 @@ function ClientCallCard({
         transcript: call.transcript ?? "",
         notes: call.notes ?? "",
         attendees: call.attendees ?? "",
+        checkin_form: storedToDraft(call.checkin_form),
       });
     }
   }, [editing, call]);
@@ -921,6 +1067,13 @@ function ClientCallCard({
             style={fieldStyle}
           />
         </label>
+        {form.call_type === "checkin" && (
+          <CheckinCallFormFields
+            value={form.checkin_form}
+            disabled={saving}
+            onChange={checkin_form => setForm(f => ({ ...f, checkin_form }))}
+          />
+        )}
         <label className="block">
           <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Transcript</span>
           <textarea
@@ -993,6 +1146,9 @@ function ClientCallCard({
       </div>
       {call.attendees && (
         <p className="text-xs mt-1.5" style={{ color: "#64748b" }}>Attendees: {call.attendees}</p>
+      )}
+      {call.call_type === "checkin" && call.checkin_form && (
+        <CheckinCallSummary form={call.checkin_form} />
       )}
       {call.notes && (
         <p className="text-sm mt-1.5 whitespace-pre-wrap" style={{ color: "#cbd5e1" }}>{call.notes}</p>

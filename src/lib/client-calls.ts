@@ -21,4 +21,4 @@ export function callTypeLabel(type: string | null | undefined): string {
 }
 
 export const CLIENT_CALL_FIELDS =
-  'id, client_id, call_type, called_at, recording_url, transcript, notes, attendees, created_at, updated_at, created_by, updated_by';
+  'id, client_id, call_type, called_at, recording_url, transcript, notes, attendees, checkin_form, status_history_id, created_at, updated_at, created_by, updated_by';

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { CLIENT_CALL_FIELDS, isValidCallType } from '@/lib/client-calls';
+import { parseCheckinFormInput, validateCheckinFormForSave } from '@/lib/checkin-form';
 
 function optionalText(value: unknown): string | null | undefined {
   if (value === undefined) return undefined;
@@ -62,6 +63,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const attendees = optionalText(body.attendees);
   if (body.attendees !== undefined) updates.attendees = attendees;
+
+  if (body.status_history_id !== undefined) {
+    const sid =
+      typeof body.status_history_id === 'string' && body.status_history_id.trim()
+        ? body.status_history_id.trim()
+        : null;
+    updates.status_history_id = sid;
+  }
+
+  if (body.checkin_form !== undefined) {
+    const parsed = parseCheckinFormInput(body.checkin_form);
+    const effectiveType =
+      typeof updates.call_type === 'string'
+        ? updates.call_type
+        : undefined;
+    if (effectiveType === 'checkin' || body.call_type === 'checkin') {
+      const formError = validateCheckinFormForSave(parsed);
+      if (formError) {
+        return NextResponse.json({ error: formError }, { status: 400 });
+      }
+    }
+    updates.checkin_form = parsed;
+  }
 
   if (Object.keys(updates).length <= 2) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });

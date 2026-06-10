@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { CLIENT_CALL_FIELDS, isValidCallType } from '@/lib/client-calls';
+import { parseCheckinFormInput, validateCheckinFormForSave } from '@/lib/checkin-form';
 
 function optionalText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -69,6 +70,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: 'Client not found' }, { status: 404 });
   }
 
+  const statusHistoryId =
+    typeof body.status_history_id === 'string' && body.status_history_id.trim()
+      ? body.status_history_id.trim()
+      : null;
+
+  let checkinForm = null;
+  if (callType === 'checkin' && body.checkin_form !== undefined) {
+    checkinForm = parseCheckinFormInput(body.checkin_form);
+    const formError = validateCheckinFormForSave(checkinForm);
+    if (formError) {
+      return NextResponse.json({ error: formError }, { status: 400 });
+    }
+  }
+
   const now = new Date().toISOString();
   const { data, error } = await ctx.service
     .from('client_calls')
@@ -80,6 +95,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       transcript: optionalText(body.transcript),
       notes: optionalText(body.notes),
       attendees: optionalText(body.attendees),
+      checkin_form: checkinForm,
+      status_history_id: statusHistoryId,
       created_by: ctx.userId,
       updated_by: ctx.userId,
       updated_at: now,
