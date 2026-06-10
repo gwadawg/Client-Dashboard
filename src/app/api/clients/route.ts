@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission, requireAnyPermission, requireClientRevenue } from '@/lib/api-auth';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
+import { normalizeStatesLicensed } from '@/lib/us-states';
 import { canViewClientRevenue, redactClientMoneyFields } from '@/lib/client-revenue-access';
 
 const DETAIL_FIELDS =
-  'id, name, is_live, reporting_type, share_token, created_at, lifecycle_status, mrr, billing_type, billing_day, launch_date, date_signed, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id';
+  'id, name, is_live, reporting_type, share_token, created_at, lifecycle_status, mrr, billing_type, billing_day, launch_date, date_signed, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id';
 
 // GET is intentionally open to any authenticated user: the client list powers
 // the global client-filter dropdown on nearly every tab, so it is a shared
@@ -82,11 +83,15 @@ export async function POST(req: Request) {
   const optional = [
     'is_live', 'lifecycle_status', 'mrr', 'billing_type', 'billing_day', 'launch_date',
     'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
-    'performance_terms', 'email', 'billing_email', 'primary_contact', 'primary_contact_name',
+    'performance_terms', 'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'states_licensed',
   ] as const;
   for (const k of optional) {
     if (!(k in body)) continue;
     if (!includeRevenue && revenueFields.has(k)) continue;
+    if (k === 'states_licensed') {
+      insert[k] = normalizeStatesLicensed(body[k]);
+      continue;
+    }
     if (numericFields.has(k)) insert[k] = body[k] === '' || body[k] === null ? null : Number(body[k]);
     else insert[k] = body[k] === '' ? null : body[k];
   }

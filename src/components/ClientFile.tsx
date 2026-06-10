@@ -8,6 +8,8 @@ import {
   noteTypeLabel,
   reasonLabel,
 } from "@/lib/client-feedback";
+import { formatStatesLicensed } from "@/lib/us-states";
+import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileEditForm";
 
 // The client "file": a single place to oversee everything about one client.
 // Profile, billing history, lifecycle transitions, and ongoing notes.
@@ -61,6 +63,7 @@ type FileClient = {
   brokerage_name: string | null;
   nmls: string | null;
   state: string | null;
+  states_licensed: string[] | null;
   timezone: string | null;
   created_at: string | null;
   churned_at: string | null;
@@ -147,6 +150,9 @@ export default function ClientFile({
   const [noteReason, setNoteReason] = useState("");
   const [noteBody, setNoteBody] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const notesRef = useRef<HTMLElement>(null);
 
   const load = useCallback(() => {
@@ -177,10 +183,15 @@ export default function ClientFile({
   }, [load]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (editing) { setEditing(false); setSaveError(null); }
+        else onClose();
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [editing, onClose]);
 
   useEffect(() => {
     if (!loading && scrollToNotes && notesRef.current) {
@@ -228,11 +239,36 @@ export default function ClientFile({
     setSavingNote(false);
   }
 
+  async function saveProfile(body: Record<string, unknown>) {
+    if (!body.name) {
+      setSaveError("Sub-account name is required.");
+      return;
+    }
+    setSavingProfile(true);
+    setSaveError(null);
+    const res = await fetch(`/api/clients/${clientId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      setSaveError(d.error ?? "Save failed");
+      setSavingProfile(false);
+      return;
+    }
+    setEditing(false);
+    await load();
+    onUpdated?.();
+    setSavingProfile(false);
+  }
+
   const name = client?.name ?? fallbackName;
   const lifecycle = client?.lifecycle_status ?? "—";
+  const missingCount = countMissingFields(client);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: "rgba(2,6,15,0.6)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end" style={{ background: "rgba(2,6,15,0.6)" }} onClick={editing ? undefined : onClose}>
       <div
         className="h-full w-full overflow-y-auto"
         style={{ maxWidth: 760, background: "#060d1a", borderLeft: "1px solid rgba(255,255,255,0.08)" }}
@@ -248,42 +284,84 @@ export default function ClientFile({
                   {client.is_live ? "Live" : "Offline"}
                 </span>
               )}
+              {!editing && missingCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)" }}>
+                  {missingCount} field{missingCount === 1 ? "" : "s"} missing
+                </span>
+              )}
             </div>
-            <p className="text-xs mt-1" style={{ color: "#475569" }}>Client file — profile, billing, lifecycle &amp; notes</p>
+            <p className="text-xs mt-1" style={{ color: "#475569" }}>
+              {editing ? "Editing profile & billing setup" : "Client file — profile, billing, lifecycle & notes"}
+            </p>
           </div>
-          <button onClick={onClose} className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap" style={{ color: "#94a3b8", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
-            Close ✕
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {!loading && !error && client && !editing && (
+              <button
+                onClick={() => { setEditing(true); setSaveError(null); }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.25)" }}
+              >
+                Edit
+              </button>
+            )}
+            {editing && (
+              <button
+                onClick={() => { setEditing(false); setSaveError(null); }}
+                disabled={savingProfile}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                style={{ color: "#94a3b8", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", opacity: savingProfile ? 0.5 : 1 }}
+              >
+                Cancel edit
+              </button>
+            )}
+            <button onClick={onClose} className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap" style={{ color: "#94a3b8", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
+              Close ✕
+            </button>
+          </div>
         </div>
 
         {loading ? (
           <p className="text-sm py-12 text-center" style={{ color: "#334155" }}>Loading file…</p>
         ) : error ? (
           <p className="text-sm py-12 text-center" style={{ color: "#ef4444" }}>{error}</p>
+        ) : editing && client ? (
+          <div className="px-6 py-5">
+            <ClientFileEditForm
+              key={client.id}
+              client={client}
+              canViewRevenue={canViewRevenue}
+              saving={savingProfile}
+              saveError={saveError}
+              onSave={saveProfile}
+            />
+          </div>
         ) : (
           <div className="px-6 py-5 space-y-7">
             <Section title="Overview">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
                 <Detail label="Sub-account name" value={client?.name} />
-                <Detail label="Client name" value={client?.primary_contact_name || client?.primary_contact} />
-                <Detail label="Email" value={client?.email || client?.billing_email} />
-                <Detail label="Phone" value={client?.phone} />
+                <Detail label="Client name" value={client?.primary_contact_name || client?.primary_contact} missing={!client?.primary_contact_name && !client?.primary_contact} />
+                <Detail label="Email" value={client?.email || client?.billing_email} missing={!client?.email && !client?.billing_email} />
+                <Detail label="Phone" value={client?.phone} missing={!client?.phone} />
                 <Detail label="Reporting type" value={client?.reporting_type} />
-                <Detail label="Lead source" value={client?.source} />
-                <Detail label="Brokerage" value={client?.brokerage_name} />
-                <Detail label="NMLS" value={client?.nmls} />
-                <Detail label="State" value={client?.state} />
+                <Detail label="Lead source" value={client?.source} missing={!client?.source} />
+                <Detail label="Website" value={client?.website} missing={!client?.website} />
+                <Detail label="Brokerage" value={client?.brokerage_name} missing={!client?.brokerage_name} />
+                <Detail label="NMLS" value={client?.nmls} missing={!client?.nmls} />
+                <Detail label="State" value={client?.state} missing={!client?.state} />
+                <Detail label="Licensed in" value={formatStatesLicensed(client?.states_licensed)} wide missing={!client?.states_licensed?.length} />
+                <Detail label="Timezone" value={client?.timezone} missing={!client?.timezone} />
               </div>
             </Section>
 
             <Section title="Billing setup">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
-                <Detail label="Billing type" value={billingTypeLabel(client?.billing_type)} />
+                <Detail label="Billing type" value={billingTypeLabel(client?.billing_type)} missing={!client?.billing_type} />
                 {canViewRevenue && <Detail label="Monthly $ (base)" value={money(client?.mrr)} />}
                 <Detail label="Billing day" value={client?.billing_day ? `Day ${client.billing_day}` : "launch day"} />
-                <Detail label="Launch date" value={client?.launch_date} />
-                <Detail label="Date signed" value={client?.date_signed} />
-                <Detail label="Contract term" value={client?.contract_term_months ? `${client.contract_term_months} mo` : null} />
+                <Detail label="Launch date" value={client?.launch_date} missing={!client?.launch_date} />
+                <Detail label="Date signed" value={client?.date_signed} missing={!client?.date_signed} />
+                <Detail label="Contract term" value={client?.contract_term_months ? `${client.contract_term_months} mo` : null} missing={client?.contract_term_months == null} />
                 <Detail label="Contract end" value={client?.contract_end_date} />
                 {canViewRevenue && <Detail label="Daily ad spend" value={money(client?.daily_adspend)} />}
                 <Detail label="Churned" value={client?.churned_at} />
@@ -494,11 +572,11 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Detail({ label, value, wide }: { label: string; value: ReactNode; wide?: boolean }) {
+function Detail({ label, value, wide, missing }: { label: string; value: ReactNode; wide?: boolean; missing?: boolean }) {
   const display = value === null || value === undefined || value === "" || value === "—" ? "—" : value;
   return (
     <div className={wide ? "col-span-2 md:col-span-3" : undefined}>
-      <p className="text-xs uppercase tracking-wider mb-0.5" style={{ color: "#475569" }}>{label}</p>
+      <p className="text-xs uppercase tracking-wider mb-0.5" style={{ color: missing ? "#f59e0b" : "#475569" }}>{label}{missing ? " · missing" : ""}</p>
       <p className="text-sm" style={{ color: display === "—" ? "#334155" : "#e2e8f0" }}>{display}</p>
     </div>
   );

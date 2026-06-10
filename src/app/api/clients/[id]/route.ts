@@ -5,6 +5,7 @@ import {
   requiresReasonOnChurn,
 } from '@/lib/client-feedback';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
+import { normalizeStatesLicensed } from '@/lib/us-states';
 import {
   canViewClientRevenue,
   redactBillingRows,
@@ -17,7 +18,7 @@ const STATUS_HISTORY_FIELDS =
 const CLIENT_NOTES_FIELDS = 'id, note_type, reason_code, body, created_at, created_by';
 
 const FILE_CLIENT_FIELDS =
-  'id, name, is_live, reporting_type, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, timezone, created_at, churned_at';
+  'id, name, is_live, reporting_type, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, states_licensed, timezone, created_at, churned_at';
 
 const FILE_BILLING_FIELDS =
   'id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, passthrough_amount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, created_at';
@@ -98,15 +99,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // Lifecycle (pause/churn/reactivate) + performance pricing note.
     // churned_at is intentionally NOT here — the DB trigger owns it.
     'lifecycle_status', 'performance_terms',
-    // Identity / contact (Client Roster manager)
+    // Identity / contact (Client Roster + Client File editor)
     'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'ghl_location_id',
+    'phone', 'source', 'website', 'brokerage_name', 'nmls', 'state', 'states_licensed', 'timezone',
     // Per-client KPI band overrides (Client Success benchmark editor)
     'kpi_benchmarks',
   ];
   const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend', 'billing_day']);
   const updates: Record<string, unknown> = {};
+  if ('states_licensed' in body) {
+    updates.states_licensed = normalizeStatesLicensed(body.states_licensed);
+  }
   for (const k of allowed) {
     if (!(k in body)) continue;
+    if (k === 'states_licensed') continue;
     if (!includeRevenue && revenueFields.has(k)) continue;
     if (k === 'reporting_type') updates[k] = normalizeReportingType(body[k]);
     else if (k === 'kpi_benchmarks') updates[k] = body[k] ?? null; // object or null, stored as-is

@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
 import StatusChangeModal from "@/components/StatusChangeModal";
+import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { DEFAULT_REPORTING_TYPE, normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import {
@@ -30,6 +31,7 @@ type Client = {
   email?: string | null;
   primary_contact?: string | null;
   primary_contact_name?: string | null;
+  states_licensed?: string[] | null;
   kpi_benchmarks?: ClientKpiBenchmarks | null;
   kpi_benchmarks_updated_at?: string | null;
   kpi_benchmarks_updated_by?: string | null;
@@ -197,13 +199,14 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
       {showAdd && <AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} />}
 
       <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <table className="text-sm" style={{ minWidth: showRevenue ? 1600 : 1440 }}>
+        <table className="text-sm" style={{ minWidth: showRevenue ? 1720 : 1560 }}>
           <thead>
             <tr style={{ background: "#0a1628" }}>
               {[
                 "Sub-account name",
                 "Client name",
                 "Email",
+                "Licensed in",
                 "Type",
                 "Lifecycle",
                 "Status",
@@ -233,7 +236,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
           </thead>
           <tbody>
             {clients.length === 0 ? (
-              <tr><td colSpan={showRevenue ? 18 : 16} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
+              <tr><td colSpan={showRevenue ? 19 : 17} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
             ) : clients.map((c, i) => (
               <ClientRow
                 key={c.id}
@@ -370,6 +373,13 @@ function ClientRow({
         />
       </td>
       <td className={cell}>
+        <StatesLicensedSelect
+          value={c.states_licensed}
+          disabled={busy}
+          onChange={codes => onPatch(c.id, { states_licensed: codes })}
+        />
+      </td>
+      <td className={cell}>
         <select value={normalizeReportingType(c.reporting_type)} disabled={busy} onChange={e => onPatch(c.id, { reporting_type: normalizeReportingType(e.target.value) })} className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer" style={fieldStyle()}>
           <option value="RM">RM - Reverse Mortgage</option>
           <option value="HE">HE - Appointment Only</option>
@@ -494,7 +504,7 @@ function ClientRow({
     </tr>
     {benchmarksOpen && (
       <tr style={{ background: "#050c18" }}>
-        <td colSpan={showRevenue ? 18 : 16} className="px-4 py-4">
+        <td colSpan={showRevenue ? 19 : 17} className="px-4 py-4">
           <BenchmarkEditor
             client={c}
             busy={busy}
