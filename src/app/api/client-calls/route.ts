@@ -3,7 +3,7 @@ import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-aut
 import { isValidCallType } from '@/lib/client-calls';
 
 const SELECT =
-  'id, client_id, call_type, called_at, recording_url, transcript, notes, attendees, created_at, updated_at, clients(name)';
+  'id, client_id, call_type, called_at, recording_url, transcript, notes, attendees, checkin_form, created_at, updated_at, clients(name)';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();

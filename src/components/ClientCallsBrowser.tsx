@@ -1,8 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ClientCallFormFields from "@/components/ClientCallFormFields";
 import ClientFile from "@/components/ClientFile";
 import { CALL_TYPE_OPTIONS, callTypeLabel } from "@/lib/client-calls";
+import {
+  callDraftToApiBody,
+  defaultCallDraft,
+  rowToCallDraft,
+  validateCallDraft,
+  type ClientCallDraft,
+} from "@/lib/client-call-draft";
+import type { StoredCheckinForm } from "@/lib/checkin-form";
 
 type Client = { id: string; name: string };
 
@@ -15,6 +24,7 @@ type Row = {
   transcript: string | null;
   notes: string | null;
   attendees: string | null;
+  checkin_form: StoredCheckinForm | null;
   clients: { name: string } | null;
 };
 
@@ -48,12 +58,6 @@ function preview(text: string | null, max = 120): string {
   return `${t.slice(0, max)}…`;
 }
 
-function toDatetimeLocal(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export default function ClientCallsBrowser({ clients, startDate, endDate }: Props) {
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
@@ -62,23 +66,17 @@ export default function ClientCallsBrowser({ clients, startDate, endDate }: Prop
   const [callTypeFilter, setCallTypeFilter] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [editing, setEditing] = useState<Row | null>(null);
-  const [editForm, setEditForm] = useState({
-    call_type: "checkin",
-    called_at: "",
-    recording_url: "",
-    transcript: "",
-    notes: "",
-    attendees: "",
-  });
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const [modalMode, setModalMode] = useState<"add" | "edit" | null>(null);
+  const [editingRow, setEditingRow] = useState<Row | null>(null);
+  const [draft, setDraft] = useState<ClientCallDraft>(defaultCallDraft());
   const [saving, setSaving] = useState(false);
   const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToCalls?: boolean } | null>(null);
 
   useEffect(() => {
     setPage(1);
   }, [clientFilter, callTypeFilter, search, startDate, endDate]);
-
-  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -101,47 +99,84 @@ export default function ClientCallsBrowser({ clients, startDate, endDate }: Prop
 
   const totalPages = Math.max(1, Math.ceil(total / 50));
 
-  function openEdit(row: Row) {
-    setEditing(row);
-    setEditForm({
-      call_type: row.call_type,
-      called_at: toDatetimeLocal(row.called_at),
-      recording_url: row.recording_url ?? "",
-      transcript: row.transcript ?? "",
-      notes: row.notes ?? "",
-      attendees: row.attendees ?? "",
-    });
+  function openAdd() {
+    const presetType = CALL_TYPE_OPTIONS.some(o => o.value === callTypeFilter) ? callTypeFilter : "checkin";
+    setDraft(defaultCallDraft(clientFilter, presetType));
+    setEditingRow(null);
+    setModalMode("add");
   }
 
-  async function saveEdit() {
-    if (!editing) return;
-    setSaving(true);
-    const res = await fetch(`/api/clients/${editing.client_id}/calls/${editing.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        call_type: editForm.call_type,
-        called_at: new Date(editForm.called_at).toISOString(),
-        recording_url: editForm.recording_url || null,
-        transcript: editForm.transcript || null,
-        notes: editForm.notes || null,
-        attendees: editForm.attendees || null,
-      }),
-    });
-    const d = await res.json();
-    if (!res.ok) {
-      alert(d.error ?? "Failed to save");
-      setSaving(false);
+  function openEdit(row: Row) {
+    setEditingRow(row);
+    setDraft(rowToCallDraft(row));
+    setModalMode("edit");
+  }
+
+  function closeModal() {
+    if (saving) return;
+    setModalMode(null);
+    setEditingRow(null);
+  }
+
+  async function saveModal() {
+    const requireClient = modalMode === "add";
+    const err = validateCallDraft(draft, requireClient);
+    if (err) {
+      alert(err);
       return;
     }
-    setEditing(null);
+
+    setSaving(true);
+    const body = callDraftToApiBody(draft);
+
+    if (modalMode === "add") {
+      const res = await fetch(`/api/clients/${draft.client_id}/calls`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        alert(d.error ?? "Failed to save call");
+        setSaving(false);
+        return;
+      }
+    } else if (modalMode === "edit" && editingRow) {
+      const res = await fetch(`/api/clients/${editingRow.client_id}/calls/${editingRow.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        alert(d.error ?? "Failed to save call");
+        setSaving(false);
+        return;
+      }
+    }
+
     setSaving(false);
+    closeModal();
     setReloadKey(k => k + 1);
   }
+
+  const isCheckin = draft.call_type === "checkin";
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={openAdd}
+          className="text-sm font-semibold px-4 py-2 rounded-lg"
+          style={{
+            color: "#38bdf8",
+            background: "rgba(56,189,248,0.12)",
+            border: "1px solid rgba(56,189,248,0.3)",
+          }}
+        >
+          + Add call
+        </button>
         <select
           style={fieldStyle}
           className="w-auto"
@@ -198,7 +233,12 @@ export default function ClientCallsBrowser({ clients, startDate, endDate }: Prop
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center" style={{ color: "#334155" }}>No client calls found</td>
+                <td colSpan={6} className="px-4 py-10 text-center" style={{ color: "#334155" }}>
+                  No client calls found.{" "}
+                  <button type="button" onClick={openAdd} className="font-semibold" style={{ color: "#38bdf8" }}>
+                    Add one
+                  </button>
+                </td>
               </tr>
             ) : rows.map((row, i) => (
               <tr
@@ -294,95 +334,36 @@ export default function ClientCallsBrowser({ clients, startDate, endDate }: Prop
         </div>
       )}
 
-      {editing && (
+      {modalMode && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(2,6,15,0.7)" }}
-          onClick={() => !saving && setEditing(null)}
+          onClick={closeModal}
         >
           <div
-            className="w-full max-w-lg rounded-xl p-5 space-y-3"
+            className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-xl p-5 space-y-4"
             style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.1)" }}
             onClick={e => e.stopPropagation()}
           >
             <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>
-              Edit call — {editing.clients?.name}
+              {modalMode === "add"
+                ? "Log new client call"
+                : `Edit call — ${editingRow?.clients?.name ?? "Client"}`}
             </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Type</span>
-                <select
-                  value={editForm.call_type}
-                  disabled={saving}
-                  onChange={e => setEditForm(f => ({ ...f, call_type: e.target.value }))}
-                  className="mt-1 cursor-pointer"
-                  style={fieldStyle}
-                >
-                  {CALL_TYPE_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Call date</span>
-                <input
-                  type="datetime-local"
-                  value={editForm.called_at}
-                  disabled={saving}
-                  onChange={e => setEditForm(f => ({ ...f, called_at: e.target.value }))}
-                  className="mt-1"
-                  style={fieldStyle}
-                />
-              </label>
-            </div>
-            <label className="block">
-              <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Recording URL</span>
-              <input
-                type="url"
-                value={editForm.recording_url}
-                disabled={saving}
-                onChange={e => setEditForm(f => ({ ...f, recording_url: e.target.value }))}
-                className="mt-1"
-                style={fieldStyle}
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Attendees</span>
-              <input
-                value={editForm.attendees}
-                disabled={saving}
-                onChange={e => setEditForm(f => ({ ...f, attendees: e.target.value }))}
-                className="mt-1"
-                style={fieldStyle}
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Transcript</span>
-              <textarea
-                value={editForm.transcript}
-                disabled={saving}
-                onChange={e => setEditForm(f => ({ ...f, transcript: e.target.value }))}
-                rows={4}
-                className="mt-1 resize-y"
-                style={fieldStyle}
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Notes</span>
-              <textarea
-                value={editForm.notes}
-                disabled={saving}
-                onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
-                rows={3}
-                className="mt-1 resize-y"
-                style={fieldStyle}
-              />
-            </label>
-            <div className="flex justify-end gap-2 pt-1">
+
+            <ClientCallFormFields
+              draft={draft}
+              onChange={setDraft}
+              disabled={saving}
+              clients={clients}
+              showClientSelect={modalMode === "add"}
+            />
+
+            <div className="flex justify-end gap-2 pt-1 sticky bottom-0" style={{ background: "#0a1628" }}>
               <button
                 type="button"
                 disabled={saving}
-                onClick={() => setEditing(null)}
+                onClick={closeModal}
                 className="text-xs font-semibold px-3 py-2 rounded-lg"
                 style={{ color: "#94a3b8", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
               >
@@ -391,11 +372,15 @@ export default function ClientCallsBrowser({ clients, startDate, endDate }: Prop
               <button
                 type="button"
                 disabled={saving}
-                onClick={saveEdit}
+                onClick={saveModal}
                 className="text-xs font-semibold px-3 py-2 rounded-lg"
-                style={{ color: "#a78bfa", background: "rgba(167,139,250,0.12)", border: "1px solid rgba(167,139,250,0.25)" }}
+                style={{
+                  color: isCheckin ? "#38bdf8" : "#f59e0b",
+                  background: isCheckin ? "rgba(56,189,248,0.12)" : "rgba(245,158,11,0.12)",
+                  border: isCheckin ? "1px solid rgba(56,189,248,0.25)" : "1px solid rgba(245,158,11,0.25)",
+                }}
               >
-                {saving ? "Saving…" : "Save"}
+                {saving ? "Saving…" : modalMode === "add" ? (isCheckin ? "Save check-in" : "Save call") : "Save changes"}
               </button>
             </div>
           </div>
