@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import StatusChangeModal from "@/components/StatusChangeModal";
 
 type Billing = {
   id: string;
@@ -137,6 +138,11 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
   const [showInactive, setShowInactive] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [canViewRevenue, setCanViewRevenue] = useState(initialCanViewRevenue);
+  const [statusChange, setStatusChange] = useState<{
+    clientId: string;
+    clientName: string;
+    targetStatus: string;
+  } | null>(null);
 
   async function load() {
     const res = await fetch("/api/billings");
@@ -204,6 +210,25 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    await load();
+    setBusy(null);
+  }
+
+  async function confirmStatusChange(reason: string | null, note: string) {
+    if (!statusChange) return;
+    const { clientId, targetStatus } = statusChange;
+    setBusy(`cfg-${clientId}`);
+    await fetch(`/api/clients/${clientId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lifecycle_status: targetStatus,
+        is_live: false,
+        status_change_reason: reason,
+        status_change_note: note || undefined,
+      }),
+    });
+    setStatusChange(null);
     await load();
     setBusy(null);
   }
@@ -323,7 +348,17 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
           <span className="text-sm font-semibold">Active clients — billing schedule (anchored to launch date)</span>
           <span className="text-xs" style={{ color: "#475569" }}>{showSetup ? "Hide" : "Show"}</span>
         </button>
-        {showSetup && <SetupTable clients={clients} busy={busy} canViewRevenue={canViewRevenue} onPatch={patchClient} />}
+        {showSetup && (
+          <SetupTable
+            clients={clients}
+            busy={busy}
+            canViewRevenue={canViewRevenue}
+            onPatch={patchClient}
+            onRequestStatusChange={(clientId, clientName, targetStatus) =>
+              setStatusChange({ clientId, clientName, targetStatus })
+            }
+          />
+        )}
       </div>
 
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -337,6 +372,15 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         </button>
         {showInactive && <InactiveTable clients={inactive} busy={busy} canViewRevenue={canViewRevenue} onPatch={patchClient} />}
       </div>
+
+      <StatusChangeModal
+        open={!!statusChange}
+        clientName={statusChange?.clientName ?? ""}
+        targetStatus={statusChange?.targetStatus ?? "paused"}
+        saving={statusChange ? busy === `cfg-${statusChange.clientId}` : false}
+        onConfirm={confirmStatusChange}
+        onCancel={() => setStatusChange(null)}
+      />
     </div>
   );
 }
@@ -647,12 +691,13 @@ function PaidSection({
 }
 
 function SetupTable({
-  clients, busy, canViewRevenue, onPatch,
+  clients, busy, canViewRevenue, onPatch, onRequestStatusChange,
 }: {
   clients: ClientBilling[];
   busy: string | null;
   canViewRevenue: boolean;
   onPatch: (clientId: string, body: Record<string, unknown>) => void;
+  onRequestStatusChange: (clientId: string, clientName: string, targetStatus: string) => void;
 }) {
   const sorted = clients.filter(isActive).sort((a, b) => a.name.localeCompare(b.name));
   const missing = sorted.filter(c => !c.next_billing_date).length;
@@ -702,8 +747,8 @@ function SetupTable({
                 <td className="px-4 py-2.5 text-xs" style={{ color: c.next_billing_date ? "#cbd5e1" : "#475569" }}>{c.next_billing_date ?? "needs launch date"}</td>
                 <td className="px-4 py-2.5 text-xs" style={{ color: "#94a3b8" }}>{c.next_billing_date ? relativeLabel(c.next_billing_date) : "—"}</td>
                 <td className="px-4 py-2.5 whitespace-nowrap">
-                  <button onClick={() => onPatch(c.id, { lifecycle_status: "paused", is_live: false })} disabled={isBusy} className="text-xs font-semibold mr-3" style={{ color: "#f59e0b" }}>Pause</button>
-                  <button onClick={() => onPatch(c.id, { lifecycle_status: "churned", is_live: false })} disabled={isBusy} className="text-xs font-semibold" style={{ color: "#ef4444" }}>Churn</button>
+                  <button onClick={() => onRequestStatusChange(c.id, c.name, "paused")} disabled={isBusy} className="text-xs font-semibold mr-3" style={{ color: "#f59e0b" }}>Pause</button>
+                  <button onClick={() => onRequestStatusChange(c.id, c.name, "churned")} disabled={isBusy} className="text-xs font-semibold" style={{ color: "#ef4444" }}>Churn</button>
                 </td>
               </tr>
             );

@@ -510,7 +510,38 @@ create table if not exists client_status_history (
   changed_at      timestamptz not null default now(),
   changed_by      uuid    references auth.users(id) on delete set null,
   source          text    not null default 'manual',  -- manual | clickup_sync | trigger
-  note            text
+  note            text,
+  reason_code     text,
+  constraint client_status_history_reason_code_check check (
+    reason_code is null or reason_code in (
+      'poor_results', 'pricing_cost', 'went_in_house', 'business_closed',
+      'contract_ended', 'service_issues', 'competitor', 'unresponsive',
+      'mutual_decision', 'other'
+    )
+  )
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 14b. Client Notes (append-only ongoing feedback)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists client_notes (
+  id          uuid    primary key default gen_random_uuid(),
+  client_id   uuid    not null references clients(id) on delete cascade,
+  note_type   text    not null default 'general',
+  reason_code text,
+  body        text    not null,
+  created_at  timestamptz not null default now(),
+  created_by  uuid    references auth.users(id) on delete set null,
+  constraint client_notes_type_check check (
+    note_type in ('general', 'concern', 'win', 'internal')
+  ),
+  constraint client_notes_reason_code_check check (
+    reason_code is null or reason_code in (
+      'poor_results', 'pricing_cost', 'went_in_house', 'business_closed',
+      'contract_ended', 'service_issues', 'competitor', 'unresponsive',
+      'mutual_decision', 'other'
+    )
+  )
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -694,6 +725,7 @@ create index if not exists clients_lifecycle_status_idx          on clients(life
 create index if not exists clients_churned_at_idx                on clients(churned_at) where churned_at is not null;
 create index if not exists client_status_history_client          on client_status_history(client_id, changed_at desc);
 create index if not exists client_status_history_new             on client_status_history(new_status);
+create index if not exists client_notes_client_created           on client_notes(client_id, created_at desc);
 create index if not exists client_monthly_snapshots_period       on client_monthly_snapshots(period_month);
 create index if not exists client_monthly_snapshots_client       on client_monthly_snapshots(client_id, period_month desc);
 create index if not exists business_metrics_key_period           on business_metrics(metric_key, period_date desc);

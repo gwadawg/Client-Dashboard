@@ -1,11 +1,20 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import {
+  isValidReasonCode,
+  requiresReasonOnChurn,
+} from '@/lib/client-feedback';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import {
   canViewClientRevenue,
   redactBillingRows,
   redactClientMoneyFields,
 } from '@/lib/client-revenue-access';
+
+const STATUS_HISTORY_FIELDS =
+  'id, previous_status, new_status, reason_code, note, mrr_at_change, changed_at, changed_by, source';
+
+const CLIENT_NOTES_FIELDS = 'id, note_type, reason_code, body, created_at, created_by';
 
 const FILE_CLIENT_FIELDS =
   'id, name, is_live, reporting_type, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, timezone, created_at, churned_at';
@@ -24,13 +33,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { id } = await params;
 
-  const [clientRes, billingsRes] = await Promise.all([
+  const [clientRes, billingsRes, historyRes, notesRes] = await Promise.all([
     ctx.service.from('clients').select(FILE_CLIENT_FIELDS).eq('id', id).single(),
     ctx.service
       .from('client_billings')
       .select(FILE_BILLING_FIELDS)
       .eq('client_id', id)
       .order('billed_on', { ascending: false }),
+    ctx.service
+      .from('client_status_history')
+      .select(STATUS_HISTORY_FIELDS)
+      .eq('client_id', id)
+      .order('changed_at', { ascending: false }),
+    ctx.service
+      .from('client_notes')
+      .select(CLIENT_NOTES_FIELDS)
+      .eq('client_id', id)
+      .order('created_at', { ascending: false }),
   ]);
 
   if (clientRes.error) {
@@ -38,15 +57,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: clientRes.error.message }, { status });
   }
   if (billingsRes.error) return NextResponse.json({ error: billingsRes.error.message }, { status: 500 });
+  if (historyRes.error) return NextResponse.json({ error: historyRes.error.message }, { status: 500 });
+  if (notesRes.error) return NextResponse.json({ error: notesRes.error.message }, { status: 500 });
 
   const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
   const includeRevenue = canViewClientRevenue(subject);
   const client = includeRevenue ? clientRes.data : redactClientMoneyFields(clientRes.data);
   const billings = includeRevenue ? (billingsRes.data ?? []) : redactBillingRows(billingsRes.data);
+  const statusHistory = historyRes.data ?? [];
+  const notes = notesRes.data ?? [];
 
   return NextResponse.json({
     client,
     billings,
+    status_history: statusHistory,
+    notes,
     can_view_revenue: includeRevenue,
   });
 }
@@ -120,14 +145,74 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
   }
 
+  const newLifecycle =
+    typeof body.lifecycle_status === 'string' ? body.lifecycle_status : null;
+  const statusChangeReason =
+    typeof body.status_change_reason === 'string' && body.status_change_reason.trim()
+      ? body.status_change_reason.trim()
+      : null;
+  const statusChangeNote =
+    typeof body.status_change_note === 'string' && body.status_change_note.trim()
+      ? body.status_change_note.trim()
+      : null;
+
+  if (newLifecycle && requiresReasonOnChurn(newLifecycle)) {
+    if (!statusChangeReason || !isValidReasonCode(statusChangeReason)) {
+      return NextResponse.json(
+        { error: 'A churn reason is required when marking a client as churned' },
+        { status: 400 },
+      );
+    }
+  }
+  if (statusChangeReason && !isValidReasonCode(statusChangeReason)) {
+    return NextResponse.json({ error: 'Invalid status_change_reason' }, { status: 400 });
+  }
+
   const { data, error } = await ctx.service
     .from('clients')
     .update(updates)
     .eq('id', id)
-    .select('id, name, is_live, reporting_type, share_token, created_at, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, lifecycle_status, performance_terms, email, billing_email, primary_contact, primary_contact_name, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id')
+    .select(FILE_CLIENT_FIELDS)
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Enrich the trigger-created history row when lifecycle changes with feedback.
+  if (newLifecycle && (statusChangeReason || statusChangeNote)) {
+    const since = new Date(Date.now() - 10_000).toISOString();
+    const { data: historyRows, error: historyError } = await ctx.service
+      .from('client_status_history')
+      .select('id')
+      .eq('client_id', id)
+      .eq('new_status', newLifecycle)
+      .gte('changed_at', since)
+      .order('changed_at', { ascending: false })
+      .limit(1);
+
+    if (historyError) {
+      return NextResponse.json({ error: historyError.message }, { status: 500 });
+    }
+
+    const historyId = historyRows?.[0]?.id;
+    if (historyId) {
+      const historyUpdate: Record<string, unknown> = {
+        source: 'manual',
+        changed_by: ctx.userId,
+      };
+      if (statusChangeReason) historyUpdate.reason_code = statusChangeReason;
+      if (statusChangeNote) historyUpdate.note = statusChangeNote;
+
+      const { error: enrichError } = await ctx.service
+        .from('client_status_history')
+        .update(historyUpdate)
+        .eq('id', historyId);
+
+      if (enrichError) {
+        return NextResponse.json({ error: enrichError.message }, { status: 500 });
+      }
+    }
+  }
+
   const client = includeRevenue ? data : redactClientMoneyFields(data);
   return NextResponse.json({ client });
 }

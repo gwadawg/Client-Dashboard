@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  LIFECYCLE_REASON_OPTIONS,
+  NOTE_TYPE_OPTIONS,
+  lifecycleStatusLabel,
+  noteTypeLabel,
+  reasonLabel,
+} from "@/lib/client-feedback";
 
 // The client "file": a single place to oversee everything about one client.
-// Starts with the full profile + billing/revenue history; built so more
-// sections (success reports, KPI history, notes) can be appended over time.
+// Profile, billing history, lifecycle transitions, and ongoing notes.
 
 type FileBilling = {
   id: string;
@@ -60,6 +66,25 @@ type FileClient = {
   churned_at: string | null;
 };
 
+type StatusHistoryEntry = {
+  id: string;
+  previous_status: string | null;
+  new_status: string;
+  reason_code: string | null;
+  note: string | null;
+  mrr_at_change: number | null;
+  changed_at: string;
+  source: string | null;
+};
+
+type ClientNote = {
+  id: string;
+  note_type: string;
+  reason_code: string | null;
+  body: string;
+  created_at: string;
+};
+
 const STATUS_STYLE: Record<string, { color: string; bg: string }> = {
   paid: { color: "#22c55e", bg: "rgba(34,197,94,0.12)" },
   partial: { color: "#38bdf8", bg: "rgba(56,189,248,0.12)" },
@@ -76,47 +101,92 @@ const REVENUE_TYPE_LABEL: Record<string, string> = {
   passthrough: "Passthrough",
 };
 
+const fieldStyle = {
+  background: "#050c18",
+  border: "1px solid rgba(255,255,255,0.12)",
+  color: "#e2e8f0",
+  borderRadius: "0.5rem",
+  padding: "0.5rem 0.75rem",
+  fontSize: "0.8125rem",
+  outline: "none",
+  width: "100%",
+} as const;
+
 function money(n: number | null | undefined): string {
   if (typeof n !== "number" || Number.isNaN(n)) return "—";
   return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 }
 
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 export default function ClientFile({
-  clientId, fallbackName, onClose,
+  clientId,
+  fallbackName,
+  onClose,
+  onUpdated,
+  scrollToNotes = false,
 }: {
   clientId: string;
   fallbackName: string;
   onClose: () => void;
+  onUpdated?: () => void;
+  scrollToNotes?: boolean;
 }) {
   const [client, setClient] = useState<FileClient | null>(null);
   const [billings, setBillings] = useState<FileBilling[]>([]);
+  const [statusHistory, setStatusHistory] = useState<StatusHistoryEntry[]>([]);
+  const [notes, setNotes] = useState<ClientNote[]>([]);
   const [canViewRevenue, setCanViewRevenue] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [noteType, setNoteType] = useState("general");
+  const [noteReason, setNoteReason] = useState("");
+  const [noteBody, setNoteBody] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const notesRef = useRef<HTMLElement>(null);
 
-  useEffect(() => {
-    let active = true;
-    fetch(`/api/clients/${clientId}`)
+  const load = useCallback(() => {
+    setLoading(true);
+    return fetch(`/api/clients/${clientId}`)
       .then(r => r.json())
       .then(d => {
-        if (!active) return;
-        if (d.error) setError(d.error);
-        else {
+        if (d.error) {
+          setError(d.error);
+        } else {
           setClient(d.client ?? null);
           setBillings(d.billings ?? []);
+          setStatusHistory(d.status_history ?? []);
+          setNotes(d.notes ?? []);
           if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
+          setError(null);
         }
         setLoading(false);
       })
-      .catch(e => { if (active) { setError(String(e)); setLoading(false); } });
-    return () => { active = false; };
+      .catch(e => {
+        setError(String(e));
+        setLoading(false);
+      });
   }, [clientId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    if (!loading && scrollToNotes && notesRef.current) {
+      notesRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [loading, scrollToNotes]);
 
   const summary = useMemo(() => {
     let collected = 0, retainer = 0, performance = 0, passthrough = 0;
@@ -131,6 +201,33 @@ export default function ClientFile({
     return { collected, retainer, performance, passthrough, count: billings.length, lastPaidOn };
   }, [billings]);
 
+  async function submitNote() {
+    const body = noteBody.trim();
+    if (!body) return;
+    setSavingNote(true);
+    const res = await fetch(`/api/clients/${clientId}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        note_type: noteType,
+        reason_code: noteReason || undefined,
+        body,
+      }),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      alert(d.error ?? "Failed to save note");
+      setSavingNote(false);
+      return;
+    }
+    setNoteBody("");
+    setNoteReason("");
+    setNoteType("general");
+    await load();
+    onUpdated?.();
+    setSavingNote(false);
+  }
+
   const name = client?.name ?? fallbackName;
   const lifecycle = client?.lifecycle_status ?? "—";
 
@@ -141,7 +238,6 @@ export default function ClientFile({
         style={{ maxWidth: 760, background: "#060d1a", borderLeft: "1px solid rgba(255,255,255,0.08)" }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Sticky header */}
         <div className="sticky top-0 z-10 px-6 py-4 flex items-start justify-between gap-4" style={{ background: "#0a1628", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -153,7 +249,7 @@ export default function ClientFile({
                 </span>
               )}
             </div>
-            <p className="text-xs mt-1" style={{ color: "#475569" }}>Client file — profile &amp; full billing history</p>
+            <p className="text-xs mt-1" style={{ color: "#475569" }}>Client file — profile, billing, lifecycle &amp; notes</p>
           </div>
           <button onClick={onClose} className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap" style={{ color: "#94a3b8", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
             Close ✕
@@ -166,7 +262,6 @@ export default function ClientFile({
           <p className="text-sm py-12 text-center" style={{ color: "#ef4444" }}>{error}</p>
         ) : (
           <div className="px-6 py-5 space-y-7">
-            {/* Overview */}
             <Section title="Overview">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
                 <Detail label="Sub-account name" value={client?.name} />
@@ -181,7 +276,6 @@ export default function ClientFile({
               </div>
             </Section>
 
-            {/* Billing config */}
             <Section title="Billing setup">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
                 <Detail label="Billing type" value={billingTypeLabel(client?.billing_type)} />
@@ -201,7 +295,119 @@ export default function ClientFile({
               )}
             </Section>
 
-            {/* Billing history */}
+            <Section title={`Lifecycle history (${statusHistory.length})`}>
+              {statusHistory.length === 0 ? (
+                <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>No lifecycle transitions recorded yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {statusHistory.map(h => (
+                    <div
+                      key={h.id}
+                      className="rounded-lg px-4 py-3"
+                      style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.06)" }}
+                    >
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <p className="text-sm font-medium" style={{ color: "#e2e8f0" }}>
+                          {lifecycleStatusLabel(h.previous_status)} → {lifecycleStatusLabel(h.new_status)}
+                        </p>
+                        <span className="text-xs whitespace-nowrap" style={{ color: "#475569" }}>{formatDateTime(h.changed_at)}</span>
+                      </div>
+                      {h.reason_code && (
+                        <p className="text-xs mt-1.5 font-semibold" style={{ color: "#f59e0b" }}>
+                          Reason: {reasonLabel(h.reason_code)}
+                        </p>
+                      )}
+                      {h.note && (
+                        <p className="text-sm mt-1.5" style={{ color: "#94a3b8" }}>{h.note}</p>
+                      )}
+                      {canViewRevenue && h.mrr_at_change != null && (
+                        <p className="text-xs mt-1" style={{ color: "#475569" }}>MRR at change: {money(h.mrr_at_change)}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Section>
+
+            <section ref={notesRef}>
+              <h3 className="text-sm font-semibold uppercase tracking-wider mb-3" style={{ color: "#cbd5e1" }}>
+                Client notes ({notes.length})
+              </h3>
+
+              <div className="rounded-lg p-4 mb-4 space-y-3" style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Type</span>
+                    <select value={noteType} disabled={savingNote} onChange={e => setNoteType(e.target.value)} className="mt-1 cursor-pointer" style={fieldStyle}>
+                      {NOTE_TYPE_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Related reason (optional)</span>
+                    <select value={noteReason} disabled={savingNote} onChange={e => setNoteReason(e.target.value)} className="mt-1 cursor-pointer" style={fieldStyle}>
+                      <option value="">None</option>
+                      {LIFECYCLE_REASON_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Note</span>
+                  <textarea
+                    value={noteBody}
+                    disabled={savingNote}
+                    onChange={e => setNoteBody(e.target.value)}
+                    rows={3}
+                    placeholder="Wins, concerns, call summaries, context for future analysis…"
+                    className="mt-1 resize-y"
+                    style={fieldStyle}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={submitNote}
+                  disabled={savingNote || !noteBody.trim()}
+                  className="text-xs font-semibold px-3 py-2 rounded-lg"
+                  style={{
+                    color: "#a78bfa",
+                    background: "rgba(167,139,250,0.12)",
+                    border: "1px solid rgba(167,139,250,0.25)",
+                    opacity: savingNote || !noteBody.trim() ? 0.5 : 1,
+                  }}
+                >
+                  {savingNote ? "Saving…" : "Add note"}
+                </button>
+              </div>
+
+              {notes.length === 0 ? (
+                <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>No notes yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {notes.map(n => (
+                    <div
+                      key={n.id}
+                      className="rounded-lg px-4 py-3"
+                      style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.06)" }}
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#a78bfa" }}>
+                          {noteTypeLabel(n.note_type)}
+                        </span>
+                        <span className="text-xs" style={{ color: "#475569" }}>{formatDateTime(n.created_at)}</span>
+                      </div>
+                      {n.reason_code && (
+                        <p className="text-xs mt-1" style={{ color: "#64748b" }}>{reasonLabel(n.reason_code)}</p>
+                      )}
+                      <p className="text-sm mt-1.5 whitespace-pre-wrap" style={{ color: "#cbd5e1" }}>{n.body}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
             <Section title={`Billing history (${summary.count})`}>
               {canViewRevenue && (
                 <div className="flex gap-3 flex-wrap mb-4">

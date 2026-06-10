@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
+import StatusChangeModal from "@/components/StatusChangeModal";
+import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { DEFAULT_REPORTING_TYPE, normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import {
   DEFAULT_KPI_BANDS,
@@ -93,8 +95,13 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [benchmarksFor, setBenchmarksFor] = useState<string | null>(null);
-  const [fileFor, setFileFor] = useState<{ id: string; name: string } | null>(null);
+  const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean } | null>(null);
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
+  const [statusChange, setStatusChange] = useState<{
+    id: string;
+    name: string;
+    targetStatus: string;
+  } | null>(null);
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
@@ -116,13 +123,28 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 
   async function patchClient(id: string, body: Record<string, unknown>) {
     setBusy(id);
-    await fetch(`/api/clients/${id}`, {
+    const res = await fetch(`/api/clients/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error ?? "Failed to update client");
+    }
     await reload();
     setBusy(null);
+  }
+
+  async function confirmStatusChange(reason: string | null, note: string) {
+    if (!statusChange) return;
+    await patchClient(statusChange.id, {
+      lifecycle_status: statusChange.targetStatus,
+      is_live: false,
+      status_change_reason: reason,
+      status_change_note: note || undefined,
+    });
+    setStatusChange(null);
   }
 
   async function createClient(body: Record<string, unknown>) {
@@ -223,6 +245,10 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 showRevenue={showRevenue}
                 onPatch={patchClient}
                 onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
+                onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
+                onRequestLifecycleChange={(id, name, targetStatus) =>
+                  setStatusChange({ id, name, targetStatus })
+                }
                 onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
                 onAskDelete={() => setConfirmDelete(c.id)}
                 onCancelDelete={() => setConfirmDelete(null)}
@@ -238,14 +264,30 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
       </p>
 
       {fileFor && (
-        <ClientFile key={fileFor.id} clientId={fileFor.id} fallbackName={fileFor.name} onClose={() => setFileFor(null)} />
+        <ClientFile
+          key={`${fileFor.id}-${fileFor.scrollToNotes ? "notes" : "file"}`}
+          clientId={fileFor.id}
+          fallbackName={fileFor.name}
+          scrollToNotes={fileFor.scrollToNotes}
+          onClose={() => setFileFor(null)}
+          onUpdated={reload}
+        />
       )}
+
+      <StatusChangeModal
+        open={!!statusChange}
+        clientName={statusChange?.name ?? ""}
+        targetStatus={statusChange?.targetStatus ?? "paused"}
+        saving={statusChange ? busy === statusChange.id : false}
+        onConfirm={confirmStatusChange}
+        onCancel={() => setStatusChange(null)}
+      />
     </div>
   );
 }
 
 function ClientRow({
-  client, striped, busy, confirmingDelete, benchmarksOpen, showRevenue, onPatch, onOpenFile, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
+  client, striped, busy, confirmingDelete, benchmarksOpen, showRevenue, onPatch, onOpenFile, onOpenNotes, onRequestLifecycleChange, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
 }: {
   client: Client;
   striped: boolean;
@@ -255,12 +297,19 @@ function ClientRow({
   showRevenue: boolean;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onOpenFile: () => void;
+  onOpenNotes: () => void;
+  onRequestLifecycleChange: (id: string, name: string, targetStatus: string) => void;
   onToggleBenchmarks: () => void;
   onAskDelete: () => void;
   onCancelDelete: () => void;
   onDelete: () => void;
 }) {
   const c = client;
+  const [lifecycle, setLifecycle] = useState(c.lifecycle_status ?? "active");
+
+  useEffect(() => {
+    setLifecycle(c.lifecycle_status ?? "active");
+  }, [c.lifecycle_status]);
   const rowBg = striped ? "#080f1e" : "#060d1a";
   const cell = "px-3 py-2 whitespace-nowrap";
   const clientName = c.primary_contact_name ?? c.primary_contact ?? "";
@@ -327,7 +376,23 @@ function ClientRow({
         </select>
       </td>
       <td className={cell}>
-        <select value={c.lifecycle_status ?? "active"} disabled={busy} onChange={e => onPatch(c.id, { lifecycle_status: e.target.value })} className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer" style={fieldStyle()}>
+        <select
+          value={lifecycle}
+          disabled={busy}
+          onChange={e => {
+            const next = e.target.value;
+            if (requiresLifecycleFeedback(next)) {
+              onRequestLifecycleChange(c.id, c.name, next);
+              return;
+            }
+            setLifecycle(next);
+            const body: Record<string, unknown> = { lifecycle_status: next };
+            if (next === "active") body.is_live = true;
+            onPatch(c.id, body);
+          }}
+          className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer"
+          style={fieldStyle()}
+        >
           {LIFECYCLE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
       </td>
@@ -413,6 +478,7 @@ function ClientRow({
         ) : (
           <span className="flex items-center justify-end gap-3">
             <button onClick={onOpenFile} className="text-xs font-semibold" style={{ color: "#38bdf8" }} title="Open this client's file">Open file</button>
+            <button onClick={onOpenNotes} className="text-xs font-semibold" style={{ color: "#a78bfa" }} title="Add or view client notes">Notes</button>
             <button
               onClick={onToggleBenchmarks}
               className="text-xs font-medium"
