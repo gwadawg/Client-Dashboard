@@ -235,73 +235,72 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 
       {showAdd && <AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} />}
 
-      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <table className="text-sm" style={{ minWidth: showRevenue ? 1840 : 1680 }}>
-          <thead>
-            <tr style={{ background: "#0a1628" }}>
-              {[
-                "Sub-account name",
-                "Client name",
-                "Email",
-                "Licensed in",
-                "Timezone",
-                "Type",
-                "Lifecycle",
-                "Status",
-                "Billing type",
-                ...(showRevenue ? ["MRR"] : []),
-                "Billing day",
-                "Launch",
-                "Signed",
-                "Term (mo)",
-                "Contract end",
-                "Performance terms",
-                "GHL location",
-                "ClickUp",
-                ...(showRevenue ? ["Total paid"] : []),
-                "",
-              ].map((h, i) => (
-                <th
-                  key={i}
-                  className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
-                  style={{ color: "#334155" }}
-                  title={h === "Sub-account name" ? "GHL sub-account name — matches the client filter on the dashboard" : undefined}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {clients.length === 0 ? (
-              <tr><td colSpan={showRevenue ? 20 : 18} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
-            ) : clients.map((c, i) => (
-              <ClientRow
-                key={c.id}
-                client={c}
-                striped={i % 2 === 0}
-                busy={busy === c.id}
-                confirmingDelete={confirmDelete === c.id}
-                benchmarksOpen={benchmarksFor === c.id}
-                showRevenue={showRevenue}
-                onPatch={patchClient}
-                onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
-                onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
-                onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
-                onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
-                onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
-                onRequestLifecycleChange={(id, name, targetStatus) =>
-                  setStatusChange({ id, name, targetStatus })
-                }
-                onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
-                onAskDelete={() => setConfirmDelete(c.id)}
-                onCancelDelete={() => setConfirmDelete(null)}
-                onDelete={() => handleDelete(c.id)}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {clients.length === 0 ? (
+        <div className="rounded-xl px-4 py-8 text-center text-sm" style={{ border: "1px solid rgba(255,255,255,0.06)", color: "#334155" }}>
+          No clients yet. Add one above.
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {ROSTER_SECTIONS.map(section => {
+            const sectionClients = grouped[section.key];
+            return (
+              <section key={section.key}>
+                <h3 className="text-sm font-semibold mb-2" style={{ color: "#94a3b8" }}>
+                  {section.label} ({sectionClients.length})
+                </h3>
+                <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <table className="text-sm w-full">
+                    <thead>
+                      <tr style={{ background: "#0a1628" }}>
+                        {ROSTER_HEADERS.map((h, i) => (
+                          <th
+                            key={i}
+                            className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
+                            style={{ color: "#334155" }}
+                            title={h === "Sub-account name" ? "GHL sub-account name — matches the client filter on the dashboard" : undefined}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sectionClients.length === 0 ? (
+                        <tr>
+                          <td colSpan={ROSTER_COLS} className="px-4 py-4 text-center text-sm" style={{ color: "#334155" }}>
+                            No clients
+                          </td>
+                        </tr>
+                      ) : (
+                        sectionClients.map((c, i) => (
+                          <ClientRow
+                            key={c.id}
+                            client={c}
+                            striped={i % 2 === 0}
+                            busy={busy === c.id}
+                            confirmingDelete={confirmDelete === c.id}
+                            benchmarksOpen={benchmarksFor === c.id}
+                            onPatch={patchClient}
+                            onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
+                            onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
+                            onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
+                            onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
+                            onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
+                            onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
+                            onAskDelete={() => setConfirmDelete(c.id)}
+                            onCancelDelete={() => setConfirmDelete(null)}
+                            onDelete={() => handleDelete(c.id)}
+                          />
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
 
       <p className="text-xs" style={{ color: "#334155" }}>
         Offline clients are excluded when using the &ldquo;Live Clients&rdquo; filter on the dashboard. Open a client&rsquo;s file to oversee their full billing history. Pausing or churning a client is best done from the Client Billing tab so the schedule updates too.
@@ -328,50 +327,33 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
           onUpdated={reload}
         />
       )}
-
-      <StatusChangeModal
-        open={!!statusChange}
-        clientName={statusChange?.name ?? ""}
-        targetStatus={statusChange?.targetStatus ?? "paused"}
-        saving={statusChange ? busy === statusChange.id : false}
-        onConfirm={confirmStatusChange}
-        onCancel={() => setStatusChange(null)}
-      />
     </div>
   );
 }
 
 function ClientRow({
-  client, striped, busy, confirmingDelete, benchmarksOpen, showRevenue, onPatch, onOpenFile, onOpenKickoff, onOpenNotes, onOpenCalls, onLogCheckin, onRequestLifecycleChange, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
+  client, striped, busy, confirmingDelete, benchmarksOpen, onPatch, onOpenFile, onOpenKickoff, onOpenNotes, onOpenCalls, onLogCheckin, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
 }: {
   client: Client;
   striped: boolean;
   busy: boolean;
   confirmingDelete: boolean;
   benchmarksOpen: boolean;
-  showRevenue: boolean;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onOpenFile: () => void;
   onOpenKickoff: () => void;
   onOpenNotes: () => void;
   onOpenCalls: () => void;
   onLogCheckin: () => void;
-  onRequestLifecycleChange: (id: string, name: string, targetStatus: string) => void;
   onToggleBenchmarks: () => void;
   onAskDelete: () => void;
   onCancelDelete: () => void;
   onDelete: () => void;
 }) {
   const c = client;
-  const [lifecycle, setLifecycle] = useState(c.lifecycle_status ?? "active");
-
-  useEffect(() => {
-    setLifecycle(c.lifecycle_status ?? "active");
-  }, [c.lifecycle_status]);
   const rowBg = striped ? "#080f1e" : "#060d1a";
   const cell = "px-3 py-2 whitespace-nowrap";
   const clientName = c.primary_contact_name ?? c.primary_contact ?? "";
-  const displayEmail = c.email ?? c.billing_email ?? "";
   const hasOverrides = !!c.kpi_benchmarks && Object.keys(c.kpi_benchmarks).length > 0;
   const stale = benchmarksStale(c);
   const kickoffPending = isKickoffIncomplete(c, null);
@@ -385,7 +367,6 @@ function ClientRow({
         ? "● KPI bands"
         : "KPI bands";
 
-  // Commit a text/number field only if it actually changed.
   const onBlurField = (field: string, current: string) => (e: React.FocusEvent<HTMLInputElement>) => {
     if (e.target.value !== current) onPatch(c.id, { [field]: e.target.value });
   };
@@ -400,7 +381,7 @@ function ClientRow({
           onBlur={onBlurField("name", c.name ?? "")}
           placeholder="GHL sub-account name"
           title="GHL sub-account name — what appears in the dashboard client filter"
-          className="px-2 py-1 rounded-lg text-sm outline-none w-44 font-medium"
+          className="px-2 py-1 rounded-lg text-sm outline-none w-36 font-medium"
           style={fieldStyle()}
         />
       </td>
@@ -413,19 +394,7 @@ function ClientRow({
           }}
           placeholder="Client / contact name"
           title="The client's name (person or business contact)"
-          className="px-2 py-1 rounded-lg text-sm outline-none w-36"
-          style={fieldStyle()}
-        />
-      </td>
-      <td className={cell}>
-        <input
-          defaultValue={displayEmail}
-          disabled={busy}
-          onBlur={(e) => {
-            if (e.target.value !== displayEmail) onPatch(c.id, { email: e.target.value });
-          }}
-          placeholder="—"
-          className="px-2 py-1 rounded-lg text-sm outline-none w-48"
+          className="px-2 py-1 rounded-lg text-sm outline-none w-32"
           style={fieldStyle()}
         />
       </td>
@@ -444,85 +413,15 @@ function ClientRow({
         />
       </td>
       <td className={cell}>
-        <select value={normalizeReportingType(c.reporting_type)} disabled={busy} onChange={e => onPatch(c.id, { reporting_type: normalizeReportingType(e.target.value) })} className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer" style={fieldStyle()}>
-          <option value="RM">RM - Reverse Mortgage</option>
-          <option value="HE">HE - Appointment Only</option>
-        </select>
-      </td>
-      <td className={cell}>
-        <select
-          value={lifecycle}
-          disabled={busy}
-          onChange={e => {
-            const next = e.target.value;
-            if (requiresLifecycleFeedback(next)) {
-              onRequestLifecycleChange(c.id, c.name, next);
-              return;
-            }
-            setLifecycle(next);
-            const body: Record<string, unknown> = { lifecycle_status: next };
-            if (next === "active") body.is_live = true;
-            onPatch(c.id, body);
-          }}
-          className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer"
-          style={fieldStyle()}
-        >
-          {LIFECYCLE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </td>
-      <td className={cell}>
-        <button
-          onClick={() => onPatch(c.id, { is_live: !c.is_live })}
-          disabled={busy}
-          className="px-3 py-1 rounded-full text-xs font-semibold"
-          style={c.is_live
-            ? { color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: busy ? 0.5 : 1 }
-            : { color: "#ef4444", background: "rgba(239,68,68,0.1)", opacity: busy ? 0.5 : 1 }}
-        >
-          {c.is_live ? "Live" : "Offline"}
-        </button>
-      </td>
-      <td className={cell}>
-        <select value={c.billing_type ?? ""} disabled={busy} onChange={e => onPatch(c.id, { billing_type: e.target.value })} className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer" style={fieldStyle()}>
-          <option value="">Monthly (default)</option>
-          <option value="monthly">Monthly</option>
-          <option value="pif">PIF</option>
-          <option value="pif_monthly">PIF + Monthly</option>
-        </select>
-      </td>
-      {showRevenue && (
-        <td className={cell}>
-          <input type="number" defaultValue={c.mrr ?? ""} disabled={busy} onBlur={onBlurField("mrr", String(c.mrr ?? ""))} placeholder="0" className="px-2 py-1 rounded-lg text-sm outline-none w-24" style={fieldStyle()} />
-        </td>
-      )}
-      <td className={cell}>
-        <input type="number" min={1} max={31} defaultValue={c.billing_day ?? ""} disabled={busy} onBlur={onBlurField("billing_day", String(c.billing_day ?? ""))} placeholder="—" title="Day of month (1-31)" className="px-2 py-1 rounded-lg text-sm outline-none w-16" style={fieldStyle()} />
+        <input type="date" value={c.date_signed ?? ""} disabled={busy} onChange={e => onPatch(c.id, { date_signed: e.target.value })} className="px-2 py-1 rounded-lg text-xs outline-none" style={fieldStyle()} />
       </td>
       <td className={cell}>
         <input type="date" value={c.launch_date ?? ""} disabled={busy} onChange={e => onPatch(c.id, { launch_date: e.target.value })} className="px-2 py-1 rounded-lg text-xs outline-none" style={fieldStyle()} />
       </td>
       <td className={cell}>
-        <input type="date" value={c.date_signed ?? ""} disabled={busy} onChange={e => onPatch(c.id, { date_signed: e.target.value })} className="px-2 py-1 rounded-lg text-xs outline-none" style={fieldStyle()} />
-      </td>
-      <td className={cell}>
-        <input type="number" defaultValue={c.contract_term_months ?? ""} disabled={busy} onBlur={onBlurField("contract_term_months", String(c.contract_term_months ?? ""))} placeholder="—" className="px-2 py-1 rounded-lg text-sm outline-none w-20" style={fieldStyle()} />
-      </td>
-      <td className={cell}>
-        <input type="date" value={c.contract_end_date ?? ""} disabled={busy} onChange={e => onPatch(c.id, { contract_end_date: e.target.value })} className="px-2 py-1 rounded-lg text-xs outline-none" style={fieldStyle()} />
-      </td>
-      <td className={cell}>
-        <input defaultValue={c.performance_terms ?? ""} disabled={busy} onBlur={onBlurField("performance_terms", c.performance_terms ?? "")} placeholder="—" className="px-2 py-1 rounded-lg text-sm outline-none w-56" style={fieldStyle()} />
-      </td>
-      <td className={cell}>
-        <input
-          defaultValue={c.ghl_location_id ?? ""}
-          disabled={busy}
-          onBlur={onBlurField("ghl_location_id", c.ghl_location_id ?? "")}
-          placeholder="GHL location id"
-          title="GHL subaccount location id — used to match lead webhooks"
-          className="px-2 py-1 rounded-lg text-sm outline-none w-36 font-mono text-xs"
-          style={fieldStyle()}
-        />
+        <span className="text-xs" style={{ color: c.churned_at ? "#94a3b8" : "#334155" }}>
+          {formatDate(c.churned_at)}
+        </span>
       </td>
       <td className={cell}>
         {c.clickup_task_id ? (
@@ -540,9 +439,6 @@ function ClientRow({
           <span className="text-xs" style={{ color: "#334155" }}>—</span>
         )}
       </td>
-      {showRevenue && (
-        <td className={cell} style={{ color: "#38bdf8" }}>{money(c.total_paid ?? 0)}</td>
-      )}
       <td className="px-3 py-2 text-right whitespace-nowrap">
         {confirmingDelete ? (
           <span className="flex items-center justify-end gap-2">
@@ -587,7 +483,7 @@ function ClientRow({
     </tr>
     {benchmarksOpen && (
       <tr style={{ background: "#050c18" }}>
-        <td colSpan={showRevenue ? 20 : 18} className="px-4 py-4">
+        <td colSpan={ROSTER_COLS} className="px-4 py-4">
           <BenchmarkEditor
             client={c}
             busy={busy}
