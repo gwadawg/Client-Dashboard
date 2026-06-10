@@ -21,6 +21,7 @@ import {
   type HealthTier,
   type KpiKey,
 } from "@/lib/client-health";
+import ClientFile from "./ClientFile";
 import ClientHealthDetail from "./ClientHealthDetail";
 
 // The grading view owns its own date range, deliberately decoupled from the global
@@ -140,6 +141,7 @@ export default function ClientHealthDashboard(_props: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [hideInactive, setHideInactive] = useState(true);
   const [detail, setDetail] = useState<{ id: string; name: string } | null>(null);
+  const [fileFor, setFileFor] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (!startDate || !endDate) return;
@@ -227,13 +229,23 @@ export default function ClientHealthDashboard(_props: Props) {
 
   if (detail) {
     return (
-      <ClientHealthDetail
-        clientId={detail.id}
-        clientName={detail.name}
-        startDate={startDate}
-        endDate={endDate}
-        onBack={() => setDetail(null)}
-      />
+      <>
+        <ClientHealthDetail
+          clientId={detail.id}
+          clientName={detail.name}
+          startDate={startDate}
+          endDate={endDate}
+          onBack={() => setDetail(null)}
+          onOpenClientFile={() => setFileFor({ id: detail.id, name: detail.name })}
+        />
+        {fileFor && (
+          <ClientFile
+            clientId={fileFor.id}
+            fallbackName={fileFor.name}
+            onClose={() => setFileFor(null)}
+          />
+        )}
+      </>
     );
   }
 

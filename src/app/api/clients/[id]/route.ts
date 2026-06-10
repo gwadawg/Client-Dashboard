@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import { VOIDED_BILLING_STATUS } from '@/lib/billing-query';
 import { CLIENT_CALL_FIELDS } from '@/lib/client-calls';
 import {
   isValidReasonCode,
@@ -7,16 +8,19 @@ import {
 } from '@/lib/client-feedback';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { normalizeStatesLicensed } from '@/lib/us-states';
+import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import {
   canViewClientRevenue,
   redactBillingRows,
   redactClientMoneyFields,
 } from '@/lib/client-revenue-access';
+import { resolveUserLabels } from '@/lib/user-resolver';
 
 const STATUS_HISTORY_FIELDS =
-  'id, previous_status, new_status, reason_code, note, mrr_at_change, changed_at, changed_by, source';
+  'id, previous_status, new_status, reason_code, note, mrr_at_change, changed_at, changed_by, source, related_call_id';
 
-const CLIENT_NOTES_FIELDS = 'id, note_type, reason_code, body, created_at, created_by';
+const CLIENT_NOTES_FIELDS =
+  'id, note_type, reason_code, body, created_at, created_by, updated_at, related_call_id';
 
 const FILE_CLIENT_FIELDS =
   'id, name, is_live, reporting_type, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, states_licensed, timezone, created_at, churned_at';
@@ -40,6 +44,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     ctx.service
       .from('client_billings')
       .select(FILE_BILLING_FIELDS)
+      .neq('status', VOIDED_BILLING_STATUS)
       .eq('client_id', id)
       .order('billed_on', { ascending: false }),
     ctx.service
@@ -51,11 +56,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .from('client_notes')
       .select(CLIENT_NOTES_FIELDS)
       .eq('client_id', id)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false }),
     ctx.service
       .from('client_calls')
       .select(CLIENT_CALL_FIELDS)
       .eq('client_id', id)
+      .is('deleted_at', null)
       .order('called_at', { ascending: false }),
   ]);
 
@@ -76,12 +83,25 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const notes = notesRes.data ?? [];
   const calls = callsRes.data ?? [];
 
+  const authorIds = [
+    ...notes.map((n: { created_by?: string | null }) => n.created_by),
+    ...calls.map((c: { created_by?: string | null }) => c.created_by),
+  ];
+  const authorLabels = await resolveUserLabels(ctx.service, authorIds);
+
   return NextResponse.json({
     client,
     billings,
     status_history: statusHistory,
-    notes,
-    calls,
+    notes: notes.map((n: { created_by?: string | null }) => ({
+      ...n,
+      created_by_label: n.created_by ? authorLabels[n.created_by] ?? null : null,
+    })),
+    calls: calls.map((c: { created_by?: string | null }) => ({
+      ...c,
+      created_by_label: c.created_by ? authorLabels[c.created_by] ?? null : null,
+    })),
+    author_labels: authorLabels,
     can_view_revenue: includeRevenue,
   });
 }
@@ -183,6 +203,31 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'Invalid status_change_reason' }, { status: 400 });
   }
 
+  // Capture prior row for lifecycle match + MRR history.
+  let previousLifecycle: string | null = null;
+  let previousMrr: number | null = null;
+  const { data: priorRow, error: priorErr } = await ctx.service
+    .from('clients')
+    .select('lifecycle_status, mrr, is_live')
+    .eq('id', id)
+    .single();
+  if (priorErr) return NextResponse.json({ error: priorErr.message }, { status: 500 });
+  previousLifecycle = priorRow.lifecycle_status ?? null;
+  previousMrr = priorRow.mrr ?? null;
+
+  if (newLifecycle) {
+    const syncedLive = syncIsLiveWithLifecycle(
+      newLifecycle,
+      'is_live' in body ? Boolean(body.is_live) : undefined,
+    );
+    if (syncedLive !== undefined) updates.is_live = syncedLive;
+  }
+
+  const relatedCallId =
+    typeof body.related_call_id === 'string' && body.related_call_id.trim()
+      ? body.related_call_id.trim()
+      : null;
+
   const { data, error } = await ctx.service
     .from('clients')
     .update(updates)
@@ -193,14 +238,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Enrich the trigger-created history row when lifecycle changes with feedback.
-  if (newLifecycle && (statusChangeReason || statusChangeNote)) {
-    const since = new Date(Date.now() - 10_000).toISOString();
+  if (newLifecycle && previousLifecycle !== newLifecycle) {
     const { data: historyRows, error: historyError } = await ctx.service
       .from('client_status_history')
       .select('id')
       .eq('client_id', id)
+      .eq('previous_status', previousLifecycle)
       .eq('new_status', newLifecycle)
-      .gte('changed_at', since)
+      .eq('source', 'trigger')
       .order('changed_at', { ascending: false })
       .limit(1);
 
@@ -209,13 +254,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const historyId = historyRows?.[0]?.id;
-    if (historyId) {
+    if (historyId && (statusChangeReason || statusChangeNote || relatedCallId)) {
       const historyUpdate: Record<string, unknown> = {
         source: 'manual',
         changed_by: ctx.userId,
       };
       if (statusChangeReason) historyUpdate.reason_code = statusChangeReason;
       if (statusChangeNote) historyUpdate.note = statusChangeNote;
+      if (relatedCallId) historyUpdate.related_call_id = relatedCallId;
 
       const { error: enrichError } = await ctx.service
         .from('client_status_history')
@@ -225,7 +271,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (enrichError) {
         return NextResponse.json({ error: enrichError.message }, { status: 500 });
       }
+
+      if (relatedCallId) {
+        await ctx.service
+          .from('client_calls')
+          .update({ status_history_id: historyId })
+          .eq('id', relatedCallId)
+          .eq('client_id', id);
+      }
     }
+  }
+
+  if (includeRevenue && 'mrr' in updates && updates.mrr !== previousMrr) {
+    await ctx.service.from('client_mrr_history').insert({
+      client_id: id,
+      previous_mrr: previousMrr,
+      new_mrr: updates.mrr as number | null,
+      changed_by: ctx.userId,
+      note: typeof body.mrr_change_note === 'string' ? body.mrr_change_note.trim() || null : null,
+    });
   }
 
   const client = includeRevenue ? data : redactClientMoneyFields(data);

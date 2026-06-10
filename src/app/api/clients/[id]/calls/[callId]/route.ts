@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
-import { CLIENT_CALL_FIELDS, isValidCallType } from '@/lib/client-calls';
+import { CLIENT_CALL_FIELDS, isValidCallDisposition, isValidCallType } from '@/lib/client-calls';
 import { parseCheckinFormInput, validateCheckinFormForSave } from '@/lib/checkin-form';
 
 function optionalText(value: unknown): string | null | undefined {
@@ -86,6 +86,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
     updates.checkin_form = parsed;
   }
+  if (body.duration_seconds !== undefined) {
+    const n = body.duration_seconds === null || body.duration_seconds === '' ? null : Number(body.duration_seconds);
+    updates.duration_seconds = Number.isFinite(n) ? n : null;
+  }
+  if (body.disposition !== undefined) {
+    const d = optionalText(body.disposition);
+    if (d && !isValidCallDisposition(d)) {
+      return NextResponse.json({ error: 'Invalid disposition' }, { status: 400 });
+    }
+    updates.disposition = d;
+  }
+  if (body.follow_up_due_at !== undefined) {
+    updates.follow_up_due_at =
+      body.follow_up_due_at && typeof body.follow_up_due_at === 'string'
+        ? new Date(body.follow_up_due_at).toISOString()
+        : null;
+  }
 
   if (Object.keys(updates).length <= 2) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
@@ -108,4 +125,35 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   return NextResponse.json({ call: data });
+}
+
+// DELETE — soft-delete account call.
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string; callId: string }> },
+) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const denied = requireAnyPermission(ctx, ['admin_clients', 'admin_billing', 'client_calls']);
+  if (denied) return denied;
+
+  const { id: clientId, callId } = await params;
+  const { data, error } = await ctx.service
+    .from('client_calls')
+    .update({
+      deleted_at: new Date().toISOString(),
+      updated_by: ctx.userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', callId)
+    .eq('client_id', clientId)
+    .is('deleted_at', null)
+    .select('id')
+    .single();
+
+  if (error) {
+    const status = error.code === 'PGRST116' ? 404 : 500;
+    return NextResponse.json({ error: error.message }, { status });
+  }
+  return NextResponse.json({ deleted: true, id: data.id });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission, requireClientRevenue } from '@/lib/api-auth';
 import { computeNextBillingDate, deriveStatus, balanceOf, recordedState, type BillingRow } from '@/lib/billing';
+import { VOIDED_BILLING_STATUS } from '@/lib/billing-query';
 import {
   canViewClientRevenue,
   redactBillingRow,
@@ -35,6 +36,7 @@ export async function GET(req: Request) {
     const { data, error } = await ctx.service
       .from('client_billings')
       .select(BILLING_FIELDS)
+      .neq('status', VOIDED_BILLING_STATUS)
       .eq('client_id', clientId)
       .order('billed_on', { ascending: false });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -44,7 +46,11 @@ export async function GET(req: Request) {
 
   const [clientsRes, billingsRes] = await Promise.all([
     ctx.service.from('clients').select(CLIENT_BILLING_FIELDS).order('name'),
-    ctx.service.from('client_billings').select(BILLING_FIELDS).order('billed_on', { ascending: false }),
+    ctx.service
+      .from('client_billings')
+      .select(BILLING_FIELDS)
+      .neq('status', VOIDED_BILLING_STATUS)
+      .order('billed_on', { ascending: false }),
   ]);
 
   if (clientsRes.error) return NextResponse.json({ error: clientsRes.error.message }, { status: 500 });
@@ -95,7 +101,7 @@ export async function GET(req: Request) {
       const amount = Number(b.amount) || 0;
       if (b.billed_on >= monthStart && b.billed_on <= today) billedThisMonth += amount;
       const state = recordedState(b, now);
-      if (state === 'paid' || state === 'refunded') continue;
+      if (state === 'paid' || state === 'refunded' || state === 'voided') continue;
       const balance = balanceOf(b);
       openTotal += balance;
       if (state === 'overdue' || state === 'failed') overdueTotal += balance;

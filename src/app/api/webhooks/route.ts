@@ -8,6 +8,7 @@ import {
   CALL_CENTER_TIMEZONE,
   INGEST_SOURCE_TIMEZONE,
 } from '@/lib/time';
+import { resolveClientId } from '@/lib/resolve-client';
 
 function isTruthyPayloadFlag(value: unknown): boolean {
   if (value === true || value === 1) return true;
@@ -162,32 +163,11 @@ export async function POST(req: Request) {
 
     const normalizedEventType = normalizeEventType(eventType);
 
-    // Resolve client_id by name or id
-    let client_id = payload.client_id as string | undefined;
-    const client_name = jsonStringField(payload.client_name) ?? undefined;
-
-    if (!client_id && client_name) {
-      const { data: client, error: clientErr } = await service
-        .from('clients')
-        .select('id')
-        .eq('name', client_name)
-        .maybeSingle();
-      if (clientErr) {
-        console.error('[webhooks] client lookup failed', clientErr.message);
-        return NextResponse.json({ error: clientErr.message }, { status: 500 });
-      }
-      if (!client) {
-        return NextResponse.json(
-          { error: `Client "${client_name}" not found — must match clients.name in Supabase exactly.` },
-          { status: 400 },
-        );
-      }
-      client_id = client.id;
+    const resolved = await resolveClientId(service, payload, jsonStringField);
+    if ('error' in resolved) {
+      return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
-
-    if (!client_id) {
-      return NextResponse.json({ error: 'client_id or client_name is required' }, { status: 400 });
-    }
+    const client_id = resolved.client_id;
 
     // Follow-up hook: qualified/hot often arrive after the first "new lead" payload. Update the
     // existing lead row rather than inserting a second lead (which would inflate Total Leads).

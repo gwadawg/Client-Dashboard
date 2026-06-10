@@ -425,7 +425,7 @@ if (WITH_FLAG_EVENTS) {
       });
     }
     if (p.offer) conversionEvents.push({ ...base, event_type: 'proposal_sent' });
-    if (p.closed) conversionEvents.push({ ...base, event_type: 'closed' });
+    if (p.closed) conversionEvents.push({ ...base, event_type: 'loan_funded' });
   }
 }
 

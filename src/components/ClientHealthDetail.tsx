@@ -21,6 +21,8 @@ type MaturityInfo = {
   recent_start: string;
   recent_end: string;
 };
+import { callTypeLabel } from "@/lib/client-calls";
+import { noteTypeLabel, reasonLabel } from "@/lib/client-feedback";
 import ClientActionLog from "./ClientActionLog";
 import ClientTimelineChart from "./ClientTimelineChart";
 import ClientAiDiagnosis from "./ClientAiDiagnosis";
@@ -31,6 +33,18 @@ type Props = {
   startDate: string;
   endDate: string;
   onBack: () => void;
+  onOpenClientFile?: () => void;
+};
+
+type CrmNote = { note_type: string; body: string; created_at: string; reason_code?: string | null };
+type CrmCall = { call_type: string; called_at: string; notes?: string | null };
+type HealthSnapshotRow = {
+  id: string;
+  period_start: string;
+  period_end: string;
+  worst_tier: string;
+  constraint_label: string | null;
+  created_at: string;
 };
 
 type DetailResponse = {
@@ -79,11 +93,14 @@ const cardStyle = {
   border: "1px solid rgba(255,255,255,0.06)",
 } as React.CSSProperties;
 
-export default function ClientHealthDetail({ clientId, clientName, startDate, endDate, onBack }: Props) {
+export default function ClientHealthDetail({ clientId, clientName, startDate, endDate, onBack, onOpenClientFile }: Props) {
   const [data, setData] = useState<DetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [logReloadKey, setLogReloadKey] = useState(0);
+  const [crmNotes, setCrmNotes] = useState<CrmNote[]>([]);
+  const [crmCalls, setCrmCalls] = useState<CrmCall[]>([]);
+  const [snapshots, setSnapshots] = useState<HealthSnapshotRow[]>([]);
 
   const load = useCallback(() => {
     if (!startDate || !endDate) return;
@@ -106,6 +123,22 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    fetch(`/api/clients/${clientId}/context`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.context) {
+          setCrmNotes((d.context.notes ?? []).slice(0, 5) as CrmNote[]);
+          setCrmCalls((d.context.calls ?? []).slice(0, 5) as CrmCall[]);
+        }
+      })
+      .catch(() => {});
+    fetch(`/api/client-health/${clientId}/snapshots?limit=8`)
+      .then(r => r.json())
+      .then(d => setSnapshots(d.snapshots ?? []))
+      .catch(() => {});
+  }, [clientId]);
 
   return (
     <div className="space-y-6 max-w-[1100px]">
@@ -150,7 +183,19 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                   </p>
                 ) : null}
               </div>
-              <TierBadge tier={data.current.worst_tier} />
+              <div className="flex items-center gap-2">
+                {onOpenClientFile && (
+                  <button
+                    type="button"
+                    onClick={onOpenClientFile}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                    style={{ color: "#38bdf8", background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.25)" }}
+                  >
+                    Open client file
+                  </button>
+                )}
+                <TierBadge tier={data.current.worst_tier} />
+              </div>
             </div>
 
             {data.recent ? (
@@ -295,6 +340,80 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
               ))}
             </div>
           </div>
+
+          {/* CRM context */}
+          {(crmNotes.length > 0 || crmCalls.length > 0) && (
+            <div className="rounded-xl p-5" style={cardStyle}>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
+                  Account context
+                </h3>
+                {onOpenClientFile && (
+                  <button type="button" onClick={onOpenClientFile} className="text-xs font-semibold" style={{ color: "#38bdf8" }}>
+                    View full file →
+                  </button>
+                )}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#475569" }}>Recent notes</p>
+                  {crmNotes.length === 0 ? (
+                    <p className="text-xs" style={{ color: "#334155" }}>No notes yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {crmNotes.map((n, i) => (
+                        <div key={i} className="rounded-lg px-3 py-2" style={{ background: "#050c18" }}>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "#a78bfa" }}>{noteTypeLabel(n.note_type)}</p>
+                          <p className="text-xs mt-1 line-clamp-3 whitespace-pre-wrap" style={{ color: "#94a3b8" }}>{n.body}</p>
+                          {n.reason_code && <p className="text-[10px] mt-1" style={{ color: "#64748b" }}>{reasonLabel(n.reason_code)}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: "#475569" }}>Recent calls</p>
+                  {crmCalls.length === 0 ? (
+                    <p className="text-xs" style={{ color: "#334155" }}>No calls logged.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {crmCalls.map((c, i) => (
+                        <div key={i} className="rounded-lg px-3 py-2" style={{ background: "#050c18" }}>
+                          <p className="text-[10px] uppercase tracking-wide" style={{ color: "#f59e0b" }}>{callTypeLabel(c.call_type)}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: "#64748b" }}>{c.called_at.slice(0, 10)}</p>
+                          {c.notes && <p className="text-xs mt-1 line-clamp-2" style={{ color: "#94a3b8" }}>{c.notes}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Frozen health snapshots */}
+          {snapshots.length > 0 && (
+            <div className="rounded-xl p-5" style={cardStyle}>
+              <h3 className="text-base font-semibold mb-3" style={{ color: "#e2e8f0" }}>
+                Health snapshot history
+              </h3>
+              <div className="space-y-2">
+                {snapshots.map(s => (
+                  <div key={s.id} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2" style={{ background: "#050c18" }}>
+                    <div>
+                      <p className="text-xs" style={{ color: "#cbd5e1" }}>
+                        {s.period_start} → {s.period_end}
+                      </p>
+                      {s.constraint_label && (
+                        <p className="text-[10px] mt-0.5" style={{ color: "#64748b" }}>{s.constraint_label}</p>
+                      )}
+                    </div>
+                    <TierBadge tier={s.worst_tier as HealthTier} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* AI diagnosis */}
           <ClientAiDiagnosis

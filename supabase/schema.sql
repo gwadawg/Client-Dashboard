@@ -58,7 +58,7 @@ create table if not exists clients (
   client_stage           text,
   launch_date            date,
   date_signed            date,
-  churned_at             date,
+  churned_at             timestamptz,
   last_status_changed_at timestamptz,
 
   -- Revenue / contract
@@ -116,7 +116,7 @@ alter table clients add column if not exists lifecycle_status       text default
 alter table clients add column if not exists client_stage           text;
 alter table clients add column if not exists launch_date            date;
 alter table clients add column if not exists date_signed            date;
-alter table clients add column if not exists churned_at             date;
+alter table clients add column if not exists churned_at             timestamptz;
 alter table clients add column if not exists last_status_changed_at timestamptz;
 alter table clients add column if not exists mrr                    numeric;
 alter table clients add column if not exists daily_adspend          numeric;
@@ -538,6 +538,17 @@ create table if not exists client_calls (
   updated_at    timestamptz not null default now(),
   created_by    uuid    references auth.users(id) on delete set null,
   updated_by    uuid    references auth.users(id) on delete set null,
+  duration_seconds int,
+  disposition   text,
+  follow_up_due_at timestamptz,
+  deleted_at    timestamptz,
+  search_vector tsvector generated always as (
+    to_tsvector('english',
+      coalesce(transcript, '') || ' ' ||
+      coalesce(notes, '') || ' ' ||
+      coalesce(attendees, '')
+    )
+  ) stored,
   constraint client_calls_type_check check (
     call_type in ('onboarding', 'launch', 'checkin', 'churn', 'other')
   )
@@ -554,6 +565,10 @@ create table if not exists client_notes (
   body        text    not null,
   created_at  timestamptz not null default now(),
   created_by  uuid    references auth.users(id) on delete set null,
+  updated_at  timestamptz,
+  updated_by  uuid    references auth.users(id) on delete set null,
+  deleted_at  timestamptz,
+  search_vector tsvector generated always as (to_tsvector('english', coalesce(body, ''))) stored,
   constraint client_notes_type_check check (
     note_type in ('general', 'concern', 'win', 'internal')
   ),
@@ -600,9 +615,9 @@ begin
 
     new.last_status_changed_at := now();
 
-    if new.lifecycle_status = 'churned' and new.churned_at is null then
-      new.churned_at := current_date;
-    elsif new.lifecycle_status <> 'churned' then
+    if new.lifecycle_status = 'churned' then
+      new.churned_at := now();
+    elsif new.lifecycle_status not in ('churned', 'off_boarding') then
       new.churned_at := null;
     end if;
   end if;
@@ -831,11 +846,11 @@ create or replace view v_client_activity as
   select c.client_id, c.id, 'call'::text, c.called_at, c.call_type,
     trim(both ' ' from c.call_type || coalesce(' · ' || left(c.attendees, 80), '')
       || coalesce(' — ' || left(coalesce(c.notes, c.transcript), 200), '')),
-    'client_calls'::text from client_calls c
+    'client_calls'::text from client_calls c where c.deleted_at is null
   union all
   select n.client_id, n.id, 'note'::text, n.created_at, n.note_type,
     trim(both ' ' from n.note_type || coalesce(' · ' || n.reason_code, '') || ' — ' || left(n.body, 200)),
-    'client_notes'::text from client_notes n
+    'client_notes'::text from client_notes n where n.deleted_at is null
   union all
   select a.client_id, a.id, 'action'::text, a.created_at, coalesce(a.layer, 'action'),
     trim(both ' ' from a.title || coalesce(' · ' || a.constraint_label, '')
@@ -854,8 +869,36 @@ create or replace view v_churn_reasons as
 select date_trunc('month', h.changed_at)::date as period_month, h.reason_code,
   count(*) as churn_count, coalesce(sum(h.mrr_at_change), 0) as lost_mrr
 from client_status_history h
-where h.new_status = 'churned' and h.reason_code is not null
+where h.new_status in ('churned', 'off_boarding') and h.reason_code is not null
 group by date_trunc('month', h.changed_at), h.reason_code;
 
 grant select on v_churn_reasons to service_role;
 grant select on v_churn_reasons to authenticated;
+
+-- Phase 2: MRR history, billing reminder dedupe, billing↔lifecycle link
+alter table client_billings add column if not exists status_history_id uuid
+  references client_status_history(id) on delete set null;
+
+create table if not exists client_mrr_history (
+  id            uuid primary key default gen_random_uuid(),
+  client_id     uuid not null references clients(id) on delete cascade,
+  previous_mrr  numeric,
+  new_mrr       numeric,
+  changed_at    timestamptz not null default now(),
+  changed_by    uuid references auth.users(id) on delete set null,
+  note          text
+);
+create index if not exists client_mrr_history_client on client_mrr_history(client_id, changed_at desc);
+
+create table if not exists billing_reminder_log (
+  id              uuid primary key default gen_random_uuid(),
+  client_id       uuid not null references clients(id) on delete cascade,
+  reminder_date   date not null,
+  next_billing_date date not null,
+  clickup_task_id text,
+  created_at      timestamptz not null default now(),
+  unique (client_id, reminder_date)
+);
+create index if not exists billing_reminder_log_date on billing_reminder_log(reminder_date desc);
+create index if not exists client_calls_search on client_calls using gin(search_vector);
+create index if not exists client_notes_search on client_notes using gin(search_vector);

@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { isValidNoteType, isValidReasonCode } from '@/lib/client-feedback';
 
-const SELECT = 'id, client_id, note_type, reason_code, body, created_at, created_by';
+const SELECT =
+  'id, client_id, note_type, reason_code, body, related_call_id, created_at, created_by';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
@@ -47,6 +48,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: 'Client not found' }, { status: 404 });
   }
 
+  const relatedCallId =
+    typeof body.related_call_id === 'string' && body.related_call_id.trim()
+      ? body.related_call_id.trim()
+      : null;
+
   const { data, error } = await ctx.service
     .from('client_notes')
     .insert({
@@ -54,6 +60,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       note_type: noteType,
       reason_code: reasonCode,
       body: noteBody,
+      related_call_id: relatedCallId,
       created_by: ctx.userId,
     })
     .select(SELECT)

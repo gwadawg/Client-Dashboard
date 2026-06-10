@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import {
+  fetchClientContextPackage,
+  formatCrmContextForAi,
+} from '@/lib/fetch-client-package';
+import { buildClientHealthSnapshot } from '@/lib/client-health';
 import { fetchCombinedTrendSpend } from '@/lib/spend';
 import { runAiDiagnosis, type WindowMetrics } from '@/lib/ai-diagnose';
 import type { ClientKpiBenchmarks } from '@/lib/client-health';
+import type { EventRow } from '@/lib/metrics';
 
 type DatedEvent = { event_type: string; occurred_at: string; is_qualified?: boolean | null };
 type DailySpend = { spend_date: string; amount: number | string };
@@ -60,12 +66,15 @@ export async function POST(
 
   const w30Start = shift(endDate, 29);
 
-  const [{ data: client, error: clientError }, { data: events, error: eventsError }, spendDaily] =
+  const w14Start = shift(endDate, 13);
+  const [{ data: client, error: clientError }, { data: events, error: eventsError }, spendDaily, crmRes] =
     await Promise.all([
       ctx.service.from('clients').select('id, name, kpi_benchmarks').eq('id', clientId).single(),
       ctx.service
         .from('events')
-        .select('event_type, occurred_at, is_qualified')
+        .select(
+          'event_type, occurred_at, is_qualified, is_pickup, is_conversation, speed_to_lead_seconds, is_hot, is_out_of_state',
+        )
         .eq('client_id', clientId)
         .gte('occurred_at', `${w30Start}T00:00:00.000Z`)
         .lte('occurred_at', `${endDate}T23:59:59.999Z`)
@@ -75,6 +84,7 @@ export async function POST(
         start_date: w30Start,
         end_date: endDate,
       }),
+      fetchClientContextPackage(ctx.service, clientId),
     ]);
 
   if (clientError || !client) {
@@ -101,32 +111,48 @@ export async function POST(
   // grader (closes redesign open Q3). Sparse: absent KPIs inherit global defaults.
   const benchmarks = (client.kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
 
+  const crmContext =
+    'error' in crmRes ? null : formatCrmContextForAi(crmRes.pkg);
+
   let diagnosis;
   try {
-    diagnosis = await runAiDiagnosis(input, benchmarks);
+    diagnosis = await runAiDiagnosis(input, benchmarks, crmContext);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'AI diagnosis failed';
     return NextResponse.json({ error: msg }, { status: 502 });
   }
 
-  // Persist as a snapshot so the verdict is part of the client's history.
+  const w14Events = evs.filter(
+    e => e.occurred_at >= `${w14Start}T00:00:00.000Z` && e.occurred_at <= `${endDate}T23:59:59.999Z`,
+  );
+  const w14Spend = spendDaily.filter(s => s.spend_date >= w14Start && s.spend_date <= endDate);
+  const healthSnap = buildClientHealthSnapshot(
+    w14Events as EventRow[],
+    w14Spend,
+    benchmarks,
+  );
+
   const w14 = input.windows.w14;
-  // True CPConv = spend ÷ conversations (live transfers + shows + claimed), matching
-  // the conversation-based verdict the grader and prompt now use — not shows-only.
-  const w14Conversations = w14.live_transfers + w14.appts_showed + w14.claimed;
   await ctx.service.from('client_health_snapshots').insert({
     client_id: clientId,
-    period_start: shift(endDate, 13),
+    period_start: w14Start,
     period_end: endDate,
     window_code: 'W14',
-    cpconv: w14Conversations > 0 ? w14.spend / w14Conversations : null,
-    cpql: w14.qualified_leads > 0 ? w14.spend / w14.qualified_leads : null,
-    cpl: w14.leads > 0 ? w14.spend / w14.leads : null,
+    cpconv: healthSnap.cpconv,
+    cpql: healthSnap.cpql,
+    cpl: healthSnap.metrics.cpl,
+    conversation_yield: healthSnap.conversation_yield,
+    show_rate: healthSnap.metrics.net_show_pct,
+    booking_rate: healthSnap.metrics.appt_booking_rate,
+    lead_to_qual: healthSnap.lead_to_qualified_pct,
+    attention_score: healthSnap.attention_score,
+    worst_tier: healthSnap.worst_tier,
     primary_constraint: diagnosis.primary_constraint,
-    metrics: w14,
+    constraint_label: healthSnap.constraint_label,
+    metrics: healthSnap.metrics,
     ai_diagnosis: diagnosis,
     created_by: ctx.userId,
   });
 
-  return NextResponse.json({ input, diagnosis });
+  return NextResponse.json({ input, diagnosis, crm_context_included: !!crmContext });
 }

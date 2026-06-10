@@ -150,6 +150,7 @@ function extractJson(text: string): unknown {
 export async function runAiDiagnosis(
   input: DiagnoseInput,
   benchmarks?: ClientKpiBenchmarks | null,
+  crmContext?: string | null,
 ): Promise<AiDiagnosis> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -166,7 +167,12 @@ export async function runAiDiagnosis(
     messages: [
       {
         role: 'user',
-        content: `Diagnose this client. Raw counts per window:\n\n${JSON.stringify(input, null, 2)}`,
+        content: [
+          `Diagnose this client. Raw counts per window:\n\n${JSON.stringify(input, null, 2)}`,
+          crmContext?.trim()
+            ? `\n\n--- ACCOUNT CRM CONTEXT (notes, calls, churn, billing — use for narrative, not for KPI math) ---\n${crmContext.trim()}`
+            : '',
+        ].join(''),
       },
     ],
   });

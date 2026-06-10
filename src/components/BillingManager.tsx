@@ -173,7 +173,8 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     setBusy(null);
   }
 
-  async function deleteBilling(id: string) {
+  async function voidBilling(id: string) {
+    if (!window.confirm("Void this billing? The row stays in the ledger for audit but is excluded from totals.")) return;
     setBusy(id);
     await fetch(`/api/billings/${id}`, { method: "DELETE" });
     await load();
@@ -246,8 +247,8 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
 
       for (const b of c.billings) {
         const state = recordedState(b);
-        if (state === "paid" || state === "refunded") {
-          paid.push({ kind: "recorded", client: c, billing: b });
+        if (state === "paid" || state === "refunded" || state === "voided") {
+          if (state !== "voided") paid.push({ kind: "recorded", client: c, billing: b });
         } else {
           openCount += 1;
           (state === "overdue" || state === "failed" ? pastDue : upcoming)
@@ -321,7 +322,7 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         busy={busy}
         canViewRevenue={canViewRevenue}
         onPatch={patchBilling}
-        onDelete={deleteBilling}
+        onDelete={voidBilling}
         onRecord={recordBilling}
       />
 
@@ -333,11 +334,11 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         busy={busy}
         canViewRevenue={canViewRevenue}
         onPatch={patchBilling}
-        onDelete={deleteBilling}
+        onDelete={voidBilling}
         onRecord={recordBilling}
       />
 
-      <PaidSection rows={paid} busy={busy} canViewRevenue={canViewRevenue} onPatch={patchBilling} onDelete={deleteBilling} />
+      <PaidSection rows={paid} busy={busy} canViewRevenue={canViewRevenue} onPatch={patchBilling} onDelete={voidBilling} />
 
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
         <button
@@ -589,7 +590,7 @@ function RecordedEditor({
         <button onClick={() => onPatch(billing.id, { status: "failed" })} disabled={isBusy} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#ef4444", background: "rgba(239,68,68,0.1)", opacity: isBusy ? 0.5 : 1 }}>Mark failed</button>
         <button onClick={() => onPatch(billing.id, { status: "refunded" })} disabled={isBusy} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#94a3b8", background: "rgba(148,163,184,0.1)", opacity: isBusy ? 0.5 : 1 }}>Refund</button>
         <button onClick={() => onPatch(billing.id, { status: "pending", paid_on: null, amount_paid: 0 })} disabled={isBusy} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#f59e0b", background: "rgba(245,158,11,0.1)", opacity: isBusy ? 0.5 : 1 }}>Reopen / reset</button>
-        <button onClick={() => onDelete(billing.id)} disabled={isBusy} className="text-xs px-3 py-1.5 rounded" style={{ color: "#475569" }}>Remove</button>
+        <button onClick={() => onDelete(billing.id)} disabled={isBusy} className="text-xs px-3 py-1.5 rounded" style={{ color: "#475569" }}>Void</button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
@@ -677,7 +678,7 @@ function PaidSection({
                         <button onClick={() => onPatch(b.id, { status: "refunded" })} disabled={isBusy} className="text-xs font-semibold mr-3" style={{ color: "#94a3b8" }}>Refund</button>
                       )}
                       <button onClick={() => onPatch(b.id, { status: "pending", paid_on: null, amount_paid: 0 })} disabled={isBusy} className="text-xs mr-3" style={{ color: "#f59e0b" }}>Reopen</button>
-                      <button onClick={() => onDelete(b.id)} disabled={isBusy} className="text-xs" style={{ color: "#475569" }}>Remove</button>
+                      <button onClick={() => onDelete(b.id)} disabled={isBusy} className="text-xs" style={{ color: "#475569" }}>Void</button>
                     </td>
                   )}
                 </tr>

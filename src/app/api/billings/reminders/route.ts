@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
+import { VOIDED_BILLING_STATUS } from '@/lib/billing-query';
 import { computeNextBillingDate, deriveStatus, type BillingRow } from '@/lib/billing';
+import { createClickUpTask, fmtMoney, getClickUpToken } from '@/lib/clickup';
 
 const CLIENT_BILLING_FIELDS = 'id, name, is_live, mrr, billing_type, billing_day, launch_date, date_signed';
 const BILLING_FIELDS = 'client_id, billed_on, status';
-const CLICKUP_API = 'https://api.clickup.com/api/v2';
 
 type ReminderClient = {
   id: string;
@@ -18,40 +19,6 @@ type ReminderClient = {
   date_signed: string | null;
 };
 
-function fmtMoney(n: number | null): string {
-  if (typeof n !== 'number') return 'n/a';
-  return `$${n.toLocaleString('en-US')}`;
-}
-
-async function createClickUpTask(
-  listId: string,
-  token: string,
-  client: ReminderClient,
-  nextDate: string,
-  status: string,
-) {
-  const dueMs = Date.parse(`${nextDate}T00:00:00Z`);
-  const res = await fetch(`${CLICKUP_API}/list/${listId}/task`, {
-    method: 'POST',
-    headers: { Authorization: token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: `Billing ${status === 'overdue' ? 'OVERDUE' : 'due'}: ${client.name} (${nextDate})`,
-      description:
-        `Client: ${client.name}\n` +
-        `Status: ${status}\n` +
-        `Next billing date: ${nextDate}\n` +
-        `Monthly: ${fmtMoney(client.mrr)}\n` +
-        `Billing type: ${client.billing_type ?? 'n/a'}`,
-      due_date: Number.isNaN(dueMs) ? undefined : dueMs,
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`ClickUp ${res.status}: ${text}`);
-  }
-  return res.json();
-}
-
 // POST /api/billings/reminders — secret-guarded; called by an external scheduler.
 // Creates a ClickUp task for every client whose next billing is due soon / overdue.
 export async function POST(req: Request) {
@@ -59,7 +26,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const token = process.env.CLICKUP_API_TOKEN;
+  const token = getClickUpToken();
   const listId = process.env.CLICKUP_BILLING_LIST_ID;
   if (!token || !listId) {
     return NextResponse.json(
@@ -71,7 +38,11 @@ export async function POST(req: Request) {
   const service = createServiceClient();
   const [clientsRes, billingsRes] = await Promise.all([
     service.from('clients').select(CLIENT_BILLING_FIELDS).eq('is_live', true),
-    service.from('client_billings').select(BILLING_FIELDS).order('billed_on', { ascending: false }),
+    service
+      .from('client_billings')
+      .select(BILLING_FIELDS)
+      .neq('status', VOIDED_BILLING_STATUS)
+      .order('billed_on', { ascending: false }),
   ]);
 
   if (clientsRes.error) return NextResponse.json({ error: clientsRes.error.message }, { status: 500 });
@@ -92,16 +63,46 @@ export async function POST(req: Request) {
     }
   }
 
+  const today = new Date().toISOString().slice(0, 10);
   let created = 0;
+  let skipped = 0;
   const errors: { client: string; error: string }[] = [];
   for (const { client, nextDate, status } of due) {
+    const { data: existing } = await service
+      .from('billing_reminder_log')
+      .select('id')
+      .eq('client_id', client.id)
+      .eq('reminder_date', today)
+      .maybeSingle();
+
+    if (existing) {
+      skipped += 1;
+      continue;
+    }
+
     try {
-      await createClickUpTask(listId, token, client, nextDate, status);
+      const dueMs = Date.parse(`${nextDate}T00:00:00Z`);
+      const task = await createClickUpTask(listId, token, {
+        name: `Billing ${status === 'overdue' ? 'OVERDUE' : 'due'}: ${client.name} (${nextDate})`,
+        description:
+          `Client: ${client.name}\n` +
+          `Status: ${status}\n` +
+          `Next billing date: ${nextDate}\n` +
+          `Monthly: ${fmtMoney(client.mrr)}\n` +
+          `Billing type: ${client.billing_type ?? 'n/a'}`,
+        due_date: Number.isNaN(dueMs) ? undefined : dueMs,
+      });
+      await service.from('billing_reminder_log').insert({
+        client_id: client.id,
+        reminder_date: today,
+        next_billing_date: nextDate,
+        clickup_task_id: task?.id != null ? String(task.id) : null,
+      });
       created += 1;
     } catch (e) {
       errors.push({ client: client.name, error: e instanceof Error ? e.message : String(e) });
     }
   }
 
-  return NextResponse.json({ matched: due.length, created, errors });
+  return NextResponse.json({ matched: due.length, created, skipped, errors });
 }

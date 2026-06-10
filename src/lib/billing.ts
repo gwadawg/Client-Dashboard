@@ -33,7 +33,7 @@ export interface BillingAmounts {
   status?: string | null;
 }
 
-export type RecordedState = "paid" | "partial" | "overdue" | "pending" | "failed" | "refunded";
+export type RecordedState = "paid" | "partial" | "overdue" | "pending" | "failed" | "refunded" | "voided";
 
 /** Outstanding balance on a billing (never below zero). */
 export function balanceOf(b: { amount: number; amount_paid?: number | null }): number {
@@ -50,7 +50,7 @@ export function recordedState(
   b: BillingAmounts,
   today: Date = new Date(),
 ): RecordedState {
-  if (b.status === "failed" || b.status === "refunded") return b.status;
+  if (b.status === "failed" || b.status === "refunded" || b.status === "voided") return b.status;
   const balance = balanceOf(b);
   const paid = Number(b.amount_paid) || 0;
   if (balance <= 0) return "paid";

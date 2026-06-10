@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import CheckinCallFormFields from "@/components/CheckinCallFormFields";
 import CheckinCallSummary from "@/components/CheckinCallSummary";
-import { CALL_TYPE_OPTIONS, callTypeLabel } from "@/lib/client-calls";
+import {
+  CALL_DISPOSITION_OPTIONS,
+  CALL_TYPE_OPTIONS,
+  callTypeLabel,
+  dispositionLabel,
+} from "@/lib/client-calls";
 import {
   EMPTY_CHECKIN_FORM,
   buildCheckinSummary,
@@ -100,6 +105,8 @@ type ClientNote = {
   reason_code: string | null;
   body: string;
   created_at: string;
+  created_by_label?: string | null;
+  updated_at?: string | null;
 };
 
 type ClientCall = {
@@ -111,6 +118,10 @@ type ClientCall = {
   notes: string | null;
   attendees: string | null;
   checkin_form: StoredCheckinForm | null;
+  duration_seconds: number | null;
+  disposition: string | null;
+  follow_up_due_at: string | null;
+  created_by_label?: string | null;
   updated_at: string;
 };
 
@@ -216,7 +227,15 @@ export default function ClientFile({
   const [attendees, setAttendees] = useState("");
   const [checkinForm, setCheckinForm] = useState<CheckinFormData>({ ...EMPTY_CHECKIN_FORM });
   const [savingCall, setSavingCall] = useState(false);
+  const [callDuration, setCallDuration] = useState("");
+  const [callDisposition, setCallDisposition] = useState("");
+  const [callFollowUp, setCallFollowUp] = useState("");
   const [editingCallId, setEditingCallId] = useState<string | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editNoteType, setEditNoteType] = useState("general");
+  const [editNoteReason, setEditNoteReason] = useState("");
+  const [editNoteBody, setEditNoteBody] = useState("");
+  const [savingNoteEdit, setSavingNoteEdit] = useState(false);
   const [expandedCallIds, setExpandedCallIds] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -321,6 +340,9 @@ export default function ClientFile({
         notes: notes || undefined,
         attendees: attendees || undefined,
         checkin_form: storedCheckin ?? undefined,
+        duration_seconds: callDuration.trim() ? Number(callDuration) : undefined,
+        disposition: callDisposition || undefined,
+        follow_up_due_at: callFollowUp ? new Date(callFollowUp).toISOString() : undefined,
       }),
     });
     const d = await res.json();
@@ -335,6 +357,9 @@ export default function ClientFile({
     setTranscript("");
     setCallNotes("");
     setAttendees("");
+    setCallDuration("");
+    setCallDisposition("");
+    setCallFollowUp("");
     setCheckinForm({ ...EMPTY_CHECKIN_FORM });
     await load();
     onUpdated?.();
@@ -349,6 +374,9 @@ export default function ClientFile({
     notes: string;
     attendees: string;
     checkin_form: CheckinFormData;
+    duration_seconds: string;
+    disposition: string;
+    follow_up_due_at: string;
   }) {
     const storedCheckin = form.call_type === "checkin" ? draftToStored(form.checkin_form) : null;
     if (form.call_type === "checkin" && !storedCheckin?.client_sentiment) {
@@ -370,6 +398,9 @@ export default function ClientFile({
         notes: notes || null,
         attendees: form.attendees || null,
         checkin_form: storedCheckin,
+        duration_seconds: form.duration_seconds.trim() ? Number(form.duration_seconds) : null,
+        disposition: form.disposition || null,
+        follow_up_due_at: form.follow_up_due_at ? new Date(form.follow_up_due_at).toISOString() : null,
       }),
     });
     const d = await res.json();
@@ -381,6 +412,62 @@ export default function ClientFile({
     await load();
     onUpdated?.();
     return true;
+  }
+
+  async function deleteCall(callId: string) {
+    if (!confirm("Remove this call from the client file? (Soft-delete — can be restored from DB.)")) return;
+    const res = await fetch(`/api/clients/${clientId}/calls/${callId}`, { method: "DELETE" });
+    const d = await res.json();
+    if (!res.ok) {
+      alert(d.error ?? "Failed to remove call");
+      return;
+    }
+    await load();
+    onUpdated?.();
+  }
+
+  function startNoteEdit(note: ClientNote) {
+    setEditingNoteId(note.id);
+    setEditNoteType(note.note_type);
+    setEditNoteReason(note.reason_code ?? "");
+    setEditNoteBody(note.body);
+  }
+
+  async function saveNoteEdit(noteId: string) {
+    const body = editNoteBody.trim();
+    if (!body) return;
+    setSavingNoteEdit(true);
+    const res = await fetch(`/api/clients/${clientId}/notes/${noteId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        body,
+        note_type: editNoteType,
+        reason_code: editNoteReason || null,
+      }),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      alert(d.error ?? "Failed to update note");
+      setSavingNoteEdit(false);
+      return;
+    }
+    setEditingNoteId(null);
+    await load();
+    onUpdated?.();
+    setSavingNoteEdit(false);
+  }
+
+  async function deleteNote(noteId: string) {
+    if (!confirm("Remove this note?")) return;
+    const res = await fetch(`/api/clients/${clientId}/notes/${noteId}`, { method: "DELETE" });
+    const d = await res.json();
+    if (!res.ok) {
+      alert(d.error ?? "Failed to remove note");
+      return;
+    }
+    await load();
+    onUpdated?.();
   }
 
   function toggleCallExpanded(id: string) {
@@ -704,6 +791,46 @@ export default function ClientFile({
                     style={fieldStyle}
                   />
                 </label>
+                <div className="grid grid-cols-3 gap-3">
+                  <label className="block">
+                    <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Duration (sec)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={callDuration}
+                      disabled={savingCall}
+                      onChange={e => setCallDuration(e.target.value)}
+                      className="mt-1"
+                      style={fieldStyle}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Disposition</span>
+                    <select
+                      value={callDisposition}
+                      disabled={savingCall}
+                      onChange={e => setCallDisposition(e.target.value)}
+                      className="mt-1 cursor-pointer"
+                      style={fieldStyle}
+                    >
+                      <option value="">None</option>
+                      {CALL_DISPOSITION_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Follow-up due</span>
+                    <input
+                      type="datetime-local"
+                      value={callFollowUp}
+                      disabled={savingCall}
+                      onChange={e => setCallFollowUp(e.target.value)}
+                      className="mt-1"
+                      style={fieldStyle}
+                    />
+                  </label>
+                </div>
 
                 {callType === "checkin" && (
                   <CheckinCallFormFields
@@ -767,6 +894,7 @@ export default function ClientFile({
                       onStartEdit={() => setEditingCallId(call.id)}
                       onCancelEdit={() => setEditingCallId(null)}
                       onSave={form => saveCallEdit(call, form)}
+                      onDelete={() => deleteCall(call.id)}
                     />
                   ))}
                 </div>
@@ -831,22 +959,61 @@ export default function ClientFile({
               ) : (
                 <div className="space-y-2">
                   {notes.map(n => (
-                    <div
-                      key={n.id}
-                      className="rounded-lg px-4 py-3"
-                      style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.06)" }}
-                    >
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#a78bfa" }}>
-                          {noteTypeLabel(n.note_type)}
-                        </span>
-                        <span className="text-xs" style={{ color: "#475569" }}>{formatDateTime(n.created_at)}</span>
+                    editingNoteId === n.id ? (
+                      <div
+                        key={n.id}
+                        className="rounded-lg px-4 py-3 space-y-3"
+                        style={{ background: "#080f1e", border: "1px solid rgba(167,139,250,0.2)" }}
+                      >
+                        <div className="grid grid-cols-2 gap-3">
+                          <select value={editNoteType} disabled={savingNoteEdit} onChange={e => setEditNoteType(e.target.value)} className="cursor-pointer" style={fieldStyle}>
+                            {NOTE_TYPE_OPTIONS.map(o => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                          <select value={editNoteReason} disabled={savingNoteEdit} onChange={e => setEditNoteReason(e.target.value)} className="cursor-pointer" style={fieldStyle}>
+                            <option value="">No reason</option>
+                            {LIFECYCLE_REASON_OPTIONS.map(o => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <textarea value={editNoteBody} disabled={savingNoteEdit} onChange={e => setEditNoteBody(e.target.value)} rows={3} className="resize-y" style={fieldStyle} />
+                        <div className="flex gap-2">
+                          <button type="button" disabled={savingNoteEdit} onClick={() => saveNoteEdit(n.id)} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ color: "#a78bfa", background: "rgba(167,139,250,0.12)", border: "1px solid rgba(167,139,250,0.25)" }}>
+                            {savingNoteEdit ? "Saving…" : "Save"}
+                          </button>
+                          <button type="button" disabled={savingNoteEdit} onClick={() => setEditingNoteId(null)} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ color: "#94a3b8", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                            Cancel
+                          </button>
+                        </div>
                       </div>
-                      {n.reason_code && (
-                        <p className="text-xs mt-1" style={{ color: "#64748b" }}>{reasonLabel(n.reason_code)}</p>
-                      )}
-                      <p className="text-sm mt-1.5 whitespace-pre-wrap" style={{ color: "#cbd5e1" }}>{n.body}</p>
-                    </div>
+                    ) : (
+                      <div
+                        key={n.id}
+                        className="rounded-lg px-4 py-3"
+                        style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.06)" }}
+                      >
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#a78bfa" }}>
+                            {noteTypeLabel(n.note_type)}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs" style={{ color: "#475569" }}>
+                              {formatDateTime(n.created_at)}
+                              {n.created_by_label ? ` · ${n.created_by_label}` : ""}
+                              {n.updated_at && n.updated_at !== n.created_at ? " (edited)" : ""}
+                            </span>
+                            <button type="button" onClick={() => startNoteEdit(n)} className="text-xs font-semibold" style={{ color: "#a78bfa" }}>Edit</button>
+                            <button type="button" onClick={() => deleteNote(n.id)} className="text-xs font-semibold" style={{ color: "#64748b" }}>Remove</button>
+                          </div>
+                        </div>
+                        {n.reason_code && (
+                          <p className="text-xs mt-1" style={{ color: "#64748b" }}>{reasonLabel(n.reason_code)}</p>
+                        )}
+                        <p className="text-sm mt-1.5 whitespace-pre-wrap" style={{ color: "#cbd5e1" }}>{n.body}</p>
+                      </div>
+                    )
                   ))}
                 </div>
               )}
@@ -966,6 +1133,7 @@ function ClientCallCard({
   onStartEdit,
   onCancelEdit,
   onSave,
+  onDelete,
 }: {
   call: ClientCall;
   expanded: boolean;
@@ -981,7 +1149,11 @@ function ClientCallCard({
     notes: string;
     attendees: string;
     checkin_form: CheckinFormData;
+    duration_seconds: string;
+    disposition: string;
+    follow_up_due_at: string;
   }) => Promise<boolean>;
+  onDelete: () => void;
 }) {
   const [form, setForm] = useState({
     call_type: call.call_type,
@@ -991,6 +1163,9 @@ function ClientCallCard({
     notes: call.notes ?? "",
     attendees: call.attendees ?? "",
     checkin_form: storedToDraft(call.checkin_form),
+    duration_seconds: call.duration_seconds != null ? String(call.duration_seconds) : "",
+    disposition: call.disposition ?? "",
+    follow_up_due_at: call.follow_up_due_at ? toDatetimeLocal(call.follow_up_due_at) : "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -1004,6 +1179,9 @@ function ClientCallCard({
         notes: call.notes ?? "",
         attendees: call.attendees ?? "",
         checkin_form: storedToDraft(call.checkin_form),
+        duration_seconds: call.duration_seconds != null ? String(call.duration_seconds) : "",
+        disposition: call.disposition ?? "",
+        follow_up_due_at: call.follow_up_due_at ? toDatetimeLocal(call.follow_up_due_at) : "",
       });
     }
   }, [editing, call]);
@@ -1067,6 +1245,25 @@ function ClientCallCard({
             style={fieldStyle}
           />
         </label>
+        <div className="grid grid-cols-3 gap-3">
+          <label className="block">
+            <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Duration (sec)</span>
+            <input type="number" min={0} value={form.duration_seconds} disabled={saving} onChange={e => setForm(f => ({ ...f, duration_seconds: e.target.value }))} className="mt-1" style={fieldStyle} />
+          </label>
+          <label className="block">
+            <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Disposition</span>
+            <select value={form.disposition} disabled={saving} onChange={e => setForm(f => ({ ...f, disposition: e.target.value }))} className="mt-1 cursor-pointer" style={fieldStyle}>
+              <option value="">None</option>
+              {CALL_DISPOSITION_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Follow-up due</span>
+            <input type="datetime-local" value={form.follow_up_due_at} disabled={saving} onChange={e => setForm(f => ({ ...f, follow_up_due_at: e.target.value }))} className="mt-1" style={fieldStyle} />
+          </label>
+        </div>
         {form.call_type === "checkin" && (
           <CheckinCallFormFields
             value={form.checkin_form}
@@ -1140,10 +1337,21 @@ function ClientCallCard({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs whitespace-nowrap" style={{ color: "#475569" }}>{formatDateTime(call.called_at)}</span>
+          <span className="text-xs whitespace-nowrap" style={{ color: "#475569" }}>
+            {formatDateTime(call.called_at)}
+            {call.created_by_label ? ` · ${call.created_by_label}` : ""}
+          </span>
           <button type="button" onClick={onStartEdit} className="text-xs font-semibold" style={{ color: "#a78bfa" }}>Edit</button>
+          <button type="button" onClick={onDelete} className="text-xs font-semibold" style={{ color: "#64748b" }}>Remove</button>
         </div>
       </div>
+      {(call.duration_seconds != null || call.disposition || call.follow_up_due_at) && (
+        <p className="text-xs mt-1.5 flex flex-wrap gap-x-3" style={{ color: "#64748b" }}>
+          {call.duration_seconds != null && <span>{call.duration_seconds}s</span>}
+          {call.disposition && <span>{dispositionLabel(call.disposition)}</span>}
+          {call.follow_up_due_at && <span>Follow-up {formatDateTime(call.follow_up_due_at)}</span>}
+        </p>
+      )}
       {call.attendees && (
         <p className="text-xs mt-1.5" style={{ color: "#64748b" }}>Attendees: {call.attendees}</p>
       )}

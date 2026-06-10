@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission, requireClientRevenue } from '@/lib/api-auth';
+import { VOIDED_BILLING_STATUS } from '@/lib/billing-query';
 import {
   computeBusinessMetrics,
   currentMonth,
@@ -12,7 +13,8 @@ import {
 const CLIENT_FIELDS =
   'id, name, mrr, lifecycle_status, date_signed, churned_at, launch_date, offer, reporting_type, contract_end_date';
 
-const HISTORY_FIELDS = 'client_id, previous_status, new_status, mrr_at_change, changed_at';
+const HISTORY_FIELDS =
+  'client_id, previous_status, new_status, reason_code, note, mrr_at_change, changed_at';
 
 const BILLING_FIELDS =
   'client_id, billed_on, due_date, paid_on, amount, amount_paid, status, revenue_type, revenue_segment, lead_source, processing_fee, passthrough_amount';
@@ -37,10 +39,20 @@ export async function GET(req: Request) {
   const trendParam = Number(url.searchParams.get('trend_months'));
   const trendMonths = Number.isFinite(trendParam) && trendParam > 0 && trendParam <= 36 ? trendParam : 12;
 
+  const billingCutoff = (() => {
+    const d = new Date();
+    d.setUTCMonth(d.getUTCMonth() - 36);
+    return d.toISOString().slice(0, 10);
+  })();
+
   const [clientsRes, historyRes, billingsRes, metricsRes] = await Promise.all([
     ctx.service.from('clients').select(CLIENT_FIELDS),
     ctx.service.from('client_status_history').select(HISTORY_FIELDS),
-    ctx.service.from('client_billings').select(BILLING_FIELDS),
+    ctx.service
+      .from('client_billings')
+      .select(BILLING_FIELDS)
+      .neq('status', VOIDED_BILLING_STATUS)
+      .gte('billed_on', billingCutoff),
     ctx.service.from('business_metrics').select(BUSINESS_METRIC_FIELDS),
   ]);
 

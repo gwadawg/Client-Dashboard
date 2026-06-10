@@ -28,6 +28,7 @@ export async function GET(req: Request) {
   let query = ctx.service
     .from('client_calls')
     .select(SELECT, { count: 'exact' })
+    .is('deleted_at', null)
     .order('called_at', { ascending: false })
     .range(offset, offset + pageSize - 1);
 
@@ -36,11 +37,16 @@ export async function GET(req: Request) {
   if (startDate) query = query.gte('called_at', `${startDate}T00:00:00.000Z`);
   if (endDate) query = query.lte('called_at', `${endDate}T23:59:59.999Z`);
   if (search) {
-    const safe = search.replace(/[,()*]/g, ' ').trim();
+    const safe = search.replace(/[^\w\s-]/g, ' ').trim();
     if (safe) {
-      query = query.or(
-        `transcript.ilike.%${safe}%,notes.ilike.%${safe}%,attendees.ilike.%${safe}%`,
-      );
+      const tsQuery = safe.split(/\s+/).filter(Boolean).join(' & ');
+      if (tsQuery) {
+        query = query.textSearch('search_vector', tsQuery, { type: 'plain' });
+      } else {
+        query = query.or(
+          `transcript.ilike.%${safe}%,notes.ilike.%${safe}%,attendees.ilike.%${safe}%`,
+        );
+      }
     }
   }
 

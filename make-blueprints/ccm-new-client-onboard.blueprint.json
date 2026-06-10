@@ -1,29 +1,20 @@
 {
-    "name": "CCM - Agency Onboarding → Dashboard",
+    "name": "CCM - New Client Form → Mr. Waiz + ClickUp",
     "flow": [
         {
             "id": 1,
-            "module": "app#call-center-mastery-qeqot5:watchEventsManualPlacement",
+            "module": "gateway:CustomWebHook",
             "version": 1,
-            "parameters": {
-                "__IMTHOOK__": 0
-            },
+            "parameters": {},
             "mapper": {},
             "metadata": {
                 "designer": { "x": 0, "y": 0 },
-                "restore": {
-                    "parameters": {
-                        "__IMTHOOK__": {
-                            "data": { "editable": "false" },
-                            "label": "CRM Status Webhook — fires when agency status changes"
-                        }
-                    }
-                },
+                "restore": {},
                 "parameters": [
                     {
-                        "name": "__IMTHOOK__",
-                        "type": "hook:app#call-center-mastery-qeqot53",
-                        "label": "Webhook",
+                        "name": "hook",
+                        "type": "hook:gateway",
+                        "label": "GHL New Client Form webhook",
                         "required": true
                     }
                 ]
@@ -61,10 +52,10 @@
                 "ca": "",
                 "useMtls": false,
                 "contentType": "application/json",
-                "data": "{\"name\": \"{{1.agency_name}}\", \"email\": \"{{1.email}}\", \"lifecycle_status\": \"{{1.status}}\", \"primary_contact_name\": \"{{1.contact_name}}\", \"phone\": \"{{1.phone}}\", \"mrr\": \"{{1.mrr}}\", \"billing_type\": \"{{1.billing_type}}\", \"offer\": \"{{1.offer}}\", \"date_signed\": \"{{1.date_signed}}\", \"ghl_location_id\": \"{{1.location_id}}\"}"
+                "data": "{\"name\": \"{{1.business_name}}\", \"primary_contact_name\": \"{{1.client_name}}\", \"email\": \"{{1.email}}\", \"phone\": \"{{1.phone}}\", \"mrr\": \"{{1.mrr}}\", \"billing_type\": \"{{1.billing_type}}\", \"contract_term_months\": \"{{1.contract_term}}\", \"offer\": \"{{1.offer}}\", \"reporting_type\": \"{{1.offer}}\", \"date_signed\": \"{{1.date_signed}}\", \"nmls\": \"{{1.nmls}}\", \"brokerage_name\": \"{{1.brokerage_name}}\", \"ghl_location_id\": \"{{1.location_id}}\", \"ghl_subaccount_url\": \"{{1.subaccount_url}}\", \"source\": \"{{1.source}}\"}"
             },
             "metadata": {
-                "designer": { "x": 300, "y": 0, "name": "Create/Update Client in Mr. Waiz" }
+                "designer": { "x": 300, "y": 0, "name": "Create client in Mr. Waiz + ClickUp" }
             }
         }
     ],
@@ -83,6 +74,7 @@
             "freshVariables": false
         },
         "designer": { "orphans": [] },
-        "zone": "eu1.make.com"
+        "zone": "eu1.make.com",
+        "notes": "Wire this as the FIRST step in your New Client Make scenario, before GHL contact creation, Slack, and manager assignment. Map {{1.*}} to your GHL form field names. Response includes client_id and clickup_task_id for downstream modules."
     }
 }

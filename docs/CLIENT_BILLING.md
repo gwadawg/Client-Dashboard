@@ -35,20 +35,24 @@ and `daily_adspend` are editable from the tab (inline) and persist through
 
 ## 4. Recording billings
 
-Expand a client row to record a billing, mark one paid, or remove one:
+Expand a client row to record a billing, mark one paid, or void one:
 
 - `POST /api/billings` — record a billing (`client_id`, `billed_on`, `amount`, …)
 - `PATCH /api/billings/[id]` — edit / mark paid (status `paid` stamps `paid_on`)
-- `DELETE /api/billings/[id]` — remove a row
+- `DELETE /api/billings/[id]` — **void** a row (`status: voided`); the ledger row is retained for audit but excluded from totals
+
+Voided billings are filtered out of next-billing math, CEO revenue, and client file displays.
 
 ## 5. ClickUp reminders (daily trigger)
 
 `POST /api/billings/reminders` finds every live client that is due soon / overdue
 and creates a ClickUp task for each. It is guarded by the shared
-`ADMIN_WEBHOOK_SECRET` (Bearer), and needs two env vars (see `.env.local.example`):
+`ADMIN_WEBHOOK_SECRET` (Bearer), and needs two env vars (see [`.env.local.example`](../.env.local.example) and [`CLIENT_ONBOARDING.md`](CLIENT_ONBOARDING.md)):
 
 - `CLICKUP_API_TOKEN`
 - `CLICKUP_BILLING_LIST_ID`
+
+New-client onboarding also uses `CLICKUP_CLIENT_HUB_LIST_ID` (see [`CLIENT_ONBOARDING.md`](CLIENT_ONBOARDING.md)).
 
 Schedule it to run once a day with any external scheduler. Examples:
 

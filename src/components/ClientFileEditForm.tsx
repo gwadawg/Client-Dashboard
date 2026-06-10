@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
+import TimezoneSelect from "@/components/TimezoneSelect";
 import { normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 
 export type EditableClient = {
@@ -205,7 +206,17 @@ export default function ClientFileEditForm({
               className="w-full"
             />
           </label>
-          <Field label="Timezone" value={draft.timezone} onChange={v => patch("timezone", v)} highlightEmpty placeholder="e.g. America/New_York" />
+          <label className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider" style={{ color: !draft.timezone ? "#f59e0b" : "#475569" }}>
+              Timezone{!draft.timezone ? " · missing" : ""}
+            </span>
+            <TimezoneSelect
+              value={draft.timezone}
+              disabled={saving}
+              highlightEmpty
+              onChange={tz => patch("timezone", tz ?? "")}
+            />
+          </label>
           <SelectField label="Lifecycle" value={draft.lifecycle_status} onChange={v => patch("lifecycle_status", v)}>
             {LIFECYCLE_OPTIONS.map(o => <option key={o} value={o}>{o.replace(/_/g, " ")}</option>)}
           </SelectField>

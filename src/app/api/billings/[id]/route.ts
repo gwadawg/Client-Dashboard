@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission, requireClientRevenue } from '@/lib/api-auth';
 
 const BILLING_FIELDS =
-  'id, client_id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, amount_paid, status, paid_on, method, invoice_ref, note, created_at';
+  'id, client_id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, amount_paid, status, paid_on, method, invoice_ref, note, voided_at, created_at';
 
 // PATCH /api/billings/[id] — mark paid / record a partial payment / adjust the
 // breakdown / extend the due date / re-disposition a billing row.
@@ -94,7 +94,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   return NextResponse.json({ billing: data });
 }
 
-// DELETE /api/billings/[id]
+// DELETE /api/billings/[id] — soft-void; row stays in the ledger for audit.
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -104,7 +104,21 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (revenueDenied) return revenueDenied;
 
   const { id } = await params;
-  const { error } = await ctx.service.from('client_billings').delete().eq('id', id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+  const { data, error } = await ctx.service
+    .from('client_billings')
+    .update({
+      status: 'voided',
+      voided_at: new Date().toISOString(),
+      voided_by: ctx.userId,
+    })
+    .eq('id', id)
+    .neq('status', 'voided')
+    .select(BILLING_FIELDS)
+    .single();
+
+  if (error) {
+    const status = error.code === 'PGRST116' ? 404 : 500;
+    return NextResponse.json({ error: error.message }, { status });
+  }
+  return NextResponse.json({ billing: data, voided: true });
 }

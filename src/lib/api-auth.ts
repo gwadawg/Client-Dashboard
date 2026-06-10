@@ -79,3 +79,13 @@ export function validateWebhookSecret(req: Request): boolean {
   if (!authHeader?.startsWith('Bearer ')) return false;
   return authHeader.slice(7) === process.env.ADMIN_WEBHOOK_SECRET;
 }
+
+/** Webhook secret or Vercel CRON_SECRET (Bearer) for scheduled jobs. */
+export function validateSchedulerSecret(req: Request): boolean {
+  if (validateWebhookSecret(req)) return true;
+  const authHeader = req.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) return false;
+  const token = authHeader.slice(7);
+  const cronSecret = process.env.CRON_SECRET;
+  return !!cronSecret && token === cronSecret;
+}

@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import KpiSection from "./kpi/KpiSection";
 import KpiCard from "./kpi/KpiCard";
+import { reasonLabel } from "@/lib/client-feedback";
 import type { BusinessMetrics } from "@/lib/business-metrics";
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
@@ -453,31 +454,60 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
               />
             </div>
             {data.churn.churned_clients.length > 0 && (
-              <div className="mt-4 rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr style={{ background: "#050c18" }}>
-                      <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
-                        Churned this month ({data.churn.churned_count})
-                      </th>
-                      <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
-                        MRR lost
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.churn.churned_clients.map((c) => (
-                      <tr key={c.client_id} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                        <td className="px-4 py-2.5" style={{ color: "#cbd5e1" }}>
-                          {c.name}
-                        </td>
-                        <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: BAD }}>
-                          {money(c.mrr, { round: true })}
-                        </td>
-                      </tr>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl p-5" style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: MUTED }}>
+                    Churn reasons ({monthLabel(month)})
+                  </p>
+                  <div className="space-y-2">
+                    {data.churn.churn_by_reason.map((r) => (
+                      <div key={r.reason_code} className="flex items-center justify-between text-sm gap-3">
+                        <span style={{ color: "#cbd5e1" }}>{reasonLabel(r.reason_code)}</span>
+                        <span className="tabular-nums flex-shrink-0" style={{ color: "#94a3b8" }}>
+                          {r.count} · {money(r.lost_mrr, { round: true })}
+                        </span>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
+                <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ background: "#050c18" }}>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+                          Churned ({data.churn.churned_count})
+                        </th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+                          Departure
+                        </th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+                          Reason
+                        </th>
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+                          MRR lost
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.churn.churned_clients.map((c) => (
+                        <tr key={c.client_id} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                          <td className="px-4 py-2.5" style={{ color: "#cbd5e1" }}>
+                            {c.name}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs" style={{ color: "#64748b" }}>
+                            {c.departure_status === "off_boarding" ? "Off-boarding" : "Churned"}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs" style={{ color: "#64748b" }}>
+                            {reasonLabel(c.reason_code)}
+                          </td>
+                          <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: BAD }}>
+                            {money(c.mrr, { round: true })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </KpiSection>

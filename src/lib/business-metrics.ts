@@ -30,6 +30,8 @@ export type StatusHistoryRow = {
   client_id: string;
   previous_status: string | null;
   new_status: string;
+  reason_code: string | null;
+  note: string | null;
   mrr_at_change: number | null;
   changed_at: string; // ISO timestamp
 };
@@ -122,7 +124,20 @@ export type MrrBridge = {
   end_mrr: number;
 };
 
-export type ChurnedClient = { client_id: string; name: string; mrr: number };
+export type ChurnedClient = {
+  client_id: string;
+  name: string;
+  mrr: number;
+  reason_code: string | null;
+  note: string | null;
+  departure_status: string;
+};
+
+export type ChurnReasonBucket = {
+  reason_code: string;
+  count: number;
+  lost_mrr: number;
+};
 
 export type Churn = {
   logo_churn_pct: number | null;
@@ -131,6 +146,7 @@ export type Churn = {
   quick_ratio: number | null;
   churned_clients: ChurnedClient[];
   churned_count: number;
+  churn_by_reason: ChurnReasonBucket[];
   avg_tenure_months: number | null;
 };
 
@@ -212,6 +228,8 @@ export type BusinessMetrics = {
 
 const ACTIVE = "active";
 const CHURNED = "churned";
+const OFF_BOARDING = "off_boarding";
+const DEPARTURE_STATUSES = new Set([CHURNED, OFF_BOARDING]);
 
 /** Current calendar month as YYYY-MM (local). */
 export function currentMonth(now: Date = new Date()): string {
@@ -282,7 +300,7 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     .reduce((s, c) => s + num(c.mrr), 0);
 
   const churnRowsThisMonth = statusHistory.filter(
-    (h) => h.new_status === CHURNED && monthOf(h.changed_at) === month,
+    (h) => DEPARTURE_STATUSES.has(h.new_status) && monthOf(h.changed_at) === month,
   );
   const lost_mrr = churnRowsThisMonth.reduce((s, h) => s + num(h.mrr_at_change), 0);
 
@@ -336,7 +354,7 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
       status: b.status,
     };
     const state = recordedState(amounts, now);
-    if (state === "paid" || state === "refunded") continue;
+    if (state === "paid" || state === "refunded" || state === "voided") continue;
     const bal = balanceOf({ amount: num(b.amount), amount_paid: b.amount_paid });
     open_ar += bal;
     if (state === "overdue" || state === "failed") overdue_ar += bal;
@@ -364,7 +382,22 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     client_id: h.client_id,
     name: clientById.get(h.client_id)?.name ?? "Unknown",
     mrr: num(h.mrr_at_change),
+    reason_code: h.reason_code ?? null,
+    note: h.note ?? null,
+    departure_status: h.new_status,
   }));
+
+  const reasonAgg = new Map<string, { count: number; lost_mrr: number }>();
+  for (const h of churnRowsThisMonth) {
+    const code = h.reason_code ?? "unknown";
+    const cur = reasonAgg.get(code) ?? { count: 0, lost_mrr: 0 };
+    cur.count += 1;
+    cur.lost_mrr += num(h.mrr_at_change);
+    reasonAgg.set(code, cur);
+  }
+  const churn_by_reason: ChurnReasonBucket[] = [...reasonAgg.entries()]
+    .map(([reason_code, v]) => ({ reason_code, count: v.count, lost_mrr: v.lost_mrr }))
+    .sort((a, b) => b.lost_mrr - a.lost_mrr);
 
   const denomMovement = lost_mrr + contraction_mrr;
   const quick_ratio = denomMovement > 0 ? (new_mrr + expansion_mrr) / denomMovement : null;
@@ -380,6 +413,7 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     quick_ratio,
     churned_clients,
     churned_count,
+    churn_by_reason,
     avg_tenure_months: averageTenureMonths(clients, now),
   };
 
@@ -705,7 +739,7 @@ function computeTrend(args: {
   }
   const lostMrrByMonth = new Map<string, number>();
   for (const h of statusHistory) {
-    if (h.new_status !== CHURNED) continue;
+    if (!DEPARTURE_STATUSES.has(h.new_status)) continue;
     const m = monthOf(h.changed_at);
     if (!m) continue;
     lostMrrByMonth.set(m, (lostMrrByMonth.get(m) ?? 0) + num(h.mrr_at_change));

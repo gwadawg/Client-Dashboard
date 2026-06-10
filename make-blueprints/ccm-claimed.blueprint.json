@@ -1,5 +1,5 @@
 {
-    "name": "CCM - Agency Onboarding → Dashboard",
+    "name": "CCM - Claimed Conversation → Supabase",
     "flow": [
         {
             "id": 1,
@@ -15,7 +15,7 @@
                     "parameters": {
                         "__IMTHOOK__": {
                             "data": { "editable": "false" },
-                            "label": "CRM Status Webhook — fires when agency status changes"
+                            "label": "Claimed Webhook — trigger from GHL when \"claimed\" tag is added"
                         }
                     }
                 },
@@ -38,13 +38,13 @@
                 "useNewZLibDeCompression": true
             },
             "mapper": {
-                "url": "https://wm-os-production.up.railway.app/api/admin/onboard",
+                "url": "https://wm-os-production.up.railway.app/api/webhooks",
                 "serializeUrl": false,
                 "method": "POST",
                 "headers": [
                     {
                         "name": "Authorization",
-                        "value": "Bearer REPLACE_WITH_YOUR_ADMIN_WEBHOOK_SECRET"
+                        "value": "Bearer Gabe0322!"
                     },
                     {
                         "name": "Content-Type",
@@ -53,7 +53,7 @@
                 ],
                 "qs": [],
                 "bodyType": "raw",
-                "parseResponse": true,
+                "parseResponse": false,
                 "authUser": "",
                 "authPass": "",
                 "timeout": "",
@@ -61,10 +61,10 @@
                 "ca": "",
                 "useMtls": false,
                 "contentType": "application/json",
-                "data": "{\"name\": \"{{1.agency_name}}\", \"email\": \"{{1.email}}\", \"lifecycle_status\": \"{{1.status}}\", \"primary_contact_name\": \"{{1.contact_name}}\", \"phone\": \"{{1.phone}}\", \"mrr\": \"{{1.mrr}}\", \"billing_type\": \"{{1.billing_type}}\", \"offer\": \"{{1.offer}}\", \"date_signed\": \"{{1.date_signed}}\", \"ghl_location_id\": \"{{1.location_id}}\"}"
+                "data": "{\"event_type\": \"claimed\", \"client_name\": \"{{trim(1.location.name)}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"lead_phone\": \"{{1.contact.phone}}\", \"lead_name\": \"{{1.contact.name}}\", \"agent_name\": \"{{ifempty(1.contact.contact_owner_name, \"\")}}\", \"occurred_at\": \"{{formatDate(now; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\"}"
             },
             "metadata": {
-                "designer": { "x": 300, "y": 0, "name": "Create/Update Client in Mr. Waiz" }
+                "designer": { "x": 300, "y": 0, "name": "Send Claimed Event to Supabase" }
             }
         }
     ],

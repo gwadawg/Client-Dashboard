@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
-import { CLIENT_CALL_FIELDS, isValidCallType } from '@/lib/client-calls';
+import { CLIENT_CALL_FIELDS, isValidCallDisposition, isValidCallType } from '@/lib/client-calls';
 import { parseCheckinFormInput, validateCheckinFormForSave } from '@/lib/checkin-form';
 
 function optionalText(value: unknown): string | null {
@@ -28,6 +28,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .from('client_calls')
     .select(CLIENT_CALL_FIELDS)
     .eq('client_id', clientId)
+    .is('deleted_at', null)
     .order('called_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -84,6 +85,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
+  const disposition = optionalText(body.disposition);
+  if (disposition && !isValidCallDisposition(disposition)) {
+    return NextResponse.json({ error: 'Invalid disposition' }, { status: 400 });
+  }
+  const durationSeconds =
+    body.duration_seconds != null && body.duration_seconds !== ''
+      ? Number(body.duration_seconds)
+      : null;
+  const followUpDue =
+    typeof body.follow_up_due_at === 'string' && body.follow_up_due_at.trim()
+      ? new Date(body.follow_up_due_at).toISOString()
+      : null;
+
   const now = new Date().toISOString();
   const { data, error } = await ctx.service
     .from('client_calls')
@@ -96,6 +110,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       notes: optionalText(body.notes),
       attendees: optionalText(body.attendees),
       checkin_form: checkinForm,
+      duration_seconds: Number.isFinite(durationSeconds) ? durationSeconds : null,
+      disposition,
+      follow_up_due_at: followUpDue,
       status_history_id: statusHistoryId,
       created_by: ctx.userId,
       updated_by: ctx.userId,
