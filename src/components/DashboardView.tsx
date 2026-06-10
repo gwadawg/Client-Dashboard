@@ -12,6 +12,7 @@ import HeatMap from "./HeatMap";
 import AgentStats from "./AgentStats";
 import AgentAdmin from "./AgentAdmin";
 import RecordingBrowser from "./RecordingBrowser";
+import ClientCallsBrowser from "./ClientCallsBrowser";
 import GoalTracker from "./GoalTracker";
 import AgentScorecards from "./AgentScorecards";
 import SetterSchedule from "./SetterSchedule";
@@ -105,6 +106,7 @@ const NAV_ICONS: Record<View, string> = {
   schedule:         "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
   agent_scorecards: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
   recordings:       "M15.536 8.464a5 5 0 010 7.072M12 18.364a9 9 0 010-12.728M8.464 15.536a5 5 0 010-7.072",
+  client_calls:     "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
   goals:            "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   dial_analytics:   "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
   media_buyer:      "M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z",
@@ -306,7 +308,16 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const canSee = (v: View) => hasPermission(v, { isOwner, allowedPermissions });
+  const canSee = (v: View) => {
+    if (v === "client_calls") {
+      return (
+        hasPermission("client_calls", { isOwner, allowedPermissions })
+        || hasPermission("admin_clients", { isOwner, allowedPermissions })
+        || hasPermission("admin_billing", { isOwner, allowedPermissions })
+      );
+    }
+    return hasPermission(v, { isOwner, allowedPermissions });
+  };
   const canViewRevenue = canViewClientRevenue({ isOwner, allowedPermissions });
   const visibleNav = NAV.filter(item => canSee(item.view));
   const firstVisibleView: View | undefined = visibleNav[0]?.view;
@@ -554,7 +565,7 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
           {/* Dashboard, raw data, and agent/recording views filters */}
           {/* Client Success owns its own standardized grading window, so the global
               date picker is intentionally omitted for that view. */}
-          {(view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "dial_analytics" || view === "media_buyer" || view === "recordings" || view === "admin_agent_payroll") && (view === "admin_agent_payroll" || !view.startsWith("admin_")) && (
+          {(view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "dial_analytics" || view === "media_buyer" || view === "recordings" || view === "client_calls" || view === "admin_agent_payroll") && (view === "admin_agent_payroll" || !view.startsWith("admin_")) && (
             <>
               {(view === "dashboard" || view === "dial_analytics" || view === "media_buyer") && (
                 <ClientSelect value={selectedClientId} onChange={setSelectedClientId} clients={clients} />
@@ -795,6 +806,10 @@ export default function DashboardView({ isOwner = false, allowedPermissions = nu
           {/* ── Call Recordings ── */}
           {view === "recordings" && (
             <RecordingBrowser clients={clients} startDate={dateStart} endDate={dateEnd} />
+          )}
+
+          {view === "client_calls" && (
+            <ClientCallsBrowser clients={clients} startDate={dateStart} endDate={dateEnd} />
           )}
 
           {/* ── Goal Tracker ── */}

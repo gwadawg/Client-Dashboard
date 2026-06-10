@@ -522,7 +522,28 @@ create table if not exists client_status_history (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 14b. Client Notes (append-only ongoing feedback)
+-- 14b. Client Calls (account-management: onboarding, launch, check-in, churn)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists client_calls (
+  id            uuid    primary key default gen_random_uuid(),
+  client_id     uuid    not null references clients(id) on delete cascade,
+  call_type     text    not null,
+  called_at     timestamptz not null,
+  recording_url text,
+  transcript    text,
+  notes         text,
+  attendees     text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  created_by    uuid    references auth.users(id) on delete set null,
+  updated_by    uuid    references auth.users(id) on delete set null,
+  constraint client_calls_type_check check (
+    call_type in ('onboarding', 'launch', 'checkin', 'churn', 'other')
+  )
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 14c. Client Notes (append-only ongoing feedback)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists client_notes (
   id          uuid    primary key default gen_random_uuid(),
@@ -725,6 +746,8 @@ create index if not exists clients_lifecycle_status_idx          on clients(life
 create index if not exists clients_churned_at_idx                on clients(churned_at) where churned_at is not null;
 create index if not exists client_status_history_client          on client_status_history(client_id, changed_at desc);
 create index if not exists client_status_history_new             on client_status_history(new_status);
+create index if not exists client_calls_client_called            on client_calls(client_id, called_at desc);
+create index if not exists client_calls_called                   on client_calls(called_at desc);
 create index if not exists client_notes_client_created           on client_notes(client_id, created_at desc);
 create index if not exists client_monthly_snapshots_period       on client_monthly_snapshots(period_month);
 create index if not exists client_monthly_snapshots_client       on client_monthly_snapshots(client_id, period_month desc);

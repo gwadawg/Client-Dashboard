@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import { CLIENT_CALL_FIELDS } from '@/lib/client-calls';
 import {
   isValidReasonCode,
   requiresReasonOnChurn,
@@ -34,7 +35,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { id } = await params;
 
-  const [clientRes, billingsRes, historyRes, notesRes] = await Promise.all([
+  const [clientRes, billingsRes, historyRes, notesRes, callsRes] = await Promise.all([
     ctx.service.from('clients').select(FILE_CLIENT_FIELDS).eq('id', id).single(),
     ctx.service
       .from('client_billings')
@@ -51,6 +52,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .select(CLIENT_NOTES_FIELDS)
       .eq('client_id', id)
       .order('created_at', { ascending: false }),
+    ctx.service
+      .from('client_calls')
+      .select(CLIENT_CALL_FIELDS)
+      .eq('client_id', id)
+      .order('called_at', { ascending: false }),
   ]);
 
   if (clientRes.error) {
@@ -60,6 +66,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (billingsRes.error) return NextResponse.json({ error: billingsRes.error.message }, { status: 500 });
   if (historyRes.error) return NextResponse.json({ error: historyRes.error.message }, { status: 500 });
   if (notesRes.error) return NextResponse.json({ error: notesRes.error.message }, { status: 500 });
+  if (callsRes.error) return NextResponse.json({ error: callsRes.error.message }, { status: 500 });
 
   const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
   const includeRevenue = canViewClientRevenue(subject);
@@ -67,12 +74,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const billings = includeRevenue ? (billingsRes.data ?? []) : redactBillingRows(billingsRes.data);
   const statusHistory = historyRes.data ?? [];
   const notes = notesRes.data ?? [];
+  const calls = callsRes.data ?? [];
 
   return NextResponse.json({
     client,
     billings,
     status_history: statusHistory,
     notes,
+    calls,
     can_view_revenue: includeRevenue,
   });
 }

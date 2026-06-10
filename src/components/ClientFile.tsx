@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CALL_TYPE_OPTIONS, callTypeLabel } from "@/lib/client-calls";
 import {
   LIFECYCLE_REASON_OPTIONS,
   NOTE_TYPE_OPTIONS,
@@ -9,6 +10,7 @@ import {
   reasonLabel,
 } from "@/lib/client-feedback";
 import { formatStatesLicensed } from "@/lib/us-states";
+import { timezoneLabel } from "@/lib/us-timezones";
 import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileEditForm";
 
 // The client "file": a single place to oversee everything about one client.
@@ -88,6 +90,17 @@ type ClientNote = {
   created_at: string;
 };
 
+type ClientCall = {
+  id: string;
+  call_type: string;
+  called_at: string;
+  recording_url: string | null;
+  transcript: string | null;
+  notes: string | null;
+  attendees: string | null;
+  updated_at: string;
+};
+
 const STATUS_STYLE: Record<string, { color: string; bg: string }> = {
   paid: { color: "#22c55e", bg: "rgba(34,197,94,0.12)" },
   partial: { color: "#38bdf8", bg: "rgba(56,189,248,0.12)" },
@@ -126,23 +139,36 @@ function formatDateTime(iso: string | null | undefined): string {
   return d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function toDatetimeLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function defaultCalledAtLocal(): string {
+  return toDatetimeLocal(new Date().toISOString());
+}
+
 export default function ClientFile({
   clientId,
   fallbackName,
   onClose,
   onUpdated,
   scrollToNotes = false,
+  scrollToCalls = false,
 }: {
   clientId: string;
   fallbackName: string;
   onClose: () => void;
   onUpdated?: () => void;
   scrollToNotes?: boolean;
+  scrollToCalls?: boolean;
 }) {
   const [client, setClient] = useState<FileClient | null>(null);
   const [billings, setBillings] = useState<FileBilling[]>([]);
   const [statusHistory, setStatusHistory] = useState<StatusHistoryEntry[]>([]);
   const [notes, setNotes] = useState<ClientNote[]>([]);
+  const [calls, setCalls] = useState<ClientCall[]>([]);
   const [canViewRevenue, setCanViewRevenue] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -150,10 +176,20 @@ export default function ClientFile({
   const [noteReason, setNoteReason] = useState("");
   const [noteBody, setNoteBody] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [callType, setCallType] = useState("checkin");
+  const [calledAt, setCalledAt] = useState(defaultCalledAtLocal);
+  const [recordingUrl, setRecordingUrl] = useState("");
+  const [transcript, setTranscript] = useState("");
+  const [callNotes, setCallNotes] = useState("");
+  const [attendees, setAttendees] = useState("");
+  const [savingCall, setSavingCall] = useState(false);
+  const [editingCallId, setEditingCallId] = useState<string | null>(null);
+  const [expandedCallIds, setExpandedCallIds] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const notesRef = useRef<HTMLElement>(null);
+  const callsRef = useRef<HTMLElement>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -167,6 +203,7 @@ export default function ClientFile({
           setBillings(d.billings ?? []);
           setStatusHistory(d.status_history ?? []);
           setNotes(d.notes ?? []);
+          setCalls(d.calls ?? []);
           if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
           setError(null);
         }
@@ -199,6 +236,12 @@ export default function ClientFile({
     }
   }, [loading, scrollToNotes]);
 
+  useEffect(() => {
+    if (!loading && scrollToCalls && callsRef.current) {
+      callsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [loading, scrollToCalls]);
+
   const summary = useMemo(() => {
     let collected = 0, retainer = 0, performance = 0, passthrough = 0;
     let lastPaidOn: string | null = null;
@@ -211,6 +254,77 @@ export default function ClientFile({
     }
     return { collected, retainer, performance, passthrough, count: billings.length, lastPaidOn };
   }, [billings]);
+
+  async function submitCall() {
+    setSavingCall(true);
+    const res = await fetch(`/api/clients/${clientId}/calls`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        call_type: callType,
+        called_at: new Date(calledAt).toISOString(),
+        recording_url: recordingUrl || undefined,
+        transcript: transcript || undefined,
+        notes: callNotes || undefined,
+        attendees: attendees || undefined,
+      }),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      alert(d.error ?? "Failed to save call");
+      setSavingCall(false);
+      return;
+    }
+    setCallType("checkin");
+    setCalledAt(defaultCalledAtLocal());
+    setRecordingUrl("");
+    setTranscript("");
+    setCallNotes("");
+    setAttendees("");
+    await load();
+    onUpdated?.();
+    setSavingCall(false);
+  }
+
+  async function saveCallEdit(call: ClientCall, form: {
+    call_type: string;
+    called_at: string;
+    recording_url: string;
+    transcript: string;
+    notes: string;
+    attendees: string;
+  }) {
+    const res = await fetch(`/api/clients/${clientId}/calls/${call.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        call_type: form.call_type,
+        called_at: new Date(form.called_at).toISOString(),
+        recording_url: form.recording_url || null,
+        transcript: form.transcript || null,
+        notes: form.notes || null,
+        attendees: form.attendees || null,
+      }),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      alert(d.error ?? "Failed to update call");
+      return false;
+    }
+    setEditingCallId(null);
+    await load();
+    onUpdated?.();
+    return true;
+  }
+
+  function toggleCallExpanded(id: string) {
+    setExpandedCallIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function submitNote() {
     const body = noteBody.trim();
@@ -291,7 +405,7 @@ export default function ClientFile({
               )}
             </div>
             <p className="text-xs mt-1" style={{ color: "#475569" }}>
-              {editing ? "Editing profile & billing setup" : "Client file — profile, billing, lifecycle & notes"}
+              {editing ? "Editing profile & billing setup" : "Client file — profile, billing, lifecycle, calls & notes"}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -350,7 +464,7 @@ export default function ClientFile({
                 <Detail label="NMLS" value={client?.nmls} missing={!client?.nmls} />
                 <Detail label="State" value={client?.state} missing={!client?.state} />
                 <Detail label="Licensed in" value={formatStatesLicensed(client?.states_licensed)} wide missing={!client?.states_licensed?.length} />
-                <Detail label="Timezone" value={client?.timezone} missing={!client?.timezone} />
+                <Detail label="Timezone" value={timezoneLabel(client?.timezone)} missing={!client?.timezone} />
               </div>
             </Section>
 
@@ -406,6 +520,116 @@ export default function ClientFile({
                 </div>
               )}
             </Section>
+
+            <section ref={callsRef}>
+              <h3 className="text-sm font-semibold uppercase tracking-wider mb-3" style={{ color: "#cbd5e1" }}>
+                Account calls ({calls.length})
+              </h3>
+
+              <div className="rounded-lg p-4 mb-4 space-y-3" style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Call type</span>
+                    <select value={callType} disabled={savingCall} onChange={e => setCallType(e.target.value)} className="mt-1 cursor-pointer" style={fieldStyle}>
+                      {CALL_TYPE_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Call date</span>
+                    <input
+                      type="datetime-local"
+                      value={calledAt}
+                      disabled={savingCall}
+                      onChange={e => setCalledAt(e.target.value)}
+                      className="mt-1"
+                      style={fieldStyle}
+                    />
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Recording URL</span>
+                  <input
+                    type="url"
+                    value={recordingUrl}
+                    disabled={savingCall}
+                    onChange={e => setRecordingUrl(e.target.value)}
+                    placeholder="https://…"
+                    className="mt-1"
+                    style={fieldStyle}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Attendees (optional)</span>
+                  <input
+                    value={attendees}
+                    disabled={savingCall}
+                    onChange={e => setAttendees(e.target.value)}
+                    placeholder="Sarah (CS), John (client)"
+                    className="mt-1"
+                    style={fieldStyle}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Transcript</span>
+                  <textarea
+                    value={transcript}
+                    disabled={savingCall}
+                    onChange={e => setTranscript(e.target.value)}
+                    rows={5}
+                    placeholder="Paste call transcript…"
+                    className="mt-1 resize-y"
+                    style={fieldStyle}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Notes</span>
+                  <textarea
+                    value={callNotes}
+                    disabled={savingCall}
+                    onChange={e => setCallNotes(e.target.value)}
+                    rows={3}
+                    placeholder="Summary, action items, follow-ups…"
+                    className="mt-1 resize-y"
+                    style={fieldStyle}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={submitCall}
+                  disabled={savingCall}
+                  className="text-xs font-semibold px-3 py-2 rounded-lg"
+                  style={{
+                    color: "#f59e0b",
+                    background: "rgba(245,158,11,0.12)",
+                    border: "1px solid rgba(245,158,11,0.25)",
+                    opacity: savingCall ? 0.5 : 1,
+                  }}
+                >
+                  {savingCall ? "Saving…" : "Add call"}
+                </button>
+              </div>
+
+              {calls.length === 0 ? (
+                <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>No account calls logged yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {calls.map(call => (
+                    <ClientCallCard
+                      key={call.id}
+                      call={call}
+                      expanded={expandedCallIds.has(call.id)}
+                      editing={editingCallId === call.id}
+                      onToggleExpand={() => toggleCallExpanded(call.id)}
+                      onStartEdit={() => setEditingCallId(call.id)}
+                      onCancelEdit={() => setEditingCallId(null)}
+                      onSave={form => saveCallEdit(call, form)}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
 
             <section ref={notesRef}>
               <h3 className="text-sm font-semibold uppercase tracking-wider mb-3" style={{ color: "#cbd5e1" }}>
@@ -587,6 +811,214 @@ function Chip({ label, value, color }: { label: string; value: string; color: st
     <div className="rounded-lg px-3 py-2" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
       <p className="text-xs uppercase tracking-wider" style={{ color: "#475569" }}>{label}</p>
       <p className="text-base font-bold" style={{ color }}>{value}</p>
+    </div>
+  );
+}
+
+function ClientCallCard({
+  call,
+  expanded,
+  editing,
+  onToggleExpand,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+}: {
+  call: ClientCall;
+  expanded: boolean;
+  editing: boolean;
+  onToggleExpand: () => void;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSave: (form: {
+    call_type: string;
+    called_at: string;
+    recording_url: string;
+    transcript: string;
+    notes: string;
+    attendees: string;
+  }) => Promise<boolean>;
+}) {
+  const [form, setForm] = useState({
+    call_type: call.call_type,
+    called_at: toDatetimeLocal(call.called_at),
+    recording_url: call.recording_url ?? "",
+    transcript: call.transcript ?? "",
+    notes: call.notes ?? "",
+    attendees: call.attendees ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (editing) {
+      setForm({
+        call_type: call.call_type,
+        called_at: toDatetimeLocal(call.called_at),
+        recording_url: call.recording_url ?? "",
+        transcript: call.transcript ?? "",
+        notes: call.notes ?? "",
+        attendees: call.attendees ?? "",
+      });
+    }
+  }, [editing, call]);
+
+  async function handleSave() {
+    setSaving(true);
+    await onSave(form);
+    setSaving(false);
+  }
+
+  const hasDetails = !!(call.transcript || call.notes || call.attendees);
+
+  if (editing) {
+    return (
+      <div className="rounded-lg px-4 py-3 space-y-3" style={{ background: "#080f1e", border: "1px solid rgba(245,158,11,0.2)" }}>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Type</span>
+            <select
+              value={form.call_type}
+              disabled={saving}
+              onChange={e => setForm(f => ({ ...f, call_type: e.target.value }))}
+              className="mt-1 cursor-pointer"
+              style={fieldStyle}
+            >
+              {CALL_TYPE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Call date</span>
+            <input
+              type="datetime-local"
+              value={form.called_at}
+              disabled={saving}
+              onChange={e => setForm(f => ({ ...f, called_at: e.target.value }))}
+              className="mt-1"
+              style={fieldStyle}
+            />
+          </label>
+        </div>
+        <label className="block">
+          <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Recording URL</span>
+          <input
+            type="url"
+            value={form.recording_url}
+            disabled={saving}
+            onChange={e => setForm(f => ({ ...f, recording_url: e.target.value }))}
+            className="mt-1"
+            style={fieldStyle}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Attendees</span>
+          <input
+            value={form.attendees}
+            disabled={saving}
+            onChange={e => setForm(f => ({ ...f, attendees: e.target.value }))}
+            className="mt-1"
+            style={fieldStyle}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Transcript</span>
+          <textarea
+            value={form.transcript}
+            disabled={saving}
+            onChange={e => setForm(f => ({ ...f, transcript: e.target.value }))}
+            rows={5}
+            className="mt-1 resize-y"
+            style={fieldStyle}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Notes</span>
+          <textarea
+            value={form.notes}
+            disabled={saving}
+            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            rows={3}
+            className="mt-1 resize-y"
+            style={fieldStyle}
+          />
+        </label>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleSave}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+            style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)" }}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={onCancelEdit}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+            style={{ color: "#94a3b8", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg px-4 py-3" style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#f59e0b" }}>
+            {callTypeLabel(call.call_type)}
+          </span>
+          {call.recording_url && (
+            <a
+              href={call.recording_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold"
+              style={{ color: "#38bdf8" }}
+            >
+              Recording ↗
+            </a>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs whitespace-nowrap" style={{ color: "#475569" }}>{formatDateTime(call.called_at)}</span>
+          <button type="button" onClick={onStartEdit} className="text-xs font-semibold" style={{ color: "#a78bfa" }}>Edit</button>
+        </div>
+      </div>
+      {call.attendees && (
+        <p className="text-xs mt-1.5" style={{ color: "#64748b" }}>Attendees: {call.attendees}</p>
+      )}
+      {call.notes && (
+        <p className="text-sm mt-1.5 whitespace-pre-wrap" style={{ color: "#cbd5e1" }}>{call.notes}</p>
+      )}
+      {call.transcript && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            className="text-xs font-semibold"
+            style={{ color: "#64748b" }}
+          >
+            {expanded ? "Hide transcript" : "Show transcript"}
+          </button>
+          {expanded && (
+            <p className="text-sm mt-1.5 whitespace-pre-wrap max-h-64 overflow-y-auto" style={{ color: "#94a3b8" }}>
+              {call.transcript}
+            </p>
+          )}
+          {!expanded && hasDetails && !call.notes && (
+            <p className="text-xs mt-1 truncate" style={{ color: "#475569" }}>
+              {call.transcript.slice(0, 140)}{call.transcript.length > 140 ? "…" : ""}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

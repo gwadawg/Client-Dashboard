@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
+import TimezoneSelect from "@/components/TimezoneSelect";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { DEFAULT_REPORTING_TYPE, normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import {
@@ -32,6 +33,7 @@ type Client = {
   primary_contact?: string | null;
   primary_contact_name?: string | null;
   states_licensed?: string[] | null;
+  timezone?: string | null;
   kpi_benchmarks?: ClientKpiBenchmarks | null;
   kpi_benchmarks_updated_at?: string | null;
   kpi_benchmarks_updated_by?: string | null;
@@ -97,7 +99,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [benchmarksFor, setBenchmarksFor] = useState<string | null>(null);
-  const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean } | null>(null);
+  const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean; scrollToCalls?: boolean } | null>(null);
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
   const [statusChange, setStatusChange] = useState<{
     id: string;
@@ -199,7 +201,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
       {showAdd && <AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} />}
 
       <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <table className="text-sm" style={{ minWidth: showRevenue ? 1720 : 1560 }}>
+        <table className="text-sm" style={{ minWidth: showRevenue ? 1840 : 1680 }}>
           <thead>
             <tr style={{ background: "#0a1628" }}>
               {[
@@ -207,6 +209,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 "Client name",
                 "Email",
                 "Licensed in",
+                "Timezone",
                 "Type",
                 "Lifecycle",
                 "Status",
@@ -236,7 +239,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
           </thead>
           <tbody>
             {clients.length === 0 ? (
-              <tr><td colSpan={showRevenue ? 19 : 17} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
+              <tr><td colSpan={showRevenue ? 20 : 18} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
             ) : clients.map((c, i) => (
               <ClientRow
                 key={c.id}
@@ -249,6 +252,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 onPatch={patchClient}
                 onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
                 onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
+                onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
                 onRequestLifecycleChange={(id, name, targetStatus) =>
                   setStatusChange({ id, name, targetStatus })
                 }
@@ -268,10 +272,11 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 
       {fileFor && (
         <ClientFile
-          key={`${fileFor.id}-${fileFor.scrollToNotes ? "notes" : "file"}`}
+          key={`${fileFor.id}-${fileFor.scrollToCalls ? "calls" : fileFor.scrollToNotes ? "notes" : "file"}`}
           clientId={fileFor.id}
           fallbackName={fileFor.name}
           scrollToNotes={fileFor.scrollToNotes}
+          scrollToCalls={fileFor.scrollToCalls}
           onClose={() => setFileFor(null)}
           onUpdated={reload}
         />
@@ -290,7 +295,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 }
 
 function ClientRow({
-  client, striped, busy, confirmingDelete, benchmarksOpen, showRevenue, onPatch, onOpenFile, onOpenNotes, onRequestLifecycleChange, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
+  client, striped, busy, confirmingDelete, benchmarksOpen, showRevenue, onPatch, onOpenFile, onOpenNotes, onOpenCalls, onRequestLifecycleChange, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
 }: {
   client: Client;
   striped: boolean;
@@ -301,6 +306,7 @@ function ClientRow({
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onOpenFile: () => void;
   onOpenNotes: () => void;
+  onOpenCalls: () => void;
   onRequestLifecycleChange: (id: string, name: string, targetStatus: string) => void;
   onToggleBenchmarks: () => void;
   onAskDelete: () => void;
@@ -377,6 +383,13 @@ function ClientRow({
           value={c.states_licensed}
           disabled={busy}
           onChange={codes => onPatch(c.id, { states_licensed: codes })}
+        />
+      </td>
+      <td className={cell}>
+        <TimezoneSelect
+          value={c.timezone}
+          disabled={busy}
+          onChange={tz => onPatch(c.id, { timezone: tz })}
         />
       </td>
       <td className={cell}>
@@ -488,6 +501,7 @@ function ClientRow({
         ) : (
           <span className="flex items-center justify-end gap-3">
             <button onClick={onOpenFile} className="text-xs font-semibold" style={{ color: "#38bdf8" }} title="Open this client's file">Open file</button>
+            <button onClick={onOpenCalls} className="text-xs font-semibold" style={{ color: "#f59e0b" }} title="Add or view account calls">Calls</button>
             <button onClick={onOpenNotes} className="text-xs font-semibold" style={{ color: "#a78bfa" }} title="Add or view client notes">Notes</button>
             <button
               onClick={onToggleBenchmarks}
@@ -504,7 +518,7 @@ function ClientRow({
     </tr>
     {benchmarksOpen && (
       <tr style={{ background: "#050c18" }}>
-        <td colSpan={showRevenue ? 19 : 17} className="px-4 py-4">
+        <td colSpan={showRevenue ? 20 : 18} className="px-4 py-4">
           <BenchmarkEditor
             client={c}
             busy={busy}
