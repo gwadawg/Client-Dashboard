@@ -8,7 +8,9 @@ import {
 } from '@/lib/clickup';
 
 const ONBOARD_FIELDS =
-  'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, nmls, brokerage_name, ghl_subaccount_url, source, created_at';
+  'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, created_at';
+
+const SIGNING_BILLING_REF = 'onboard-signing';
 
 type OnboardPayload = Record<string, unknown>;
 
@@ -34,9 +36,19 @@ function normalizeBillingType(v: unknown): string | null {
   return lower;
 }
 
-function reportingTypeFromOffer(offer: string | null, explicit: unknown): 'RM' | 'HE' {
+function normalizeOffer(v: unknown): 'RM' | 'HE' | null {
+  const s = trimString(v);
+  if (!s) return null;
+  const upper = s.toUpperCase();
+  if (upper === 'RM' || upper === 'HE') return upper;
+  if (upper.includes('HE') || upper.includes('HOME EQUITY')) return 'HE';
+  if (upper.includes('RM') || upper.includes('REVERSE')) return 'RM';
+  return null;
+}
+
+function reportingTypeFromOffer(offer: 'RM' | 'HE' | null, explicit: unknown): 'RM' | 'HE' {
   if (explicit === 'HE' || explicit === 'RM') return explicit;
-  if (offer?.toUpperCase().includes('HE')) return 'HE';
+  if (offer) return offer;
   return normalizeReportingType(explicit);
 }
 
@@ -49,17 +61,18 @@ export function parseOnboardPayload(body: OnboardPayload) {
 
   const email = trimString(body.email);
   const billingEmail = trimString(body.billing_email) ?? email;
-  const offer = trimString(body.offer);
+  const offer = normalizeOffer(body.offer) ?? normalizeOffer(body.reporting_type);
   const dateSigned = trimString(body.date_signed);
+  const contactName =
+    trimString(body.primary_contact_name) ??
+    trimString(body.client_name) ??
+    trimString(body.primary_contact);
 
   return {
     name,
     email,
     billing_email: billingEmail,
-    primary_contact_name:
-      trimString(body.primary_contact_name) ??
-      trimString(body.client_name) ??
-      trimString(body.primary_contact),
+    primary_contact_name: contactName ?? name,
     phone: trimString(body.phone),
     mrr: numberField(body.mrr),
     billing_type: normalizeBillingType(body.billing_type),
@@ -72,9 +85,20 @@ export function parseOnboardPayload(body: OnboardPayload) {
     ghl_location_id: trimString(body.ghl_location_id) ?? trimString(body.location_id),
     ghl_subaccount_url: trimString(body.ghl_subaccount_url),
     source: trimString(body.source),
-    lifecycle_status: trimString(body.lifecycle_status) ?? 'new_account',
+    slack_id: trimString(body.slack_id) ?? trimString(body.slackId),
+    lifecycle_status: trimString(body.lifecycle_status) ?? 'onboarding',
     is_live: body.is_live === true,
-    clickup_task_id: trimString(body.clickup_task_id),
+    clickup_task_id:
+      trimString(body.clickup_task_id) ??
+      trimString(body.clickup_id) ??
+      trimString(body.clickup_client_id),
+    cash_collected:
+      numberField(body.cash_collected) ??
+      numberField(body.cash_collected_amount),
+    sales_call_recording:
+      trimString(body.sales_call_recording) ??
+      trimString(body.sales_call_recording_url) ??
+      trimString(body.sales_call_url),
   };
 }
 
@@ -131,7 +155,7 @@ function buildClientRecord(parsed: ParsedOnboard): Record<string, unknown> {
     'email', 'billing_email', 'primary_contact_name', 'phone', 'mrr',
     'billing_type', 'contract_term_months', 'date_signed', 'offer', 'nmls',
     'brokerage_name', 'ghl_location_id', 'ghl_subaccount_url', 'source',
-    'clickup_task_id',
+    'clickup_task_id', 'slack_id',
   ];
   for (const k of optional) {
     const v = parsed[k];
@@ -154,13 +178,110 @@ function buildClickUpDescription(parsed: ParsedOnboard, clientId: string): strin
     `Brokerage: ${parsed.brokerage_name ?? 'n/a'}`,
     `GHL location: ${parsed.ghl_location_id ?? 'n/a'}`,
     `Source: ${parsed.source ?? 'n/a'}`,
+    `Slack: ${parsed.slack_id ?? 'n/a'}`,
+    `Cash collected: ${fmtMoney(parsed.cash_collected)}`,
   ].join('\n');
+}
+
+async function upsertSigningBilling(
+  service: SupabaseClient,
+  clientId: string,
+  parsed: ParsedOnboard,
+): Promise<string | null> {
+  if (parsed.cash_collected == null || parsed.cash_collected <= 0) return null;
+
+  const billedOn = parsed.date_signed ?? new Date().toISOString().slice(0, 10);
+  const revenueType =
+    parsed.billing_type === 'pif' ? 'pif' : parsed.billing_type ? 'mrr' : null;
+  const { data: existing } = await service
+    .from('client_billings')
+    .select('id')
+    .eq('client_id', clientId)
+    .eq('invoice_ref', SIGNING_BILLING_REF)
+    .maybeSingle();
+
+  const row = {
+    client_id: clientId,
+    billed_on: billedOn,
+    due_date: billedOn,
+    base_amount: parsed.cash_collected,
+    performance_amount: 0,
+    late_fee: 0,
+    discount: 0,
+    amount: parsed.cash_collected,
+    amount_paid: parsed.cash_collected,
+    status: 'paid',
+    paid_on: billedOn,
+    method: 'manual',
+    invoice_ref: SIGNING_BILLING_REF,
+    note: 'New cash collected at sign',
+    ...(revenueType ? { revenue_type: revenueType } : {}),
+  };
+
+  if (existing?.id) {
+    const { data, error } = await service
+      .from('client_billings')
+      .update(row)
+      .eq('id', existing.id)
+      .select('id')
+      .single();
+    if (error) throw new Error(error.message);
+    return data.id as string;
+  }
+
+  const { data, error } = await service
+    .from('client_billings')
+    .insert(row)
+    .select('id')
+    .single();
+  if (error) throw new Error(error.message);
+  return data.id as string;
+}
+
+async function upsertSalesCall(
+  service: SupabaseClient,
+  clientId: string,
+  parsed: ParsedOnboard,
+): Promise<string | null> {
+  if (!parsed.sales_call_recording) return null;
+
+  const { data: existing } = await service
+    .from('client_calls')
+    .select('id')
+    .eq('client_id', clientId)
+    .eq('recording_url', parsed.sales_call_recording)
+    .maybeSingle();
+  if (existing?.id) return existing.id as string;
+
+  const calledAt = parsed.date_signed
+    ? new Date(`${parsed.date_signed}T12:00:00`).toISOString()
+    : new Date().toISOString();
+
+  const { data, error } = await service
+    .from('client_calls')
+    .insert({
+      client_id: clientId,
+      call_type: 'other',
+      called_at: calledAt,
+      recording_url: parsed.sales_call_recording,
+      notes: 'Sales call (signed)',
+    })
+    .select('id')
+    .single();
+  if (error) throw new Error(error.message);
+  return data.id as string;
 }
 
 export async function onboardClient(
   service: SupabaseClient,
   body: OnboardPayload,
-): Promise<{ client: Record<string, unknown>; clickup_task_id: string | null; created: boolean }> {
+): Promise<{
+  client: Record<string, unknown>;
+  clickup_task_id: string | null;
+  created: boolean;
+  billing_id: string | null;
+  sales_call_id: string | null;
+}> {
   const parsed = parseOnboardPayload(body);
   const existing = await findExistingClient(service, parsed);
   const record = buildClientRecord(parsed);
@@ -201,7 +322,7 @@ export async function onboardClient(
     const task = await createClickUpTask(listId, token, {
       name: parsed.name,
       description: buildClickUpDescription(parsed, String(client.id)),
-      status: 'new account',
+      status: 'onboarding',
     });
     clickupTaskId = task.id;
 
@@ -215,5 +336,8 @@ export async function onboardClient(
     client = updated as Record<string, unknown>;
   }
 
-  return { client, clickup_task_id: clickupTaskId, created };
+  const billing_id = await upsertSigningBilling(service, String(client.id), parsed);
+  const sales_call_id = await upsertSalesCall(service, String(client.id), parsed);
+
+  return { client, clickup_task_id: clickupTaskId, created, billing_id, sales_call_id };
 }

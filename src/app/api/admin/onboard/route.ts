@@ -20,13 +20,15 @@ export async function POST(req: Request) {
 
   try {
     const service = createServiceClient();
-    const { client, clickup_task_id, created } = await onboardClient(service, body);
+    const { client, clickup_task_id, created, billing_id, sales_call_id } = await onboardClient(service, body);
 
     return NextResponse.json({
       client_id: client.id,
       client,
       clickup_task_id,
       clickup_task_url: clickup_task_id ? clickUpTaskUrl(clickup_task_id) : null,
+      billing_id,
+      sales_call_id,
       created,
     });
   } catch (e) {

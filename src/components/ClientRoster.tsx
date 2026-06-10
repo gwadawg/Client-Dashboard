@@ -3,10 +3,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
-import StatusChangeModal from "@/components/StatusChangeModal";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import TimezoneSelect from "@/components/TimezoneSelect";
-import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import { DEFAULT_REPORTING_TYPE, normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import {
@@ -27,6 +25,7 @@ type Client = {
   billing_day?: number | null;
   launch_date?: string | null;
   date_signed?: string | null;
+  churned_at?: string | null;
   contract_term_months?: number | null;
   contract_end_date?: string | null;
   performance_terms?: string | null;
@@ -74,11 +73,58 @@ const KPI_ORDER: KpiKey[] = [
 const BAND_KEYS: (keyof NonNullable<ClientKpiBenchmarks[KpiKey]>)[] = ["critical", "below", "at"];
 const BAND_LABEL: Record<string, string> = { critical: "911 / critical", below: "Below KPI", at: "At KPI" };
 
-const LIFECYCLE_OPTIONS = ["new_account", "onboarding", "active", "paused", "off_boarding", "churned"];
+const ROSTER_SECTIONS = [
+  { key: "onboarding", label: "Onboarding", statuses: ["new_account", "onboarding"] },
+  { key: "active", label: "Active", statuses: ["active"] },
+  { key: "paused", label: "Paused / Off-boarding", statuses: ["paused", "off_boarding"] },
+  { key: "churned", label: "Churned", statuses: ["churned"] },
+] as const;
 
-function money(n: number | null | undefined): string {
-  if (typeof n !== "number" || Number.isNaN(n)) return "—";
-  return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+type SectionKey = (typeof ROSTER_SECTIONS)[number]["key"];
+
+const ROSTER_COLS = 9;
+
+const ROSTER_HEADERS = [
+  "Sub-account name",
+  "Client name",
+  "Licensed in",
+  "Timezone",
+  "Signed",
+  "Launch",
+  "Churned",
+  "ClickUp",
+  "",
+] as const;
+
+function clientSectionKey(c: Client): SectionKey {
+  const status = c.lifecycle_status ?? "active";
+  for (const section of ROSTER_SECTIONS) {
+    if ((section.statuses as readonly string[]).includes(status)) return section.key;
+  }
+  return "active";
+}
+
+function groupClientsBySection(clients: Client[]): Record<SectionKey, Client[]> {
+  const groups = Object.fromEntries(ROSTER_SECTIONS.map(s => [s.key, [] as Client[]])) as Record<SectionKey, Client[]>;
+  for (const c of clients) {
+    groups[clientSectionKey(c)].push(c);
+  }
+  for (const section of ROSTER_SECTIONS) {
+    groups[section.key].sort((a, b) =>
+      (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" }),
+    );
+  }
+  return groups;
+}
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const datePart = iso.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    const [y, m, d] = datePart.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function fieldStyle() {
@@ -104,11 +150,6 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean; scrollToCalls?: boolean; openCheckinForm?: boolean } | null>(null);
   const [kickoffFor, setKickoffFor] = useState<{ id: string; name: string } | null>(null);
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
-  const [statusChange, setStatusChange] = useState<{
-    id: string;
-    name: string;
-    targetStatus: string;
-  } | null>(null);
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
@@ -143,17 +184,6 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     setBusy(null);
   }
 
-  async function confirmStatusChange(reason: string | null, note: string) {
-    if (!statusChange) return;
-    await patchClient(statusChange.id, {
-      lifecycle_status: statusChange.targetStatus,
-      is_live: false,
-      status_change_reason: reason,
-      status_change_note: note || undefined,
-    });
-    setStatusChange(null);
-  }
-
   async function createClient(body: Record<string, unknown>) {
     setBusy("create");
     const res = await fetch("/api/clients", {
@@ -183,13 +213,15 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 
   if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#334155" }}>Loading…</p>;
 
+  const grouped = groupClientsBySection(clients);
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Roster</h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            The master record for every client. Sub-account name is the GHL location name used in reporting filters; client name is the person or business contact. Billing reads launch date, MRR, and lifecycle from here.
+            Clients are grouped by lifecycle status. The table shows glance fields only — open a client&rsquo;s file for contact info, billing, GHL setup, and lifecycle changes.
           </p>
         </div>
         <button

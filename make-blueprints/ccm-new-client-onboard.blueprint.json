@@ -52,7 +52,7 @@
                 "ca": "",
                 "useMtls": false,
                 "contentType": "application/json",
-                "data": "{\"name\": \"{{1.business_name}}\", \"primary_contact_name\": \"{{1.client_name}}\", \"email\": \"{{1.email}}\", \"phone\": \"{{1.phone}}\", \"mrr\": \"{{1.mrr}}\", \"billing_type\": \"{{1.billing_type}}\", \"contract_term_months\": \"{{1.contract_term}}\", \"offer\": \"{{1.offer}}\", \"reporting_type\": \"{{1.offer}}\", \"date_signed\": \"{{1.date_signed}}\", \"nmls\": \"{{1.nmls}}\", \"brokerage_name\": \"{{1.brokerage_name}}\", \"ghl_location_id\": \"{{1.location_id}}\", \"ghl_subaccount_url\": \"{{1.subaccount_url}}\", \"source\": \"{{1.source}}\"}"
+                "data": "{\"name\": \"{{1.name}}\", \"email\": \"{{1.email}}\", \"phone\": \"{{1.phone}}\", \"clickup_task_id\": \"{{1.clickup_task_id}}\", \"slack_id\": \"{{1.slack_id}}\", \"cash_collected\": \"{{1.cash_collected}}\", \"contract_term_months\": \"{{1.contract_term}}\", \"billing_type\": \"{{1.billing_type}}\", \"mrr\": \"{{1.mrr}}\", \"source\": \"{{1.source}}\", \"offer\": \"{{1.offer}}\", \"date_signed\": \"{{1.date_signed}}\", \"sales_call_recording\": \"{{1.sales_call_recording}}\"}"
             },
             "metadata": {
                 "designer": { "x": 300, "y": 0, "name": "Create client in Mr. Waiz + ClickUp" }
