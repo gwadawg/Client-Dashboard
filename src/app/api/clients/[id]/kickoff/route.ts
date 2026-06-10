@@ -88,22 +88,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
   const includeRevenue = canViewClientRevenue(subject);
 
-  const ghlLocationId = optionalText(body.ghl_location_id);
-  const recordingUrl = optionalText(body.recording_url);
+  const saveMode = body.save_mode === 'progress' ? 'progress' : 'complete';
+  let ghlLocationId = optionalText(body.ghl_location_id);
+  let recordingUrl = optionalText(body.recording_url);
 
-  if (!ghlLocationId) {
-    return NextResponse.json({ error: 'Client GHL Location ID is required' }, { status: 400 });
-  }
-  if (!recordingUrl) {
-    return NextResponse.json({ error: 'OB call recording link is required' }, { status: 400 });
-  }
   if (!includeRevenue && body.daily_adspend != null && body.daily_adspend !== '') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const { data: existingClient, error: clientError } = await ctx.service
     .from('clients')
-    .select('id, lifecycle_status')
+    .select('id, lifecycle_status, ghl_location_id')
     .eq('id', clientId)
     .single();
 
@@ -113,6 +108,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   if (!existingClient) {
     return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+  }
+
+  const existingOnboardingCall = await findOnboardingCall(ctx.service, clientId);
+
+  if (saveMode === 'complete') {
+    ghlLocationId = ghlLocationId ?? optionalText(existingClient.ghl_location_id);
+    recordingUrl = recordingUrl ?? optionalText(existingOnboardingCall?.recording_url);
+    if (!ghlLocationId) {
+      return NextResponse.json({ error: 'Client GHL Location ID is required' }, { status: 400 });
+    }
+    if (!recordingUrl) {
+      return NextResponse.json({ error: 'OB call recording link is required' }, { status: 400 });
+    }
   }
 
   const updates: Record<string, unknown> = {
@@ -127,18 +135,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     phone_notifications: optionalText(body.phone_notifications),
     phone_live_transfer: optionalText(body.phone_live_transfer),
     live_transfer_approved: parseLiveTransferApproved(body.live_transfer_approved),
-    ghl_location_id: ghlLocationId,
   };
+
+  if (ghlLocationId) updates.ghl_location_id = ghlLocationId;
 
   if (includeRevenue) {
     updates.daily_adspend = parseDailyAdspend(body.daily_adspend);
   }
 
-  const advanceLifecycle = body.advance_lifecycle !== false;
-  if (advanceLifecycle && existingClient.lifecycle_status === 'new_account') {
-    updates.lifecycle_status = 'onboarding';
-    const syncedLive = syncIsLiveWithLifecycle('onboarding', undefined);
-    if (syncedLive !== undefined) updates.is_live = syncedLive;
+  if (saveMode === 'complete') {
+    const advanceLifecycle = body.advance_lifecycle !== false;
+    if (advanceLifecycle && existingClient.lifecycle_status === 'new_account') {
+      updates.lifecycle_status = 'onboarding';
+      const syncedLive = syncIsLiveWithLifecycle('onboarding', undefined);
+      if (syncedLive !== undefined) updates.is_live = syncedLive;
+    }
   }
 
   const { data: client, error: updateError } = await ctx.service
@@ -152,53 +163,56 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  const now = new Date().toISOString();
-  const calledAt =
-    typeof body.called_at === 'string' && body.called_at.trim()
-      ? new Date(body.called_at).toISOString()
-      : now;
+  let onboardingCall = existingOnboardingCall;
 
-  const existingCall = await findOnboardingCall(ctx.service, clientId);
-  let onboardingCall;
+  if (saveMode === 'complete' && recordingUrl) {
+    const now = new Date().toISOString();
+    const calledAt =
+      typeof body.called_at === 'string' && body.called_at.trim()
+        ? new Date(body.called_at).toISOString()
+        : now;
 
-  if (existingCall) {
-    const { data, error } = await ctx.service
-      .from('client_calls')
-      .update({
-        recording_url: recordingUrl,
-        disposition: 'completed',
-        updated_by: ctx.userId,
-        updated_at: now,
-      })
-      .eq('id', existingCall.id)
-      .select(CLIENT_CALL_FIELDS)
-      .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    onboardingCall = data;
-  } else {
-    const { data, error } = await ctx.service
-      .from('client_calls')
-      .insert({
-        client_id: clientId,
-        call_type: 'onboarding',
-        called_at: calledAt,
-        recording_url: recordingUrl,
-        disposition: 'completed',
-        created_by: ctx.userId,
-        updated_by: ctx.userId,
-        updated_at: now,
-      })
-      .select(CLIENT_CALL_FIELDS)
-      .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    onboardingCall = data;
+    if (existingOnboardingCall) {
+      const { data, error } = await ctx.service
+        .from('client_calls')
+        .update({
+          recording_url: recordingUrl,
+          disposition: 'completed',
+          updated_by: ctx.userId,
+          updated_at: now,
+        })
+        .eq('id', existingOnboardingCall.id)
+        .select(CLIENT_CALL_FIELDS)
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      onboardingCall = data;
+    } else {
+      const { data, error } = await ctx.service
+        .from('client_calls')
+        .insert({
+          client_id: clientId,
+          call_type: 'onboarding',
+          called_at: calledAt,
+          recording_url: recordingUrl,
+          disposition: 'completed',
+          created_by: ctx.userId,
+          updated_by: ctx.userId,
+          updated_at: now,
+        })
+        .select(CLIENT_CALL_FIELDS)
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      onboardingCall = data;
+    }
   }
 
   const redactedClient = includeRevenue ? client : redactClientMoneyFields(client);
+  const kickoffClient = redactedClient as KickoffClient;
 
   return NextResponse.json({
     client: redactedClient,
     onboarding_call: onboardingCall,
-    kickoff_complete: true,
+    kickoff_complete: !isKickoffIncomplete(kickoffClient, onboardingCall),
+    saved_mode: saveMode,
   });
 }

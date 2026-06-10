@@ -52,8 +52,9 @@ export function isKickoffIncomplete(
 }
 
 export function kickoffDraftFromClient(c: KickoffClient, recordingUrl = ''): KickoffDraft {
+  const phone = c.phone ?? '';
   return {
-    phone: c.phone ?? '',
+    phone,
     contact_role: c.contact_role ?? '',
     states_licensed: c.states_licensed ?? [],
     nmls: c.nmls ?? '',
@@ -62,13 +63,40 @@ export function kickoffDraftFromClient(c: KickoffClient, recordingUrl = ''): Kic
     appointment_settings: c.appointment_settings ?? '',
     daily_adspend: c.daily_adspend != null ? String(c.daily_adspend) : '',
     facebook_page_name: c.facebook_page_name ?? '',
-    phone_notifications: c.phone_notifications ?? '',
+    phone_notifications: c.phone_notifications ?? phone,
     phone_live_transfer: c.phone_live_transfer ?? '',
     live_transfer_approved: c.live_transfer_approved === true ? 'yes' : c.live_transfer_approved === false ? 'no' : '',
     ghl_location_id: c.ghl_location_id ?? '',
     recording_url: recordingUrl,
     advance_lifecycle: c.lifecycle_status === 'new_account',
   };
+}
+
+const PREFILL_TRACKED_KEYS: (keyof KickoffDraft)[] = [
+  'phone', 'contact_role', 'states_licensed', 'nmls', 'brokerage_name', 'timezone',
+  'appointment_settings', 'daily_adspend', 'facebook_page_name', 'phone_notifications',
+  'phone_live_transfer', 'live_transfer_approved', 'ghl_location_id', 'recording_url',
+];
+
+export function kickoffFieldHadValue(draft: KickoffDraft, key: keyof KickoffDraft): boolean {
+  const v = draft[key];
+  if (Array.isArray(v)) return v.length > 0;
+  if (key === 'live_transfer_approved') return v === 'yes' || v === 'no';
+  if (key === 'advance_lifecycle') return false;
+  return typeof v === 'string' && v.trim().length > 0;
+}
+
+export function countKickoffFieldsOnFile(draft: KickoffDraft): number {
+  return PREFILL_TRACKED_KEYS.filter(k => kickoffFieldHadValue(draft, k)).length;
+}
+
+export function kickoffFieldsMatch(a: KickoffDraft, b: KickoffDraft, key: keyof KickoffDraft): boolean {
+  const left = a[key];
+  const right = b[key];
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+  return left === right;
 }
 
 export type KickoffDraft = {
@@ -89,8 +117,13 @@ export type KickoffDraft = {
   advance_lifecycle: boolean;
 };
 
-export function kickoffDraftToBody(draft: KickoffDraft, canViewRevenue: boolean): Record<string, unknown> {
+export function kickoffDraftToBody(
+  draft: KickoffDraft,
+  canViewRevenue: boolean,
+  saveMode: 'progress' | 'complete' = 'complete',
+): Record<string, unknown> {
   const body: Record<string, unknown> = {
+    save_mode: saveMode,
     phone: draft.phone.trim() || null,
     contact_role: draft.contact_role.trim() || null,
     states_licensed: draft.states_licensed,

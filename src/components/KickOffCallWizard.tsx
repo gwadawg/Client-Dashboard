@@ -5,8 +5,11 @@ import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import {
   CONTACT_ROLE_OPTIONS,
+  countKickoffFieldsOnFile,
   kickoffDraftFromClient,
   kickoffDraftToBody,
+  kickoffFieldHadValue,
+  kickoffFieldsMatch,
   type KickoffClient,
   type KickoffDraft,
 } from "@/lib/kickoff";
@@ -18,17 +21,22 @@ type Props = {
   onCompleted?: () => void;
 };
 
-function fieldStyle(shareMode: boolean, prefilled = false): CSSProperties {
+function fieldStyle(shareMode: boolean, status: "empty" | "on_file" | "edited" = "empty"): CSSProperties {
+  if (status === "edited") {
+    return shareMode
+      ? { background: "#fffbeb", border: "1px solid #fcd34d", color: "#111827" }
+      : { background: "#2a220f", border: "1px solid rgba(245,158,11,0.45)", color: "#e2e8f0" };
+  }
   if (shareMode) {
     return {
-      background: prefilled ? "#f0fdf4" : "#ffffff",
-      border: prefilled ? "1px solid #86efac" : "1px solid #d1d5db",
+      background: status === "on_file" ? "#f0fdf4" : "#ffffff",
+      border: status === "on_file" ? "1px solid #86efac" : "1px solid #d1d5db",
       color: "#111827",
     };
   }
   return {
-    background: prefilled ? "#0f2a1a" : "#0f2040",
-    border: prefilled ? "1px solid rgba(34,197,94,0.35)" : "1px solid rgba(255,255,255,0.12)",
+    background: status === "on_file" ? "#0f2a1a" : "#0f2040",
+    border: status === "on_file" ? "1px solid rgba(34,197,94,0.35)" : "1px solid rgba(255,255,255,0.12)",
     color: "#e2e8f0",
   };
 }
@@ -45,11 +53,6 @@ function helperColor(shareMode: boolean): string {
   return shareMode ? "#6b7280" : "#64748b";
 }
 
-function hasValue(v: string | string[] | undefined | null): boolean {
-  if (Array.isArray(v)) return v.length > 0;
-  return !!v?.trim();
-}
-
 export default function KickOffCallWizard({ clientId, fallbackName, onClose, onCompleted }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,6 +63,8 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
   const [canViewRevenue, setCanViewRevenue] = useState(false);
   const [draft, setDraft] = useState<KickoffDraft | null>(null);
   const [initialSnapshot, setInitialSnapshot] = useState<KickoffDraft | null>(null);
+  const [kickoffComplete, setKickoffComplete] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +86,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
       setCanViewRevenue(!!data.can_view_revenue);
       setDraft(nextDraft);
       setInitialSnapshot(nextDraft);
+      setKickoffComplete(!!data.kickoff_complete);
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -89,39 +95,38 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
   function patch<K extends keyof KickoffDraft>(key: K, value: KickoffDraft[K]) {
     setDraft(prev => (prev ? { ...prev, [key]: value } : prev));
     setSaveError(null);
+    setSaveNotice(null);
   }
 
-  function prefilled(key: keyof KickoffDraft): boolean {
-    if (!initialSnapshot || !draft) return false;
-    const initial = initialSnapshot[key];
-    const current = draft[key];
-    if (Array.isArray(initial) && Array.isArray(current)) {
-      return initial.length > 0 && JSON.stringify(initial) === JSON.stringify(current);
-    }
-    return hasValue(initial as string) && initial === current;
+  function fieldStatus(key: keyof KickoffDraft): "empty" | "on_file" | "edited" {
+    if (!initialSnapshot || !draft) return "empty";
+    const hadValue = kickoffFieldHadValue(initialSnapshot, key);
+    if (!hadValue) return "empty";
+    return kickoffFieldsMatch(initialSnapshot, draft, key) ? "on_file" : "edited";
   }
 
-  async function submit() {
+  async function submit(saveMode: "progress" | "complete") {
     if (!draft) return;
-    if (shareMode) {
+    if (saveMode === "complete" && shareMode) {
       setSaveError("Turn off Share Mode to fill in post-call fields before completing.");
       return;
     }
-    if (!draft.ghl_location_id.trim()) {
+    if (saveMode === "complete" && !draft.ghl_location_id.trim() && !kickoffComplete) {
       setSaveError("Client GHL Location ID is required.");
       return;
     }
-    if (!draft.recording_url.trim()) {
+    if (saveMode === "complete" && !draft.recording_url.trim() && !kickoffComplete) {
       setSaveError("OB call recording link is required.");
       return;
     }
 
     setSaving(true);
     setSaveError(null);
+    setSaveNotice(null);
     const res = await fetch(`/api/clients/${clientId}/kickoff`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(kickoffDraftToBody(draft, canViewRevenue)),
+      body: JSON.stringify(kickoffDraftToBody(draft, canViewRevenue, saveMode)),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -129,10 +134,21 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
       setSaving(false);
       return;
     }
+    const recording = data.onboarding_call?.recording_url ?? draft.recording_url;
+    const refreshed = kickoffDraftFromClient(data.client as KickoffClient, recording);
+    setDraft(refreshed);
+    setInitialSnapshot(refreshed);
+    setKickoffComplete(!!data.kickoff_complete);
     setSaving(false);
-    onCompleted?.();
-    onClose();
+    if (saveMode === "complete") {
+      onCompleted?.();
+      onClose();
+      return;
+    }
+    setSaveNotice("Progress saved — fields stay editable if the client wants changes.");
   }
+
+  const onFileCount = initialSnapshot ? countKickoffFieldsOnFile(initialSnapshot) : 0;
 
   const shellBg = shareMode ? "#f9fafb" : "#060d1a";
   const headerBg = shareMode ? "#ffffff" : "#0a1628";
@@ -160,7 +176,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
               Kick-Off Call
             </h2>
             <p className="text-sm mt-0.5" style={{ color: subtitleColor }}>
-              {clientName} — confirm details with the client, then complete post-call fields.
+              {clientName} — review what we have on file, confirm with the client, and edit anything that changed.
             </p>
           </div>
           <button
@@ -209,13 +225,27 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
           <p className="text-sm py-16 text-center px-6" style={{ color: "#ef4444" }}>{error}</p>
         ) : draft ? (
           <div className="px-6 py-6 space-y-8">
+            {onFileCount > 0 && (
+              <div
+                className="rounded-lg px-4 py-3 text-sm"
+                style={{
+                  color: shareMode ? "#166534" : "#86efac",
+                  background: shareMode ? "#f0fdf4" : "rgba(34,197,94,0.08)",
+                  border: shareMode ? "1px solid #bbf7d0" : "1px solid rgba(34,197,94,0.25)",
+                }}
+              >
+                <strong>{onFileCount} field{onFileCount === 1 ? "" : "s"} pre-filled</strong> from the client record.
+                Green labels mean unchanged on file — edit any field if the client gives you updates.
+              </div>
+            )}
+
             <Section title="Confirm Information" shareMode={shareMode}>
               <div className="space-y-4">
                 <Field
                   label="Phone"
                   required
                   shareMode={shareMode}
-                  prefilled={prefilled("phone")}
+                  status={fieldStatus("phone")}
                   helper="Primary contact number on file."
                 >
                   <input
@@ -224,20 +254,20 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                     disabled={saving}
                     onChange={e => patch("phone", e.target.value)}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, prefilled("phone"))}
+                    style={fieldStyle(shareMode, fieldStatus("phone"))}
                   />
                 </Field>
                 <Field
                   label="What position best describes your role?"
                   shareMode={shareMode}
-                  prefilled={prefilled("contact_role")}
+                  status={fieldStatus("contact_role")}
                 >
                   <select
                     value={draft.contact_role}
                     disabled={saving}
                     onChange={e => patch("contact_role", e.target.value)}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
-                    style={fieldStyle(shareMode, prefilled("contact_role"))}
+                    style={fieldStyle(shareMode, fieldStatus("contact_role"))}
                   >
                     <option value="">Select…</option>
                     {CONTACT_ROLE_OPTIONS.map(o => (
@@ -251,7 +281,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                 <Field
                   label="States Licensed"
                   shareMode={shareMode}
-                  prefilled={prefilled("states_licensed")}
+                  status={fieldStatus("states_licensed")}
                 >
                   <StatesLicensedSelect
                     value={draft.states_licensed}
@@ -260,19 +290,19 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                     className="w-full"
                   />
                 </Field>
-                <Field label="NMLS #" shareMode={shareMode} prefilled={prefilled("nmls")}>
+                <Field label="NMLS #" shareMode={shareMode} status={fieldStatus("nmls")}>
                   <input
                     value={draft.nmls}
                     disabled={saving}
                     onChange={e => patch("nmls", e.target.value)}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                    style={fieldStyle(shareMode, prefilled("nmls"))}
+                    style={fieldStyle(shareMode, fieldStatus("nmls"))}
                   />
                 </Field>
                 <Field
                   label="Bank / Broker / Lender Working For"
                   shareMode={shareMode}
-                  prefilled={prefilled("brokerage_name")}
+                  status={fieldStatus("brokerage_name")}
                   helper="Wherever their license is hung up."
                 >
                   <input
@@ -280,10 +310,10 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                     disabled={saving}
                     onChange={e => patch("brokerage_name", e.target.value)}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, prefilled("brokerage_name"))}
+                    style={fieldStyle(shareMode, fieldStatus("brokerage_name"))}
                   />
                 </Field>
-                <Field label="Current Timezone" shareMode={shareMode} prefilled={prefilled("timezone")}>
+                <Field label="Current Timezone" shareMode={shareMode} status={fieldStatus("timezone")}>
                   <TimezoneSelect
                     value={draft.timezone}
                     disabled={saving}
@@ -300,7 +330,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                 <Field
                   label="Appointment Length, Details & Buffer Time"
                   shareMode={shareMode}
-                  prefilled={prefilled("appointment_settings")}
+                  status={fieldStatus("appointment_settings")}
                   helper='Recommended: 15-min time slots, 30-min calls. Max availability to increase booking/show rate.'
                 >
                   <input
@@ -308,14 +338,14 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                     disabled={saving}
                     onChange={e => patch("appointment_settings", e.target.value)}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, prefilled("appointment_settings"))}
+                    style={fieldStyle(shareMode, fieldStatus("appointment_settings"))}
                   />
                 </Field>
                 {canViewRevenue && (
                   <Field
                     label="Daily Adspend"
                     shareMode={shareMode}
-                    prefilled={prefilled("daily_adspend")}
+                    status={fieldStatus("daily_adspend")}
                     helper="Average starting point is $50–$100/day."
                   >
                     <div className="relative">
@@ -332,7 +362,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                         disabled={saving}
                         onChange={e => patch("daily_adspend", e.target.value)}
                         className="w-full pl-7 pr-3 py-2 rounded-lg text-sm outline-none"
-                        style={fieldStyle(shareMode, prefilled("daily_adspend"))}
+                        style={fieldStyle(shareMode, fieldStatus("daily_adspend"))}
                       />
                     </div>
                   </Field>
@@ -340,21 +370,21 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                 <Field
                   label="Facebook Page Name"
                   shareMode={shareMode}
-                  prefilled={prefilled("facebook_page_name")}
+                  status={fieldStatus("facebook_page_name")}
                 >
                   <input
                     value={draft.facebook_page_name}
                     disabled={saving}
                     onChange={e => patch("facebook_page_name", e.target.value)}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, prefilled("facebook_page_name"))}
+                    style={fieldStyle(shareMode, fieldStatus("facebook_page_name"))}
                   />
                 </Field>
                 <Field
                   label="Phone number to receive texts"
                   shareMode={shareMode}
-                  prefilled={prefilled("phone_notifications")}
-                  helper="Typically cell or Bonzo number."
+                  status={fieldStatus("phone_notifications")}
+                  helper="Typically cell or Bonzo number. Defaults to primary phone if blank on file."
                 >
                   <input
                     type="tel"
@@ -362,13 +392,13 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                     disabled={saving}
                     onChange={e => patch("phone_notifications", e.target.value)}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, prefilled("phone_notifications"))}
+                    style={fieldStyle(shareMode, fieldStatus("phone_notifications"))}
                   />
                 </Field>
                 <Field
                   label="Phone Number to Receive Live Transfers (Ring Central)"
                   shareMode={shareMode}
-                  prefilled={prefilled("phone_live_transfer")}
+                  status={fieldStatus("phone_live_transfer")}
                 >
                   <input
                     type="tel"
@@ -376,16 +406,16 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                     disabled={saving}
                     onChange={e => patch("phone_live_transfer", e.target.value)}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, prefilled("phone_live_transfer"))}
+                    style={fieldStyle(shareMode, fieldStatus("phone_live_transfer"))}
                   />
                 </Field>
-                <Field label="Live Transfer Approved?" shareMode={shareMode} prefilled={prefilled("live_transfer_approved")}>
+                <Field label="Live Transfer Approved?" shareMode={shareMode} status={fieldStatus("live_transfer_approved")}>
                   <select
                     value={draft.live_transfer_approved}
                     disabled={saving}
                     onChange={e => patch("live_transfer_approved", e.target.value as KickoffDraft["live_transfer_approved"])}
                     className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
-                    style={fieldStyle(shareMode, prefilled("live_transfer_approved"))}
+                    style={fieldStyle(shareMode, fieldStatus("live_transfer_approved"))}
                   >
                     <option value="">Select…</option>
                     <option value="yes">Yes</option>
@@ -398,17 +428,17 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
             {!shareMode && (
               <Section title="Post Call" shareMode={shareMode}>
                 <div className="space-y-4">
-                  <Field label="Client GHL Location ID" required shareMode={shareMode}>
+                  <Field label="Client GHL Location ID" required shareMode={shareMode} status={fieldStatus("ghl_location_id")}>
                     <input
                       value={draft.ghl_location_id}
                       disabled={saving}
                       onChange={e => patch("ghl_location_id", e.target.value)}
                       placeholder="GHL subaccount location id"
                       className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                      style={fieldStyle(shareMode)}
+                      style={fieldStyle(shareMode, fieldStatus("ghl_location_id"))}
                     />
                   </Field>
-                  <Field label="OB Call Recording Link" required shareMode={shareMode}>
+                  <Field label="OB Call Recording Link" required shareMode={shareMode} status={fieldStatus("recording_url")}>
                     <input
                       type="url"
                       value={draft.recording_url}
@@ -416,7 +446,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                       onChange={e => patch("recording_url", e.target.value)}
                       placeholder="https://…"
                       className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={fieldStyle(shareMode)}
+                      style={fieldStyle(shareMode, fieldStatus("recording_url"))}
                     />
                   </Field>
                   <label className="flex items-start gap-3 cursor-pointer">
@@ -441,27 +471,49 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
               </p>
             )}
 
+            {saveNotice && (
+              <p className="text-sm rounded-lg px-4 py-3" style={{ color: "#22c55e", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)" }}>
+                {saveNotice}
+              </p>
+            )}
+
             {saveError && (
               <p className="text-sm rounded-lg px-4 py-3" style={{ color: "#ef4444", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)" }}>
                 {saveError}
               </p>
             )}
 
-            {!shareMode && (
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 type="button"
-                onClick={submit}
+                onClick={() => submit("progress")}
                 disabled={saving}
-                className="w-full text-sm font-semibold px-4 py-3 rounded-lg"
+                className="flex-1 text-sm font-semibold px-4 py-3 rounded-lg"
                 style={{
-                  color: "#ffffff",
-                  background: "#2563eb",
+                  color: shareMode ? "#374151" : "#e2e8f0",
+                  background: shareMode ? "#ffffff" : "rgba(255,255,255,0.06)",
+                  border: `1px solid ${borderColor}`,
                   opacity: saving ? 0.6 : 1,
                 }}
               >
-                {saving ? "Saving…" : "Complete Kick-Off"}
+                {saving ? "Saving…" : "Save progress"}
               </button>
-            )}
+              {!shareMode && (
+                <button
+                  type="button"
+                  onClick={() => submit("complete")}
+                  disabled={saving}
+                  className="flex-1 text-sm font-semibold px-4 py-3 rounded-lg"
+                  style={{
+                    color: "#ffffff",
+                    background: "#2563eb",
+                    opacity: saving ? 0.6 : 1,
+                  }}
+                >
+                  {saving ? "Saving…" : kickoffComplete ? "Save changes" : "Complete Kick-Off"}
+                </button>
+              )}
+            </div>
           </div>
         ) : null}
       </div>
@@ -487,14 +539,14 @@ function Field({
   label,
   required,
   shareMode,
-  prefilled,
+  status = "empty",
   helper,
   children,
 }: {
   label: string;
   required?: boolean;
   shareMode: boolean;
-  prefilled?: boolean;
+  status?: "empty" | "on_file" | "edited";
   helper?: string;
   children: ReactNode;
 }) {
@@ -503,8 +555,11 @@ function Field({
       <span className="text-sm font-medium" style={{ color: labelColor(shareMode) }}>
         {label}
         {required && <span style={{ color: "#ef4444" }}> *</span>}
-        {prefilled && (
+        {status === "on_file" && (
           <span className="ml-2 text-xs font-normal" style={{ color: "#22c55e" }}>on file</span>
+        )}
+        {status === "edited" && (
+          <span className="ml-2 text-xs font-normal" style={{ color: "#f59e0b" }}>edited</span>
         )}
       </span>
       <div className="mt-1.5">{children}</div>
