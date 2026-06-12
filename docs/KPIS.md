@@ -94,7 +94,7 @@ The main **Dashboard** view for RM clients shows these sections:
 
 Rate cards carry an info tooltip with their formula. Show Quality groups all appointment rates together so the true (net) show rate reads at a glance separate from the client-report rate.
 
-HE clients keep a minimal dashboard (appointments + calling stats). Operational metrics (dials, show rate, booking rate, etc.) remain in other nav views.
+HE clients keep a minimal dashboard (leads, appointments + calling stats). **Booking Rate** on the HE overview uses **Total Leads** as the denominator (`Appointments Booked ÷ Total Leads`), not qualified leads. Other operational metrics (dials, show rate, etc.) remain in other nav views.
 
 ---
 
@@ -264,7 +264,7 @@ Document your live Make scenario to match one approach:
 |-----|-----------------|-------|
 | Total Leads | Yes | `lead` events |
 | Appointments Booked | Yes | `appointment_booked` |
-| Booking Rate | Yes | |
+| Booking Rate | Yes | RM: ÷ Qualified Leads; HE overview: ÷ Total Leads (`lead_booking_rate`) |
 | Shows / No Shows | Yes | |
 | Show Rate (of booked) | Yes | `shows ÷ (shows + no_shows + lo_bailed)` — excludes pending + cancelled |
 | Net Show Rate | Yes | `shows ÷ (shows + no_shows)` — true attendance, excludes cancel/LO bail/pending |

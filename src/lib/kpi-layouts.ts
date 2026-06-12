@@ -146,7 +146,14 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
     footnote:
       "Both show rates ignore appointments that never took place — anything still pending or cancelled is excluded. Net Show Rate counts only lead attendance (Shows vs No Shows); Show Rate (of booked) also counts LO bails against you.",
     cards: [
+      { label: "Total Leads", metric: "new_leads", format: "int", hint: "Every new lead/contact ingested in this date range." },
       { label: "Appointments Booked", metric: "booked_appointments", format: "int", hint: "Count of appointments booked in this range." },
+      {
+        label: "Booking Rate",
+        metric: "lead_booking_rate",
+        format: "pct",
+        hint: "Appointments Booked ÷ Total Leads.",
+      },
       {
         label: "Appts To Take Place",
         metric: "appts_to_take_place",

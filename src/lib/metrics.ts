@@ -61,7 +61,10 @@ export type MetricsResult = {
   hot_leads: number;
   out_of_state_leads: number;
   booked_appointments: number;
+  /** Appointments Booked ÷ Qualified Leads (RM default). */
   appt_booking_rate: number;
+  /** Appointments Booked ÷ Total Leads (HE overview). */
+  lead_booking_rate: number;
   appts_to_take_place: number;
   shows: number;
   no_shows: number;
@@ -230,6 +233,7 @@ export function calculateMetrics(
     out_of_state_leads,
     booked_appointments: booked,
     appt_booking_rate: qualified_leads > 0 ? (booked / qualified_leads) * 100 : 0,
+    lead_booking_rate: leads > 0 ? (booked / leads) * 100 : 0,
     appts_to_take_place: Math.max(0, booked - shows - no_shows - cancelled - lo_bailed),
     shows,
     no_shows,
@@ -401,6 +405,8 @@ export type KpiTimelineBucket = {
   show_rate: number | null;
   net_show_rate: number | null;
   booking_rate: number | null;
+  /** Appointments Booked ÷ Total Leads (HE overview). */
+  lead_booking_rate: number | null;
   conversation_rate: number | null;
   lead_to_qual: number | null;
 };
@@ -453,6 +459,7 @@ function finalizeBucket(c: RawCounts): KpiTimelineBucket {
     show_rate: dispositioned > 0 ? (c.shows / dispositioned) * 100 : null,
     net_show_rate: c.shows + c.no_shows > 0 ? (c.shows / (c.shows + c.no_shows)) * 100 : null,
     booking_rate: c.qualified_leads > 0 ? (c.booked / c.qualified_leads) * 100 : null,
+    lead_booking_rate: c.leads > 0 ? (c.booked / c.leads) * 100 : null,
     conversation_rate: c.qualified_leads > 0 ? (client_conversations / c.qualified_leads) * 100 : null,
     lead_to_qual: c.leads > 0 ? (c.qualified_leads / c.leads) * 100 : null,
   };
