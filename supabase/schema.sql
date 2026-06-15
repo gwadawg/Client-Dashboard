@@ -419,6 +419,30 @@ create table if not exists ad_library_aliases (
 create index if not exists ad_library_aliases_library_id_idx on ad_library_aliases(library_id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 6c. Resource Library (company-wide forms, SOPs, document links, templates)
+--     Company-wide (not per-client). Viewing is gated by the 'resources' tab
+--     permission; mutations are admin/owner only (enforced in app code).
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists resources (
+  id          uuid    primary key default gen_random_uuid(),
+  title       text    not null,
+  description text,
+  category    text    not null default 'document',
+  tags        text[]  not null default '{}',
+  url         text    not null,
+  created_by  uuid    references auth.users(id) on delete set null,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  constraint resources_category_check check (
+    category in ('form', 'sop', 'document', 'template', 'other')
+  )
+);
+
+create index if not exists resources_category_idx on resources(category);
+create index if not exists resources_tags_idx on resources using gin(tags);
+create index if not exists resources_updated_at_idx on resources(updated_at desc);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 7. Setter Availability (recurring weekly windows per agent)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists setter_availability (

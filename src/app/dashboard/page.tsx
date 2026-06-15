@@ -11,12 +11,13 @@ export default async function DashboardPage() {
   const service = createServiceClient();
   const { data: profile } = await service
     .from('profiles')
-    .select('is_owner, allowed_permissions')
+    .select('is_owner, is_admin, allowed_permissions')
     .eq('id', user.id)
     .maybeSingle();
 
   const isOwner = profile?.is_owner ?? false;
+  const isAdmin = profile?.is_admin ?? false;
   const allowedPermissions = (profile?.allowed_permissions ?? null) as AllowedPermissions;
 
-  return <DashboardView isOwner={isOwner} allowedPermissions={allowedPermissions} />;
+  return <DashboardView isOwner={isOwner} isAdmin={isAdmin} allowedPermissions={allowedPermissions} />;
 }

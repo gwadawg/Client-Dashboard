@@ -28,13 +28,15 @@ export type View =
   | "admin_share"
   | "admin_users"
   | "schedule"
-  | "client_calls";
+  | "client_calls"
+  | "resources";
 
 export type NavItem = { view: View; label: string; group: string };
 
 // Sidebar group ordering.
 export const NAV_GROUPS = [
   "Overview",
+  "Resources",
   "Raw Data",
   "Heat Maps",
   "Agent Credit",
@@ -62,6 +64,7 @@ export const NAV: NavItem[] = [
   { view: "recordings",         label: "Call Recordings",       group: "Agent Stats"  },
   { view: "goals",              label: "Goal Tracker",          group: "Overview"     },
   { view: "client_health",      label: "Client Success",        group: "Overview"     },
+  { view: "resources",          label: "Resource Library",      group: "Resources"    },
   { view: "admin_agents",       label: "Agent Roster",          group: "Admin"        },
   { view: "admin_clients",      label: "Client Roster",         group: "Admin"        },
   { view: "client_calls",       label: "Client Calls",          group: "Admin"        },
