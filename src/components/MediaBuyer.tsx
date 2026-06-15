@@ -28,7 +28,29 @@ type LibraryMeta = {
   thumbnail_url: string | null;
 };
 
+type DrilldownClientRow = {
+  client_id: string;
+  client_name: string;
+  spend: number;
+  leads: number;
+  qualified: number;
+  appointments: number;
+  shows: number;
+  closes: number;
+  cpl: number | null;
+  cost_per_show: number | null;
+};
+
+type DrilldownDaily = {
+  date: string;
+  spend: number;
+  leads: number;
+  appointments: number;
+  shows: number;
+};
+
 type AdRow = {
+  row_key: string;
   ad_name: string;
   spend: number;
   impressions: number;
@@ -53,11 +75,12 @@ type AdRow = {
   client_count: number;
   has_meta: boolean;
   library: LibraryMeta | null;
+  variant_names: string[];
+  is_sourced: boolean;
 };
 
-type DrilldownClientRow = {
-  client_id: string;
-  client_name: string;
+type DrilldownVariant = {
+  ad_name: string;
   spend: number;
   leads: number;
   qualified: number;
@@ -65,21 +88,20 @@ type DrilldownClientRow = {
   shows: number;
   closes: number;
   cpl: number | null;
-  cost_per_show: number | null;
-};
-
-type DrilldownDaily = {
-  date: string;
-  spend: number;
-  leads: number;
-  appointments: number;
-  shows: number;
 };
 
 type Drilldown = {
   ad_name: string;
+  library_id?: string | null;
   perClient: DrilldownClientRow[];
   daily: DrilldownDaily[];
+  variants?: DrilldownVariant[];
+};
+
+type LibraryAlias = {
+  id: string;
+  alias_name: string;
+  created_at: string;
 };
 
 type LibEntry = {
@@ -95,7 +117,14 @@ type LibEntry = {
   thumbnail_url: string | null;
   created_at: string;
   updated_at: string;
+  aliases: LibraryAlias[];
 };
+
+export type LibraryNav = {
+  libraryId?: string;
+  prefillAdName?: string;
+  openForm?: boolean;
+} | null;
 
 const AD_FORMAT_OPTIONS = [
   { value: "", label: "Select format…" },
@@ -212,7 +241,12 @@ function ClassBadge({ label, color }: { label: string; color: string }) {
 }
 
 // ── Ad Performance leaderboard ────────────────────────────────────────────────
-function AdPerformance({ startDate, endDate, clientId }: Props) {
+type AdPerformanceProps = Props & {
+  onAddToLibrary: (adName: string) => void;
+  onViewInLibrary: (libraryId: string) => void;
+};
+
+function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInLibrary }: AdPerformanceProps) {
   const [ads, setAds] = useState<AdRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -220,31 +254,42 @@ function AdPerformance({ startDate, endDate, clientId }: Props) {
   const [asc, setAsc] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [drill, setDrill] = useState<Record<string, Drilldown | "loading">>({});
+  const [unsourcedOpen, setUnsourcedOpen] = useState(true);
+  const [linkTarget, setLinkTarget] = useState<string | null>(null);
+  const [libraryOptions, setLibraryOptions] = useState<LibEntry[]>([]);
+  const [linkLibraryId, setLinkLibraryId] = useState("");
+  const [linkSaving, setLinkSaving] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadAds = useCallback(() => {
     setLoading(true);
     setError(null);
     const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
     if (clientId) params.set("client_id", clientId);
-    fetch(`/api/media-buyer?${params}`)
+    return fetch(`/api/media-buyer?${params}`)
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load");
         return r.json();
       })
       .then((data) => {
-        if (!cancelled) setAds(data.ads ?? []);
+        setAds(
+          (data.ads ?? []).map((a: AdRow) => ({
+            ...a,
+            row_key: a.row_key ?? `unsourced:${a.ad_name.toLowerCase()}`,
+            variant_names: a.variant_names ?? [a.ad_name],
+            is_sourced: a.is_sourced ?? !!a.library,
+          })),
+        );
+        setDrill({});
+        setExpanded(null);
       })
-      .catch((e) => {
-        if (!cancelled) setError(e.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }, [startDate, endDate, clientId]);
+
+  useEffect(() => {
+    loadAds();
+  }, [loadAds]);
 
   function onSort(k: SortKey) {
     if (sortKey === k) setAsc((v) => !v);
@@ -268,21 +313,65 @@ function AdPerformance({ startDate, endDate, clientId }: Props) {
     return copy;
   }, [ads, sortKey, asc]);
 
+  const unsourcedAds = useMemo(
+    () => ads.filter((a) => !a.is_sourced && (a.spend > 0 || a.has_meta)),
+    [ads],
+  );
+
+  const openLinkModal = useCallback((adName: string) => {
+    setLinkTarget(adName);
+    setLinkLibraryId("");
+    setLinkError(null);
+    fetch("/api/ad-library")
+      .then(async (r) => {
+        if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load library");
+        return r.json();
+      })
+      .then((data: LibEntry[]) => setLibraryOptions(data))
+      .catch((e) => setLinkError(e.message));
+  }, []);
+
+  async function submitLink() {
+    if (!linkTarget || !linkLibraryId) return;
+    setLinkSaving(true);
+    setLinkError(null);
+    const res = await fetch(`/api/ad-library/${linkLibraryId}/aliases`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alias_name: linkTarget }),
+    });
+    setLinkSaving(false);
+    if (!res.ok) {
+      setLinkError((await res.json()).error ?? "Link failed");
+      return;
+    }
+    setLinkTarget(null);
+    loadAds();
+  }
+
   const toggleExpand = useCallback(
-    (adName: string) => {
-      if (expanded === adName) {
+    (ad: AdRow) => {
+      const key = ad.row_key;
+      if (expanded === key) {
         setExpanded(null);
         return;
       }
-      setExpanded(adName);
-      if (!drill[adName]) {
-        setDrill((d) => ({ ...d, [adName]: "loading" }));
-        const params = new URLSearchParams({ start_date: startDate, end_date: endDate, ad: adName });
+      setExpanded(key);
+      if (!drill[key]) {
+        setDrill((d) => ({ ...d, [key]: "loading" }));
+        const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
         if (clientId) params.set("client_id", clientId);
+        if (ad.library?.id) params.set("library_id", ad.library.id);
+        else params.set("ad", ad.variant_names[0] ?? ad.ad_name);
         fetch(`/api/media-buyer?${params}`)
           .then((r) => r.json())
-          .then((data: Drilldown) => setDrill((d) => ({ ...d, [adName]: data })))
-          .catch(() => setDrill((d) => ({ ...d, [adName]: { ad_name: adName, perClient: [], daily: [] } })));
+          .then((data: Drilldown) => setDrill((d) => ({ ...d, [key]: data })))
+          .catch(() =>
+            setDrill((d) => ({
+              ...d,
+              [key]: { ad_name: ad.ad_name, perClient: [], daily: [], variants: [] },
+            })),
+          );
       }
     },
     [expanded, drill, startDate, endDate, clientId],
@@ -311,6 +400,68 @@ function AdPerformance({ startDate, endDate, clientId }: Props) {
 
   return (
     <div className="space-y-4">
+      {unsourcedAds.length > 0 ? (
+        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(251,191,36,0.2)" }}>
+          <button
+            type="button"
+            className="w-full flex items-center justify-between px-4 py-3 text-left"
+            style={{ background: "rgba(251,191,36,0.06)" }}
+            onClick={() => setUnsourcedOpen((v) => !v)}
+          >
+            <span className="text-sm font-semibold" style={{ color: "#fbbf24" }}>
+              Needs library entry ({unsourcedAds.length})
+            </span>
+            <span className="text-xs" style={{ color: "#94a3b8" }}>{unsourcedOpen ? "Hide" : "Show"}</span>
+          </button>
+          {unsourcedOpen ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: "#050c18" }}>
+                    {["Ad name", "Spend", "Leads", "Actions"].map((h, i) => (
+                      <th
+                        key={h}
+                        className={`px-3 py-2 ${i === 0 ? "text-left" : i === 3 ? "text-right" : "text-right"} text-[10px] font-semibold uppercase tracking-wider`}
+                        style={{ color: "#475569" }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {unsourcedAds.map((ad) => (
+                    <tr key={ad.row_key} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                      <td className="px-3 py-2 text-left" style={{ color: "#e2e8f0" }}>{ad.ad_name}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{money(ad.spend)}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(ad.leads)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          className="text-[11px] underline mr-3"
+                          style={{ color: "#f59e0b" }}
+                          onClick={() => onAddToLibrary(ad.ad_name)}
+                        >
+                          Add to library
+                        </button>
+                        <button
+                          type="button"
+                          className="text-[11px] underline"
+                          style={{ color: "#60a5fa" }}
+                          onClick={() => openLinkModal(ad.ad_name)}
+                        >
+                          Link to existing
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: "Total Spend", value: money(Math.round(totals.spend)) },
@@ -349,15 +500,18 @@ function AdPerformance({ startDate, endDate, clientId }: Props) {
             </thead>
             <tbody>
               {sorted.map((ad) => {
-                const isOpen = expanded === ad.ad_name;
-                const d = drill[ad.ad_name];
+                const isOpen = expanded === ad.row_key;
+                const d = drill[ad.row_key];
                 return (
                   <FragmentRow
-                    key={ad.ad_name}
+                    key={ad.row_key}
                     ad={ad}
                     isOpen={isOpen}
                     drilldown={d}
-                    onToggle={() => toggleExpand(ad.ad_name)}
+                    onToggle={() => toggleExpand(ad)}
+                    onAddToLibrary={onAddToLibrary}
+                    onViewInLibrary={onViewInLibrary}
+                    onLinkToExisting={openLinkModal}
                   />
                 );
               })}
@@ -365,6 +519,47 @@ function AdPerformance({ startDate, endDate, clientId }: Props) {
           </table>
         </div>
       </div>
+
+      {linkTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setLinkTarget(null)}>
+          <div
+            className="rounded-xl w-full max-w-md p-5 space-y-3"
+            style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.1)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>Link to existing creative</h3>
+            <p className="text-xs" style={{ color: "#94a3b8" }}>
+              Link <span style={{ color: "#e2e8f0" }}>{linkTarget}</span> to a library entry. Metrics will roll up with other variants.
+            </p>
+            <select
+              value={linkLibraryId}
+              onChange={(e) => setLinkLibraryId(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-sm"
+              style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+            >
+              <option value="">Select library entry…</option>
+              {libraryOptions.map((e) => (
+                <option key={e.id} value={e.id}>{e.ad_name}</option>
+              ))}
+            </select>
+            {linkError ? <p className="text-xs" style={{ color: "#f87171" }}>{linkError}</p> : null}
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setLinkTarget(null)} className="px-4 py-2 rounded-lg text-sm" style={{ color: "#94a3b8" }}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitLink}
+                disabled={linkSaving || !linkLibraryId}
+                className="px-4 py-2 rounded-lg text-sm font-semibold"
+                style={{ background: "#f59e0b", color: "#0a1424", opacity: linkSaving || !linkLibraryId ? 0.6 : 1 }}
+              >
+                {linkSaving ? "Linking…" : "Link"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -374,11 +569,17 @@ function FragmentRow({
   isOpen,
   drilldown,
   onToggle,
+  onAddToLibrary,
+  onViewInLibrary,
+  onLinkToExisting,
 }: {
   ad: AdRow;
   isOpen: boolean;
   drilldown: Drilldown | "loading" | undefined;
   onToggle: () => void;
+  onAddToLibrary: (adName: string) => void;
+  onViewInLibrary: (libraryId: string) => void;
+  onLinkToExisting: (adName: string) => void;
 }) {
   return (
     <>
@@ -400,7 +601,27 @@ function FragmentRow({
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
             <span className="font-medium">{ad.ad_name}</span>
-            {ad.library ? <StatusBadge status={ad.library.status} /> : null}
+            {ad.library ? <StatusBadge status={ad.library.status} /> : (
+              <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase" style={{ background: "rgba(100,116,139,0.15)", color: "#64748b" }}>
+                Not in library
+              </span>
+            )}
+            {ad.variant_names.length > 1 ? (
+              <ClassBadge label={`${ad.variant_names.length} variants`} color="#f59e0b" />
+            ) : null}
+            {ad.library ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewInLibrary(ad.library!.id);
+                }}
+                className="text-[11px] underline"
+                style={{ color: "#f59e0b" }}
+              >
+                View in library
+              </button>
+            ) : null}
             {ad.library?.drive_url ? (
               <a
                 href={ad.library.drive_url}
@@ -413,7 +634,38 @@ function FragmentRow({
                 creative
               </a>
             ) : null}
+            {!ad.is_sourced ? (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddToLibrary(ad.ad_name);
+                  }}
+                  className="text-[11px] underline"
+                  style={{ color: "#f59e0b" }}
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onLinkToExisting(ad.ad_name);
+                  }}
+                  className="text-[11px] underline"
+                  style={{ color: "#60a5fa" }}
+                >
+                  Link
+                </button>
+              </>
+            ) : null}
           </div>
+          {isOpen && ad.variant_names.length > 1 ? (
+            <p className="text-[10px] mt-1 ml-5" style={{ color: "#64748b" }}>
+              Variants: {ad.variant_names.join(" · ")}
+            </p>
+          ) : null}
         </td>
         <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money(ad.spend)}</td>
         <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.leads)}</td>
@@ -431,7 +683,7 @@ function FragmentRow({
             {drilldown === "loading" || !drilldown ? (
               <p className="text-sm" style={{ color: "#475569" }}>Loading breakdown…</p>
             ) : (
-              <DrilldownPanel ad={ad} drilldown={drilldown} />
+              <DrilldownPanel ad={ad} drilldown={drilldown} onViewInLibrary={onViewInLibrary} />
             )}
           </td>
         </tr>
@@ -440,7 +692,15 @@ function FragmentRow({
   );
 }
 
-function DrilldownPanel({ ad, drilldown }: { ad: AdRow; drilldown: Drilldown }) {
+function DrilldownPanel({
+  ad,
+  drilldown,
+  onViewInLibrary,
+}: {
+  ad: AdRow;
+  drilldown: Drilldown;
+  onViewInLibrary: (libraryId: string) => void;
+}) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
       <div>
@@ -485,6 +745,52 @@ function DrilldownPanel({ ad, drilldown }: { ad: AdRow; drilldown: Drilldown }) 
             {ad.library?.visual_notes ? (
               <p className="text-xs mt-2 whitespace-pre-wrap" style={{ color: "#64748b" }}>Notes: {ad.library.visual_notes}</p>
             ) : null}
+            {ad.library ? (
+              <button
+                type="button"
+                onClick={() => onViewInLibrary(ad.library!.id)}
+                className="text-xs mt-2 underline"
+                style={{ color: "#f59e0b" }}
+              >
+                View in library
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {drilldown.variants && drilldown.variants.length > 1 ? (
+          <div className="mt-3">
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#475569" }}>
+              By variant
+            </p>
+            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: "#050c18" }}>
+                    {["Ad name", "Spend", "Leads", "Appts", "Shows", "CPL"].map((h, i) => (
+                      <th
+                        key={h}
+                        className={`px-3 py-2 ${i === 0 ? "text-left" : "text-right"} text-[10px] font-semibold uppercase tracking-wider`}
+                        style={{ color: "#475569" }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {drilldown.variants.map((v) => (
+                    <tr key={v.ad_name} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                      <td className="px-3 py-2 text-left" style={{ color: "#cbd5e1" }}>{v.ad_name}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{money(v.spend)}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(v.leads)}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(v.appointments)}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(v.shows)}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{money(v.cpl)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : null}
       </div>
@@ -547,13 +853,42 @@ const EMPTY_FORM = {
   visual_notes: "",
 };
 
-function AdLibrary() {
+function AdLibrary({
+  libraryNav,
+  onNavClear,
+}: {
+  libraryNav: LibraryNav;
+  onNavClear: () => void;
+}) {
   const [entries, setEntries] = useState<LibEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<typeof EMPTY_FORM | null>(null);
+  const [editAliases, setEditAliases] = useState<LibraryAlias[]>([]);
+  const [newAlias, setNewAlias] = useState("");
+  const [aliasError, setAliasError] = useState<string | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [expandedVariants, setExpandedVariants] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const openEditForm = useCallback((e: LibEntry) => {
+    setFormError(null);
+    setAliasError(null);
+    setNewAlias("");
+    setEditAliases(e.aliases ?? []);
+    setForm({
+      id: e.id,
+      ad_name: e.ad_name,
+      status: e.status,
+      ad_format: e.ad_format ?? "",
+      product: e.product ?? "",
+      drive_url: e.drive_url ?? "",
+      thumbnail_url: e.thumbnail_url ?? "",
+      summary: e.summary ?? "",
+      visual_notes: e.visual_notes ?? "",
+    });
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -562,7 +897,7 @@ function AdLibrary() {
         if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load");
         return r.json();
       })
-      .then((data: LibEntry[]) => setEntries(data))
+      .then((data: LibEntry[]) => setEntries(data.map((e) => ({ ...e, aliases: e.aliases ?? [] }))))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -570,6 +905,49 @@ function AdLibrary() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!libraryNav) return;
+    if (libraryNav.prefillAdName && libraryNav.openForm) {
+      setFormError(null);
+      setForm({ ...EMPTY_FORM, ad_name: libraryNav.prefillAdName });
+      onNavClear();
+      return;
+    }
+    if (libraryNav.libraryId) {
+      setHighlightId(libraryNav.libraryId);
+      const entry = entries.find((e) => e.id === libraryNav.libraryId);
+      requestAnimationFrame(() => {
+        document.getElementById(`library-card-${libraryNav.libraryId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      if (libraryNav.openForm && entry) openEditForm(entry);
+      onNavClear();
+    }
+  }, [libraryNav, entries, onNavClear, openEditForm]);
+
+  async function addAlias() {
+    if (!form?.id || !newAlias.trim()) return;
+    setAliasError(null);
+    const res = await fetch(`/api/ad-library/${form.id}/aliases`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alias_name: newAlias.trim() }),
+    });
+    if (!res.ok) {
+      setAliasError((await res.json()).error ?? "Failed to add alias");
+      return;
+    }
+    const created = await res.json();
+    setEditAliases((prev) => [...prev, created]);
+    setNewAlias("");
+    load();
+  }
+
+  async function removeAlias(aliasId: string) {
+    await fetch(`/api/ad-library/aliases/${aliasId}`, { method: "DELETE" });
+    setEditAliases((prev) => prev.filter((a) => a.id !== aliasId));
+    load();
+  }
 
   async function save() {
     if (!form) return;
@@ -636,8 +1014,19 @@ function AdLibrary() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {entries.map((e) => {
             const thumb = driveThumb(e);
+            const allNames = [e.ad_name, ...(e.aliases ?? []).map((a) => a.alias_name)];
+            const isHighlighted = highlightId === e.id;
             return (
-              <div key={e.id} className="rounded-xl overflow-hidden flex flex-col" style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div
+                key={e.id}
+                id={`library-card-${e.id}`}
+                className="rounded-xl overflow-hidden flex flex-col transition-shadow"
+                style={{
+                  background: "#0a1424",
+                  border: isHighlighted ? "1px solid rgba(245,158,11,0.5)" : "1px solid rgba(255,255,255,0.06)",
+                  boxShadow: isHighlighted ? "0 0 0 2px rgba(245,158,11,0.25)" : undefined,
+                }}
+              >
                 <div className="relative aspect-video flex items-center justify-center" style={{ background: "#050c18" }}>
                   {thumb ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -653,6 +1042,28 @@ function AdLibrary() {
                 </div>
                 <div className="p-4 flex-1 flex flex-col">
                   <p className="font-semibold text-sm" style={{ color: "#e2e8f0" }}>{e.ad_name}</p>
+                  {allNames.length > 1 ? (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        className="text-[11px] underline"
+                        style={{ color: "#94a3b8" }}
+                        onClick={() => setExpandedVariants(expandedVariants === e.id ? null : e.id)}
+                      >
+                        {allNames.length} linked ad names {expandedVariants === e.id ? "▲" : "▼"}
+                      </button>
+                      {expandedVariants === e.id ? (
+                        <ul className="mt-1 space-y-0.5">
+                          {allNames.map((name) => (
+                            <li key={name} className="text-[11px] truncate" style={{ color: "#64748b" }}>
+                              {name}
+                              {name === e.ad_name ? " (primary)" : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {(e.ad_format || e.product) ? (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {e.ad_format ? (
@@ -676,20 +1087,7 @@ function AdLibrary() {
                       </a>
                     ) : null}
                     <button
-                      onClick={() => {
-                        setFormError(null);
-                        setForm({
-                          id: e.id,
-                          ad_name: e.ad_name,
-                          status: e.status,
-                          ad_format: e.ad_format ?? "",
-                          product: e.product ?? "",
-                          drive_url: e.drive_url ?? "",
-                          thumbnail_url: e.thumbnail_url ?? "",
-                          summary: e.summary ?? "",
-                          visual_notes: e.visual_notes ?? "",
-                        });
-                      }}
+                      onClick={() => openEditForm(e)}
                       className="text-xs ml-auto"
                       style={{ color: "#94a3b8" }}
                     >
@@ -716,7 +1114,7 @@ function AdLibrary() {
             <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
               {form.id ? "Edit Ad" : "Add Ad"}
             </h3>
-            <Field label="Ad name (must match the Facebook ad name)">
+            <Field label="Ad name (primary — canonical name for this creative)">
               <input
                 value={form.ad_name}
                 onChange={(e) => setForm({ ...form, ad_name: e.target.value })}
@@ -725,6 +1123,48 @@ function AdLibrary() {
                 placeholder="e.g. Spring Promo — UGC v3"
               />
             </Field>
+            {form.id ? (
+              <Field label="Linked ad names (Facebook variants)">
+                <div className="space-y-2">
+                  <p className="text-[10px]" style={{ color: "#64748b" }}>
+                    Primary: <span style={{ color: "#94a3b8" }}>{form.ad_name}</span>
+                  </p>
+                  {editAliases.length === 0 ? (
+                    <p className="text-xs" style={{ color: "#475569" }}>No variant aliases yet.</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {editAliases.map((a) => (
+                        <li key={a.id} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#cbd5e1" }}>
+                          <span className="truncate">{a.alias_name}</span>
+                          <button type="button" onClick={() => removeAlias(a.id)} className="shrink-0" style={{ color: "#f87171" }}>
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      value={newAlias}
+                      onChange={(e) => setNewAlias(e.target.value)}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm"
+                      style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                      placeholder="Facebook ad name variant…"
+                    />
+                    <button
+                      type="button"
+                      onClick={addAlias}
+                      disabled={!newAlias.trim()}
+                      className="px-3 py-2 rounded-lg text-sm font-semibold shrink-0"
+                      style={{ background: "#1e293b", color: "#e2e8f0", opacity: newAlias.trim() ? 1 : 0.5 }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {aliasError ? <p className="text-xs" style={{ color: "#f87171" }}>{aliasError}</p> : null}
+                </div>
+              </Field>
+            ) : null}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Status">
                 <select
@@ -839,6 +1279,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // ── Shell with sub-tabs ───────────────────────────────────────────────────────
 export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
   const [tab, setTab] = useState<"performance" | "library">("performance");
+  const [libraryNav, setLibraryNav] = useState<LibraryNav>(null);
+
+  const handleAddToLibrary = useCallback((adName: string) => {
+    setLibraryNav({ prefillAdName: adName, openForm: true });
+    setTab("library");
+  }, []);
+
+  const handleViewInLibrary = useCallback((libraryId: string) => {
+    setLibraryNav({ libraryId });
+    setTab("library");
+  }, []);
 
   return (
     <div className="space-y-5">
@@ -866,9 +1317,15 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
       </div>
 
       {tab === "performance" ? (
-        <AdPerformance startDate={startDate} endDate={endDate} clientId={clientId} />
+        <AdPerformance
+          startDate={startDate}
+          endDate={endDate}
+          clientId={clientId}
+          onAddToLibrary={handleAddToLibrary}
+          onViewInLibrary={handleViewInLibrary}
+        />
       ) : (
-        <AdLibrary />
+        <AdLibrary libraryNav={libraryNav} onNavClear={() => setLibraryNav(null)} />
       )}
     </div>
   );

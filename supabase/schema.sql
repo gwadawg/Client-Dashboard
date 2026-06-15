@@ -407,6 +407,17 @@ create index if not exists ad_library_status_idx on ad_library(status);
 create index if not exists ad_library_ad_format_idx on ad_library(ad_format);
 create index if not exists ad_library_product_idx on ad_library(product);
 
+-- Alternate Facebook ad names mapped to the same ad_library creative.
+create table if not exists ad_library_aliases (
+  id          uuid primary key default gen_random_uuid(),
+  library_id  uuid not null references ad_library(id) on delete cascade,
+  alias_name  text not null,
+  created_at  timestamptz not null default now(),
+  unique (alias_name)
+);
+
+create index if not exists ad_library_aliases_library_id_idx on ad_library_aliases(library_id);
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 7. Setter Availability (recurring weekly windows per agent)
 -- ─────────────────────────────────────────────────────────────────────────────

@@ -26,13 +26,29 @@ export async function GET() {
   const denied = requirePermission(ctx, 'media_buyer');
   if (denied) return denied;
 
-  const { data, error } = await ctx.service
-    .from('ad_library')
-    .select('*')
-    .order('updated_at', { ascending: false });
+  const [{ data: library, error: libError }, { data: aliases, error: aliasError }] =
+    await Promise.all([
+      ctx.service.from('ad_library').select('*').order('updated_at', { ascending: false }),
+      ctx.service.from('ad_library_aliases').select('id, library_id, alias_name, created_at'),
+    ]);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? []);
+  if (libError || aliasError) {
+    return NextResponse.json({ error: libError?.message ?? aliasError?.message }, { status: 500 });
+  }
+
+  const aliasesByLibrary = new Map<string, { id: string; alias_name: string; created_at: string }[]>();
+  for (const a of aliases ?? []) {
+    const list = aliasesByLibrary.get(a.library_id) ?? [];
+    list.push({ id: a.id, alias_name: a.alias_name, created_at: a.created_at });
+    aliasesByLibrary.set(a.library_id, list);
+  }
+
+  const data = (library ?? []).map((entry) => ({
+    ...entry,
+    aliases: aliasesByLibrary.get(entry.id) ?? [],
+  }));
+
+  return NextResponse.json(data);
 }
 
 export async function POST(req: Request) {

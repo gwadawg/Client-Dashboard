@@ -45,8 +45,75 @@ export type AdPerformanceRow = {
   booking_rate: number | null;
   show_rate: number | null;
   client_count: number;
+  /** Client IDs for rollup union; omitted in API responses when empty. */
+  client_ids?: string[];
   has_meta: boolean;
 };
+
+export type AdLibraryMeta = {
+  id: string;
+  ad_name: string;
+  status: string;
+  platform: string | null;
+  ad_format: string | null;
+  product: string | null;
+  summary: string | null;
+  visual_notes: string | null;
+  drive_url: string | null;
+  thumbnail_url: string | null;
+};
+
+export type RolledUpAdPerformanceRow = AdPerformanceRow & {
+  /** Stable key for drilldown expand state. */
+  row_key: string;
+  library: AdLibraryMeta | null;
+  variant_names: string[];
+  is_sourced: boolean;
+};
+
+export type AdLibraryAliasRow = {
+  id: string;
+  library_id: string;
+  alias_name: string;
+};
+
+/** Maps Facebook ad names (primary + aliases) to library entries. */
+export class AdLibraryResolver {
+  private byName = new Map<string, AdLibraryMeta>();
+  private aliasesByLibrary = new Map<string, AdLibraryAliasRow[]>();
+
+  constructor(
+    library: AdLibraryMeta[],
+    aliases: AdLibraryAliasRow[] = [],
+  ) {
+    for (const row of library) {
+      const name = normalizeAdName(row.ad_name);
+      if (name) this.byName.set(adKey(name), row);
+    }
+    for (const alias of aliases) {
+      const name = normalizeAdName(alias.alias_name);
+      const lib = library.find((l) => l.id === alias.library_id);
+      if (name && lib) this.byName.set(adKey(name), lib);
+      const list = this.aliasesByLibrary.get(alias.library_id) ?? [];
+      list.push(alias);
+      this.aliasesByLibrary.set(alias.library_id, list);
+    }
+  }
+
+  resolve(adName: string): AdLibraryMeta | null {
+    return this.byName.get(adKey(adName)) ?? null;
+  }
+
+  /** All Facebook ad names linked to a library entry (primary + aliases). */
+  variantNamesFor(libraryId: string, primaryName: string): string[] {
+    const names = new Set<string>([primaryName]);
+    for (const a of this.aliasesByLibrary.get(libraryId) ?? []) {
+      const n = normalizeAdName(a.alias_name);
+      if (n) names.add(n);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }
+}
 
 function num(v: unknown): number {
   if (v == null || v === '') return 0;
@@ -203,39 +270,148 @@ export function aggregateAdPerformance(
 
   const rows: AdPerformanceRow[] = [];
   for (const acc of accs.values()) {
-    rows.push({
-      ad_name: acc.ad_name,
-      spend: round(acc.spend) ?? 0,
-      impressions: acc.impressions,
-      clicks: acc.clicks,
-      ctr: round(ratio(acc.clicks, acc.impressions) != null ? (acc.clicks / acc.impressions) * 100 : null, 2),
-      cpc: round(ratio(acc.spend, acc.clicks), 2),
-      cpm: round(acc.impressions > 0 ? (acc.spend / acc.impressions) * 1000 : null, 2),
-      leads: acc.leads,
-      qualified: acc.qualified,
-      hot: acc.hot,
-      appointments: acc.appointments,
-      shows: acc.shows,
-      no_shows: acc.no_shows,
-      closes: acc.closes,
-      cpl: round(ratio(acc.spend, acc.leads), 2),
-      cost_per_qualified: round(ratio(acc.spend, acc.qualified), 2),
-      cost_per_appointment: round(ratio(acc.spend, acc.appointments), 2),
-      cost_per_show: round(ratio(acc.spend, acc.shows), 2),
-      cost_per_close: round(ratio(acc.spend, acc.closes), 2),
-      booking_rate: round(ratio(acc.appointments, acc.qualified) != null ? (acc.appointments / acc.qualified) * 100 : null, 1),
-      show_rate: round(
-        acc.shows + acc.no_shows > 0 ? (acc.shows / (acc.shows + acc.no_shows)) * 100 : null,
-        1,
-      ),
-      client_count: acc.clients.size,
-      has_meta: acc.has_meta,
-    });
+    rows.push(accToRow(acc));
   }
-
-  // Default ordering: biggest spenders first (UI can re-sort).
   rows.sort((a, b) => b.spend - a.spend);
   return rows;
+}
+
+function accToRow(acc: Acc): AdPerformanceRow {
+  return {
+    ad_name: acc.ad_name,
+    spend: round(acc.spend) ?? 0,
+    impressions: acc.impressions,
+    clicks: acc.clicks,
+    ctr: round(ratio(acc.clicks, acc.impressions) != null ? (acc.clicks / acc.impressions) * 100 : null, 2),
+    cpc: round(ratio(acc.spend, acc.clicks), 2),
+    cpm: round(acc.impressions > 0 ? (acc.spend / acc.impressions) * 1000 : null, 2),
+    leads: acc.leads,
+    qualified: acc.qualified,
+    hot: acc.hot,
+    appointments: acc.appointments,
+    shows: acc.shows,
+    no_shows: acc.no_shows,
+    closes: acc.closes,
+    cpl: round(ratio(acc.spend, acc.leads), 2),
+    cost_per_qualified: round(ratio(acc.spend, acc.qualified), 2),
+    cost_per_appointment: round(ratio(acc.spend, acc.appointments), 2),
+    cost_per_show: round(ratio(acc.spend, acc.shows), 2),
+    cost_per_close: round(ratio(acc.spend, acc.closes), 2),
+    booking_rate: round(ratio(acc.appointments, acc.qualified) != null ? (acc.appointments / acc.qualified) * 100 : null, 1),
+    show_rate: round(
+      acc.shows + acc.no_shows > 0 ? (acc.shows / (acc.shows + acc.no_shows)) * 100 : null,
+      1,
+    ),
+    client_count: acc.clients.size,
+    client_ids: [...acc.clients],
+    has_meta: acc.has_meta,
+  };
+}
+
+type RollupAcc = {
+  display_name: string;
+  row_key: string;
+  library: AdLibraryMeta | null;
+  variant_names: Set<string>;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  qualified: number;
+  hot: number;
+  appointments: number;
+  shows: number;
+  no_shows: number;
+  closes: number;
+  clients: Set<string>;
+  has_meta: boolean;
+};
+
+function rollupAccToRow(acc: RollupAcc): RolledUpAdPerformanceRow {
+  const variant_names = [...acc.variant_names].sort((a, b) => a.localeCompare(b));
+  const base = accToRow({
+    ad_name: acc.display_name,
+    spend: acc.spend,
+    impressions: acc.impressions,
+    clicks: acc.clicks,
+    leads: acc.leads,
+    qualified: acc.qualified,
+    hot: acc.hot,
+    appointments: acc.appointments,
+    shows: acc.shows,
+    no_shows: acc.no_shows,
+    closes: acc.closes,
+    clients: acc.clients,
+    has_meta: acc.has_meta,
+  });
+  return {
+    ...base,
+    row_key: acc.row_key,
+    library: acc.library,
+    variant_names,
+    is_sourced: acc.library != null,
+  };
+}
+
+/**
+ * Roll per-ad-name performance rows into one row per library creative.
+ * Unsourced ads remain as individual rows keyed by ad name.
+ */
+export function rollupAdPerformanceByLibrary(
+  rows: AdPerformanceRow[],
+  resolver: AdLibraryResolver,
+): RolledUpAdPerformanceRow[] {
+  const groups = new Map<string, RollupAcc>();
+
+  const ensure = (key: string, init: () => RollupAcc): RollupAcc => {
+    let acc = groups.get(key);
+    if (!acc) {
+      acc = init();
+      groups.set(key, acc);
+    }
+    return acc;
+  };
+
+  for (const row of rows) {
+    const lib = resolver.resolve(row.ad_name);
+    const groupKey = lib ? `lib:${lib.id}` : `unsourced:${adKey(row.ad_name)}`;
+    const acc = ensure(groupKey, () => ({
+      display_name: lib ? lib.ad_name : row.ad_name,
+      row_key: groupKey,
+      library: lib ?? null,
+      variant_names: new Set<string>(),
+      spend: 0,
+      impressions: 0,
+      clicks: 0,
+      leads: 0,
+      qualified: 0,
+      hot: 0,
+      appointments: 0,
+      shows: 0,
+      no_shows: 0,
+      closes: 0,
+      clients: new Set<string>(),
+      has_meta: false,
+    }));
+
+    acc.variant_names.add(row.ad_name);
+    acc.spend += row.spend;
+    acc.impressions += row.impressions;
+    acc.clicks += row.clicks;
+    acc.leads += row.leads;
+    acc.qualified += row.qualified;
+    acc.hot += row.hot;
+    acc.appointments += row.appointments;
+    acc.shows += row.shows;
+    acc.no_shows += row.no_shows;
+    acc.closes += row.closes;
+    if (row.has_meta) acc.has_meta = true;
+    for (const id of row.client_ids ?? []) acc.clients.add(id);
+  }
+
+  const result = [...groups.values()].map(rollupAccToRow);
+  result.sort((a, b) => b.spend - a.spend);
+  return result;
 }
 
 export type AdClientBreakdownRow = {
@@ -258,10 +434,23 @@ export type AdDailyPoint = {
   shows: number;
 };
 
+export type AdVariantBreakdown = {
+  ad_name: string;
+  spend: number;
+  leads: number;
+  qualified: number;
+  appointments: number;
+  shows: number;
+  closes: number;
+  cpl: number | null;
+};
+
 export type AdDrilldown = {
   ad_name: string;
+  library_id?: string | null;
   perClient: AdClientBreakdownRow[];
   daily: AdDailyPoint[];
+  variants?: AdVariantBreakdown[];
 };
 
 /** Per-client breakdown + daily trend for one ad name. */
@@ -350,5 +539,79 @@ export function buildAdDrilldown(
     ad_name: adName,
     perClient: [...perClient.values()].sort((a, b) => b.spend - a.spend),
     daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)),
+  };
+}
+
+/** Merge drilldowns for multiple Facebook ad names (library variants). */
+export function buildMultiAdDrilldown(
+  displayName: string,
+  adNames: string[],
+  metaRows: AdMetaRow[],
+  events: AdEventRow[],
+  libraryId?: string | null,
+): AdDrilldown {
+  if (adNames.length === 0) {
+    return { ad_name: displayName, library_id: libraryId, perClient: [], daily: [], variants: [] };
+  }
+
+  const drilldowns = adNames.map((name) => buildAdDrilldown(name, metaRows, events));
+  const variants: AdVariantBreakdown[] = drilldowns.map((d) => {
+    const spend = d.perClient.reduce((s, c) => s + c.spend, 0);
+    const leads = d.perClient.reduce((s, c) => s + c.leads, 0);
+    return {
+      ad_name: d.ad_name,
+      spend,
+      leads,
+      qualified: d.perClient.reduce((s, c) => s + c.qualified, 0),
+      appointments: d.perClient.reduce((s, c) => s + c.appointments, 0),
+      shows: d.perClient.reduce((s, c) => s + c.shows, 0),
+      closes: d.perClient.reduce((s, c) => s + c.closes, 0),
+      cpl: round(ratio(spend, leads), 2),
+    };
+  });
+
+  const perClientMap = new Map<string, AdClientBreakdownRow>();
+  for (const d of drilldowns) {
+    for (const row of d.perClient) {
+      const existing = perClientMap.get(row.client_id);
+      if (!existing) {
+        perClientMap.set(row.client_id, { ...row });
+      } else {
+        existing.spend += row.spend;
+        existing.leads += row.leads;
+        existing.qualified += row.qualified;
+        existing.appointments += row.appointments;
+        existing.shows += row.shows;
+        existing.closes += row.closes;
+      }
+    }
+  }
+  for (const row of perClientMap.values()) {
+    row.spend = round(row.spend) ?? 0;
+    row.cpl = round(ratio(row.spend, row.leads), 2);
+    row.cost_per_show = round(ratio(row.spend, row.shows), 2);
+  }
+
+  const dailyMap = new Map<string, AdDailyPoint>();
+  for (const d of drilldowns) {
+    for (const point of d.daily) {
+      const existing = dailyMap.get(point.date);
+      if (!existing) {
+        dailyMap.set(point.date, { ...point });
+      } else {
+        existing.spend += point.spend;
+        existing.leads += point.leads;
+        existing.appointments += point.appointments;
+        existing.shows += point.shows;
+      }
+    }
+  }
+
+  return {
+    ad_name: displayName,
+    library_id: libraryId,
+    perClient: [...perClientMap.values()].sort((a, b) => b.spend - a.spend),
+    daily: [...dailyMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    variants: variants.sort((a, b) => b.spend - a.spend),
   };
 }

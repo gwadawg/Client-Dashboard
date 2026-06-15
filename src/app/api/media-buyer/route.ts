@@ -2,10 +2,14 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import {
+  AdLibraryResolver,
   aggregateAdPerformance,
   buildAdDrilldown,
-  normalizeAdName,
+  buildMultiAdDrilldown,
+  rollupAdPerformanceByLibrary,
   type AdEventRow,
+  type AdLibraryAliasRow,
+  type AdLibraryMeta,
   type AdMetaRow,
 } from '@/lib/ad-performance';
 
@@ -16,18 +20,13 @@ const EVENT_SELECT =
   'client_id, event_type, ghl_contact_id, lead_phone, phone_number_used, ad_name, is_qualified, is_hot, occurred_at';
 const META_SELECT = 'client_id, ad_name, insight_date, spend, impressions, clicks';
 
-type LibraryRow = {
-  id: string;
-  ad_name: string;
-  status: string;
-  platform: string | null;
-  ad_format: string | null;
-  product: string | null;
-  summary: string | null;
-  visual_notes: string | null;
-  drive_url: string | null;
-  thumbnail_url: string | null;
-};
+const LIBRARY_SELECT =
+  'id, ad_name, status, platform, ad_format, product, summary, visual_notes, drive_url, thumbnail_url';
+
+function stripClientIds<T extends { client_ids?: string[] }>(row: T): Omit<T, 'client_ids'> {
+  const { client_ids: _omit, ...rest } = row;
+  return rest;
+}
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -40,8 +39,8 @@ export async function GET(req: Request) {
   const start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
   const adParam = searchParams.get('ad');
+  const libraryIdParam = searchParams.get('library_id');
 
-  // Default to live clients only (matches the rest of the dashboard).
   let liveClientIds: string[] | null = null;
   if (!client_id) liveClientIds = await getLiveClientIds(ctx.service);
 
@@ -70,26 +69,34 @@ export async function GET(req: Request) {
   eventsQuery = eventsQuery.limit(100000);
   metaQuery = metaQuery.limit(100000);
 
-  const [{ data: events, error: eventsError }, { data: meta, error: metaError }, { data: library, error: libError }] =
-    await Promise.all([
-      eventsQuery,
-      metaQuery,
-      ctx.service.from('ad_library').select('id, ad_name, status, platform, ad_format, product, summary, visual_notes, drive_url, thumbnail_url'),
-    ]);
+  const [
+    { data: events, error: eventsError },
+    { data: meta, error: metaError },
+    { data: library, error: libError },
+    { data: aliases, error: aliasError },
+  ] = await Promise.all([
+    eventsQuery,
+    metaQuery,
+    ctx.service.from('ad_library').select(LIBRARY_SELECT),
+    ctx.service.from('ad_library_aliases').select('id, library_id, alias_name'),
+  ]);
 
-  if (eventsError || metaError || libError) {
+  if (eventsError || metaError || libError || aliasError) {
     return NextResponse.json(
-      { error: eventsError?.message ?? metaError?.message ?? libError?.message },
+      { error: eventsError?.message ?? metaError?.message ?? libError?.message ?? aliasError?.message },
       { status: 500 },
     );
   }
 
   const metaRows = (meta ?? []) as AdMetaRow[];
   const eventRows = (events ?? []) as AdEventRow[];
+  const libraryRows = (library ?? []) as AdLibraryMeta[];
+  const aliasRows = (aliases ?? []) as AdLibraryAliasRow[];
+  const resolver = new AdLibraryResolver(libraryRows, aliasRows);
 
-  // Per-ad drilldown mode.
-  if (adParam) {
-    const drilldown = buildAdDrilldown(adParam, metaRows, eventRows);
+  const attachClientNames = async (
+    drilldown: ReturnType<typeof buildAdDrilldown>,
+  ) => {
     const clientIds = drilldown.perClient.map((r) => r.client_id);
     let names = new Map<string, string>();
     if (clientIds.length) {
@@ -99,39 +106,49 @@ export async function GET(req: Request) {
         .in('id', clientIds);
       names = new Map((clients ?? []).map((c) => [c.id, c.name]));
     }
-    return NextResponse.json({
+    return {
       ...drilldown,
       perClient: drilldown.perClient.map((r) => ({
         ...r,
         client_name: names.get(r.client_id) ?? '—',
       })),
-    });
-  }
-
-  // Leaderboard mode: merge in ad_library metadata by ad name.
-  const libByName = new Map<string, LibraryRow>();
-  for (const row of (library ?? []) as LibraryRow[]) {
-    const name = normalizeAdName(row.ad_name);
-    if (name) libByName.set(name.toLowerCase(), row);
-  }
-
-  const ads = aggregateAdPerformance(metaRows, eventRows).map((ad) => {
-    const lib = libByName.get(ad.ad_name.toLowerCase()) ?? null;
-    return {
-      ...ad,
-      library: lib
-        ? {
-            id: lib.id,
-            status: lib.status,
-            ad_format: lib.ad_format,
-            product: lib.product,
-            summary: lib.summary,
-            visual_notes: lib.visual_notes,
-            drive_url: lib.drive_url,
-            thumbnail_url: lib.thumbnail_url,
-          }
-        : null,
     };
+  };
+
+  if (libraryIdParam) {
+    const lib = libraryRows.find((l) => l.id === libraryIdParam);
+    if (!lib) {
+      return NextResponse.json({ error: 'Library entry not found' }, { status: 404 });
+    }
+    const variantNames = resolver.variantNamesFor(lib.id, lib.ad_name);
+    const drilldown = buildMultiAdDrilldown(lib.ad_name, variantNames, metaRows, eventRows, lib.id);
+    return NextResponse.json(await attachClientNames(drilldown));
+  }
+
+  if (adParam) {
+    const drilldown = buildAdDrilldown(adParam, metaRows, eventRows);
+    return NextResponse.json(await attachClientNames(drilldown));
+  }
+
+  const perName = aggregateAdPerformance(metaRows, eventRows);
+  const ads = rollupAdPerformanceByLibrary(perName, resolver).map((row) => {
+    const stripped = stripClientIds(row);
+    if (row.library) {
+      return {
+        ...stripped,
+        library: {
+          id: row.library.id,
+          status: row.library.status,
+          ad_format: row.library.ad_format,
+          product: row.library.product,
+          summary: row.library.summary,
+          visual_notes: row.library.visual_notes,
+          drive_url: row.library.drive_url,
+          thumbnail_url: row.library.thumbnail_url,
+        },
+      };
+    }
+    return stripped;
   });
 
   return NextResponse.json({ ads });
