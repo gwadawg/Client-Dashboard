@@ -21,6 +21,7 @@ type MaturityInfo = {
   recent_start: string;
   recent_end: string;
 };
+import { normalizeReportingType } from "@/lib/kpi-layouts";
 import { callTypeLabel } from "@/lib/client-calls";
 import { noteTypeLabel, reasonLabel } from "@/lib/client-feedback";
 import ClientActionLog from "./ClientActionLog";
@@ -51,6 +52,7 @@ type DetailResponse = {
   client_id: string;
   client_name: string;
   is_live: boolean;
+  reporting_type?: string;
   period: { start: string; end: string };
   prior_period: { start: string; end: string } | null;
   current: ClientHealthSnapshot;
@@ -74,6 +76,11 @@ const LAYER_GROUPS: { layer: FunnelLayer; label: string; keys: KpiKey[] }[] = [
   { layer: "L2", label: "L2 — Landing", keys: ["lead_to_qualified"] },
   { layer: "L3", label: "L3 — Call center", keys: ["pickup_rate", "booking_rate"] },
   { layer: "L4", label: "L4 — Client / LO", keys: ["show_rate", "close_rate"] },
+];
+
+const HE_LAYER_GROUPS: { layer: FunnelLayer; label: string; keys: KpiKey[] }[] = [
+  { layer: "L3", label: "L3 — Call center", keys: ["pickup_rate", "lead_booking_rate"] },
+  { layer: "L4", label: "L4 — Client / LO", keys: ["show_rate"] },
 ];
 
 function TierBadge({ tier }: { tier: HealthTier }) {
@@ -164,6 +171,12 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
           {error}
         </div>
       ) : data ? (
+        (() => {
+          const isHe = normalizeReportingType(data.reporting_type) === "HE";
+          const layerGroups = isHe ? HE_LAYER_GROUPS : LAYER_GROUPS;
+          const m = data.current.metrics;
+
+          return (
         <>
           {/* Header */}
           <div className="rounded-xl p-5" style={cardStyle}>
@@ -171,6 +184,11 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
               <div>
                 <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>
                   {data.client_name}
+                  {isHe && (
+                    <span className="ml-2 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded" style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24" }}>
+                      HE
+                    </span>
+                  )}
                 </h2>
                 <p className="text-xs mt-1" style={{ color: "#475569" }}>
                   {data.period.start} → {data.period.end}
@@ -179,7 +197,7 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                 {data.maturity && (data.maturity.empty || data.maturity.clamped) ? (
                   <p className="text-[11px] mt-1" style={{ color: "#38bdf8" }}>
                     Graded on selected range — includes the last {data.maturity.days}d still resolving, so
-                    CPConv / show / close may understate. See Recent below for leading signal.
+                    {isHe ? " show rate" : " CPConv / show / close"} may understate. See Recent below for leading signal.
                   </p>
                 ) : null}
               </div>
@@ -207,21 +225,36 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                   <span>{data.recent.leads} leads</span>
                   <span>{data.recent.dials} dials</span>
                   <span>{data.recent.pickup_pct.toFixed(0)}% pickup</span>
-                  <span>{data.recent.lead_to_qualified_pct.toFixed(0)}% lead→qual</span>
-                  <span>{data.recent.booking_rate.toFixed(0)}% booking</span>
-                  <span>{data.recent.conversations} conversations</span>
+                  {isHe ? (
+                    <span>{data.recent.booking_rate.toFixed(1)}% booking (÷ leads)</span>
+                  ) : (
+                    <>
+                      <span>{data.recent.lead_to_qualified_pct.toFixed(0)}% lead→qual</span>
+                      <span>{data.recent.booking_rate.toFixed(0)}% booking</span>
+                      <span>{data.recent.conversations} conversations</span>
+                    </>
+                  )}
                 </div>
               </div>
             ) : null}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-              {[
-                { label: "CPConv (cost / conv)", value: money(data.current.cpconv) },
-                { label: "CPQL", value: money(data.current.cpql) },
-                { label: "Conversation yield", value: data.current.conversation_yield.toFixed(3) },
-                { label: "Leads / convs", value: `${data.current.metrics.new_leads} / ${data.current.metrics.live_transfers + data.current.metrics.claimed + data.current.metrics.shows}` },
-                { label: "LO bail rate (client-side)", value: `${data.current.metrics.lo_bail_rate.toFixed(0)}%` },
-              ].map(s => (
+              {(isHe
+                ? [
+                    { label: "Outbound dials", value: String(m.outbound_dials) },
+                    { label: "Booking rate (÷ leads)", value: `${m.lead_booking_rate.toFixed(1)}%` },
+                    { label: "Net show rate", value: `${m.net_show_pct.toFixed(0)}%` },
+                    { label: "Pickup rate", value: `${m.pickup_pct.toFixed(0)}%` },
+                    { label: "Leads / booked", value: `${m.new_leads} / ${m.booked_appointments}` },
+                  ]
+                : [
+                    { label: "CPConv (cost / conv)", value: money(data.current.cpconv) },
+                    { label: "CPQL", value: money(data.current.cpql) },
+                    { label: "Conversation yield", value: data.current.conversation_yield.toFixed(3) },
+                    { label: "Leads / convs", value: `${m.new_leads} / ${m.live_transfers + m.claimed + m.shows}` },
+                    { label: "LO bail rate (client-side)", value: `${m.lo_bail_rate.toFixed(0)}%` },
+                  ]
+              ).map(s => (
                 <div key={s.label} className="rounded-lg px-3 py-2" style={{ background: "#050c18" }}>
                   <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#475569" }}>
                     {s.label}
@@ -310,7 +343,7 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
               Layer scorecard
             </h3>
             <div className="space-y-3">
-              {LAYER_GROUPS.map(group => (
+              {layerGroups.map(group => (
                 <div key={group.layer}>
                   <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#475569" }}>
                     {group.label}
@@ -435,6 +468,8 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
             reloadKey={logReloadKey}
           />
         </>
+          );
+        })()
       ) : null}
     </div>
   );

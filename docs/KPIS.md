@@ -96,6 +96,17 @@ Rate cards carry an info tooltip with their formula. Show Quality groups all app
 
 HE clients keep a minimal dashboard (leads, appointments + calling stats). **Booking Rate** on the HE overview uses **Total Leads** as the denominator (`Appointments Booked ÷ Total Leads`), not qualified leads. Other operational metrics (dials, show rate, etc.) remain in other nav views.
 
+### Client Success tab (RM vs HE)
+
+The **Client Success** view (`client_health`) splits clients by `reporting_type`:
+
+| Segment | Clients | Graded KPIs | Overall tier |
+|---------|---------|-------------|--------------|
+| **Paid Ads (RM)** | `reporting_type = RM` | Lead-to-qualified, pickup, booking (÷ qualified), show, close, CPL, CPQL, CPConv | North star = CPConv |
+| **Appointment Only (HE)** | `reporting_type = HE` | Lead booking rate (÷ total leads), net show rate, pickup rate | Worst of the three |
+
+HE accounts have **no ad-cost grading** (CPL / CPQL / CPConv are omitted). **Outbound dials** are shown in the HE table for volume context but are not tiered. Per-client benchmark overrides in Admin → Client Roster respect the segment (3 KPIs for HE, 8 for RM).
+
 ---
 
 ## Sheet tabs → app mapping

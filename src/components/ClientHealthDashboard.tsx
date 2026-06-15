@@ -33,7 +33,17 @@ type Props = {
   endDate?: string;
 };
 
-type SortKey = "priority" | "show_rate" | "cps" | "leads" | "name";
+type ClientSegment = "RM" | "HE";
+
+type SortKey =
+  | "priority"
+  | "show_rate"
+  | "cps"
+  | "leads"
+  | "name"
+  | "booking_rate"
+  | "dials"
+  | "pickup_rate";
 
 /**
  * Standardized grading windows. Each is a fixed trailing period that ends at the
@@ -86,11 +96,23 @@ const TREND_ICONS: Record<ClientHealthRow["trend"], { symbol: string; color: str
   insufficient: { symbol: "—", color: "#475569", label: "Low volume" },
 };
 
-const CHART_METRICS: { key: SortKey; label: string }[] = [
+const RM_CHART_METRICS: { key: SortKey; label: string }[] = [
   { key: "priority", label: "Attention score" },
   { key: "show_rate", label: "Show rate % (true)" },
   { key: "cps", label: "Cost per conversation" },
   { key: "leads", label: "Total leads" },
+];
+
+const HE_CHART_METRICS: { key: SortKey; label: string }[] = [
+  { key: "priority", label: "Attention score" },
+  { key: "show_rate", label: "Show rate % (true)" },
+  { key: "booking_rate", label: "Booking rate (÷ leads)" },
+  { key: "dials", label: "Outbound dials" },
+];
+
+const SEGMENT_TABS: { key: ClientSegment; label: string }[] = [
+  { key: "RM", label: "Paid Ads (RM)" },
+  { key: "HE", label: "Appointment Only (HE)" },
 ];
 
 function TierBadge({ tier }: { tier: HealthTier }) {
@@ -117,6 +139,7 @@ function KpiDot({ tier }: { tier: HealthTier }) {
 }
 
 export default function ClientHealthDashboard(_props: Props) {
+  const [clientSegment, setClientSegment] = useState<ClientSegment>("RM");
   const [gradeWindow, setGradeWindow] = useState<GradeWindow>("30d");
   const { start: startDate, end: endDate } = useMemo(
     () => gradingRange(gradeWindow),
@@ -163,10 +186,16 @@ export default function ClientHealthDashboard(_props: Props) {
       .catch(() => setLoading(false));
   }, [startDate, endDate, liveOnly]);
 
-  const filtered = useMemo(
-    () => (hideInactive ? rows.filter(r => r.has_activity) : rows),
-    [rows, hideInactive],
-  );
+  const isHeSegment = clientSegment === "HE";
+  const chartMetrics = isHeSegment ? HE_CHART_METRICS : RM_CHART_METRICS;
+
+  const filtered = useMemo(() => {
+    let list = rows.filter(r =>
+      isHeSegment ? r.reporting_type === "HE" : r.reporting_type !== "HE",
+    );
+    if (hideInactive) list = list.filter(r => r.has_activity);
+    return list;
+  }, [rows, hideInactive, isHeSegment]);
 
   const sorted = useMemo(() => {
     const list = [...filtered];
@@ -183,6 +212,15 @@ export default function ClientHealthDashboard(_props: Props) {
       }
       if (sortKey === "cps") {
         return dir * (a.current.metrics.cp_conversation - b.current.metrics.cp_conversation);
+      }
+      if (sortKey === "booking_rate") {
+        return dir * (a.current.metrics.lead_booking_rate - b.current.metrics.lead_booking_rate);
+      }
+      if (sortKey === "dials") {
+        return dir * (a.current.metrics.outbound_dials - b.current.metrics.outbound_dials);
+      }
+      if (sortKey === "pickup_rate") {
+        return dir * (a.current.metrics.pickup_pct - b.current.metrics.pickup_pct);
       }
       if (sortKey === "leads") {
         return dir * (a.current.metrics.new_leads - b.current.metrics.new_leads);
@@ -207,6 +245,8 @@ export default function ClientHealthDashboard(_props: Props) {
       if (chartMetric === "priority") value = computePriorityScore(r);
       else if (chartMetric === "show_rate") value = r.current.metrics.net_show_pct;
       else if (chartMetric === "cps") value = r.current.metrics.cp_conversation;
+      else if (chartMetric === "booking_rate") value = r.current.metrics.lead_booking_rate;
+      else if (chartMetric === "dials") value = r.current.metrics.outbound_dials;
       else if (chartMetric === "leads") value = r.current.metrics.new_leads;
       return {
         name: r.client_name.length > 18 ? `${r.client_name.slice(0, 16)}…` : r.client_name,
@@ -216,6 +256,19 @@ export default function ClientHealthDashboard(_props: Props) {
       };
     });
   }, [sorted, chartMetric]);
+
+  function handleSegmentChange(segment: ClientSegment) {
+    setClientSegment(segment);
+    setExpandedId(null);
+    if (segment === "HE" && (sortKey === "cps" || chartMetric === "cps")) {
+      setSortKey("priority");
+      setChartMetric("priority");
+    }
+    if (segment === "RM" && (sortKey === "dials" || chartMetric === "dials")) {
+      setSortKey("priority");
+      setChartMetric("priority");
+    }
+  }
 
   const selectStyle = {
     background: "#0f2040",
@@ -268,14 +321,40 @@ export default function ClientHealthDashboard(_props: Props) {
           Client Success Overview
         </h2>
         <p className="text-sm mt-1 max-w-3xl" style={{ color: "#475569" }}>
-          All clients side-by-side, graded against Waiz KPI standards over a fixed,
-          matured window{" "}
+          {isHeSegment ? (
+            <>
+              HE clients side-by-side, graded on booking rate (÷ total leads), show rate, and pickup
+              rate over a fixed, matured window{" "}
+            </>
+          ) : (
+            <>
+              RM clients side-by-side, graded against Waiz KPI standards over a fixed, matured window{" "}
+            </>
+          )}
           <span style={{ color: "#94a3b8" }}>({startDate} → {endDate})</span> so tiers stay
           comparable across clients. Sorted by who needs attention first.
           {priorLabel ? (
             <span style={{ color: "#64748b" }}> Progress vs prior period ({priorLabel}).</span>
           ) : null}
         </p>
+      </div>
+
+      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: "#0a1628" }}>
+        {SEGMENT_TABS.map(t => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => handleSegmentChange(t.key)}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            style={
+              clientSegment === t.key
+                ? { background: "#f59e0b", color: "#fff" }
+                : { color: "#475569" }
+            }
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* Maturity warning — KPIs are graded on the selected range; this only flags
@@ -287,9 +366,10 @@ export default function ClientHealthDashboard(_props: Props) {
         >
           <span style={{ color: "#38bdf8", fontWeight: 600 }}>Heads up — recent days are still resolving.</span>{" "}
           KPIs below are graded on your selected range. Because that range includes days inside the{" "}
-          {maturity.days}-day maturity window, lag-sensitive KPIs (CPConv, show rate, close rate) may{" "}
+          {maturity.days}-day maturity window, lag-sensitive KPIs
+          {isHeSegment ? " (show rate)" : " (CPConv, show rate, close rate)"} may{" "}
           <em>understate</em> until those cohorts finish resolving (bookings → appointments → outcomes).
-          Leading KPIs (leads, qualified %, booking rate) are unaffected. The{" "}
+          Leading KPIs ({isHeSegment ? "leads, dials, booking rate" : "leads, qualified %, booking rate"}) are unaffected. The{" "}
           <strong>Recent ({maturity.recent_window_days}d)</strong> indicators (expand a client) are your
           early-warning view.
         </div>
@@ -336,8 +416,18 @@ export default function ClientHealthDashboard(_props: Props) {
         <select style={selectStyle} value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}>
           <option value="priority">Sort: Attention (worst first)</option>
           <option value="show_rate">Sort: Show rate</option>
-          <option value="cps">Sort: Cost per conversation</option>
-          <option value="leads">Sort: Lead volume</option>
+          {isHeSegment ? (
+            <>
+              <option value="booking_rate">Sort: Booking rate (÷ leads)</option>
+              <option value="dials">Sort: Outbound dials</option>
+              <option value="pickup_rate">Sort: Pickup rate</option>
+            </>
+          ) : (
+            <>
+              <option value="cps">Sort: Cost per conversation</option>
+              <option value="leads">Sort: Lead volume</option>
+            </>
+          )}
           <option value="name">Sort: Name</option>
         </select>
         <button
@@ -349,7 +439,7 @@ export default function ClientHealthDashboard(_props: Props) {
           {sortAsc ? "↑ Ascending" : "↓ Descending"}
         </button>
         <select style={selectStyle} value={chartMetric} onChange={e => setChartMetric(e.target.value as SortKey)}>
-          {CHART_METRICS.map(m => (
+          {chartMetrics.map(m => (
             <option key={m.key} value={m.key}>
               Chart: {m.label}
             </option>
@@ -400,7 +490,7 @@ export default function ClientHealthDashboard(_props: Props) {
                 }}
                 formatter={(v) => [
                   typeof v === "number" ? v : Number(v ?? 0),
-                  CHART_METRICS.find(m => m.key === chartMetric)?.label ?? "",
+                  chartMetrics.find(m => m.key === chartMetric)?.label ?? "",
                 ]}
                 labelFormatter={(_, payload) =>
                   payload?.[0]?.payload?.fullName ? String(payload[0].payload.fullName) : ""
@@ -425,7 +515,10 @@ export default function ClientHealthDashboard(_props: Props) {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                {["Client", "Status", "Constraint", "Trend", "Leads", "Qual %", "Book %", "Show %", "CPConv", ""].map(h => (
+                {(isHeSegment
+                  ? ["Client", "Status", "Constraint", "Trend", "Leads", "Dials", "Book %", "Show %", "Pickup %", ""]
+                  : ["Client", "Status", "Constraint", "Trend", "Leads", "Qual %", "Book %", "Show %", "CPConv", ""]
+                ).map(h => (
                   <th
                     key={h}
                     className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest"
@@ -494,30 +587,58 @@ export default function ClientHealthDashboard(_props: Props) {
                         <td className="px-4 py-3 tabular-nums" style={{ color: "#94a3b8" }}>
                           {m.new_leads}
                         </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                            <KpiDot tier={grade("lead_to_qualified")?.tier ?? "insufficient"} />
-                            {row.current.lead_to_qualified_pct.toFixed(0)}%
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                            <KpiDot tier={grade("booking_rate")?.tier ?? "insufficient"} />
-                            {m.appt_booking_rate.toFixed(0)}%
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                            <KpiDot tier={grade("show_rate")?.tier ?? "insufficient"} />
-                            {m.net_show_pct.toFixed(0)}%
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                            <KpiDot tier={grade("cps")?.tier ?? "insufficient"} />
-                            ${Math.round(m.cp_conversation)}
-                          </div>
-                        </td>
+                        {isHeSegment ? (
+                          <>
+                            <td className="px-4 py-3 tabular-nums font-medium" style={{ color: "#e2e8f0" }}>
+                              {m.outbound_dials}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={grade("lead_booking_rate")?.tier ?? "insufficient"} />
+                                {m.lead_booking_rate.toFixed(1)}%
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={grade("show_rate")?.tier ?? "insufficient"} />
+                                {m.net_show_pct.toFixed(0)}%
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={grade("pickup_rate")?.tier ?? "insufficient"} />
+                                {m.pickup_pct.toFixed(0)}%
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={grade("lead_to_qualified")?.tier ?? "insufficient"} />
+                                {row.current.lead_to_qualified_pct.toFixed(0)}%
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={grade("booking_rate")?.tier ?? "insufficient"} />
+                                {m.appt_booking_rate.toFixed(0)}%
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={grade("show_rate")?.tier ?? "insufficient"} />
+                                {m.net_show_pct.toFixed(0)}%
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={grade("cps")?.tier ?? "insufficient"} />
+                                ${Math.round(m.cp_conversation)}
+                              </div>
+                            </td>
+                          </>
+                        )}
                         <td className="px-4 py-3 text-xs" style={{ color: "#334155" }}>
                           {expanded ? "▲" : "▼"}
                         </td>
@@ -526,7 +647,7 @@ export default function ClientHealthDashboard(_props: Props) {
                         <tr key={`${row.client_id}-detail`}>
                           <td colSpan={10} className="px-4 pb-4 pt-0">
                             <div
-                              className="rounded-lg p-4 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3"
+                              className="rounded-lg p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
                               style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.05)" }}
                             >
                               {row.current.grades.map(g => (
@@ -543,9 +664,18 @@ export default function ClientHealthDashboard(_props: Props) {
                             </div>
                             {row.prior && row.prior.metrics.new_leads + row.prior.metrics.booked_appointments > 0 && (
                               <p className="text-xs mt-2" style={{ color: "#475569" }}>
-                                Prior period: {row.prior.metrics.new_leads} leads · {row.prior.metrics.net_show_pct.toFixed(0)}% show · $
-                                {Math.round(row.prior.metrics.cp_conversation)} CPConv · attention score {row.prior.attention_score} →{" "}
-                                {row.current.attention_score}
+                                Prior period: {row.prior.metrics.new_leads} leads
+                                {isHeSegment ? (
+                                  <>
+                                    {" "}· {row.prior.metrics.outbound_dials} dials · {row.prior.metrics.lead_booking_rate.toFixed(1)}% book · {row.prior.metrics.net_show_pct.toFixed(0)}% show
+                                  </>
+                                ) : (
+                                  <>
+                                    {" "}· {row.prior.metrics.net_show_pct.toFixed(0)}% show · $
+                                    {Math.round(row.prior.metrics.cp_conversation)} CPConv
+                                  </>
+                                )}
+                                {" "}· attention score {row.prior.attention_score} → {row.current.attention_score}
                               </p>
                             )}
                             {row.recent && (
@@ -557,11 +687,22 @@ export default function ClientHealthDashboard(_props: Props) {
                                   <span>{row.recent.leads} leads</span>
                                   <span>{row.recent.dials} dials</span>
                                   <span>{row.recent.pickup_pct.toFixed(0)}% pickup</span>
-                                  <span>{row.recent.lead_to_qualified_pct.toFixed(0)}% lead→qual</span>
-                                  <span>{row.recent.booking_rate.toFixed(0)}% booking</span>
-                                  <span>{row.recent.conversations} conversations</span>
+                                  {isHeSegment ? (
+                                    <span>{row.recent.booking_rate.toFixed(1)}% booking (÷ leads)</span>
+                                  ) : (
+                                    <>
+                                      <span>{row.recent.lead_to_qualified_pct.toFixed(0)}% lead→qual</span>
+                                      <span>{row.recent.booking_rate.toFixed(0)}% booking</span>
+                                      <span>{row.recent.conversations} conversations</span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
+                            )}
+                            {isHeSegment && (
+                              <p className="text-[10px] mt-2" style={{ color: "#475569" }}>
+                                HE booking rate = appointments booked ÷ total leads (not qualified leads).
+                              </p>
                             )}
                             <button
                               type="button"
@@ -584,8 +725,19 @@ export default function ClientHealthDashboard(_props: Props) {
       </div>
 
       <p className="text-[10px]" style={{ color: "#334155" }}>
-        Grades follow Waiz Constraint Diagnosis tiers (911 / Below / At / Above). Booking rate uses appointments ÷ qualified
-        leads. Low-volume clients may show “—” until minimum thresholds are met.
+        {isHeSegment ? (
+          <>
+            HE grades follow Waiz tiers (911 / Below / At / Above). Overall tier is the worst of
+            booking rate (÷ total leads), show rate, and pickup rate. Dials are shown for volume
+            context but are not graded.
+          </>
+        ) : (
+          <>
+            RM grades follow Waiz Constraint Diagnosis tiers (911 / Below / At / Above). Booking rate
+            uses appointments ÷ qualified leads. Low-volume clients may show “—” until minimum
+            thresholds are met.
+          </>
+        )}
       </p>
     </div>
   );

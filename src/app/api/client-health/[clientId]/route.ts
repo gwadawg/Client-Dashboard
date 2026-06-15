@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import {
   buildClientHealthSnapshot,
+  buildHeClientHealthSnapshot,
   buildConstraintGuidance,
   buildRecentLeading,
   compareHealthTrend,
@@ -11,6 +12,7 @@ import {
   type ClientHealthSnapshot,
   type ClientKpiBenchmarks,
 } from '@/lib/client-health';
+import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { fetchCombinedSpendForMetrics } from '@/lib/spend';
 import type { EventRow } from '@/lib/metrics';
 
@@ -47,7 +49,7 @@ export async function GET(
 
   const [{ data: client, error: clientError }, { data: events, error: eventsError }, currentSpend, priorSpendData] =
     await Promise.all([
-      ctx.service.from('clients').select('id, name, is_live, kpi_benchmarks').eq('id', clientId).single(),
+      ctx.service.from('clients').select('id, name, is_live, reporting_type, kpi_benchmarks').eq('id', clientId).single(),
       ctx.service
         .from('events')
         .select(EVENT_SELECT)
@@ -85,18 +87,33 @@ export async function GET(
   const recentEvents = allEvents.filter(e => inRange(e, recent.start, recent.end));
 
   const benchmarks = ((client as { kpi_benchmarks?: unknown }).kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
-  const current = buildClientHealthSnapshot(verdictEvents, currentSpend, benchmarks);
+  const reporting_type = normalizeReportingType(
+    (client as { reporting_type?: unknown }).reporting_type,
+  );
+  const isHe = reporting_type === 'HE';
+  const current = isHe
+    ? buildHeClientHealthSnapshot(verdictEvents, benchmarks)
+    : buildClientHealthSnapshot(verdictEvents, currentSpend, benchmarks);
   const priorSnapshot: ClientHealthSnapshot | null = verdictPrior
-    ? buildClientHealthSnapshot(priorEvents, priorSpendData, benchmarks)
+    ? isHe
+      ? buildHeClientHealthSnapshot(priorEvents, benchmarks)
+      : buildClientHealthSnapshot(priorEvents, priorSpendData, benchmarks)
     : null;
-  const recentLeading = buildRecentLeading(recentEvents, recent.start, recent.end, recent.window_days);
+  const recentLeading = buildRecentLeading(
+    recentEvents,
+    recent.start,
+    recent.end,
+    recent.window_days,
+    reporting_type,
+  );
   const { trend, trend_delta_score } = compareHealthTrend(current, priorSnapshot);
-  const guidance = buildConstraintGuidance(current);
+  const guidance = buildConstraintGuidance(current, reporting_type);
 
   return NextResponse.json({
     client_id: client.id,
     client_name: client.name,
     is_live: client.is_live !== false,
+    reporting_type,
     period: { start: start_date, end: end_date },
     prior_period: verdictPrior,
     maturity: {

@@ -9,7 +9,9 @@ import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import { DEFAULT_REPORTING_TYPE, normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import {
   DEFAULT_KPI_BANDS,
+  HE_KPI_KEYS,
   KPI_META,
+  RM_KPI_KEYS,
   type ClientKpiBenchmarks,
   type KpiKey,
 } from "@/lib/client-health";
@@ -67,9 +69,10 @@ function relativeAge(iso: string | null | undefined): string {
   return `${Math.floor(days / 365)}y ago`;
 }
 
-const KPI_ORDER: KpiKey[] = [
-  "lead_to_qualified", "pickup_rate", "booking_rate", "show_rate", "close_rate", "cpl", "cpql", "cps",
-];
+function kpiOrderForClient(client: Client): KpiKey[] {
+  return normalizeReportingType(client.reporting_type) === "HE" ? HE_KPI_KEYS : RM_KPI_KEYS;
+}
+
 const BAND_KEYS: (keyof NonNullable<ClientKpiBenchmarks[KpiKey]>)[] = ["critical", "below", "at"];
 const BAND_LABEL: Record<string, string> = { critical: "911 / critical", below: "Below KPI", at: "At KPI" };
 
@@ -524,6 +527,9 @@ function BenchmarkEditor({
 
   const overrideCount = Object.values(draft).reduce((n, b) => n + Object.keys(b ?? {}).length, 0);
 
+  const kpiOrder = kpiOrderForClient(client);
+  const isHe = normalizeReportingType(client.reporting_type) === "HE";
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -534,6 +540,7 @@ function BenchmarkEditor({
           <p className="text-xs mt-0.5 max-w-2xl" style={{ color: "#475569" }}>
             Leave a field blank to use the global default (shown as the placeholder). Overrides let you judge each
             client against its own bar — measurement stays identical, only the thresholds move.
+            {isHe ? " HE clients grade booking (÷ total leads), show rate, and pickup only." : ""}
           </p>
           {hasOverrides && (
             <p className="text-xs mt-1" style={{ color: stale ? "#f59e0b" : "#64748b" }}>
@@ -587,7 +594,7 @@ function BenchmarkEditor({
             </tr>
           </thead>
           <tbody>
-            {KPI_ORDER.map(kpi => {
+            {kpiOrder.map(kpi => {
               const spec = DEFAULT_KPI_BANDS[kpi];
               return (
                 <tr key={kpi} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>

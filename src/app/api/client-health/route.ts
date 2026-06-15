@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import {
   buildClientHealthSnapshot,
+  buildHeClientHealthSnapshot,
   buildRecentLeading,
   compareHealthTrend,
   getPriorPeriod,
@@ -13,6 +14,7 @@ import {
   type ClientHealthRow,
   type ClientKpiBenchmarks,
 } from '@/lib/client-health';
+import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 
 const EVENT_SELECT =
@@ -50,7 +52,7 @@ export async function GET(req: Request) {
 
   let clientQuery = ctx.service
     .from('clients')
-    .select('id, name, is_live, kpi_benchmarks')
+    .select('id, name, is_live, reporting_type, kpi_benchmarks')
     .order('name');
 
   if (live_only) clientQuery = clientQuery.eq('is_live', true);
@@ -128,24 +130,31 @@ export async function GET(req: Request) {
 
   const rows: ClientHealthRow[] = (clients ?? []).map(c => {
     const benchmarks = (c.kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
-    const current = buildClientHealthSnapshot(
-      currentByClient.get(c.id) ?? [],
-      currentSpendByClient.get(c.id) ?? [],
-      benchmarks,
-    );
+    const reporting_type = normalizeReportingType(c.reporting_type);
+    const isHe = reporting_type === 'HE';
+    const current = isHe
+      ? buildHeClientHealthSnapshot(currentByClient.get(c.id) ?? [], benchmarks)
+      : buildClientHealthSnapshot(
+          currentByClient.get(c.id) ?? [],
+          currentSpendByClient.get(c.id) ?? [],
+          benchmarks,
+        );
     const priorSnapshot =
       verdictPrior != null
-        ? buildClientHealthSnapshot(
-            priorByClient.get(c.id) ?? [],
-            priorSpendByClient.get(c.id) ?? [],
-            benchmarks,
-          )
+        ? isHe
+          ? buildHeClientHealthSnapshot(priorByClient.get(c.id) ?? [], benchmarks)
+          : buildClientHealthSnapshot(
+              priorByClient.get(c.id) ?? [],
+              priorSpendByClient.get(c.id) ?? [],
+              benchmarks,
+            )
         : null;
     const recentLeading = buildRecentLeading(
       recentByClient.get(c.id) ?? [],
       recent.start,
       recent.end,
       recent.window_days,
+      reporting_type,
     );
     const { trend, trend_delta_score } = compareHealthTrend(current, priorSnapshot);
     const has_activity =
@@ -159,6 +168,7 @@ export async function GET(req: Request) {
       client_id: c.id,
       client_name: c.name,
       is_live: c.is_live !== false,
+      reporting_type,
       current,
       prior: priorSnapshot,
       trend,

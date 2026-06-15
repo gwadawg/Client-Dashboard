@@ -1,4 +1,5 @@
 import { calculateMetrics, type EventRow, type MetricsResult, type SpendRow } from '@/lib/metrics';
+import { type ReportingType, normalizeReportingType } from '@/lib/kpi-layouts';
 
 export type HealthTier = 'critical' | 'below' | 'at' | 'above' | 'insufficient';
 
@@ -15,6 +16,7 @@ export type KpiKey =
   | 'lead_to_qualified'
   | 'pickup_rate'
   | 'booking_rate'
+  | 'lead_booking_rate'
   | 'show_rate'
   | 'close_rate'
   | 'cpl'
@@ -75,6 +77,7 @@ export type ClientHealthRow = {
   client_id: string;
   client_name: string;
   is_live: boolean;
+  reporting_type: ReportingType;
   current: ClientHealthSnapshot;
   prior: ClientHealthSnapshot | null;
   trend: 'improved' | 'worsened' | 'stable' | 'new' | 'insufficient';
@@ -123,6 +126,7 @@ export const KPI_META: Record<KpiKey, { label: string; short: string }> = {
   lead_to_qualified: { label: 'Lead-to-Qualified %', short: 'Qual %' },
   pickup_rate: { label: 'Contact / Pickup Rate', short: 'Pickup' },
   booking_rate: { label: 'Booking Rate (÷ qualified)', short: 'Booking' },
+  lead_booking_rate: { label: 'Booking Rate (÷ total leads)', short: 'Book %' },
   show_rate: { label: 'Show Rate (true, ex-LO-bail)', short: 'Show' },
   close_rate: { label: 'Close Rate', short: 'Close' },
   cpl: { label: 'Cost Per Lead', short: 'CPL' },
@@ -146,10 +150,19 @@ export type KpiBandSpec = {
  * distribution (see docs/CLIENT-HEALTH-REDESIGN.md §8.1). Per-client overrides
  * are layered on top of these; anything not overridden falls back here.
  */
+/** KPIs graded for HE (appointment-only) clients — no ad-cost metrics. */
+export const HE_KPI_KEYS: KpiKey[] = ['lead_booking_rate', 'pickup_rate', 'show_rate'];
+
+/** KPIs graded for RM (paid-ads) clients. */
+export const RM_KPI_KEYS: KpiKey[] = [
+  'lead_to_qualified', 'pickup_rate', 'booking_rate', 'show_rate', 'close_rate', 'cpl', 'cpql', 'cps',
+];
+
 export const DEFAULT_KPI_BANDS: Record<KpiKey, KpiBandSpec> = {
   lead_to_qualified: { bands: { critical: 40, below: 50, at: 65 }, higherIsBetter: true, unit: 'pct' },
   pickup_rate:       { bands: { critical: 20, below: 30, at: 45 }, higherIsBetter: true, unit: 'pct' },
   booking_rate:      { bands: { critical: 20, below: 25, at: 30 }, higherIsBetter: true, unit: 'pct' },
+  lead_booking_rate: { bands: { critical: 3, below: 5, at: 8 }, higherIsBetter: true, unit: 'pct' },
   show_rate:         { bands: { critical: 55, below: 63, at: 70 }, higherIsBetter: true, unit: 'pct' },
   close_rate:        { bands: { critical: 10, below: 20, at: 35 }, higherIsBetter: true, unit: 'pct' },
   cpl:               { bands: { critical: 25, below: 20, at: 15 }, higherIsBetter: false, unit: 'money' },
@@ -162,6 +175,7 @@ const KPI_MIN_DENOMINATOR: Record<KpiKey, number> = {
   lead_to_qualified: 5,
   pickup_rate: 20,
   booking_rate: 5,
+  lead_booking_rate: 5,
   show_rate: 10,
   close_rate: 10,
   cpl: 5,
@@ -237,6 +251,15 @@ function computeOverallTier(graded: KpiGrade[]): HealthTier {
   if (avg < 1.5) return 'above';
   if (avg < 2.5) return 'at';
   return 'below';
+}
+
+/** HE verdict: worst tier among booking, show, and pickup wins. */
+function computeHeOverallTier(graded: KpiGrade[]): HealthTier {
+  if (graded.length === 0) return 'insufficient';
+  return graded.reduce(
+    (worst, g) => (TIER_WEIGHT[g.tier] > TIER_WEIGHT[worst] ? g.tier : worst),
+    'above' as HealthTier,
+  );
 }
 
 function formatPct(n: number): string {
@@ -317,6 +340,53 @@ export function buildClientHealthSnapshot(
   };
 }
 
+/** HE (appointment-only) health snapshot — no ad spend, grades booking/show/pickup only. */
+export function buildHeClientHealthSnapshot(
+  events: EventRow[],
+  benchmarks?: ClientKpiBenchmarks | null,
+): ClientHealthSnapshot {
+  const metrics = calculateMetrics(events, []);
+  const lead_to_qualified_pct =
+    metrics.new_leads > 0 ? (metrics.qualified_leads / metrics.new_leads) * 100 : 0;
+  const close_rate_pct =
+    metrics.shows > 0 ? (metrics.closed / metrics.shows) * 100 : 0;
+
+  const grade = (key: KpiKey, value: number, display: string, denominator: number): KpiGrade => {
+    const spec = resolveBands(key, benchmarks);
+    return gradeKpi(
+      key,
+      value,
+      display,
+      tierFromBands(value, spec.bands, spec.higherIsBetter, KPI_MIN_DENOMINATOR[key], denominator),
+    );
+  };
+
+  const grades: KpiGrade[] = [
+    grade('lead_booking_rate', metrics.lead_booking_rate, formatPct(metrics.lead_booking_rate), metrics.new_leads),
+    grade('show_rate', metrics.net_show_pct, formatPct(metrics.net_show_pct), metrics.shows + metrics.no_shows),
+    grade('pickup_rate', metrics.pickup_pct, formatPct(metrics.pickup_pct), metrics.outbound_dials),
+  ];
+
+  const graded = grades.filter(g => g.tier !== 'insufficient');
+  const worst_tier = computeHeOverallTier(graded);
+  const attention_score = graded.reduce((sum, g) => sum + TIER_WEIGHT[g.tier], 0);
+  const { constraint, constraint_label } = inferHeConstraint(metrics, grades);
+
+  return {
+    metrics,
+    lead_to_qualified_pct,
+    close_rate_pct,
+    cpql: 0,
+    cpconv: 0,
+    conversation_yield: 0,
+    grades,
+    worst_tier,
+    attention_score,
+    constraint,
+    constraint_label,
+  };
+}
+
 function gradeKpi(
   key: KpiKey,
   value: number,
@@ -388,6 +458,34 @@ function inferConstraint(
   return { constraint: 'healthy', constraint_label: 'Within KPI range — monitor' };
 }
 
+function inferHeConstraint(
+  metrics: MetricsResult,
+  grades: KpiGrade[],
+): { constraint: ConstraintLayer; constraint_label: string } {
+  const byKey = Object.fromEntries(grades.map(g => [g.key, g])) as Partial<Record<KpiKey, KpiGrade>>;
+  const hasData =
+    metrics.new_leads > 0 || metrics.booked_appointments > 0 || metrics.outbound_dials > 0;
+  if (!hasData) {
+    return { constraint: 'insufficient_data', constraint_label: 'No activity in period' };
+  }
+
+  const bookingBad =
+    byKey.lead_booking_rate?.tier === 'critical' || byKey.lead_booking_rate?.tier === 'below';
+  const pickupBad = byKey.pickup_rate?.tier === 'critical' || byKey.pickup_rate?.tier === 'below';
+  const showBad = byKey.show_rate?.tier === 'critical' || byKey.show_rate?.tier === 'below';
+
+  if (bookingBad || pickupBad) {
+    return { constraint: 'call_center', constraint_label: 'Call center — dial / script / booking' };
+  }
+  if (showBad && metrics.booked_appointments >= 3) {
+    return { constraint: 'show_rate', constraint_label: 'Show rate — confirmations / LO prep' };
+  }
+  if (grades.every(g => g.tier === 'insufficient')) {
+    return { constraint: 'insufficient_data', constraint_label: 'Not enough volume to grade' };
+  }
+  return { constraint: 'healthy', constraint_label: 'Within KPI range — monitor' };
+}
+
 const CONSTRAINT_LAYER: Record<ConstraintLayer, FunnelLayer> = {
   lead_quality: 'L2',
   lead_cost: 'L1',
@@ -403,7 +501,13 @@ const CONSTRAINT_LAYER: Record<ConstraintLayer, FunnelLayer> = {
  * payload. The numbers come from the deterministic engine; this only frames
  * them and attaches the right levers + owners from the diagnostic playbook.
  */
-export function buildConstraintGuidance(snapshot: ClientHealthSnapshot): ConstraintGuidance {
+export function buildConstraintGuidance(
+  snapshot: ClientHealthSnapshot,
+  reportingType: ReportingType = 'RM',
+): ConstraintGuidance {
+  if (normalizeReportingType(reportingType) === 'HE') {
+    return buildHeConstraintGuidance(snapshot);
+  }
   const m = snapshot.metrics;
   const layer = CONSTRAINT_LAYER[snapshot.constraint];
 
@@ -586,6 +690,94 @@ export function buildConstraintGuidance(snapshot: ClientHealthSnapshot): Constra
   }
 }
 
+function buildHeConstraintGuidance(snapshot: ClientHealthSnapshot): ConstraintGuidance {
+  const m = snapshot.metrics;
+  const base = {
+    layer: CONSTRAINT_LAYER[snapshot.constraint],
+    cpconvMath: `${m.outbound_dials} outbound dials · ${m.new_leads} leads · ${m.booked_appointments} booked`,
+    crossCheck: `Booking ${m.lead_booking_rate.toFixed(1)}% (÷ total leads) · Show ${m.net_show_pct.toFixed(0)}% · Pickup ${m.pickup_pct.toFixed(0)}%`,
+  };
+
+  switch (snapshot.constraint) {
+    case 'call_center':
+      return {
+        ...base,
+        headline: 'Call center — leads are not converting to booked appointments',
+        whatsWrong: `Booking rate is ${m.lead_booking_rate.toFixed(
+          1,
+        )}% (÷ total leads) and pickup rate is ${m.pickup_pct.toFixed(
+          0,
+        )}%. With ${m.outbound_dials} dials in period, the constraint is in dial cadence or the booking script.`,
+        fixSteps: [
+          {
+            owner: 'CSR manager (L3)',
+            action: 'Diagnose contact vs booking split — if pickup is low, fix dial cadence/times; if booking is low, fix the script.',
+            timebox: '5 business days',
+            successMetric: 'Lead booking rate ≥ 8%',
+          },
+          {
+            owner: 'CSR manager (L3)',
+            action: 'Audit speed-to-lead and number of dial attempts per lead.',
+            timebox: '5 business days',
+          },
+        ],
+        doNotDo: ['Do not compare to ad-cost metrics — HE accounts have no ad spend.'],
+      };
+    case 'show_rate':
+      return {
+        ...base,
+        headline: 'Show rate — booked appointments are not showing up',
+        whatsWrong: `Booking is healthy but only ${m.net_show_pct.toFixed(
+          0,
+        )}% of resolved appointments showed (${m.shows} shows of ${m.shows + m.no_shows} resolved).`,
+        fixSteps: [
+          {
+            owner: 'Client success (L4)',
+            action: 'Audit and strengthen the GHL reminder/confirmation sequence (SMS + call) before each appointment.',
+            timebox: '5 business days',
+            successMetric: 'Net show rate ≥ 70%',
+          },
+          {
+            owner: 'Client success (L4)',
+            action: 'Prefer near-term slots and confirm LO pre-call prep so leads do not go cold.',
+            timebox: '5 business days',
+          },
+        ],
+        doNotDo: ['Do not re-diagnose dialing — focus on post-booking follow-through.'],
+      };
+    case 'insufficient_data':
+      return {
+        ...base,
+        headline: 'Not enough volume to grade',
+        whatsWrong:
+          'This account does not have enough leads/dials/appointments in the selected period to produce a reliable verdict.',
+        fixSteps: [
+          {
+            owner: 'Client success',
+            action: 'Widen the date range or wait for more volume before diagnosing.',
+          },
+        ],
+        doNotDo: ['Do not act on a single low-volume week.'],
+      };
+    case 'healthy':
+    default:
+      return {
+        ...base,
+        headline: 'Healthy — within KPI range',
+        whatsWrong: `Booking ${m.lead_booking_rate.toFixed(1)}%, show ${m.net_show_pct.toFixed(
+          0,
+        )}%, pickup ${m.pickup_pct.toFixed(0)}% — all at or above target.`,
+        fixSteps: [
+          {
+            owner: 'Client success',
+            action: 'Log weekly and monitor the recent trend for early slides.',
+          },
+        ],
+        doNotDo: ['Do not chase volume at the expense of booking or show rate.'],
+      };
+  }
+}
+
 export type SuccessMetricKey =
   | 'cpconv'
   | 'cpql'
@@ -646,7 +838,10 @@ export function compareHealthTrend(
 
 export function computePriorityScore(row: ClientHealthRow): number {
   if (!row.has_activity) return -1;
-  const spendBoost = Math.min(3, Math.log10(Math.max(1, row.current.metrics.ad_spend)) / 2);
+  const isHe = normalizeReportingType(row.reporting_type) === 'HE';
+  const spendBoost = isHe
+    ? 0
+    : Math.min(3, Math.log10(Math.max(1, row.current.metrics.ad_spend)) / 2);
   const criticalBonus = row.current.grades.filter(g => g.tier === 'critical').length * 2;
   return row.current.attention_score + spendBoost + criticalBonus;
 }
@@ -712,8 +907,10 @@ export function buildRecentLeading(
   start: string,
   end: string,
   windowDays: number = RECENT_WINDOW_DAYS,
+  reportingType: ReportingType = 'RM',
 ): RecentLeading {
   const m = calculateMetrics(events, []);
+  const isHe = normalizeReportingType(reportingType) === 'HE';
   return {
     window_days: windowDays,
     start,
@@ -724,7 +921,7 @@ export function buildRecentLeading(
     pickup_pct: m.pickup_pct,
     lead_to_qualified_pct: m.new_leads > 0 ? (m.qualified_leads / m.new_leads) * 100 : 0,
     conversations: m.live_transfers + m.claimed + m.shows,
-    booking_rate: m.appt_booking_rate,
+    booking_rate: isHe ? m.lead_booking_rate : m.appt_booking_rate,
   };
 }
 
