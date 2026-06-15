@@ -2,11 +2,22 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 const VALID_STATUS = ['active', 'winner', 'paused', 'archived'] as const;
+const VALID_AD_FORMAT = ['static', 'ugc', 'testimonial', 'ext'] as const;
+const VALID_PRODUCT = ['reverse', 'dscr', 'broad_forward'] as const;
 
 function cleanString(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const s = v.trim();
   return s || null;
+}
+
+function cleanEnum<T extends readonly string[]>(
+  v: unknown,
+  allowed: T,
+): T[number] | null {
+  const s = cleanString(v);
+  if (!s) return null;
+  return allowed.includes(s as T[number]) ? (s as T[number]) : null;
 }
 
 export async function GET() {
@@ -50,10 +61,32 @@ export async function POST(req: Request) {
     );
   }
 
+  if ('ad_format' in body && body.ad_format != null && body.ad_format !== '') {
+    const ad_format = cleanEnum(body.ad_format, VALID_AD_FORMAT);
+    if (!ad_format) {
+      return NextResponse.json(
+        { error: `ad_format must be one of: ${VALID_AD_FORMAT.join(', ')}` },
+        { status: 400 },
+      );
+    }
+  }
+
+  if ('product' in body && body.product != null && body.product !== '') {
+    const product = cleanEnum(body.product, VALID_PRODUCT);
+    if (!product) {
+      return NextResponse.json(
+        { error: `product must be one of: ${VALID_PRODUCT.join(', ')}` },
+        { status: 400 },
+      );
+    }
+  }
+
   const row = {
     ad_name,
     platform: cleanString(body.platform) ?? 'facebook',
     status,
+    ad_format: cleanEnum(body.ad_format, VALID_AD_FORMAT),
+    product: cleanEnum(body.product, VALID_PRODUCT),
     summary: cleanString(body.summary),
     visual_notes: cleanString(body.visual_notes),
     drive_url: cleanString(body.drive_url),

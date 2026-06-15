@@ -20,6 +20,8 @@ type Props = {
 type LibraryMeta = {
   id: string;
   status: string;
+  ad_format: string | null;
+  product: string | null;
   summary: string | null;
   visual_notes: string | null;
   drive_url: string | null;
@@ -85,6 +87,8 @@ type LibEntry = {
   ad_name: string;
   platform: string | null;
   status: string;
+  ad_format: string | null;
+  product: string | null;
   summary: string | null;
   visual_notes: string | null;
   drive_url: string | null;
@@ -92,6 +96,28 @@ type LibEntry = {
   created_at: string;
   updated_at: string;
 };
+
+const AD_FORMAT_OPTIONS = [
+  { value: "", label: "Select format…" },
+  { value: "static", label: "Static" },
+  { value: "ugc", label: "UGC" },
+  { value: "testimonial", label: "Testimonial" },
+  { value: "ext", label: "Ext" },
+] as const;
+
+const PRODUCT_OPTIONS = [
+  { value: "", label: "Select product…" },
+  { value: "reverse", label: "Reverse" },
+  { value: "dscr", label: "DSCR" },
+  { value: "broad_forward", label: "Broad Forward" },
+] as const;
+
+const AD_FORMAT_LABELS: Record<string, string> = Object.fromEntries(
+  AD_FORMAT_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]),
+);
+const PRODUCT_LABELS: Record<string, string> = Object.fromEntries(
+  PRODUCT_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]),
+);
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   winner: { bg: "rgba(245,158,11,0.14)", text: "#fbbf24", label: "Winner" },
@@ -170,6 +196,17 @@ function StatusBadge({ status }: { status: string }) {
       style={{ background: s.bg, color: s.text }}
     >
       {s.label}
+    </span>
+  );
+}
+
+function ClassBadge({ label, color }: { label: string; color: string }) {
+  return (
+    <span
+      className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+      style={{ background: `${color}20`, color }}
+    >
+      {label}
     </span>
   );
 }
@@ -430,13 +467,23 @@ function DrilldownPanel({ ad, drilldown }: { ad: AdRow; drilldown: Drilldown }) 
             </ResponsiveContainer>
           </div>
         )}
-        {ad.library?.summary || ad.library?.visual_notes ? (
+        {(ad.library?.summary || ad.library?.visual_notes || ad.library?.ad_format || ad.library?.product) ? (
           <div className="mt-3 rounded-lg p-3" style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}>
+            {(ad.library?.ad_format || ad.library?.product) ? (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {ad.library?.ad_format ? (
+                  <ClassBadge label={AD_FORMAT_LABELS[ad.library.ad_format] ?? ad.library.ad_format} color="#60a5fa" />
+                ) : null}
+                {ad.library?.product ? (
+                  <ClassBadge label={PRODUCT_LABELS[ad.library.product] ?? ad.library.product} color="#a78bfa" />
+                ) : null}
+              </div>
+            ) : null}
             {ad.library?.summary ? (
-              <p className="text-sm" style={{ color: "#cbd5e1" }}>{ad.library.summary}</p>
+              <p className="text-sm whitespace-pre-wrap" style={{ color: "#cbd5e1" }}>{ad.library.summary}</p>
             ) : null}
             {ad.library?.visual_notes ? (
-              <p className="text-xs mt-1" style={{ color: "#64748b" }}>Visuals: {ad.library.visual_notes}</p>
+              <p className="text-xs mt-2 whitespace-pre-wrap" style={{ color: "#64748b" }}>Notes: {ad.library.visual_notes}</p>
             ) : null}
           </div>
         ) : null}
@@ -492,6 +539,8 @@ const EMPTY_FORM = {
   id: "",
   ad_name: "",
   status: "active",
+  ad_format: "",
+  product: "",
   drive_url: "",
   thumbnail_url: "",
   summary: "",
@@ -533,6 +582,8 @@ function AdLibrary() {
     const body = {
       ad_name: form.ad_name.trim(),
       status: form.status,
+      ad_format: form.ad_format || null,
+      product: form.product || null,
       drive_url: form.drive_url.trim() || null,
       thumbnail_url: form.thumbnail_url.trim() || null,
       summary: form.summary.trim() || null,
@@ -602,11 +653,21 @@ function AdLibrary() {
                 </div>
                 <div className="p-4 flex-1 flex flex-col">
                   <p className="font-semibold text-sm" style={{ color: "#e2e8f0" }}>{e.ad_name}</p>
+                  {(e.ad_format || e.product) ? (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {e.ad_format ? (
+                        <ClassBadge label={AD_FORMAT_LABELS[e.ad_format] ?? e.ad_format} color="#60a5fa" />
+                      ) : null}
+                      {e.product ? (
+                        <ClassBadge label={PRODUCT_LABELS[e.product] ?? e.product} color="#a78bfa" />
+                      ) : null}
+                    </div>
+                  ) : null}
                   {e.summary ? (
-                    <p className="text-xs mt-1 line-clamp-3" style={{ color: "#94a3b8" }}>{e.summary}</p>
+                    <p className="text-xs mt-2 line-clamp-3 whitespace-pre-wrap" style={{ color: "#94a3b8" }}>{e.summary}</p>
                   ) : null}
                   {e.visual_notes ? (
-                    <p className="text-[11px] mt-2" style={{ color: "#64748b" }}>Visuals: {e.visual_notes}</p>
+                    <p className="text-[11px] mt-2 line-clamp-2 whitespace-pre-wrap" style={{ color: "#64748b" }}>Notes: {e.visual_notes}</p>
                   ) : null}
                   <div className="flex items-center gap-3 mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                     {e.drive_url ? (
@@ -621,6 +682,8 @@ function AdLibrary() {
                           id: e.id,
                           ad_name: e.ad_name,
                           status: e.status,
+                          ad_format: e.ad_format ?? "",
+                          product: e.product ?? "",
                           drive_url: e.drive_url ?? "",
                           thumbnail_url: e.thumbnail_url ?? "",
                           summary: e.summary ?? "",
@@ -646,7 +709,7 @@ function AdLibrary() {
       {form ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setForm(null)}>
           <div
-            className="rounded-xl w-full max-w-lg p-5 space-y-3"
+            className="rounded-xl w-full max-w-lg p-5 space-y-3 max-h-[90vh] overflow-y-auto"
             style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.1)" }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -675,6 +738,32 @@ function AdLibrary() {
                   ))}
                 </select>
               </Field>
+              <Field label="Ad format">
+                <select
+                  value={form.ad_format}
+                  onChange={(e) => setForm({ ...form, ad_format: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg text-sm"
+                  style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                >
+                  {AD_FORMAT_OPTIONS.map((o) => (
+                    <option key={o.value || "empty"} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Product">
+                <select
+                  value={form.product}
+                  onChange={(e) => setForm({ ...form, product: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg text-sm"
+                  style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                >
+                  {PRODUCT_OPTIONS.map((o) => (
+                    <option key={o.value || "empty"} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </Field>
               <Field label="Thumbnail URL (optional)">
                 <input
                   value={form.thumbnail_url}
@@ -694,25 +783,28 @@ function AdLibrary() {
                 placeholder="https://drive.google.com/file/d/…"
               />
             </Field>
-            <Field label="Summary (what the ad is)">
+            <Field label="Script / copy + visual aspects">
               <textarea
                 value={form.summary}
                 onChange={(e) => setForm({ ...form, summary: e.target.value })}
-                rows={2}
+                rows={4}
                 className="w-full px-3 py-2 rounded-lg text-sm"
                 style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
-                placeholder="Hook, offer, angle…"
+                placeholder="Full script, hook, offer, on-screen text, talent, pacing, colors, format details…"
               />
             </Field>
-            <Field label="Visual aspects (for AI recreation later)">
+            <Field label="Comments & notes (for AI)">
               <textarea
                 value={form.visual_notes}
                 onChange={(e) => setForm({ ...form, visual_notes: e.target.value })}
-                rows={2}
+                rows={3}
                 className="w-full px-3 py-2 rounded-lg text-sm"
                 style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
-                placeholder="Format, colors, on-screen text, talent, pacing…"
+                placeholder="Performance notes, what worked, what to test next, context for recreating this ad…"
               />
+              <p className="text-[10px] mt-1" style={{ color: "#64748b" }}>
+                AI will use both the script/copy above and these notes when generating new creatives.
+              </p>
             </Field>
             {formError ? <p className="text-xs" style={{ color: "#f87171" }}>{formError}</p> : null}
             <div className="flex justify-end gap-2 pt-1">

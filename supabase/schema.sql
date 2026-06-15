@@ -383,6 +383,8 @@ create table if not exists ad_library (
   ad_name       text    not null unique,
   platform      text    not null default 'facebook',
   status        text    not null default 'active',
+  ad_format     text,
+  product       text,
   summary       text,
   visual_notes  text,
   drive_url     text,
@@ -392,10 +394,18 @@ create table if not exists ad_library (
   updated_at    timestamptz not null default now(),
   constraint ad_library_status_check check (
     status in ('active', 'winner', 'paused', 'archived')
+  ),
+  constraint ad_library_ad_format_check check (
+    ad_format is null or ad_format in ('static', 'ugc', 'testimonial', 'ext')
+  ),
+  constraint ad_library_product_check check (
+    product is null or product in ('reverse', 'dscr', 'broad_forward')
   )
 );
 
 create index if not exists ad_library_status_idx on ad_library(status);
+create index if not exists ad_library_ad_format_idx on ad_library(ad_format);
+create index if not exists ad_library_product_idx on ad_library(product);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 7. Setter Availability (recurring weekly windows per agent)

@@ -2,11 +2,22 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 const VALID_STATUS = ['active', 'winner', 'paused', 'archived'] as const;
+const VALID_AD_FORMAT = ['static', 'ugc', 'testimonial', 'ext'] as const;
+const VALID_PRODUCT = ['reverse', 'dscr', 'broad_forward'] as const;
 
 function cleanString(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const s = v.trim();
   return s || null;
+}
+
+function cleanEnum<T extends readonly string[]>(
+  v: unknown,
+  allowed: T,
+): T[number] | null {
+  const s = cleanString(v);
+  if (!s) return null;
+  return allowed.includes(s as T[number]) ? (s as T[number]) : null;
 }
 
 export async function PATCH(
@@ -43,6 +54,34 @@ export async function PATCH(
       );
     }
     updates.status = status;
+  }
+  if ('ad_format' in body) {
+    if (body.ad_format == null || body.ad_format === '') {
+      updates.ad_format = null;
+    } else {
+      const ad_format = cleanEnum(body.ad_format, VALID_AD_FORMAT);
+      if (!ad_format) {
+        return NextResponse.json(
+          { error: `ad_format must be one of: ${VALID_AD_FORMAT.join(', ')}` },
+          { status: 400 },
+        );
+      }
+      updates.ad_format = ad_format;
+    }
+  }
+  if ('product' in body) {
+    if (body.product == null || body.product === '') {
+      updates.product = null;
+    } else {
+      const product = cleanEnum(body.product, VALID_PRODUCT);
+      if (!product) {
+        return NextResponse.json(
+          { error: `product must be one of: ${VALID_PRODUCT.join(', ')}` },
+          { status: 400 },
+        );
+      }
+      updates.product = product;
+    }
   }
   for (const key of ['platform', 'summary', 'visual_notes', 'drive_url', 'thumbnail_url'] as const) {
     if (key in body) updates[key] = cleanString(body[key]);

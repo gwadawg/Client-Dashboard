@@ -21,6 +21,8 @@ type LibraryRow = {
   ad_name: string;
   status: string;
   platform: string | null;
+  ad_format: string | null;
+  product: string | null;
   summary: string | null;
   visual_notes: string | null;
   drive_url: string | null;
@@ -72,7 +74,7 @@ export async function GET(req: Request) {
     await Promise.all([
       eventsQuery,
       metaQuery,
-      ctx.service.from('ad_library').select('id, ad_name, status, platform, summary, visual_notes, drive_url, thumbnail_url'),
+      ctx.service.from('ad_library').select('id, ad_name, status, platform, ad_format, product, summary, visual_notes, drive_url, thumbnail_url'),
     ]);
 
   if (eventsError || metaError || libError) {
@@ -121,6 +123,8 @@ export async function GET(req: Request) {
         ? {
             id: lib.id,
             status: lib.status,
+            ad_format: lib.ad_format,
+            product: lib.product,
             summary: lib.summary,
             visual_notes: lib.visual_notes,
             drive_url: lib.drive_url,
