@@ -25,6 +25,7 @@ import CostTrendCharts from "./CostTrendCharts";
 import RateTrendCharts from "./RateTrendCharts";
 import ShowQualityBar from "./ShowQualityBar";
 import ConversionFunnel from "./ConversionFunnel";
+import ClientConversionsView from "./ClientConversionsView";
 import ClientHealthDashboard from "./ClientHealthDashboard";
 import DialAnalytics from "./DialAnalytics";
 import MediaBuyer from "./MediaBuyer";
@@ -347,6 +348,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
   const [heatmapDays, setHeatmapDays] = useState(0);
   const [heatmapClientId, setHeatmapClientId] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [dashboardSubView, setDashboardSubView] = useState<"main" | "conversions">("main");
   const [renderDate] = useState(() => new Date());
   const presetRef = useRef<HTMLDivElement>(null);
 
@@ -378,6 +380,14 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
   useEffect(() => {
     fetch("/api/clients").then(r => r.json()).then(d => setClients(d.clients ?? []));
   }, []);
+
+  useEffect(() => {
+    if (view !== "dashboard") setDashboardSubView("main");
+  }, [view]);
+
+  useEffect(() => {
+    setDashboardSubView("main");
+  }, [selectedClientId, preset, customStart, customEnd]);
 
   useEffect(() => {
     if (view !== "dashboard") return;
@@ -465,6 +475,12 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
   const dashboardReportingType = resolveDashboardReportingType(clients, selectedClientId);
   const dashboardHasMixedReportingTypes =
     new Set(dashboardScopeClients.map(c => normalizeReportingType(c.reporting_type))).size > 1;
+  const dashboardClientLabel =
+    selectedClientId === "__live__"
+      ? "Live clients"
+      : selectedClientId
+        ? clients.find(c => c.id === selectedClientId)?.name
+        : "All clients";
 
   return (
     <div className="min-h-screen flex" style={{ background: "#080f1e" }}>
@@ -698,7 +714,30 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
                 </div>
               </div>
             ) : metrics ? (
+              dashboardSubView === "conversions" && dashboardReportingType === "RM" ? (
+                <ClientConversionsView
+                  metrics={metrics}
+                  clientLabel={dashboardClientLabel}
+                  onBack={() => setDashboardSubView("main")}
+                />
+              ) : (
               <div className="space-y-8">
+                {dashboardReportingType === "RM" && dashboardSubView === "main" && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setDashboardSubView("conversions")}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                      style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.4)" }}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                      </svg>
+                      Conversions &amp; ROI
+                    </button>
+                  </div>
+                )}
+
                 {dashboardHasMixedReportingTypes && (
                   <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#64748b", background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
                     Mixed RM/HE selection detected. Showing the full RM dashboard for this combined view.
@@ -752,6 +791,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
                   </KpiSection>
                 )}
               </div>
+              )
             ) : null}
             </div>
           )}
