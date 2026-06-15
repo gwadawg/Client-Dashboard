@@ -7,6 +7,7 @@ import {
   type ClientHealthSnapshot,
   type SuccessMetricKey,
 } from "@/lib/client-health";
+import { defaultReviewDateFromTimebox } from "@/lib/client-health-interventions";
 
 export type ActionLog = {
   id: string;
@@ -20,6 +21,7 @@ export type ActionLog = {
   success_metric: string | null;
   baseline_value: number | null;
   target_value: number | null;
+  baseline_snapshot_id: string | null;
   status: string;
   review_date: string | null;
   outcome_value: number | null;
@@ -33,7 +35,10 @@ type Props = {
   snapshot: ClientHealthSnapshot;
   defaultLayer: string;
   defaultConstraintLabel: string;
-  /** Bumps to force a reload (e.g. after an AI action item is saved). */
+  periodStart: string;
+  periodEnd: string;
+  reportingType?: string;
+  defaultReviewDays?: number;
   reloadKey?: number;
 };
 
@@ -62,12 +67,12 @@ const inputStyle = {
 const labelStyle = {
   fontSize: "0.625rem",
   fontWeight: 700,
-  textTransform: "uppercase",
+  textTransform: "uppercase" as const,
   letterSpacing: "0.08em",
   color: "#475569",
   display: "block",
   marginBottom: "0.25rem",
-} as React.CSSProperties;
+};
 
 function formatMetric(key: string | null, value: number | null): string {
   if (value == null) return "—";
@@ -78,25 +83,38 @@ function formatMetric(key: string | null, value: number | null): string {
   return value.toFixed(3);
 }
 
+function defaultReviewDate(days?: number): string {
+  if (days) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().split("T")[0];
+  }
+  return defaultReviewDateFromTimebox("14 days");
+}
+
 export default function ClientActionLog({
   clientId,
   snapshot,
   defaultLayer,
   defaultConstraintLabel,
+  periodStart,
+  periodEnd,
+  reportingType = "RM",
+  defaultReviewDays = 14,
   reloadKey = 0,
 }: Props) {
   const [actions, setActions] = useState<ActionLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
 
-  // form state
   const [title, setTitle] = useState("");
   const [changeDescription, setChangeDescription] = useState("");
   const [hypothesis, setHypothesis] = useState("");
   const [successMetric, setSuccessMetric] = useState<SuccessMetricKey>("cpconv");
   const [targetValue, setTargetValue] = useState("");
-  const [reviewDate, setReviewDate] = useState("");
+  const [reviewDate, setReviewDate] = useState(() => defaultReviewDate(defaultReviewDays));
 
   const load = useCallback(() => {
     setLoading(true);
@@ -110,8 +128,42 @@ export default function ClientActionLog({
   }, [clientId]);
 
   useEffect(() => {
-    load();
-  }, [load, reloadKey]);
+    let cancelled = false;
+    fetch(`/api/client-actions?client_id=${clientId}`)
+      .then(r => r.json())
+      .then(async d => {
+        if (cancelled) return;
+        const list = (d.actions ?? []) as ActionLog[];
+        setActions(list);
+        setLoading(false);
+        const today = new Date().toISOString().split("T")[0];
+        const due = list.filter(
+          a =>
+            a.review_date &&
+            a.review_date <= today &&
+            !a.outcome_recorded_at &&
+            ["planned", "in_progress", "measuring"].includes(a.status),
+        );
+        if (due.length === 0) return;
+        setEvaluating(true);
+        await fetch("/api/client-actions", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action_ids: due.map(a => a.id) }),
+        });
+        if (!cancelled) {
+          const refreshed = await fetch(`/api/client-actions?client_id=${clientId}`).then(r => r.json());
+          setActions(refreshed.actions ?? []);
+        }
+        setEvaluating(false);
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, reloadKey]);
 
   const resetForm = () => {
     setTitle("");
@@ -119,13 +171,13 @@ export default function ClientActionLog({
     setHypothesis("");
     setSuccessMetric("cpconv");
     setTargetValue("");
-    setReviewDate("");
+    setReviewDate(defaultReviewDate(defaultReviewDays));
   };
 
   const submit = async () => {
     if (!title.trim()) return;
     setSaving(true);
-    const baseline = metricValue(snapshot, successMetric);
+    const baseline = metricValue(snapshot, successMetric, reportingType as "RM" | "HE");
     const res = await fetch(`/api/client-actions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -140,6 +192,8 @@ export default function ClientActionLog({
         baseline_value: baseline,
         target_value: targetValue ? Number(targetValue) : null,
         review_date: reviewDate || null,
+        period_start: periodStart,
+        period_end: periodEnd,
         status: "planned",
       }),
     });
@@ -151,30 +205,14 @@ export default function ClientActionLog({
     }
   };
 
-  const recordOutcome = async (action: ActionLog) => {
-    const raw = window.prompt(
-      `Record current ${SUCCESS_METRIC_META[(action.success_metric as SuccessMetricKey) ?? "cpconv"]?.label ?? action.success_metric} value:`,
-      action.success_metric ? String(Math.round(metricValue(snapshot, action.success_metric as SuccessMetricKey) * 100) / 100) : "",
-    );
-    if (raw == null) return;
-    const outcomeValue = Number(raw);
-    if (Number.isNaN(outcomeValue)) return;
-
-    const meta = action.success_metric ? SUCCESS_METRIC_META[action.success_metric as SuccessMetricKey] : undefined;
-    let status = "measuring";
-    if (meta && action.baseline_value != null) {
-      const improved = meta.lowerIsBetter
-        ? outcomeValue < action.baseline_value
-        : outcomeValue > action.baseline_value;
-      status = improved ? "succeeded" : "failed";
-    }
-    const notes = window.prompt("Outcome notes (optional):", action.outcome_notes ?? "") ?? null;
-
-    const res = await fetch(`/api/client-actions/${action.id}`, {
-      method: "PATCH",
+  const runEval = async (actionId: string) => {
+    setEvaluating(true);
+    const res = await fetch("/api/client-actions", {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ outcome_value: outcomeValue, outcome_notes: notes, status }),
+      body: JSON.stringify({ action_ids: [actionId] }),
     });
+    setEvaluating(false);
     if (res.ok) load();
   };
 
@@ -201,7 +239,8 @@ export default function ClientActionLog({
             Change log & progress
           </h3>
           <p className="text-xs mt-0.5" style={{ color: "#475569" }}>
-            Log what you changed, then record the outcome to see if it moved the metric.
+            Baseline frozen at log time ({periodStart} → {periodEnd}). Outcomes measured from change date → review date.
+            {evaluating ? " Evaluating due reviews…" : ""}
           </p>
         </div>
         <button
@@ -261,7 +300,7 @@ export default function ClientActionLog({
                 ))}
               </select>
               <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
-                Baseline now: {formatMetric(successMetric, metricValue(snapshot, successMetric))}
+                Baseline now: {formatMetric(successMetric, metricValue(snapshot, successMetric, reportingType as "RM" | "HE"))}
               </p>
             </div>
             <div>
@@ -276,7 +315,12 @@ export default function ClientActionLog({
             </div>
             <div>
               <label style={labelStyle}>Review date</label>
-              <input style={inputStyle} type="date" value={reviewDate} onChange={e => setReviewDate(e.target.value)} />
+              <input
+                style={inputStyle}
+                type="date"
+                value={reviewDate}
+                onChange={e => setReviewDate(e.target.value)}
+              />
             </div>
           </div>
           <button
@@ -290,7 +334,7 @@ export default function ClientActionLog({
               border: "1px solid rgba(96,165,250,0.3)",
             }}
           >
-            {saving ? "Saving…" : "Save change"}
+            {saving ? "Saving…" : "Save change (freeze baseline)"}
           </button>
         </div>
       )}
@@ -309,14 +353,25 @@ export default function ClientActionLog({
             const meta = a.success_metric ? SUCCESS_METRIC_META[a.success_metric as SuccessMetricKey] : undefined;
             let delta: { improved: boolean; text: string } | null = null;
             if (a.outcome_value != null && a.baseline_value != null && meta) {
+              const hitTarget =
+                a.target_value != null
+                  ? meta.lowerIsBetter
+                    ? a.outcome_value <= a.target_value
+                    : a.outcome_value >= a.target_value
+                  : null;
               const improved = meta.lowerIsBetter
                 ? a.outcome_value < a.baseline_value
                 : a.outcome_value > a.baseline_value;
               delta = {
-                improved,
+                improved: hitTarget ?? improved,
                 text: `${formatMetric(a.success_metric, a.baseline_value)} → ${formatMetric(a.success_metric, a.outcome_value)}`,
               };
             }
+            const reviewDue =
+              a.review_date &&
+              a.review_date <= new Date().toISOString().split("T")[0] &&
+              !a.outcome_recorded_at;
+
             return (
               <li
                 key={a.id}
@@ -332,33 +387,25 @@ export default function ClientActionLog({
                       >
                         {a.status.replace("_", " ")}
                       </span>
-                      {a.layer && a.layer !== "NONE" && (
+                      {reviewDue && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24" }}>
+                          Review due
+                        </span>
+                      )}
+                      {a.baseline_snapshot_id && (
                         <span className="text-[10px]" style={{ color: "#64748b" }}>
-                          {a.layer}
+                          baseline frozen
                         </span>
                       )}
-                      {a.ai_generated && (
-                        <span className="text-[10px] px-1 rounded" style={{ background: "rgba(167,139,250,0.18)", color: "#a78bfa" }}>
-                          AI
+                      {a.review_date && (
+                        <span className="text-[10px]" style={{ color: "#475569" }}>
+                          review {a.review_date}
                         </span>
                       )}
-                      <span className="text-[10px]" style={{ color: "#475569" }}>
-                        {new Date(a.created_at).toLocaleDateString()}
-                      </span>
                     </div>
                     <p className="text-sm font-medium" style={{ color: "#e2e8f0" }}>
                       {a.title}
                     </p>
-                    {a.change_description && (
-                      <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
-                        {a.change_description}
-                      </p>
-                    )}
-                    {a.hypothesis && (
-                      <p className="text-xs mt-1 italic" style={{ color: "#64748b" }}>
-                        Hypothesis: {a.hypothesis}
-                      </p>
-                    )}
                     {a.success_metric && (
                       <p className="text-xs mt-1.5" style={{ color: "#475569" }}>
                         Tracking {meta?.label ?? a.success_metric}
@@ -366,7 +413,7 @@ export default function ClientActionLog({
                         {delta ? (
                           <span style={{ color: delta.improved ? "#34d399" : "#f87171" }}>
                             {" "}
-                            · {delta.improved ? "improved" : "worse"} {delta.text}
+                            · {delta.improved ? "worked" : "did not work"} {delta.text}
                           </span>
                         ) : a.baseline_value != null ? (
                           <span> · baseline {formatMetric(a.success_metric, a.baseline_value)}</span>
@@ -374,8 +421,8 @@ export default function ClientActionLog({
                       </p>
                     )}
                     {a.outcome_notes && (
-                      <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
-                        Outcome: {a.outcome_notes}
+                      <p className="text-xs mt-1 italic" style={{ color: "#94a3b8" }}>
+                        {a.outcome_notes}
                       </p>
                     )}
                   </div>
@@ -392,14 +439,17 @@ export default function ClientActionLog({
                         </option>
                       ))}
                     </select>
-                    <button
-                      type="button"
-                      onClick={() => recordOutcome(a)}
-                      className="text-[11px] px-2 py-1 rounded font-semibold"
-                      style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24" }}
-                    >
-                      Record outcome
-                    </button>
+                    {(reviewDue || a.status === "measuring") && (
+                      <button
+                        type="button"
+                        onClick={() => runEval(a.id)}
+                        disabled={evaluating}
+                        className="text-[11px] px-2 py-1 rounded font-semibold"
+                        style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24" }}
+                      >
+                        Evaluate
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => remove(a)}

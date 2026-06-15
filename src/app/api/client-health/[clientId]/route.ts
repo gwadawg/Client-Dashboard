@@ -1,23 +1,22 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import {
-  buildClientHealthSnapshot,
-  buildHeClientHealthSnapshot,
+  buildClientHealthRow,
   buildConstraintGuidance,
-  buildRecentLeading,
-  compareHealthTrend,
   getPriorPeriod,
+  getRecentPriorPeriod,
   maturedWindow,
   recentWindow,
-  type ClientHealthSnapshot,
+  recentWindowDaysForVerdict,
   type ClientKpiBenchmarks,
 } from '@/lib/client-health';
+import { OPEN_ACTION_STATUSES } from '@/lib/client-health-interventions';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { fetchCombinedSpendForMetrics } from '@/lib/spend';
 import type { EventRow } from '@/lib/metrics';
 
 const EVENT_SELECT =
-  'occurred_at, event_type, ghl_contact_id, lead_phone, lead_email, lead_name, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state';
+  'occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state';
 
 type DatedEventRow = EventRow & { occurred_at: string };
 
@@ -39,15 +38,23 @@ export async function GET(
     return NextResponse.json({ error: 'start_date and end_date are required' }, { status: 400 });
   }
 
-  // Matched to the dashboard: grade on the EXACT selected range. Maturity is a
-  // non-blocking warning only, plus a recent leading-indicator window.
+  const today = new Date().toISOString().split('T')[0];
   const matured = maturedWindow(start_date, end_date);
   const verdictPrior = getPriorPeriod(start_date, end_date);
-  const recent = recentWindow(start_date, end_date);
-  const fetchPrior = verdictPrior;
-  const rangeStart = fetchPrior?.start ?? start_date;
+  const verdictDays =
+    Math.floor(
+      (new Date(`${end_date}T00:00:00.000Z`).getTime() -
+        new Date(`${start_date}T00:00:00.000Z`).getTime()) /
+        86400000,
+    ) + 1;
+  const recentDays = recentWindowDaysForVerdict(verdictDays);
+  const recent = recentWindow(start_date, end_date, recentDays);
+  const recentPrior = getRecentPriorPeriod(recent.start, recent.end);
+  const rangeStart = [verdictPrior?.start, recentPrior?.start, start_date]
+    .filter(Boolean)
+    .sort()[0] as string;
 
-  const [{ data: client, error: clientError }, { data: events, error: eventsError }, currentSpend, priorSpendData] =
+  const [{ data: client, error: clientError }, { data: events, error: eventsError }, { data: actionRows }] =
     await Promise.all([
       ctx.service.from('clients').select('id, name, is_live, reporting_type, kpi_benchmarks').eq('id', clientId).single(),
       ctx.service
@@ -57,18 +64,12 @@ export async function GET(
         .gte('occurred_at', `${rangeStart}T00:00:00.000Z`)
         .lte('occurred_at', `${end_date}T23:59:59.999Z`)
         .limit(200000),
-      fetchCombinedSpendForMetrics(ctx.service, {
-        client_id: clientId,
-        start_date: start_date,
-        end_date: end_date,
-      }),
-      verdictPrior
-        ? fetchCombinedSpendForMetrics(ctx.service, {
-            client_id: clientId,
-            start_date: verdictPrior.start,
-            end_date: verdictPrior.end,
-          })
-        : Promise.resolve([]),
+      ctx.service
+        .from('client_action_logs')
+        .select('id, client_id, title, review_date, status, created_at')
+        .eq('client_id', clientId)
+        .in('status', [...OPEN_ACTION_STATUSES])
+        .order('review_date', { ascending: true }),
     ]);
 
   if (clientError || !client) {
@@ -78,36 +79,58 @@ export async function GET(
     return NextResponse.json({ error: eventsError.message }, { status: 500 });
   }
 
-  const allEvents = (events ?? []) as DatedEventRow[];
-  const inRange = (e: DatedEventRow, s: string, en: string) =>
-    e.occurred_at >= `${s}T00:00:00.000Z` && e.occurred_at <= `${en}T23:59:59.999Z`;
-
-  const verdictEvents = allEvents.filter(e => inRange(e, start_date, end_date));
-  const priorEvents = verdictPrior ? allEvents.filter(e => inRange(e, verdictPrior.start, verdictPrior.end)) : [];
-  const recentEvents = allEvents.filter(e => inRange(e, recent.start, recent.end));
-
-  const benchmarks = ((client as { kpi_benchmarks?: unknown }).kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
   const reporting_type = normalizeReportingType(
     (client as { reporting_type?: unknown }).reporting_type,
   );
   const isHe = reporting_type === 'HE';
-  const current = isHe
-    ? buildHeClientHealthSnapshot(verdictEvents, benchmarks)
-    : buildClientHealthSnapshot(verdictEvents, currentSpend, benchmarks);
-  const priorSnapshot: ClientHealthSnapshot | null = verdictPrior
-    ? isHe
-      ? buildHeClientHealthSnapshot(priorEvents, benchmarks)
-      : buildClientHealthSnapshot(priorEvents, priorSpendData, benchmarks)
+  const benchmarks = ((client as { kpi_benchmarks?: unknown }).kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
+
+  const allEvents = (events ?? []) as DatedEventRow[];
+  const inRange = (e: DatedEventRow, s: string, en: string) =>
+    e.occurred_at >= `${s}T00:00:00.000Z` && e.occurred_at <= `${en}T23:59:59.999Z`;
+
+  const filterSpend = async (s: string, e: string) =>
+    isHe ? [] : fetchCombinedSpendForMetrics(ctx.service, { client_id: clientId, start_date: s, end_date: e });
+
+  const [verdictSpend, priorSpend, recentSpend, recentPriorSpend] = await Promise.all([
+    filterSpend(start_date, end_date),
+    verdictPrior ? filterSpend(verdictPrior.start, verdictPrior.end) : Promise.resolve([]),
+    filterSpend(recent.start, recent.end),
+    recentPrior ? filterSpend(recentPrior.start, recentPrior.end) : Promise.resolve([]),
+  ]);
+
+  const openActions = (actionRows ?? []) as { id: string; title: string; review_date: string | null; status: string }[];
+  const nextAction = openActions[0]
+    ? {
+        id: openActions[0].id,
+        title: openActions[0].title,
+        review_date: openActions[0].review_date,
+        status: openActions[0].status,
+        overdue: !!openActions[0].review_date && openActions[0].review_date < today,
+      }
     : null;
-  const recentLeading = buildRecentLeading(
-    recentEvents,
-    recent.start,
-    recent.end,
-    recent.window_days,
+
+  const row = buildClientHealthRow({
+    client_id: client.id,
+    client_name: client.name,
+    is_live: client.is_live !== false,
     reporting_type,
-  );
-  const { trend, trend_delta_score } = compareHealthTrend(current, priorSnapshot);
-  const guidance = buildConstraintGuidance(current, reporting_type);
+    benchmarks,
+    verdictEvents: allEvents.filter(e => inRange(e, start_date, end_date)),
+    priorEvents: verdictPrior ? allEvents.filter(e => inRange(e, verdictPrior.start, verdictPrior.end)) : [],
+    recentEvents: allEvents.filter(e => inRange(e, recent.start, recent.end)),
+    recentPriorEvents: recentPrior ? allEvents.filter(e => inRange(e, recentPrior.start, recentPrior.end)) : [],
+    verdictSpend,
+    priorSpend,
+    recentSpend,
+    recentPriorSpend,
+    start_date,
+    end_date,
+    verdictPrior,
+    open_action: nextAction,
+  });
+
+  const guidance = buildConstraintGuidance(row.current, reporting_type);
 
   return NextResponse.json({
     client_id: client.id,
@@ -124,12 +147,17 @@ export async function GET(
       recent_window_days: recent.window_days,
       recent_start: recent.start,
       recent_end: recent.end,
+      recent_prior_start: recentPrior?.start ?? null,
+      recent_prior_end: recentPrior?.end ?? null,
     },
-    current,
-    prior: priorSnapshot,
-    recent: recentLeading,
-    trend,
-    trend_delta_score,
+    current: row.current,
+    prior: row.prior,
+    recent: row.recent,
+    recent_prior: row.recent_prior,
+    focus: row.focus,
+    open_action: row.open_action,
+    trend: row.trend,
+    trend_delta_score: row.trend_delta_score,
     guidance,
   });
 }

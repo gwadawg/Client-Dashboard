@@ -14,6 +14,7 @@ import {
 import { Fragment } from "react";
 import {
   computePriorityScore,
+  FOCUS_STYLES,
   KPI_META,
   MATURITY_DAYS,
   TIER_LABEL,
@@ -37,13 +38,13 @@ type ClientSegment = "RM" | "HE";
 
 type SortKey =
   | "priority"
+  | "focus"
   | "show_rate"
   | "cps"
   | "leads"
   | "name"
   | "booking_rate"
-  | "dials"
-  | "pickup_rate";
+  | "dials";
 
 /**
  * Standardized grading windows. Each is a fixed trailing period that ends at the
@@ -138,6 +139,18 @@ function KpiDot({ tier }: { tier: HealthTier }) {
   );
 }
 
+function FocusBadge({ focus }: { focus: ClientHealthRow["focus"] }) {
+  const s = FOCUS_STYLES[focus.focus];
+  return (
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide"
+      style={{ background: s.bg, color: s.text, border: `1px solid ${s.border}` }}
+    >
+      {focus.label}
+    </span>
+  );
+}
+
 export default function ClientHealthDashboard(_props: Props) {
   const [clientSegment, setClientSegment] = useState<ClientSegment>("RM");
   const [gradeWindow, setGradeWindow] = useState<GradeWindow>("30d");
@@ -165,6 +178,21 @@ export default function ClientHealthDashboard(_props: Props) {
   const [hideInactive, setHideInactive] = useState(true);
   const [detail, setDetail] = useState<{ id: string; name: string } | null>(null);
   const [fileFor, setFileFor] = useState<{ id: string; name: string } | null>(null);
+  const [summaryStats, setSummaryStats] = useState({
+    act_now: 0,
+    monitor: 0,
+    recovering: 0,
+    on_track: 0,
+    follow_up_overdue: 0,
+  });
+
+  useEffect(() => {
+    fetch("/api/client-actions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!startDate || !endDate) return;
@@ -176,6 +204,15 @@ export default function ClientHealthDashboard(_props: Props) {
       .then(d => {
         setRows(d.clients ?? []);
         setMaturity(d.maturity ?? null);
+        if (d.summary) {
+          setSummaryStats({
+            act_now: d.summary.act_now ?? 0,
+            monitor: d.summary.monitor ?? 0,
+            recovering: d.summary.recovering ?? 0,
+            on_track: d.summary.on_track ?? 0,
+            follow_up_overdue: d.summary.follow_up_overdue ?? 0,
+          });
+        }
         if (d.prior_period) {
           setPriorLabel(`${d.prior_period.start} → ${d.prior_period.end}`);
         } else {
@@ -204,7 +241,7 @@ export default function ClientHealthDashboard(_props: Props) {
       if (sortKey === "name") {
         return dir * a.client_name.localeCompare(b.client_name);
       }
-      if (sortKey === "priority") {
+      if (sortKey === "priority" || sortKey === "focus") {
         return dir * (computePriorityScore(a) - computePriorityScore(b));
       }
       if (sortKey === "show_rate") {
@@ -219,9 +256,6 @@ export default function ClientHealthDashboard(_props: Props) {
       if (sortKey === "dials") {
         return dir * (a.current.metrics.outbound_dials - b.current.metrics.outbound_dials);
       }
-      if (sortKey === "pickup_rate") {
-        return dir * (a.current.metrics.pickup_pct - b.current.metrics.pickup_pct);
-      }
       if (sortKey === "leads") {
         return dir * (a.current.metrics.new_leads - b.current.metrics.new_leads);
       }
@@ -232,12 +266,11 @@ export default function ClientHealthDashboard(_props: Props) {
 
   const summary = useMemo(() => {
     const active = filtered.filter(r => r.has_activity);
-    const critical = active.filter(r => r.current.worst_tier === "critical").length;
-    const below = active.filter(r => r.current.worst_tier === "below").length;
-    const improving = active.filter(r => r.trend === "improved").length;
-    const slipping = active.filter(r => r.trend === "worsened").length;
-    return { active: active.length, critical, below, improving, slipping };
-  }, [filtered]);
+    return {
+      active: active.length,
+      ...summaryStats,
+    };
+  }, [filtered, summaryStats]);
 
   const chartData = useMemo(() => {
     return sorted.slice(0, 20).map(r => {
@@ -323,8 +356,7 @@ export default function ClientHealthDashboard(_props: Props) {
         <p className="text-sm mt-1 max-w-3xl" style={{ color: "#475569" }}>
           {isHeSegment ? (
             <>
-              HE clients side-by-side, graded on booking rate (÷ total leads), show rate, and pickup
-              rate over a fixed, matured window{" "}
+              HE clients side-by-side — booking (÷ leads) and show rate on a matured window{" "}
             </>
           ) : (
             <>
@@ -376,13 +408,14 @@ export default function ClientHealthDashboard(_props: Props) {
       ) : null}
 
       {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
         {[
+          { label: "Act now", value: summary.act_now, color: "#f87171" },
+          { label: "Monitor", value: summary.monitor, color: "#fbbf24" },
+          { label: "Recovering", value: summary.recovering, color: "#38bdf8" },
+          { label: "On track", value: summary.on_track, color: "#34d399" },
+          { label: "Reviews overdue", value: summary.follow_up_overdue, color: "#fb7185" },
           { label: "Active clients", value: summary.active, color: "#e2e8f0" },
-          { label: "911 critical", value: summary.critical, color: "#f87171" },
-          { label: "Below KPI", value: summary.below, color: "#fbbf24" },
-          { label: "Improving", value: summary.improving, color: "#34d399" },
-          { label: "Slipping", value: summary.slipping, color: "#fb7185" },
         ].map(s => (
           <div
             key={s.label}
@@ -414,13 +447,13 @@ export default function ClientHealthDashboard(_props: Props) {
           ))}
         </select>
         <select style={selectStyle} value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}>
-          <option value="priority">Sort: Attention (worst first)</option>
+          <option value="priority">Sort: Focus priority</option>
+          <option value="focus">Sort: Focus label</option>
           <option value="show_rate">Sort: Show rate</option>
           {isHeSegment ? (
             <>
               <option value="booking_rate">Sort: Booking rate (÷ leads)</option>
               <option value="dials">Sort: Outbound dials</option>
-              <option value="pickup_rate">Sort: Pickup rate</option>
             </>
           ) : (
             <>
@@ -516,8 +549,8 @@ export default function ClientHealthDashboard(_props: Props) {
             <thead>
               <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                 {(isHeSegment
-                  ? ["Client", "Status", "Constraint", "Trend", "Leads", "Dials", "Book %", "Show %", "Pickup %", ""]
-                  : ["Client", "Status", "Constraint", "Trend", "Leads", "Qual %", "Book %", "Show %", "CPConv", ""]
+                  ? ["Client", "Focus", "30d status", "Follow-up", "Leads", "Dials", "Book %", "Show %", ""]
+                  : ["Client", "Focus", "30d CPConv", "Follow-up", "Leads", "Qual %", "Book %", "Show %", ""]
                 ).map(h => (
                   <th
                     key={h}
@@ -538,7 +571,6 @@ export default function ClientHealthDashboard(_props: Props) {
                 </tr>
               ) : (
                 sorted.map(row => {
-                  const trend = TREND_ICONS[row.trend];
                   const expanded = expandedId === row.client_id;
                   const m = row.current.metrics;
                   const grade = (key: KpiKey) =>
@@ -566,23 +598,27 @@ export default function ClientHealthDashboard(_props: Props) {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <TierBadge tier={row.current.worst_tier} />
+                          <FocusBadge focus={row.focus} />
                         </td>
                         <td className="px-4 py-3">
-                          <span
-                            className="text-xs font-medium"
-                            style={{ color: CONSTRAINT_COLORS[row.current.constraint] ?? "#94a3b8" }}
-                          >
-                            {row.current.constraint_label}
-                          </span>
+                          {isHeSegment ? (
+                            <TierBadge tier={row.current.worst_tier} />
+                          ) : (
+                            <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                              <KpiDot tier={grade("cps")?.tier ?? "insufficient"} />
+                              ${Math.round(m.cp_conversation)}
+                            </div>
+                          )}
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="font-bold" style={{ color: trend.color }} title={trend.label}>
-                            {trend.symbol}
-                          </span>
-                          <span className="text-[10px] ml-1" style={{ color: "#475569" }}>
-                            {trend.label}
-                          </span>
+                        <td className="px-4 py-3 text-xs" style={{ color: row.open_action?.overdue ? "#f87171" : "#64748b" }}>
+                          {row.open_action ? (
+                            <>
+                              {row.open_action.overdue ? "Overdue · " : "Review · "}
+                              {row.open_action.review_date ?? "—"}
+                            </>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                         <td className="px-4 py-3 tabular-nums" style={{ color: "#94a3b8" }}>
                           {m.new_leads}
@@ -604,12 +640,6 @@ export default function ClientHealthDashboard(_props: Props) {
                                 {m.net_show_pct.toFixed(0)}%
                               </div>
                             </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                <KpiDot tier={grade("pickup_rate")?.tier ?? "insufficient"} />
-                                {m.pickup_pct.toFixed(0)}%
-                              </div>
-                            </td>
                           </>
                         ) : (
                           <>
@@ -629,12 +659,6 @@ export default function ClientHealthDashboard(_props: Props) {
                               <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
                                 <KpiDot tier={grade("show_rate")?.tier ?? "insufficient"} />
                                 {m.net_show_pct.toFixed(0)}%
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                <KpiDot tier={grade("cps")?.tier ?? "insufficient"} />
-                                ${Math.round(m.cp_conversation)}
                               </div>
                             </td>
                           </>
@@ -686,16 +710,19 @@ export default function ClientHealthDashboard(_props: Props) {
                                 <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums" style={{ color: "#94a3b8" }}>
                                   <span>{row.recent.leads} leads</span>
                                   <span>{row.recent.dials} dials</span>
-                                  <span>{row.recent.pickup_pct.toFixed(0)}% pickup</span>
                                   {isHeSegment ? (
                                     <span>{row.recent.booking_rate.toFixed(1)}% booking (÷ leads)</span>
                                   ) : (
                                     <>
                                       <span>{row.recent.lead_to_qualified_pct.toFixed(0)}% lead→qual</span>
                                       <span>{row.recent.booking_rate.toFixed(0)}% booking</span>
-                                      <span>{row.recent.conversations} conversations</span>
+                                      <span>CPL ${Math.round(row.recent.cpl)} · CPQL ${Math.round(row.recent.cpql)}</span>
+                                      <span>{row.recent.conversations} conv (LT+show+claimed)</span>
                                     </>
                                   )}
+                                  <span style={{ color: row.recent.momentum === "improving" ? "#34d399" : row.recent.momentum === "slipping" ? "#f87171" : "#64748b" }}>
+                                    {row.recent.momentum}
+                                  </span>
                                 </div>
                               </div>
                             )}
@@ -727,15 +754,13 @@ export default function ClientHealthDashboard(_props: Props) {
       <p className="text-[10px]" style={{ color: "#334155" }}>
         {isHeSegment ? (
           <>
-            HE grades follow Waiz tiers (911 / Below / At / Above). Overall tier is the worst of
-            booking rate (÷ total leads), show rate, and pickup rate. Dials are shown for volume
-            context but are not graded.
+            HE grades: booking rate (÷ total leads) and net show rate. Focus = 911 on verdict or leading window.
+            Dials shown for volume only.
           </>
         ) : (
           <>
-            RM grades follow Waiz Constraint Diagnosis tiers (911 / Below / At / Above). Booking rate
-            uses appointments ÷ qualified leads. Low-volume clients may show “—” until minimum
-            thresholds are met.
+            RM verdict anchored on CPConv (spend ÷ live transfers + shows + claimed). Focus = 911 on 30d CPConv
+            or 911 on leading CPL/CPQL/booking/qual in the recent window.
           </>
         )}
       </p>

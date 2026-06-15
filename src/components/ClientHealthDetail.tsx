@@ -27,6 +27,8 @@ import { noteTypeLabel, reasonLabel } from "@/lib/client-feedback";
 import ClientActionLog from "./ClientActionLog";
 import ClientTimelineChart from "./ClientTimelineChart";
 import ClientAiDiagnosis from "./ClientAiDiagnosis";
+import PeriodComparison from "./PeriodComparison";
+import { FOCUS_STYLES, type FocusResult } from "@/lib/client-health";
 
 type Props = {
   clientId: string;
@@ -58,6 +60,8 @@ type DetailResponse = {
   current: ClientHealthSnapshot;
   prior: ClientHealthSnapshot | null;
   recent?: RecentLeading | null;
+  recent_prior?: RecentLeading | null;
+  focus?: FocusResult;
   maturity?: MaturityInfo | null;
   trend: "improved" | "worsened" | "stable" | "new" | "insufficient";
   guidance: ConstraintGuidance;
@@ -74,12 +78,12 @@ const TIER_STYLES: Record<HealthTier, { bg: string; text: string; border: string
 const LAYER_GROUPS: { layer: FunnelLayer; label: string; keys: KpiKey[] }[] = [
   { layer: "L1", label: "L1 — Ads", keys: ["cpl", "cpql"] },
   { layer: "L2", label: "L2 — Landing", keys: ["lead_to_qualified"] },
-  { layer: "L3", label: "L3 — Call center", keys: ["pickup_rate", "booking_rate"] },
+  { layer: "L3", label: "L3 — Call center", keys: ["booking_rate"] },
   { layer: "L4", label: "L4 — Client / LO", keys: ["show_rate", "close_rate"] },
 ];
 
 const HE_LAYER_GROUPS: { layer: FunnelLayer; label: string; keys: KpiKey[] }[] = [
-  { layer: "L3", label: "L3 — Call center", keys: ["pickup_rate", "lead_booking_rate"] },
+  { layer: "L3", label: "L3 — Call center", keys: ["lead_booking_rate"] },
   { layer: "L4", label: "L4 — Client / LO", keys: ["show_rate"] },
 ];
 
@@ -213,6 +217,18 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                   </button>
                 )}
                 <TierBadge tier={data.current.worst_tier} />
+                {data.focus && (
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md"
+                    style={{
+                      background: FOCUS_STYLES[data.focus.focus].bg,
+                      color: FOCUS_STYLES[data.focus.focus].text,
+                      border: `1px solid ${FOCUS_STYLES[data.focus.focus].border}`,
+                    }}
+                  >
+                    {data.focus.label}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -224,16 +240,19 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                 <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums" style={{ color: "#94a3b8" }}>
                   <span>{data.recent.leads} leads</span>
                   <span>{data.recent.dials} dials</span>
-                  <span>{data.recent.pickup_pct.toFixed(0)}% pickup</span>
                   {isHe ? (
                     <span>{data.recent.booking_rate.toFixed(1)}% booking (÷ leads)</span>
                   ) : (
                     <>
                       <span>{data.recent.lead_to_qualified_pct.toFixed(0)}% lead→qual</span>
                       <span>{data.recent.booking_rate.toFixed(0)}% booking</span>
+                      <span>CPL {Math.round(data.recent.cpl)} · CPQL {Math.round(data.recent.cpql)}</span>
                       <span>{data.recent.conversations} conversations</span>
                     </>
                   )}
+                  <span style={{ color: data.recent.momentum === "improving" ? "#34d399" : data.recent.momentum === "slipping" ? "#f87171" : "#64748b" }}>
+                    momentum: {data.recent.momentum}
+                  </span>
                 </div>
               </div>
             ) : null}
@@ -266,6 +285,20 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
               ))}
             </div>
           </div>
+
+          <PeriodComparison
+            current={data.current}
+            prior={data.prior}
+            recent={data.recent ?? null}
+            recentPrior={data.recent_prior ?? null}
+            reportingType={data.reporting_type}
+            verdictLabel={`${data.period.start} → ${data.period.end}`}
+            priorVerdictLabel={
+              data.prior_period
+                ? `${data.prior_period.start} → ${data.prior_period.end}`
+                : "Prior period"
+            }
+          />
 
           {/* What's wrong / what to do */}
           <div className="rounded-xl p-5" style={cardStyle}>
@@ -465,6 +498,10 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
             snapshot={data.current}
             defaultLayer={data.guidance.layer}
             defaultConstraintLabel={data.current.constraint_label}
+            periodStart={data.period.start}
+            periodEnd={data.period.end}
+            reportingType={data.reporting_type}
+            defaultReviewDays={7}
             reloadKey={logReloadKey}
           />
         </>
