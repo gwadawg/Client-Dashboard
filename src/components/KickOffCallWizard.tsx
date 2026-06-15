@@ -111,6 +111,10 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
       setSaveError("Turn off Share Mode to fill in post-call fields before completing.");
       return;
     }
+    if (saveMode === "complete" && !draft.sub_account_name.trim()) {
+      setSaveError("GHL sub-account name is required — copy the exact name from GHL.");
+      return;
+    }
     if (saveMode === "complete" && !draft.ghl_location_id.trim() && !kickoffComplete) {
       setSaveError("Client GHL Location ID is required.");
       return;
@@ -428,6 +432,22 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
             {!shareMode && (
               <Section title="Post Call" shareMode={shareMode}>
                 <div className="space-y-4">
+                  <Field
+                    label="GHL sub-account name"
+                    required
+                    shareMode={shareMode}
+                    status={fieldStatus("sub_account_name")}
+                    helper="Copy exact location name from GHL. This is how leads map in — not the person's name."
+                  >
+                    <input
+                      value={draft.sub_account_name}
+                      disabled={saving}
+                      onChange={e => patch("sub_account_name", e.target.value)}
+                      placeholder="e.g. Ken Adler's Office"
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                      style={fieldStyle(shareMode, fieldStatus("sub_account_name"))}
+                    />
+                  </Field>
                   <Field label="Client GHL Location ID" required shareMode={shareMode} status={fieldStatus("ghl_location_id")}>
                     <input
                       value={draft.ghl_location_id}

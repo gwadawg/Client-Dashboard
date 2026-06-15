@@ -3,9 +3,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
+import PendingEventsPanel from "@/components/PendingEventsPanel";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
+import { clientNeedsGhlMapping } from "@/lib/client-ghl-mapping";
 import { DEFAULT_REPORTING_TYPE, normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import {
   DEFAULT_KPI_BANDS,
@@ -15,6 +17,14 @@ import {
   type ClientKpiBenchmarks,
   type KpiKey,
 } from "@/lib/client-health";
+
+type DataSummary = {
+  events: number;
+  client_billings: number;
+  client_calls: number;
+  client_notes: number;
+  total_rows: number;
+};
 
 type Client = {
   id: string;
@@ -148,6 +158,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleteSummary, setDeleteSummary] = useState<{ id: string; name: string; summary: DataSummary } | null>(null);
+  const [mergeTargetId, setMergeTargetId] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [benchmarksFor, setBenchmarksFor] = useState<string | null>(null);
   const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean; scrollToCalls?: boolean; openCheckinForm?: boolean } | null>(null);
@@ -194,7 +206,12 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(d.error ?? "Failed to create client");
+      setBusy(null);
+      return;
+    }
     if (d.client) {
       await reload();
       setShowAdd(false);
@@ -202,15 +219,60 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     setBusy(null);
   }
 
+  async function askDelete(client: Client) {
+    setConfirmDelete(client.id);
+    setDeleteSummary(null);
+    setMergeTargetId("");
+    const res = await fetch(`/api/clients/${client.id}/data-summary`);
+    const d = await res.json().catch(() => ({}));
+    if (d.summary) {
+      setDeleteSummary({ id: client.id, name: client.name, summary: d.summary });
+    }
+  }
+
+  function cancelDelete() {
+    setConfirmDelete(null);
+    setDeleteSummary(null);
+    setMergeTargetId("");
+  }
+
+  async function handleMerge(sourceId: string) {
+    if (!mergeTargetId) {
+      alert("Choose the client file to keep before merging.");
+      return;
+    }
+    setBusy(sourceId);
+    const res = await fetch("/api/clients/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_id: sourceId, target_id: mergeTargetId }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(d.error ?? "Merge failed");
+      setBusy(null);
+      return;
+    }
+    cancelDelete();
+    await reload();
+    setBusy(null);
+  }
+
   async function handleDelete(id: string) {
     setBusy(id);
-    await fetch("/api/clients", {
+    const res = await fetch("/api/clients", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error ?? "Failed to remove client");
+      setBusy(null);
+      return;
+    }
     setClients(prev => prev.filter(x => x.id !== id));
-    setConfirmDelete(null);
+    cancelDelete();
     setBusy(null);
   }
 
@@ -224,7 +286,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Roster</h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            Clients are grouped by lifecycle status. The table shows glance fields only — open a client&rsquo;s file for contact info, billing, GHL setup, and lifecycle changes.
+            Clients are grouped by lifecycle status. Sub-account name must match the GHL location name — that is how leads map in. Client name is the person or business contact. If you see duplicates, merge into the file you want to keep; do not delete a row that has reporting data.
           </p>
         </div>
         <button
@@ -237,6 +299,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
       </div>
 
       {showAdd && <AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} />}
+
+      <PendingEventsPanel onReplayed={reload} />
 
       {clients.length === 0 ? (
         <div className="rounded-xl px-4 py-8 text-center text-sm" style={{ border: "1px solid rgba(255,255,255,0.06)", color: "#334155" }}>
@@ -279,9 +343,13 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                           <ClientRow
                             key={c.id}
                             client={c}
+                            allClients={clients}
                             striped={i % 2 === 0}
                             busy={busy === c.id}
                             confirmingDelete={confirmDelete === c.id}
+                            deleteSummary={confirmDelete === c.id ? deleteSummary : null}
+                            mergeTargetId={mergeTargetId}
+                            onMergeTargetChange={setMergeTargetId}
                             benchmarksOpen={benchmarksFor === c.id}
                             onPatch={patchClient}
                             onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
@@ -290,8 +358,9 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                             onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
                             onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
                             onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
-                            onAskDelete={() => setConfirmDelete(c.id)}
-                            onCancelDelete={() => setConfirmDelete(null)}
+                            onAskDelete={() => askDelete(c)}
+                            onCancelDelete={cancelDelete}
+                            onMerge={() => handleMerge(c.id)}
                             onDelete={() => handleDelete(c.id)}
                           />
                         ))
@@ -335,12 +404,16 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 }
 
 function ClientRow({
-  client, striped, busy, confirmingDelete, benchmarksOpen, onPatch, onOpenFile, onOpenKickoff, onOpenNotes, onOpenCalls, onLogCheckin, onToggleBenchmarks, onAskDelete, onCancelDelete, onDelete,
+  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange, benchmarksOpen, onPatch, onOpenFile, onOpenKickoff, onOpenNotes, onOpenCalls, onLogCheckin, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete,
 }: {
   client: Client;
+  allClients: Client[];
   striped: boolean;
   busy: boolean;
   confirmingDelete: boolean;
+  deleteSummary: { id: string; name: string; summary: DataSummary } | null;
+  mergeTargetId: string;
+  onMergeTargetChange: (id: string) => void;
   benchmarksOpen: boolean;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onOpenFile: () => void;
@@ -351,6 +424,7 @@ function ClientRow({
   onToggleBenchmarks: () => void;
   onAskDelete: () => void;
   onCancelDelete: () => void;
+  onMerge: () => void;
   onDelete: () => void;
 }) {
   const c = client;
@@ -360,6 +434,7 @@ function ClientRow({
   const hasOverrides = !!c.kpi_benchmarks && Object.keys(c.kpi_benchmarks).length > 0;
   const stale = benchmarksStale(c);
   const kickoffPending = isKickoffIncomplete(c, null);
+  const needsGhlMapping = clientNeedsGhlMapping(c);
   const showKickoffAction = isKickoffLifecycle(c.lifecycle_status) || kickoffPending;
   const benchmarkColor = benchmarksOpen ? "#38bdf8" : stale ? "#f59e0b" : hasOverrides ? "#38bdf8" : "#475569";
   const benchmarkLabel = benchmarksOpen
@@ -378,15 +453,26 @@ function ClientRow({
     <>
     <tr style={{ background: rowBg, borderTop: "1px solid rgba(255,255,255,0.04)" }}>
       <td className={cell}>
-        <input
-          defaultValue={c.name ?? ""}
-          disabled={busy}
-          onBlur={onBlurField("name", c.name ?? "")}
-          placeholder="GHL sub-account name"
-          title="GHL sub-account name — what appears in the dashboard client filter"
-          className="px-2 py-1 rounded-lg text-sm outline-none w-36 font-medium"
-          style={fieldStyle()}
-        />
+        <span className="flex items-center gap-2">
+          <input
+            defaultValue={c.name ?? ""}
+            disabled={busy}
+            onBlur={onBlurField("name", c.name ?? "")}
+            placeholder="GHL sub-account name"
+            title="GHL sub-account name — what appears in the dashboard client filter"
+            className="px-2 py-1 rounded-lg text-sm outline-none w-36 font-medium"
+            style={fieldStyle()}
+          />
+          {needsGhlMapping && (
+            <span
+              className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
+              style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)" }}
+              title="Sub-account name still matches the person name — open Kick-off and set the exact GHL location name"
+            >
+              Map GHL
+            </span>
+          )}
+        </span>
       </td>
       <td className={cell}>
         <input
@@ -444,10 +530,48 @@ function ClientRow({
       </td>
       <td className="px-3 py-2 text-right whitespace-nowrap">
         {confirmingDelete ? (
-          <span className="flex items-center justify-end gap-2">
-            <button onClick={onDelete} disabled={busy} className="text-xs font-semibold px-2 py-1 rounded" style={{ color: "#ef4444", background: "rgba(239,68,68,0.12)" }}>Confirm</button>
-            <button onClick={onCancelDelete} className="text-xs" style={{ color: "#475569" }}>Cancel</button>
-          </span>
+          <div className="flex flex-col items-end gap-2 max-w-md ml-auto">
+            {deleteSummary && deleteSummary.summary.total_rows > 0 && (
+              <p className="text-xs text-right leading-relaxed" style={{ color: deleteSummary.summary.events > 0 ? "#f87171" : "#f59e0b" }}>
+                {deleteSummary.summary.events > 0
+                  ? `This row has ${deleteSummary.summary.events.toLocaleString()} lead/dial events. Removing it permanently deletes all reporting data.`
+                  : `This row has ${deleteSummary.summary.total_rows.toLocaleString()} related records (billing, calls, notes).`}
+                {" "}To combine duplicates, merge into the file you want to keep instead.
+              </p>
+            )}
+            {deleteSummary && deleteSummary.summary.total_rows > 0 && (
+              <label className="flex flex-col items-end gap-1 w-full">
+                <span className="text-xs" style={{ color: "#64748b" }}>Merge into client file to keep</span>
+                <select
+                  value={mergeTargetId}
+                  onChange={e => onMergeTargetChange(e.target.value)}
+                  className="px-2 py-1 rounded-lg text-xs outline-none w-full max-w-xs"
+                  style={fieldStyle()}
+                >
+                  <option value="">Select client…</option>
+                  {allClients
+                    .filter(x => x.id !== client.id)
+                    .map(x => (
+                      <option key={x.id} value={x.id}>{x.name}</option>
+                    ))}
+                </select>
+              </label>
+            )}
+            <span className="flex items-center justify-end gap-2 flex-wrap">
+              {deleteSummary && deleteSummary.summary.total_rows > 0 && (
+                <button
+                  onClick={onMerge}
+                  disabled={busy || !mergeTargetId}
+                  className="text-xs font-semibold px-2 py-1 rounded"
+                  style={{ color: "#22c55e", background: "rgba(34,197,94,0.12)" }}
+                >
+                  Merge
+                </button>
+              )}
+              <button onClick={onDelete} disabled={busy} className="text-xs font-semibold px-2 py-1 rounded" style={{ color: "#ef4444", background: "rgba(239,68,68,0.12)" }}>Delete anyway</button>
+              <button onClick={onCancelDelete} className="text-xs" style={{ color: "#475569" }}>Cancel</button>
+            </span>
+          </div>
         ) : (
           <span className="flex items-center justify-end gap-3">
             {showKickoffAction && (
@@ -645,6 +769,7 @@ function AddClientForm({
   const [name, setName] = useState("");
   const [clientName, setClientName] = useState("");
   const [email, setEmail] = useState("");
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [reportingType, setReportingType] = useState<ReportingType>(DEFAULT_REPORTING_TYPE);
   const [lifecycle, setLifecycle] = useState("onboarding");
   const [billingType, setBillingType] = useState("");
@@ -657,7 +782,25 @@ function AddClientForm({
   const [performanceTerms, setPerformanceTerms] = useState("");
 
   const isBusy = busy === "create";
-  const disabled = isBusy || !name.trim();
+  const blocked = !!duplicateWarning;
+  const disabled = isBusy || !name.trim() || blocked;
+
+  useEffect(() => {
+    if (!name.trim() && !clientName.trim() && !email.trim()) {
+      setDuplicateWarning(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const params = new URLSearchParams();
+      if (name.trim()) params.set("name", name.trim());
+      if (clientName.trim()) params.set("primary_contact_name", clientName.trim());
+      if (email.trim()) params.set("email", email.trim());
+      const res = await fetch(`/api/clients/check-duplicate?${params}`);
+      const d = await res.json().catch(() => ({}));
+      setDuplicateWarning(d.blocked ? (d.message as string) : null);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [name, clientName, email]);
 
   function submit() {
     onCreate({
@@ -680,10 +823,20 @@ function AddClientForm({
 
   return (
     <div className="rounded-xl p-5 space-y-4" style={{ background: "#0a1628", border: "1px solid rgba(34,197,94,0.2)" }}>
-      <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Add a new client</h3>
+      <div>
+        <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Add a new client</h3>
+        <p className="text-xs mt-1 max-w-2xl" style={{ color: "#64748b" }}>
+          Only use this if the client is not already in the roster from the New Client Form. If they signed up through the form, open their existing file and set the GHL sub-account name during kick-off.
+        </p>
+      </div>
+      {duplicateWarning && (
+        <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#f87171", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)" }}>
+          {duplicateWarning}
+        </p>
+      )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Field label="Sub-account name (GHL)">
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. James Office" className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} />
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Ken Adler's Office" className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} />
         </Field>
         <Field label="Client name">
           <input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="e.g. James Boisdenghein" className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} />

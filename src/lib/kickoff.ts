@@ -1,5 +1,7 @@
 // Kick-off call workflow: fields, completion checks, and role options.
 
+import { clientNeedsGhlMapping } from '@/lib/client-ghl-mapping';
+
 export const KICKOFF_CLIENT_FIELDS =
   'id, name, lifecycle_status, primary_contact_name, phone, contact_role, states_licensed, nmls, brokerage_name, timezone, appointment_settings, daily_adspend, facebook_page_name, phone_notifications, phone_live_transfer, live_transfer_approved, ghl_location_id';
 
@@ -44,16 +46,23 @@ export function isKickoffLifecycle(status: string | null | undefined): boolean {
 
 /** True when kick-off post-call requirements are not yet satisfied. */
 export function isKickoffIncomplete(
-  client: { lifecycle_status?: string | null; ghl_location_id?: string | null },
+  client: {
+    lifecycle_status?: string | null;
+    ghl_location_id?: string | null;
+    name?: string | null;
+    primary_contact_name?: string | null;
+  },
   onboardingCall: { recording_url?: string | null } | null | undefined,
 ): boolean {
   if (!isKickoffLifecycle(client.lifecycle_status)) return false;
+  if (clientNeedsGhlMapping(client)) return true;
   return !client.ghl_location_id?.trim() || !onboardingCall?.recording_url?.trim();
 }
 
 export function kickoffDraftFromClient(c: KickoffClient, recordingUrl = ''): KickoffDraft {
   const phone = c.phone ?? '';
   return {
+    sub_account_name: c.name ?? '',
     phone,
     contact_role: c.contact_role ?? '',
     states_licensed: c.states_licensed ?? [],
@@ -73,7 +82,7 @@ export function kickoffDraftFromClient(c: KickoffClient, recordingUrl = ''): Kic
 }
 
 const PREFILL_TRACKED_KEYS: (keyof KickoffDraft)[] = [
-  'phone', 'contact_role', 'states_licensed', 'nmls', 'brokerage_name', 'timezone',
+  'sub_account_name', 'phone', 'contact_role', 'states_licensed', 'nmls', 'brokerage_name', 'timezone',
   'appointment_settings', 'daily_adspend', 'facebook_page_name', 'phone_notifications',
   'phone_live_transfer', 'live_transfer_approved', 'ghl_location_id', 'recording_url',
 ];
@@ -100,6 +109,7 @@ export function kickoffFieldsMatch(a: KickoffDraft, b: KickoffDraft, key: keyof 
 }
 
 export type KickoffDraft = {
+  sub_account_name: string;
   phone: string;
   contact_role: string;
   states_licensed: string[];
@@ -124,6 +134,7 @@ export function kickoffDraftToBody(
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     save_mode: saveMode,
+    sub_account_name: draft.sub_account_name.trim() || null,
     phone: draft.phone.trim() || null,
     contact_role: draft.contact_role.trim() || null,
     states_licensed: draft.states_licensed,

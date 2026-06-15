@@ -15,6 +15,11 @@ import {
   redactClientMoneyFields,
 } from '@/lib/client-revenue-access';
 import { resolveUserLabels } from '@/lib/user-resolver';
+import {
+  findClientConflicts,
+  formatClientConflictMessage,
+} from '@/lib/client-duplicate-check';
+import { replayPendingForClientId } from '@/lib/pending-events';
 
 const STATUS_HISTORY_FIELDS =
   'id, previous_status, new_status, reason_code, note, mrr_at_change, changed_at, changed_by, source, related_call_id';
@@ -233,6 +238,36 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ? body.related_call_id.trim()
       : null;
 
+  if ('name' in updates || 'email' in updates || 'ghl_location_id' in updates || 'primary_contact_name' in updates) {
+    const { data: current } = await ctx.service
+      .from('clients')
+      .select('name, email, ghl_location_id, primary_contact_name')
+      .eq('id', id)
+      .single();
+    if (current) {
+      try {
+        const conflicts = await findClientConflicts(ctx.service, {
+          name: (updates.name as string | undefined) ?? current.name,
+          email: (updates.email as string | null | undefined) ?? current.email,
+          ghl_location_id:
+            (updates.ghl_location_id as string | null | undefined) ?? current.ghl_location_id,
+          primary_contact_name:
+            (updates.primary_contact_name as string | null | undefined) ?? current.primary_contact_name,
+          excludeId: id,
+        });
+        if (conflicts.blocked) {
+          return NextResponse.json(
+            { error: formatClientConflictMessage(conflicts.conflicts), conflicts: conflicts.conflicts },
+            { status: 409 },
+          );
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        return NextResponse.json({ error: message }, { status: 500 });
+      }
+    }
+  }
+
   const { data, error } = await ctx.service
     .from('clients')
     .update(updates)
@@ -298,5 +333,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const client = includeRevenue ? data : redactClientMoneyFields(data);
-  return NextResponse.json({ client });
+
+  let pending_replay = { replayed: 0, skipped: 0, failed: 0, errors: [] as string[] };
+  if ('name' in updates || 'ghl_location_id' in updates) {
+    try {
+      pending_replay = await replayPendingForClientId(ctx.service, id);
+    } catch (e) {
+      console.error('[clients] pending replay after patch failed', e);
+    }
+  }
+
+  return NextResponse.json({ client, pending_replay });
 }

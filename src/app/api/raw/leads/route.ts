@@ -33,6 +33,7 @@ type EventRow = {
   is_qualified: boolean | null;
   is_hot: boolean | null;
   is_out_of_state: boolean | null;
+  lead_source: string | null;
   raw: unknown;
   clients:
     | { name: string; ghl_location_id: string | null }
@@ -105,6 +106,7 @@ type LeadProfile = {
   ltv: number | null;
   b1_age: string | null;
   b2_age: string | null;
+  lead_source: string | null;
   has_proposal_made: boolean;
   has_submission_made: boolean;
   has_loan_funded: boolean;
@@ -247,6 +249,14 @@ function extractB2Age(raw: unknown): string | null {
   return formatAgeCell(v);
 }
 
+function extractLeadSource(row: EventRow): string | null {
+  if (row.lead_source?.trim()) return row.lead_source.trim();
+  const v = pickRaw(row.raw, ['lead_source', 'leadSource', 'list_source', 'listSource']);
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s || null;
+}
+
 function emptyCounts(): LeadCounts {
   return {
     dials: 0,
@@ -361,7 +371,7 @@ export async function GET(req: Request) {
   let q = ctx.service
     .from('events')
     .select(
-      'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, raw, clients(name, ghl_location_id)',
+      'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, lead_source, raw, clients(name, ghl_location_id)',
     )
     .order('occurred_at', { ascending: false })
     .limit(MAX_EVENTS);
@@ -398,6 +408,7 @@ export async function GET(req: Request) {
         ltv: null,
         b1_age: null,
         b2_age: null,
+        lead_source: null,
         has_proposal_made: false,
         has_submission_made: false,
         has_loan_funded: false,
@@ -432,11 +443,13 @@ export async function GET(req: Request) {
       const ltv = extractLtv(row.raw);
       const b1 = extractB1Age(row.raw);
       const b2 = extractB2Age(row.raw);
+      const ls = extractLeadSource(row);
       if (la != null) profile.loan_amount = la;
       if (pv != null) profile.property_value = pv;
       if (ltv != null) profile.ltv = ltv;
       if (b1 != null) profile.b1_age = b1;
       if (b2 != null) profile.b2_age = b2;
+      if (ls != null) profile.lead_source = ls;
       if (new Date(row.occurred_at).getTime() < new Date(profile.created_at).getTime()) {
         profile.created_at = row.occurred_at;
         if (row.lead_name) profile.lead_name = row.lead_name;

@@ -13,6 +13,12 @@ import {
   type KickoffClient,
 } from '@/lib/kickoff';
 import { normalizeStatesLicensed } from '@/lib/us-states';
+import {
+  findClientConflicts,
+  formatClientConflictMessage,
+} from '@/lib/client-duplicate-check';
+import { replayPendingForClientId } from '@/lib/pending-events';
+import { clientNeedsGhlMapping } from '@/lib/client-ghl-mapping';
 
 function optionalText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -91,6 +97,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const saveMode = body.save_mode === 'progress' ? 'progress' : 'complete';
   let ghlLocationId = optionalText(body.ghl_location_id);
   let recordingUrl = optionalText(body.recording_url);
+  const subAccountName = optionalText(body.sub_account_name);
 
   if (!includeRevenue && body.daily_adspend != null && body.daily_adspend !== '') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -98,7 +105,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { data: existingClient, error: clientError } = await ctx.service
     .from('clients')
-    .select('id, lifecycle_status, ghl_location_id')
+    .select('id, name, primary_contact_name, lifecycle_status, ghl_location_id')
     .eq('id', clientId)
     .single();
 
@@ -115,11 +122,31 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (saveMode === 'complete') {
     ghlLocationId = ghlLocationId ?? optionalText(existingClient.ghl_location_id);
     recordingUrl = recordingUrl ?? optionalText(existingOnboardingCall?.recording_url);
+    const effectiveSubName = subAccountName ?? optionalText(existingClient.name);
+    if (!effectiveSubName || clientNeedsGhlMapping({ ...existingClient, name: effectiveSubName })) {
+      return NextResponse.json(
+        { error: 'GHL sub-account name is required (copy exact name from GHL — not the person name).' },
+        { status: 400 },
+      );
+    }
     if (!ghlLocationId) {
       return NextResponse.json({ error: 'Client GHL Location ID is required' }, { status: 400 });
     }
     if (!recordingUrl) {
       return NextResponse.json({ error: 'OB call recording link is required' }, { status: 400 });
+    }
+  }
+
+  if (subAccountName) {
+    const conflicts = await findClientConflicts(ctx.service, {
+      name: subAccountName,
+      excludeId: clientId,
+    });
+    if (conflicts.blocked) {
+      return NextResponse.json(
+        { error: formatClientConflictMessage(conflicts.conflicts), conflicts: conflicts.conflicts },
+        { status: 409 },
+      );
     }
   }
 
@@ -138,6 +165,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   };
 
   if (ghlLocationId) updates.ghl_location_id = ghlLocationId;
+  if (subAccountName) updates.name = subAccountName;
 
   if (includeRevenue) {
     updates.daily_adspend = parseDailyAdspend(body.daily_adspend);
@@ -209,10 +237,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const redactedClient = includeRevenue ? client : redactClientMoneyFields(client);
   const kickoffClient = redactedClient as KickoffClient;
 
+  let pending_replay = { replayed: 0, skipped: 0, failed: 0, errors: [] as string[] };
+  if (subAccountName || ghlLocationId) {
+    try {
+      pending_replay = await replayPendingForClientId(ctx.service, clientId);
+    } catch (e) {
+      console.error('[kickoff] pending replay failed', e);
+    }
+  }
+
   return NextResponse.json({
     client: redactedClient,
     onboarding_call: onboardingCall,
     kickoff_complete: !isKickoffIncomplete(kickoffClient, onboardingCall),
     saved_mode: saveMode,
+    pending_replay,
   });
 }

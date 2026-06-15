@@ -56,6 +56,7 @@ type LeadProfile = {
   ltv: number | null;
   b1_age: string | null;
   b2_age: string | null;
+  lead_source: string | null;
   has_proposal_made: boolean;
   has_submission_made: boolean;
   has_loan_funded: boolean;
@@ -130,6 +131,7 @@ function downloadLeadsPageCsv(rows: LeadProfile[], page: number) {
     "LTV",
     "B1 age",
     "B2 age",
+    "Lead source",
     "Lead created",
     "Qualified",
     "Hot",
@@ -163,6 +165,7 @@ function downloadLeadsPageCsv(rows: LeadProfile[], page: number) {
         row.ltv != null ? `${row.ltv}%` : "",
         row.b1_age ?? "",
         row.b2_age ?? "",
+        row.lead_source ?? "",
         new Date(row.created_at).toISOString().slice(0, 10),
         row.is_qualified ? "Y" : "",
         row.is_hot ? "Y" : "",
@@ -379,7 +382,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         <table className="w-full text-sm min-w-[1100px]">
           <thead>
             <tr style={{ background: "#050c18" }}>
-              {["", "Client", "Name", "Flags", "Activity", "Loan amt", "Prop. value", "LTV", "B1 age", "B2 age", "Phone", "Email", "Created", "Contact"].map((h) => (
+              {["", "Client", "Name", "Flags", "Source", "Activity", "Loan amt", "Prop. value", "LTV", "B1 age", "B2 age", "Phone", "Email", "Created", "Contact"].map((h) => (
                 <th
                   key={h || "expand"}
                   className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
@@ -393,13 +396,13 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={14} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
+                <td colSpan={15} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={14} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
+                <td colSpan={15} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
                   No leads in this range
                 </td>
               </tr>
@@ -435,6 +438,13 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
                           <Flag on={row.has_submission_made} label="Submission" color="#f59e0b" />
                           <Flag on={row.has_loan_funded} label="Funded" color="#22c55e" />
                         </div>
+                      </td>
+                      <td
+                        className="px-4 py-2.5 whitespace-nowrap text-xs max-w-[8rem] truncate"
+                        style={{ color: "#94a3b8" }}
+                        title={row.lead_source ?? undefined}
+                      >
+                        {row.lead_source ?? "—"}
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-x-3 gap-y-1">

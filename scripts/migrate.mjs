@@ -161,4 +161,42 @@ await runSQL(`
   );
 `, 'Add Waiz event types: lo_bailed, loan_processing, lo_audit');
 
+await runSQL(`
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS lead_source text;
+  CREATE INDEX IF NOT EXISTS events_lead_source_idx
+    ON events (lead_source)
+    WHERE lead_source IS NOT NULL AND event_type = 'lead';
+`, 'Add events.lead_source');
+
+await runSQL(`
+  CREATE TABLE IF NOT EXISTS pending_events (
+    id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_name           text NOT NULL,
+    ghl_location_id       text,
+    event_type            text NOT NULL,
+    source_event_type     text NOT NULL,
+    normalized_event_type text NOT NULL,
+    payload               jsonb NOT NULL,
+    ghl_contact_id        text,
+    occurred_at           timestamptz,
+    status                text NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending', 'resolved', 'skipped')),
+    resolved_client_id    uuid REFERENCES clients(id) ON DELETE SET NULL,
+    resolved_event_id     uuid REFERENCES events(id) ON DELETE SET NULL,
+    resolved_at           timestamptz,
+    error_message         text,
+    received_at           timestamptz NOT NULL DEFAULT now(),
+    replay_attempts       int NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS pending_events_status_received
+    ON pending_events (status, received_at DESC)
+    WHERE status = 'pending';
+  CREATE INDEX IF NOT EXISTS pending_events_client_name_pending
+    ON pending_events (client_name)
+    WHERE status = 'pending';
+  CREATE INDEX IF NOT EXISTS pending_events_ghl_location_pending
+    ON pending_events (ghl_location_id)
+    WHERE status = 'pending' AND ghl_location_id IS NOT NULL;
+`, 'Create pending_events table');
+
 console.log('\nAll migrations complete.');

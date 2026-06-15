@@ -3,6 +3,11 @@ import { getAuthContext, isAuthError, requirePermission, requireAnyPermission, r
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 import { canViewClientRevenue, redactClientMoneyFields } from '@/lib/client-revenue-access';
+import {
+  findClientConflicts,
+  formatClientConflictMessage,
+} from '@/lib/client-duplicate-check';
+import { replayPendingForClientId } from '@/lib/pending-events';
 
 const DETAIL_FIELDS =
   'id, name, is_live, reporting_type, share_token, created_at, lifecycle_status, mrr, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id';
@@ -102,6 +107,24 @@ export async function POST(req: Request) {
     insert.billing_email = synced;
   }
 
+  try {
+    const conflicts = await findClientConflicts(ctx.service, {
+      name: insert.name as string,
+      email: (insert.email as string | null) ?? null,
+      primary_contact_name: (insert.primary_contact_name as string | null) ?? null,
+      ghl_location_id: (insert.ghl_location_id as string | null) ?? null,
+    });
+    if (conflicts.blocked) {
+      return NextResponse.json(
+        { error: formatClientConflictMessage(conflicts.conflicts), conflicts: conflicts.conflicts },
+        { status: 409 },
+      );
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+
   const { data, error } = await ctx.service
     .from('clients')
     .insert(insert)
@@ -109,7 +132,15 @@ export async function POST(req: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ client: data });
+
+  let pending_replay = { replayed: 0, skipped: 0, failed: 0, errors: [] as string[] };
+  try {
+    pending_replay = await replayPendingForClientId(ctx.service, data.id);
+  } catch (e) {
+    console.error('[clients] pending replay after create failed', e);
+  }
+
+  return NextResponse.json({ client: data, pending_replay });
 }
 
 export async function DELETE(req: Request) {

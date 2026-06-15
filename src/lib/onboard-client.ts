@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
+import { findClientConflicts } from '@/lib/client-duplicate-check';
+import { clientNamesMatch } from '@/lib/client-name-match';
 import {
   createClickUpTask,
   fmtMoney,
@@ -53,26 +55,28 @@ function reportingTypeFromOffer(offer: 'RM' | 'HE' | null, explicit: unknown): '
 }
 
 export function parseOnboardPayload(body: OnboardPayload) {
-  const name =
+  const personName =
+    trimString(body.primary_contact_name) ??
+    trimString(body.client_name) ??
     trimString(body.name) ??
     trimString(body.agency_name) ??
     trimString(body.business_name);
-  if (!name) throw new Error('name is required (or agency_name / business_name)');
+  const subAccountName =
+    trimString(body.sub_account_name) ??
+    trimString(body.ghl_subaccount_name);
+  const name = subAccountName ?? personName;
+  if (!name) throw new Error('name is required (or agency_name / business_name / sub_account_name)');
 
   const email = trimString(body.email);
   const billingEmail = trimString(body.billing_email) ?? email;
   const offer = normalizeOffer(body.offer) ?? normalizeOffer(body.reporting_type);
   const dateSigned = trimString(body.date_signed);
-  const contactName =
-    trimString(body.primary_contact_name) ??
-    trimString(body.client_name) ??
-    trimString(body.primary_contact);
 
   return {
     name,
     email,
     billing_email: billingEmail,
-    primary_contact_name: contactName ?? name,
+    primary_contact_name: personName ?? name,
     phone: trimString(body.phone),
     mrr: numberField(body.mrr),
     billing_type: normalizeBillingType(body.billing_type),
@@ -117,6 +121,15 @@ async function findExistingClient(
     if (data) return data;
   }
 
+  if (parsed.ghl_location_id) {
+    const { data } = await service
+      .from('clients')
+      .select('id')
+      .eq('ghl_location_id', parsed.ghl_location_id)
+      .maybeSingle();
+    if (data) return data;
+  }
+
   if (parsed.email) {
     const { data } = await service
       .from('clients')
@@ -124,6 +137,16 @@ async function findExistingClient(
       .eq('email', parsed.email)
       .maybeSingle();
     if (data) return data;
+  }
+
+  const { data: all } = await service.from('clients').select('id, name, primary_contact_name');
+  const person = parsed.primary_contact_name?.trim();
+  for (const c of all ?? []) {
+    if (clientNamesMatch(c.name, parsed.name)) return { id: c.id };
+    if (person && c.primary_contact_name && clientNamesMatch(c.primary_contact_name, person)) {
+      return { id: c.id };
+    }
+    if (person && clientNamesMatch(c.name, person)) return { id: c.id };
   }
 
   if (parsed.name && parsed.date_signed) {
@@ -300,6 +323,19 @@ export async function onboardClient(
     client = data as Record<string, unknown>;
     created = false;
   } else {
+    const conflicts = await findClientConflicts(service, {
+      name: parsed.name,
+      email: parsed.email,
+      ghl_location_id: parsed.ghl_location_id,
+      primary_contact_name: parsed.primary_contact_name,
+    });
+    if (conflicts.blocked) {
+      const match = conflicts.conflicts[0];
+      throw new Error(
+        `Client already exists as "${match?.name}". Re-send the form to update that record, or set sub_account_name when the GHL sub-account is ready.`,
+      );
+    }
+
     const { data, error } = await service
       .from('clients')
       .insert(record)
