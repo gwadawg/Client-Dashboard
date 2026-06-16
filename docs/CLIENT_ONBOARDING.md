@@ -1,127 +1,175 @@
 # Client Onboarding (Mr. Waiz)
 
-Automated new-client provisioning: **GHL New Client Form → Make.com → Mr. Waiz → ClickUp Client Hub**.
+Mr. Waiz (Supabase `clients` table) is the **source of truth** for client data. GHL handles the closer New Client form and outbound comms. Make.com orchestrates Slack, emails, and ClickUp **tasks only** (no field mirroring to ClickUp).
 
-Mr. Waiz (Supabase `clients` table) is the **reporting master record**. ClickUp remains the **task execution layer** for the 7-phase onboarding SOP.
+## Flow overview
 
-## Flow
+| Step | Who | Where | Mr. Waiz effect |
+|------|-----|-------|-----------------|
+| 1. New Client | Closer | GHL form → Make → `POST /api/admin/onboard` | `lifecycle_status: new_account`, signing billing, sales call, ClickUp task |
+| 2. Onboarding | Client | `/onboard` (static link in GHL emails) | Match by email/phone → update client; else unmapped queue |
+| 3. Kickoff | CS manager | Kick-Off wizard in Client Roster | Ops fields + PM brief (JSON audit) |
+| 4. Launch | Ops | Launch checklist wizard | `lifecycle_status: active`, `launch_date`, Slack via Make |
 
-1. Closer submits the **GHL New Client Form** after payment.
-2. **Make.com** calls Mr. Waiz: `POST /api/admin/onboard`.
-3. Mr. Waiz upserts the client (`lifecycle_status: onboarding`), links the ClickUp task, **auto-records new cash collected** as a paid billing, and logs the sales call recording.
-4. Make continues with GHL contact creation, Slack channels, manager assignment — using `client_id` and `clickup_task_id` from the response.
+## 1. New Client (GHL + Make)
 
-See [`make-blueprints/ccm-new-client-onboard.blueprint.json`](../make-blueprints/ccm-new-client-onboard.blueprint.json) for the HTTP module payload shape.
+1. Closer submits **GHL New Client Form** after payment.
+2. **Make.com** creates ClickUp Client Hub task, then Slack channel.
+3. **Make.com** calls `POST /api/admin/onboard` **last** — single write with contact fields + both IDs.
+4. Mr. Waiz upserts client (`lifecycle_status: new_account`); links `clickup_task_id` and `slack_id` (no duplicate ClickUp task when ID is sent).
 
-## What you have at sign-up (field mapping)
+Blueprint: [`make-blueprints/ccm-new-client-onboard.blueprint.json`](../make-blueprints/ccm-new-client-onboard.blueprint.json)  
+Make SOP: [`make-blueprints/MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLIENT.md)
 
-| Sign-up data | Payload field | Stored in Mr. Waiz |
-|--------------|---------------|-------------------|
-| Name | `name` | `clients.name` + `primary_contact_name` |
+### Step 1 field mapping
+
+| GHL / Make | Payload field | `clients` column |
+|------------|---------------|------------------|
+| Client name (person) | `primary_contact_name` | `primary_contact_name`, `primary_contact` |
+| *(derived)* | — | `name` = person name until kickoff sets GHL sub-account name |
 | Email | `email` | `email`, `billing_email` |
 | Phone | `phone` | `phone` |
-| ClickUp task id | `clickup_task_id` | `clickup_task_id` (links existing Hub task; does **not** create a new one) |
-| Slack ID | `slack_id` | `slack_id` |
-| Cash collected | `cash_collected` | **Auto-created** paid row in `client_billings` (ref `onboard-signing`) — no manual Client Billing entry needed |
-| Contract term | `contract_term_months` | `contract_term_months` |
-| PIF or monthly | `billing_type` | `billing_type` (`monthly`, `pif`, or `pif_monthly`) |
-| MRR | `mrr` | `mrr` |
-| Source | `source` | `source` |
-| Offer | `offer` | `offer` + `reporting_type` (`RM` or `HE`) |
 | Date signed | `date_signed` | `date_signed` |
-| Sales call recording | `sales_call_recording` | `client_calls` row (`call_type: other`, notes: Sales call) |
+| ClickUp task id | `clickup_task_id` | `clickup_task_id` |
+| Slack channel id | `slack_id` | `slack_id` |
+| GHL contact id (CS) | `ghl_contact_id` | `ghl_contact_id` |
 
-**Not available at sign-up** (fill later in Client Roster / client file): NMLS, brokerage, licensed states, timezone, GHL location id, launch date, etc.
+### Recommended Make payload (after ClickUp + Slack modules)
 
-### Name field note
+```json
+{
+  "primary_contact_name": "{{1.name}}",
+  "lifecycle_status": "new_account",
+  "email": "{{1.email}}",
+  "phone": "{{1.phone}}",
+  "date_signed": "{{1.date_signed}}",
+  "clickup_task_id": "{{2.id}}",
+  "slack_id": "{{3.id}}",
+  "ghl_contact_id": "{{1.contact_id}}"
+}
+```
 
-At sign-up, `name` is usually the **client contact name** (same value lands in `primary_contact_name`). When the GHL sub-account is created, update `clients.name` in the roster to match the **GHL location name** so lead webhooks match.
+Do **not** send GHL sub-account name at sign-up — kick-off sets `clients.name` later.
+
+**Retire in Make:** ClickUp custom-field updates that mirror client data (tasks/status only). See [`MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLIENT.md).
+
+**Optional env:** `CLICKUP_AUTO_CREATE_ON_ONBOARD=false` when Make always sends `clickup_task_id`.
+
+## 2. Client onboarding form
+
+**Public URL:** `https://<your-app>/onboard` — use this single link in GHL onboarding emails.
+
+Clients enter email + phone (required for matching), licensed states, business info, address, and optional headshot.
+
+- **1 match** → fields applied to `clients`, `new_account` → `onboarding`, then **GHL tag** + **ClickUp comment** + **Slack ops alert**. GHL/ClickUp only run when matched.
+- **0 or 2+ matches** → `client_form_submissions` row with `status: unmapped`; **Slack ops alert** explains the match failure. Resolve in **Client Roster → Unmapped onboarding forms** — linking to a client then triggers GHL + ClickUp.
+
+### Onboarding complete side effects (direct API)
+
+When a matched client submits `/onboard`, Mr. Waiz:
+
+1. **GHL** — adds tag `OB form Filled` on the stored `ghl_contact_id` (from Step 1). This tag triggers your GHL automations (confirmation email, etc.).
+2. **ClickUp** — posts a formatted comment on `clickup_task_id` with all OB answers. Optionally updates task status (`CLICKUP_OB_TASK_STATUS`) and custom fields (`CLICKUP_OB_FIELD_MAP` JSON).
+
+**Required env (Railway):**
+
+| Variable | Purpose |
+|----------|---------|
+| `GHL_CS_API_TOKEN` or `GHL_API_TOKEN` | Private Integration Token with contacts write / tags |
+| `GHL_CS_LOCATION_ID` | Waiz CS location — same for all clients (`ShWJuggoS02PZidEL4HK`) |
+| `CLICKUP_API_TOKEN` | Already used elsewhere |
+
+**Optional env:**
+
+| Variable | Purpose |
+|----------|---------|
+| `CLICKUP_OB_TASK_STATUS` | ClickUp status name after OB submit (e.g. `ob form received`) |
+| `CLICKUP_OB_FIELD_MAP` | JSON map of field keys → ClickUp custom field UUIDs |
+
+Step 1 must store `ghl_contact_id` on the client (see Make payload above). CS location is global via `GHL_CS_LOCATION_ID` on Railway — not stored per client.
+
+### Storage
+
+Create a public Supabase Storage bucket `client-headshots` for headshot uploads.
+
+### Make webhook (legacy — optional)
+
+`MAKE_ONBOARDING_COMPLETE_WEBHOOK_URL` is **no longer used** for onboarding complete. GHL + ClickUp are updated via direct API. You may remove the Make scenario if it was only for OB confirmation.
+
+## 3. Kickoff (CS manager)
+
+Open **Kick-off** from Client Roster after the OB call. Confirms client info, captures GHL location ID + sub-account name, PM landing-page brief (stored in `client_form_submissions`, not `clients` columns).
+
+## 4. Launch checklist
+
+Open **Launch** from Client Roster when kickoff is complete. All checklist answers live in `client_form_submissions.responses` JSON — no extra columns on `clients`.
+
+On complete: `lifecycle_status → active`, `launch_date` set, launch call logged, Make → Slack.
+
+Set `MAKE_LAUNCH_COMPLETE_WEBHOOK_URL`. Blueprint: [`ccm-launch-complete.blueprint.json`](../make-blueprints/ccm-launch-complete.blueprint.json)
+
+## Slack channel IDs (Automations tab)
+
+**Dashboard → Admin → Automations** is where ops manages Slack channel IDs for future automations and Make scenarios.
+
+| Channel type | Storage | How it gets set |
+|--------------|---------|-----------------|
+| Per-client | `clients.slack_id` | Make onboarding creates the channel and sends the ID on `POST /api/admin/onboard`; editable in Automations tab |
+| Internal team | `slack_channels` table | Added manually in Automations tab (slug + label + channel ID) |
+
+Suggested team channel slugs: `ops_alerts`, `client_success`, `billing`, `setters`. Reference these slugs in future automations or Make payloads.
+
+`notification_automations` table exists for phase 2 (event → channel routing). No triggers are wired yet.
+
+### Automations API
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `GET/POST /api/slack/channels` | `admin_automations` | List / create team channels |
+| `PATCH/DELETE /api/slack/channels/[id]` | `admin_automations` | Update / delete team channel |
+| `GET/PATCH /api/slack/client-channels` | `admin_automations` | List / update per-client `slack_id` |
+| `GET /api/slack/automations` | `admin_automations` | Read-only automation stubs (phase 2) |
+
+Grant the **Automations** tab in **Admin → Users** so ops can manage channel IDs without full Client Roster access.
+
+## Audit trail
+
+**Client File → Onboarding forms** shows every submission (type, date, submitter, expandable answers).
+
+Roster shows progress strip: Sign | OB | KO | Live.
+
+## API reference
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `POST /api/admin/onboard` | Bearer `ADMIN_WEBHOOK_SECRET` | New client from Make |
+| `PATCH /api/admin/clients/[id]` | Bearer `ADMIN_WEBHOOK_SECRET` | `slack_id`, integration fields |
+| `POST /api/onboard/submit` | Public | Client onboarding form |
+| `GET/POST /api/form-submissions/pending` | Admin session | Unmapped OB queue |
+| `POST /api/clients/[id]/kickoff` | Admin session | Kickoff wizard |
+| `POST /api/clients/[id]/launch` | Admin session | Launch checklist |
 
 ## Environment variables
 
-Add to `.env.local` (and Railway):
-
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ADMIN_WEBHOOK_SECRET` | Yes | Bearer token for `/api/admin/onboard` and other webhook routes |
-| `CLICKUP_API_TOKEN` | If auto-creating Hub tasks | Only needed when `clickup_task_id` is **not** sent |
-| `CLICKUP_CLIENT_HUB_LIST_ID` | No | Client Hub list id (default: `901314164414`) |
+| `ADMIN_WEBHOOK_SECRET` | Yes | Onboard + admin integration routes |
+| `CLICKUP_API_TOKEN` | If auto-creating Hub tasks | When `clickup_task_id` not sent |
+| `MAKE_ONBOARDING_COMPLETE_WEBHOOK_URL` | No | GHL confirmation email trigger |
+| `MAKE_LAUNCH_COMPLETE_WEBHOOK_URL` | No | Slack go-live notification |
 
-## API: POST /api/admin/onboard
+## Decommission (ops)
 
-**Auth:** `Authorization: Bearer <ADMIN_WEBHOOK_SECRET>`
-
-**Required field:** `name`
-
-**Sign-up payload (recommended Make JSON):**
-
-```json
-{
-  "name": "{{1.name}}",
-  "email": "{{1.email}}",
-  "phone": "{{1.phone}}",
-  "clickup_task_id": "{{1.clickup_task_id}}",
-  "slack_id": "{{1.slack_id}}",
-  "cash_collected": "{{1.cash_collected}}",
-  "contract_term_months": "{{1.contract_term}}",
-  "billing_type": "{{1.billing_type}}",
-  "mrr": "{{1.mrr}}",
-  "source": "{{1.source}}",
-  "offer": "{{1.offer}}",
-  "date_signed": "{{1.date_signed}}",
-  "sales_call_recording": "{{1.sales_call_recording}}"
-}
-```
-
-**Field aliases accepted:**
-
-| Payload | Also accepts |
-|---------|--------------|
-| `name` | `agency_name`, `business_name` |
-| `primary_contact_name` | `client_name`, `primary_contact` (defaults to `name`) |
-| `clickup_task_id` | `clickup_id`, `clickup_client_id` |
-| `slack_id` | `slackId` |
-| `cash_collected` | `cash_collected_amount` |
-| `sales_call_recording` | `sales_call_url`, `sales_call_recording_url` |
-| `contract_term_months` | (send as integer from form) |
-| `offer` / `reporting_type` | Normalized to `RM` or `HE` |
-| `billing_type` | `monthly`, `pif`, `pif_monthly` (labels like "PIF" are normalized) |
-| `lifecycle_status` | Default: `onboarding` |
-
-**Upsert logic:** matches existing client by `clickup_task_id`, then `email`, then `name` + `date_signed`, then `name` alone. Re-sending the same payload updates fields and idempotently refreshes the signing billing + sales call link.
-
-**Response:**
-
-```json
-{
-  "client_id": "uuid",
-  "client": { "...": "..." },
-  "clickup_task_id": "86abc123",
-  "clickup_task_url": "https://app.clickup.com/t/86abc123",
-  "billing_id": "uuid",
-  "sales_call_id": "uuid",
-  "created": true
-}
-```
-
-## Webhook client resolution
-
-Lead/event webhooks (`POST /api/webhooks`) resolve clients in this order:
-
-1. `client_id` (if provided)
-2. `ghl_location_id` / `location_id`
-3. `client_name` (exact match on `clients.name`)
-
-After GHL sub-account setup, update `clients.name` and set `ghl_location_id` so lead events ingest correctly.
-
-## Manual corrections
-
-Use **Admin → Client Roster** and **Open file** for anything missing at sign-up. Cash collected appears under **Client Billing** and the client file ledger; the sales call appears under **Client Calls**.
+1. Point GHL onboarding email link to `/onboard` (retire GHL OB form).
+2. Remove Make modules that PATCH ClickUp client custom fields.
+3. Retire external launch form; use Launch wizard only.
+4. Keep ClickUp for OB task creation and optional status → Live on launch.
 
 ## Verification
 
-1. Submit a test New Client Form → confirm Supabase row with `lifecycle_status: onboarding`.
-2. Confirm `clickup_task_id`, `slack_id`, and signing fields are populated.
-3. Confirm a paid `client_billings` row exists for cash collected.
-4. Confirm the sales recording appears in **Client Calls**.
-5. CEO Dashboard **New Clients Signed** reflects `date_signed`.
+1. Test New Client form → client row with `lifecycle_status: new_account` + `client_form_submissions` `new_client` row.
+2. After Slack create → `slack_id` on client via PATCH.
+3. Submit `/onboard` with matching email → client fields updated + `onboarding` submission.
+4. Submit with unknown email → appears in unmapped queue; assign works.
+5. Complete kickoff → `kickoff` submission in Client File.
+6. Complete launch → `active`, launch date, Slack webhook fires.

@@ -12,10 +12,10 @@ import {
   insertFormSubmission,
   type FormSubmissionRow,
 } from '@/lib/form-submissions';
-import { notifyOnboardingComplete } from '@/lib/make-webhooks';
+import { runOnboardingSideEffects, runOnboardingUnmappedNotification } from '@/lib/onboarding-side-effects';
 
 const CLIENT_FIELDS =
-  'id, name, lifecycle_status, email, phone, primary_contact_name, slack_id';
+  'id, name, lifecycle_status, email, phone, primary_contact_name, slack_id, clickup_task_id, ghl_contact_id';
 
 export type OnboardingSubmitResult = {
   matched: boolean;
@@ -42,6 +42,12 @@ export async function applyOnboardingSubmission(
       match_phone: input.phone,
       responses,
     });
+
+    void runOnboardingUnmappedNotification(service, input, {
+      submission_id: submission.id,
+      match_count: matches.length,
+    });
+
     return {
       matched: false,
       client_id: null,
@@ -87,13 +93,16 @@ export async function applyOnboardingSubmission(
     applied_patch: patch,
   });
 
-  await notifyOnboardingComplete({
-    client_id: client.id,
-    client_name: updated.name,
-    email: updated.email,
-    phone: updated.phone,
-    primary_contact_name: updated.primary_contact_name,
-  });
+  void runOnboardingSideEffects(
+    {
+      id: updated.id,
+      name: updated.name,
+      clickup_task_id: updated.clickup_task_id ?? null,
+      ghl_contact_id: updated.ghl_contact_id ?? null,
+    },
+    input,
+    service,
+  );
 
   return {
     matched: true,
@@ -159,13 +168,16 @@ export async function applyPendingOnboardingToClient(
     .single();
 
   if (client) {
-    await notifyOnboardingComplete({
-      client_id: clientId,
-      client_name: client.name,
-      email: client.email,
-      phone: client.phone,
-      primary_contact_name: client.primary_contact_name,
-    });
+    void runOnboardingSideEffects(
+      {
+        id: clientId,
+        name: client.name,
+        clickup_task_id: client.clickup_task_id ?? null,
+        ghl_contact_id: client.ghl_contact_id ?? null,
+      },
+      input,
+      service,
+    );
   }
 
   return updatedSub as FormSubmissionRow;

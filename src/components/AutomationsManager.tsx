@@ -8,6 +8,7 @@ import {
   type NotificationAutomationRow,
   type SlackChannelRow,
 } from "@/lib/slack-channels";
+import { BUILT_IN_AUTOMATIONS } from "@/lib/built-in-automations";
 
 type TeamChannelDraft = {
   slug: string;
@@ -77,6 +78,10 @@ export default function AutomationsManager() {
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [editClientSlackId, setEditClientSlackId] = useState("");
   const [clientFilter, setClientFilter] = useState<"all" | "missing">("all");
+  const [slackConfigured, setSlackConfigured] = useState(false);
+  const [opsChannelSlug, setOpsChannelSlug] = useState("client_success");
+  const [testingKey, setTestingKey] = useState<string | null>(null);
+  const [testSuccess, setTestSuccess] = useState("");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -85,14 +90,17 @@ export default function AutomationsManager() {
       fetch("/api/slack/channels").then(r => r.json()),
       fetch("/api/slack/client-channels").then(r => r.json()),
       fetch("/api/slack/automations").then(r => r.json()),
+      fetch("/api/slack/status").then(r => r.json()),
     ])
-      .then(([teamRes, clientRes, autoRes]) => {
+      .then(([teamRes, clientRes, autoRes, statusRes]) => {
         if (teamRes.error) throw new Error(teamRes.error);
         if (clientRes.error) throw new Error(clientRes.error);
         if (autoRes.error) throw new Error(autoRes.error);
         setTeamChannels(teamRes.channels ?? []);
         setClientChannels(clientRes.clients ?? []);
         setAutomations(autoRes.automations ?? []);
+        setSlackConfigured(!!statusRes.configured);
+        if (statusRes.ops_channel_slug) setOpsChannelSlug(statusRes.ops_channel_slug);
       })
       .catch(e => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
@@ -209,6 +217,28 @@ export default function AutomationsManager() {
     }));
   }
 
+  async function handleTestMessage(key: string, channelId: string, label: string) {
+    setTestingKey(key);
+    setError("");
+    setTestSuccess("");
+    const res = await fetch("/api/slack/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel_id: channelId,
+        text: `✅ Test message from Mr. Waiz — ${label}`,
+      }),
+    });
+    const data = await res.json();
+    setTestingKey(null);
+    if (!res.ok) {
+      setError(data.error ?? "Failed to send test message");
+      return;
+    }
+    setTestSuccess(`Test message sent to ${label}`);
+    setTimeout(() => setTestSuccess(""), 4000);
+  }
+
   if (loading) {
     return <div className="py-8 text-center text-sm" style={{ color: "#334155" }}>Loading…</div>;
   }
@@ -218,9 +248,25 @@ export default function AutomationsManager() {
       <div>
         <h1 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>Automations</h1>
         <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-          Store Slack channel IDs for internal team channels and per-client channels. Future automations and Make scenarios will reference these IDs.
+          Store Slack channel IDs and send messages directly from Mr. Waiz (no Make required when the bot is configured).
         </p>
       </div>
+
+      {slackConfigured ? (
+        <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.25)", color: "#34d399" }}>
+          Slack bot connected — Mr. Waiz can post directly. Internal alerts use team channel slug <span className="font-mono">{opsChannelSlug}</span>.
+        </div>
+      ) : (
+        <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)", color: "#fbbf24" }}>
+          Set <span className="font-mono">SLACK_BOT_TOKEN</span> in your environment to send messages directly. See <span className="font-mono">docs/SLACK_BOT.md</span> for bot setup (create app → add <span className="font-mono">chat:write</span> scope → invite bot to private channels).
+        </div>
+      )}
+
+      {testSuccess && (
+        <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.25)", color: "#34d399" }}>
+          {testSuccess}
+        </div>
+      )}
 
       {error && (
         <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
@@ -269,7 +315,7 @@ export default function AutomationsManager() {
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Channel ID</label>
-                <input style={inputStyle} placeholder="C01234567" value={newTeam.channel_id} onChange={e => setNewTeam(s => ({ ...s, channel_id: e.target.value }))} />
+                <input style={inputStyle} placeholder="C01234567 or G01234567" value={newTeam.channel_id} onChange={e => setNewTeam(s => ({ ...s, channel_id: e.target.value }))} />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Description (optional)</label>
@@ -333,6 +379,17 @@ export default function AutomationsManager() {
                           </button>
                         </td>
                         <td className="px-3 py-2 text-right space-x-2">
+                          {slackConfigured && channel.is_active && (
+                            <button
+                              type="button"
+                              onClick={() => handleTestMessage(`team-${channel.id}`, channel.channel_id, channel.label)}
+                              disabled={!!testingKey}
+                              className="text-xs font-semibold"
+                              style={{ color: "#38bdf8" }}
+                            >
+                              {testingKey === `team-${channel.id}` ? "Sending…" : "Test"}
+                            </button>
+                          )}
                           <button type="button" onClick={() => startEditTeam(channel)} className="text-xs font-semibold" style={{ color: "#f59e0b" }}>Edit</button>
                           <button type="button" onClick={() => handleDeleteTeam(channel.id, channel.label)} className="text-xs" style={{ color: "#f87171" }}>Delete</button>
                         </td>
@@ -400,7 +457,7 @@ export default function AutomationsManager() {
                         {editingClientId === row.client_id ? (
                           <input
                             style={inputStyle}
-                            placeholder="C01234567"
+                            placeholder="C01234567 or G01234567"
                             value={editClientSlackId}
                             onChange={e => setEditClientSlackId(e.target.value)}
                           />
@@ -419,7 +476,20 @@ export default function AutomationsManager() {
                             <button type="button" onClick={() => setEditingClientId(null)} className="text-xs" style={{ color: "#64748b" }}>Cancel</button>
                           </>
                         ) : (
-                          <button type="button" onClick={() => startEditClient(row)} className="text-xs font-semibold" style={{ color: "#f59e0b" }}>Edit</button>
+                          <>
+                            {slackConfigured && row.slack_id && (
+                              <button
+                                type="button"
+                                onClick={() => handleTestMessage(`client-${row.client_id}`, row.slack_id!, row.client_name)}
+                                disabled={!!testingKey}
+                                className="text-xs font-semibold"
+                                style={{ color: "#38bdf8" }}
+                              >
+                                {testingKey === `client-${row.client_id}` ? "Sending…" : "Test"}
+                              </button>
+                            )}
+                            <button type="button" onClick={() => startEditClient(row)} className="text-xs font-semibold" style={{ color: "#f59e0b" }}>Edit</button>
+                          </>
                         )}
                       </td>
                     </tr>
@@ -431,38 +501,69 @@ export default function AutomationsManager() {
         )}
       </SectionCard>
 
-      <SectionCard title="Automations" description="Event-driven Slack messages — coming in a future phase.">
-        {automations.length === 0 ? (
-          <div className="rounded-lg px-4 py-6 text-center" style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.08)" }}>
-            <p className="text-sm font-medium" style={{ color: "#94a3b8" }}>Automations coming soon</p>
-            <p className="text-xs mt-2 max-w-md mx-auto" style={{ color: "#64748b" }}>
-              Team and client channel IDs are stored here for Make scenarios and future in-app triggers. When automations ship, you&apos;ll configure which events post to which channels.
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: "#0f2040", color: "#64748b" }}>
-                  <th className="text-left px-3 py-2 font-medium">Name</th>
-                  <th className="text-left px-3 py-2 font-medium">Event</th>
-                  <th className="text-left px-3 py-2 font-medium">Target</th>
-                  <th className="text-left px-3 py-2 font-medium">Enabled</th>
+      <SectionCard
+        title="Automations"
+        description="Built-in workflows run automatically when clients submit forms. GHL tag triggers your GHL automations (emails, etc.)."
+      >
+        <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: "#0f2040", color: "#64748b" }}>
+                <th className="text-left px-3 py-2 font-medium">Name</th>
+                <th className="text-left px-3 py-2 font-medium">Event</th>
+                <th className="text-left px-3 py-2 font-medium">Actions</th>
+                <th className="text-left px-3 py-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {BUILT_IN_AUTOMATIONS.map(auto => (
+                <tr key={auto.id} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", color: "#cbd5e1" }}>
+                  <td className="px-3 py-2 align-top">
+                    <div className="font-medium" style={{ color: "#e2e8f0" }}>{auto.name}</div>
+                    <div className="text-xs mt-1" style={{ color: "#64748b" }}>{auto.trigger}</div>
+                  </td>
+                  <td className="px-3 py-2 align-top font-mono text-xs" style={{ color: "#94a3b8" }}>{auto.event_key}</td>
+                  <td className="px-3 py-2 align-top">
+                    <ul className="text-xs space-y-1" style={{ color: "#94a3b8" }}>
+                      {auto.actions.map(action => (
+                        <li key={action}>• {action}</li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td className="px-3 py-2 align-top text-xs" style={{ color: "#34d399" }}>Active</td>
                 </tr>
-              </thead>
-              <tbody>
-                {automations.map(auto => (
-                  <tr key={auto.id} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", color: "#cbd5e1" }}>
-                    <td className="px-3 py-2">{auto.name}</td>
-                    <td className="px-3 py-2 font-mono text-xs" style={{ color: "#94a3b8" }}>{auto.event_key}</td>
-                    <td className="px-3 py-2 text-xs">{auto.target_type}</td>
-                    <td className="px-3 py-2 text-xs" style={{ color: auto.is_enabled ? "#34d399" : "#64748b" }}>
-                      {auto.is_enabled ? "Yes" : "No"}
-                    </td>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {automations.length > 0 && (
+          <div className="pt-2">
+            <p className="text-xs font-medium mb-2" style={{ color: "#64748b" }}>Configurable Slack automations (phase 2)</p>
+            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ background: "#0f2040", color: "#64748b" }}>
+                    <th className="text-left px-3 py-2 font-medium">Name</th>
+                    <th className="text-left px-3 py-2 font-medium">Event</th>
+                    <th className="text-left px-3 py-2 font-medium">Target</th>
+                    <th className="text-left px-3 py-2 font-medium">Enabled</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {automations.map(auto => (
+                    <tr key={auto.id} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", color: "#cbd5e1" }}>
+                      <td className="px-3 py-2">{auto.name}</td>
+                      <td className="px-3 py-2 font-mono text-xs" style={{ color: "#94a3b8" }}>{auto.event_key}</td>
+                      <td className="px-3 py-2 text-xs">{auto.target_type}</td>
+                      <td className="px-3 py-2 text-xs" style={{ color: auto.is_enabled ? "#34d399" : "#64748b" }}>
+                        {auto.is_enabled ? "Yes" : "No"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </SectionCard>

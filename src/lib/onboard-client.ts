@@ -2,15 +2,17 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { findClientConflicts } from '@/lib/client-duplicate-check';
 import { clientNamesMatch } from '@/lib/client-name-match';
+import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import {
   createClickUpTask,
   fmtMoney,
   getClientHubListId,
   getClickUpToken,
 } from '@/lib/clickup';
+import { insertFormSubmission } from '@/lib/form-submissions';
 
 const ONBOARD_FIELDS =
-  'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, created_at';
+  'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, ghl_contact_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, created_at';
 
 const SIGNING_BILLING_REF = 'onboard-signing';
 
@@ -65,12 +67,20 @@ export function parseOnboardPayload(body: OnboardPayload) {
     trimString(body.sub_account_name) ??
     trimString(body.ghl_subaccount_name);
   const name = subAccountName ?? personName;
-  if (!name) throw new Error('name is required (or agency_name / business_name / sub_account_name)');
+  if (!name) {
+    throw new Error(
+      'primary_contact_name is required (or client_name / name / agency_name / sub_account_name)',
+    );
+  }
 
   const email = trimString(body.email);
   const billingEmail = trimString(body.billing_email) ?? email;
   const offer = normalizeOffer(body.offer) ?? normalizeOffer(body.reporting_type);
   const dateSigned = trimString(body.date_signed);
+
+  const lifecycleStatus = trimString(body.lifecycle_status) ?? 'new_account';
+  const explicitIsLive = body.is_live === true ? true : undefined;
+  const inferredIsLive = syncIsLiveWithLifecycle(lifecycleStatus, explicitIsLive);
 
   return {
     name,
@@ -90,12 +100,15 @@ export function parseOnboardPayload(body: OnboardPayload) {
     ghl_subaccount_url: trimString(body.ghl_subaccount_url),
     source: trimString(body.source),
     slack_id: trimString(body.slack_id) ?? trimString(body.slackId),
-    lifecycle_status: trimString(body.lifecycle_status) ?? 'onboarding',
-    is_live: body.is_live === true,
+    lifecycle_status: lifecycleStatus,
+    is_live: inferredIsLive ?? false,
     clickup_task_id:
       trimString(body.clickup_task_id) ??
       trimString(body.clickup_id) ??
       trimString(body.clickup_client_id),
+    ghl_contact_id:
+      trimString(body.ghl_contact_id) ??
+      trimString(body.contact_id),
     cash_collected:
       numberField(body.cash_collected) ??
       numberField(body.cash_collected_amount),
@@ -117,6 +130,15 @@ async function findExistingClient(
       .from('clients')
       .select('id')
       .eq('clickup_task_id', parsed.clickup_task_id)
+      .maybeSingle();
+    if (data) return data;
+  }
+
+  if (parsed.ghl_contact_id) {
+    const { data } = await service
+      .from('clients')
+      .select('id')
+      .eq('ghl_contact_id', parsed.ghl_contact_id)
       .maybeSingle();
     if (data) return data;
   }
@@ -177,14 +199,25 @@ function buildClientRecord(parsed: ParsedOnboard): Record<string, unknown> {
   const optional: (keyof ParsedOnboard)[] = [
     'email', 'billing_email', 'primary_contact_name', 'phone', 'mrr',
     'billing_type', 'contract_term_months', 'date_signed', 'offer', 'nmls',
-    'brokerage_name', 'ghl_location_id', 'ghl_subaccount_url', 'source',
+    'brokerage_name', 'ghl_location_id', 'ghl_contact_id',
+    'ghl_subaccount_url', 'source',
     'clickup_task_id', 'slack_id',
   ];
   for (const k of optional) {
     const v = parsed[k];
     if (v != null && v !== '') record[k] = v;
   }
+  if (record.primary_contact_name) {
+    record.primary_contact = record.primary_contact_name;
+  }
   return record;
+}
+
+function shouldAutoCreateClickUpTask(parsed: ParsedOnboard): boolean {
+  if (parsed.clickup_task_id) return false;
+  const flag = process.env.CLICKUP_AUTO_CREATE_ON_ONBOARD?.trim().toLowerCase();
+  if (flag === 'false' || flag === '0' || flag === 'no') return false;
+  return true;
 }
 
 function buildClickUpDescription(parsed: ParsedOnboard, clientId: string): string {
@@ -348,7 +381,7 @@ export async function onboardClient(
 
   let clickupTaskId = trimString(client.clickup_task_id);
 
-  if (!clickupTaskId) {
+  if (!clickupTaskId && shouldAutoCreateClickUpTask(parsed)) {
     const token = getClickUpToken();
     const listId = getClientHubListId();
     if (!token) {
@@ -374,6 +407,21 @@ export async function onboardClient(
 
   const billing_id = await upsertSigningBilling(service, String(client.id), parsed);
   const sales_call_id = await upsertSalesCall(service, String(client.id), parsed);
+
+  try {
+    await insertFormSubmission(service, {
+      client_id: String(client.id),
+      form_type: 'new_client',
+      status: 'applied',
+      submitted_by: 'webhook',
+      match_email: parsed.email,
+      match_phone: parsed.phone,
+      responses: body,
+      applied_patch: record,
+    });
+  } catch (e) {
+    console.error('[onboard] form submission log failed', e);
+  }
 
   return { client, clickup_task_id: clickupTaskId, created, billing_id, sales_call_id };
 }

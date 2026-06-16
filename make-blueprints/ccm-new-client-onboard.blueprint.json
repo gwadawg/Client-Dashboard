@@ -1,80 +1,100 @@
 {
-    "name": "CCM - New Client Form → Mr. Waiz + ClickUp",
-    "flow": [
-        {
-            "id": 1,
-            "module": "gateway:CustomWebHook",
-            "version": 1,
-            "parameters": {},
-            "mapper": {},
-            "metadata": {
-                "designer": { "x": 0, "y": 0 },
-                "restore": {},
-                "parameters": [
-                    {
-                        "name": "hook",
-                        "type": "hook:gateway",
-                        "label": "GHL New Client Form webhook",
-                        "required": true
-                    }
-                ]
-            }
-        },
-        {
-            "id": 2,
-            "module": "http:ActionSendData",
-            "version": 3,
-            "parameters": {
-                "handleErrors": false,
-                "useNewZLibDeCompression": true
-            },
-            "mapper": {
-                "url": "https://wm-os-production.up.railway.app/api/admin/onboard",
-                "serializeUrl": false,
-                "method": "POST",
-                "headers": [
-                    {
-                        "name": "Authorization",
-                        "value": "Bearer REPLACE_WITH_YOUR_ADMIN_WEBHOOK_SECRET"
-                    },
-                    {
-                        "name": "Content-Type",
-                        "value": "application/json"
-                    }
-                ],
-                "qs": [],
-                "bodyType": "raw",
-                "parseResponse": true,
-                "authUser": "",
-                "authPass": "",
-                "timeout": "",
-                "shareCookies": false,
-                "ca": "",
-                "useMtls": false,
-                "contentType": "application/json",
-                "data": "{\"primary_contact_name\": \"{{1.name}}\", \"name\": \"{{1.name}}\", \"email\": \"{{1.email}}\", \"phone\": \"{{1.phone}}\", \"clickup_task_id\": \"{{1.clickup_task_id}}\", \"slack_id\": \"{{1.slack_id}}\", \"cash_collected\": \"{{1.cash_collected}}\", \"contract_term_months\": \"{{1.contract_term}}\", \"billing_type\": \"{{1.billing_type}}\", \"mrr\": \"{{1.mrr}}\", \"source\": \"{{1.source}}\", \"offer\": \"{{1.offer}}\", \"date_signed\": \"{{1.date_signed}}\", \"sales_call_recording\": \"{{1.sales_call_recording}}\"}"
-            },
-            "metadata": {
-                "designer": { "x": 300, "y": 0, "name": "Create client in Mr. Waiz + ClickUp" }
-            }
-        }
-    ],
-    "metadata": {
-        "instant": true,
-        "version": 1,
-        "scenario": {
-            "roundtrips": 1,
-            "maxErrors": 3,
-            "autoCommit": true,
-            "autoCommitTriggerLast": true,
-            "sequential": false,
-            "confidential": false,
-            "dataloss": false,
-            "dlq": false,
-            "freshVariables": false
-        },
-        "designer": { "orphans": [] },
-        "zone": "eu1.make.com",
-        "notes": "Wire this as the FIRST step in your New Client Make scenario, before GHL contact creation, Slack, and manager assignment. Map {{1.*}} to your GHL form field names. Response includes client_id and clickup_task_id for downstream modules."
+  "name": "CCM - New Client Form → ClickUp + Slack → Mr. Waiz",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0, "name": "GHL New Client Form" },
+        "parameters": [
+          {
+            "name": "hook",
+            "type": "hook:gateway",
+            "label": "GHL New Client Form webhook",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "module": "clickup:createTask",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "{{1.name}}",
+        "list_id": "901314164414",
+        "status": "onboarding"
+      },
+      "metadata": {
+        "designer": { "x": 300, "y": 0, "name": "Create ClickUp Client Hub task" },
+        "notes": "Replace module type with your ClickUp 'Create a task' module. Map list_id to Client Hub. Output id → used as clickup_task_id in step 4."
+      }
+    },
+    {
+      "id": 3,
+      "module": "slack:createChannel",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "{{1.name}}"
+      },
+      "metadata": {
+        "designer": { "x": 600, "y": 0, "name": "Create Slack client channel" },
+        "notes": "Replace with your Slack 'Create a channel' module. Output channel id → slack_id in step 4."
+      }
+    },
+    {
+      "id": 4,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompression": true
+      },
+      "mapper": {
+        "url": "https://wm-os-production.up.railway.app/api/admin/onboard",
+        "serializeUrl": false,
+        "method": "POST",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer REPLACE_WITH_YOUR_ADMIN_WEBHOOK_SECRET"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "contentType": "application/json",
+        "data": "{\"primary_contact_name\": \"{{1.name}}\", \"lifecycle_status\": \"new_account\", \"email\": \"{{1.email}}\", \"phone\": \"{{1.phone}}\", \"date_signed\": \"{{1.date_signed}}\", \"clickup_task_id\": \"{{2.id}}\", \"slack_id\": \"{{3.id}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"cash_collected\": \"{{1.cash_collected}}\", \"contract_term_months\": \"{{1.contract_term}}\", \"billing_type\": \"{{1.billing_type}}\", \"mrr\": \"{{1.mrr}}\", \"source\": \"{{1.source}}\", \"offer\": \"{{1.offer}}\", \"sales_call_recording\": \"{{1.sales_call_recording}}\"}"
+      },
+      "metadata": {
+        "designer": { "x": 900, "y": 0, "name": "Create client in Mr. Waiz (LAST)" }
+      }
     }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": true,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] },
+    "zone": "eu1.make.com",
+    "notes": "ORDER: 1 GHL form → 2 ClickUp task → 3 Slack channel → 4 Mr. Waiz onboard (single write with all IDs). Map {{1.*}} to GHL field names; {{2.id}} and {{3.id}} to your ClickUp/Slack module outputs. Do NOT PATCH ClickUp custom fields with client data — tasks only. Set CLICKUP_AUTO_CREATE_ON_ONBOARD=false on Railway if Make always creates the task. Response client_id can be stored on the ClickUp task description for ops reference only."
+  }
 }

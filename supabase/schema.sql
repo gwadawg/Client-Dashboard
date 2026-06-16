@@ -155,6 +155,8 @@ alter table clients add column if not exists zip_code               text;
 alter table clients add column if not exists timezone               text;
 alter table clients add column if not exists states_licensed        text[];
 alter table clients add column if not exists clickup_task_id        text;
+alter table clients add column if not exists ghl_contact_id         text;
+alter table clients add column if not exists ghl_cs_location_id     text;
 alter table clients add column if not exists performance_terms      text;
 alter table clients add column if not exists billing_email          text;
 alter table clients add column if not exists primary_contact        text;
@@ -191,6 +193,9 @@ end $$;
 
 create unique index if not exists clients_clickup_task_id_key
   on clients (clickup_task_id) where clickup_task_id is not null;
+
+create unique index if not exists clients_ghl_contact_id_key
+  on clients (ghl_contact_id) where ghl_contact_id is not null;
 
 alter table clients
   add column if not exists reporting_type text not null default 'RM';
@@ -1013,3 +1018,67 @@ create index if not exists pending_events_client_name_pending
 create index if not exists pending_events_ghl_location_pending
   on pending_events (ghl_location_id)
   where status = 'pending' and ghl_location_id is not null;
+
+-- Client onboarding form submissions (audit trail; checklist answers in JSONB).
+alter table clients add column if not exists headshot_url text;
+
+create table if not exists client_form_submissions (
+  id            uuid primary key default gen_random_uuid(),
+  client_id     uuid references clients(id) on delete set null,
+  form_type     text not null,
+  status        text not null default 'submitted',
+  submitted_by  text,
+  match_email   text,
+  match_phone   text,
+  responses     jsonb not null default '{}',
+  applied_patch jsonb,
+  submitted_at  timestamptz not null default now(),
+  constraint client_form_submissions_form_type_check check (
+    form_type in ('new_client', 'onboarding', 'kickoff', 'launch')
+  ),
+  constraint client_form_submissions_status_check check (
+    status in ('draft', 'submitted', 'unmapped', 'applied', 'dismissed')
+  )
+);
+
+create index if not exists client_form_submissions_client_id_idx on client_form_submissions(client_id);
+create index if not exists client_form_submissions_form_type_idx on client_form_submissions(form_type);
+create index if not exists client_form_submissions_status_idx on client_form_submissions(status) where status = 'unmapped';
+
+-- Workspace Slack channels + future notification automations (phase 1: storage only).
+create table if not exists slack_channels (
+  id           uuid primary key default gen_random_uuid(),
+  slug         text not null unique,
+  label        text not null,
+  channel_id   text not null,
+  description  text,
+  is_active    boolean not null default true,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  created_by   uuid references auth.users(id) on delete set null,
+  updated_by   uuid references auth.users(id) on delete set null,
+  constraint slack_channels_slug_check check (char_length(trim(slug)) > 0),
+  constraint slack_channels_label_check check (char_length(trim(label)) > 0),
+  constraint slack_channels_channel_id_check check (char_length(trim(channel_id)) > 0)
+);
+create index if not exists slack_channels_active on slack_channels(is_active) where is_active = true;
+
+create table if not exists notification_automations (
+  id                uuid primary key default gen_random_uuid(),
+  name              text not null,
+  event_key         text not null,
+  target_type       text not null,
+  slack_channel_id  uuid references slack_channels(id) on delete set null,
+  is_enabled        boolean not null default false,
+  config            jsonb not null default '{}'::jsonb,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  constraint notification_automations_name_check check (char_length(trim(name)) > 0),
+  constraint notification_automations_event_key_check check (char_length(trim(event_key)) > 0),
+  constraint notification_automations_target_type_check check (
+    target_type in ('workspace_channel', 'client_channel')
+  )
+);
+create index if not exists notification_automations_event_key on notification_automations(event_key);
+create index if not exists notification_automations_enabled on notification_automations(is_enabled) where is_enabled = true;
+
