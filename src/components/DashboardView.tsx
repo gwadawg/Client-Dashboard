@@ -31,6 +31,7 @@ import DialAnalytics from "./DialAnalytics";
 import MediaBuyer from "./MediaBuyer";
 import CeoDashboard from "./CeoDashboard";
 import ResourcesLibrary from "./ResourcesLibrary";
+import AutomationsManager from "./AutomationsManager";
 import KpiSections, { type SparkMap } from "./kpi/KpiSections";
 import KpiSection from "./kpi/KpiSection";
 import KpiCard from "./kpi/KpiCard";
@@ -104,6 +105,7 @@ const NAV_ICONS: Record<View, string> = {
   admin_billing:    "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",
   admin_agent_payroll: "M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z",
   admin_share:      "M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z",
+  admin_automations: "M13 10V3L4 14h7v7l9-11h-7z",
   admin_users:      "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
   schedule:         "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
   agent_scorecards: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
@@ -901,6 +903,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
           )}
           {view === "schedule"      && <SetterSchedule clients={clients} />}
           {view === "admin_share"   && <ShareReports clients={clients} />}
+          {view === "admin_automations" && <AutomationsManager />}
           {view === "admin_users"   && <UserManager />}
 
         </main>
