@@ -3,7 +3,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
+import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import PendingEventsPanel from "@/components/PendingEventsPanel";
+import { FormProgressStrip } from "@/components/ClientFormsSection";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
@@ -54,6 +56,7 @@ type Client = {
   clickup_task_id?: string | null;
   ghl_location_id?: string | null;
   total_paid?: number;
+  form_progress?: Partial<Record<"new_client" | "onboarding" | "kickoff" | "launch", boolean>>;
 };
 
 /** Benchmark overrides untouched for this long are flagged for review. */
@@ -197,6 +200,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [benchmarksFor, setBenchmarksFor] = useState<string | null>(null);
   const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean; scrollToCalls?: boolean; openCheckinForm?: boolean } | null>(null);
   const [kickoffFor, setKickoffFor] = useState<{ id: string; name: string } | null>(null);
+  const [launchFor, setLaunchFor] = useState<{ id: string; name: string } | null>(null);
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<SectionKey | "all">("all");
@@ -470,6 +474,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                             onPatch={patchClient}
                             onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
                             onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
+                            onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
                             onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
                             onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
                             onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
@@ -504,6 +509,15 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         />
       )}
 
+      {launchFor && (
+        <LaunchChecklistWizard
+          clientId={launchFor.id}
+          fallbackName={launchFor.name}
+          onClose={() => setLaunchFor(null)}
+          onCompleted={reload}
+        />
+      )}
+
       {fileFor && (
         <ClientFile
           key={`${fileFor.id}-${fileFor.openCheckinForm ? "checkin" : fileFor.scrollToCalls ? "calls" : fileFor.scrollToNotes ? "notes" : "file"}`}
@@ -521,7 +535,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 }
 
 function ClientRow({
-  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange, benchmarksOpen, onPatch, onOpenFile, onOpenKickoff, onOpenNotes, onOpenCalls, onLogCheckin, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete,
+  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange, benchmarksOpen, onPatch, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenNotes, onOpenCalls, onLogCheckin, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete,
 }: {
   client: Client;
   allClients: Client[];
@@ -535,6 +549,7 @@ function ClientRow({
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onOpenFile: () => void;
   onOpenKickoff: () => void;
+  onOpenLaunch: () => void;
   onOpenNotes: () => void;
   onOpenCalls: () => void;
   onLogCheckin: () => void;
@@ -553,6 +568,7 @@ function ClientRow({
   const kickoffPending = isKickoffIncomplete(c, null);
   const needsGhlMapping = clientNeedsGhlMapping(c);
   const showKickoffAction = isKickoffLifecycle(c.lifecycle_status) || kickoffPending;
+  const showLaunchAction = c.lifecycle_status === "onboarding" || c.lifecycle_status === "new_account";
   const benchmarkColor = benchmarksOpen ? "#38bdf8" : stale ? "#f59e0b" : hasOverrides ? "#38bdf8" : "#475569";
   const benchmarkLabel = benchmarksOpen
     ? "Close bands"
@@ -588,6 +604,7 @@ function ClientRow({
               Map GHL
             </span>
           )}
+          <FormProgressStrip progress={c.form_progress} />
         </span>
       </td>
       <td className={cell}>
@@ -704,6 +721,15 @@ function ClientRow({
                     aria-label="Kick-off incomplete"
                   />
                 )}
+              </button>
+            )}
+            {showLaunchAction && (
+              <button
+                onClick={onOpenLaunch}
+                className="text-xs font-semibold text-slate-500 hover:text-emerald-400 transition-colors"
+                title="Launch checklist — mark client live"
+              >
+                Launch
               </button>
             )}
             <button onClick={onOpenFile} className="text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors" title="Open this client's file">Open file</button>

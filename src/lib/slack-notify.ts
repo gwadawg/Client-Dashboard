@@ -93,17 +93,54 @@ export async function getTeamChannelIdBySlug(
   return data?.channel_id ?? null;
 }
 
-export function formatLaunchCompleteSlackMessage(payload: {
+export function formatLaunchClientSlackMessage(payload: {
   client_name: string;
   launch_date: string;
+  completed_by: string | null;
 }): string {
-  return [
+  const lines = [
     `🚀 *${payload.client_name}* is now live!`,
     '',
     `Launch date: ${payload.launch_date}`,
+  ];
+  if (payload.completed_by) {
+    lines.push(`Completed by: ${payload.completed_by}`);
+  }
+  lines.push('', '_Posted by Mr. Waiz_');
+  return lines.join('\n');
+}
+
+export function formatLaunchOpsSlackMessage(payload: {
+  client_name: string;
+  launch_date: string;
+  completed_by: string | null;
+  checklist_text: string;
+  notes: string | null;
+}): string {
+  const lines = [
+    `🚀 Launch complete: *${payload.client_name}*`,
+    `Completed by: ${payload.completed_by ?? '—'}`,
+    `Launch date: ${payload.launch_date}`,
     '',
-    '_Posted by Mr. Waiz_',
-  ].join('\n');
+    payload.checklist_text,
+  ];
+  if (payload.notes) {
+    lines.push('', `Notes: ${payload.notes}`);
+  }
+  return lines.join('\n');
+}
+
+/** @deprecated Use formatLaunchClientSlackMessage */
+export function formatLaunchCompleteSlackMessage(payload: {
+  client_name: string;
+  launch_date: string;
+  completed_by?: string | null;
+}): string {
+  return formatLaunchClientSlackMessage({
+    client_name: payload.client_name,
+    launch_date: payload.launch_date,
+    completed_by: payload.completed_by ?? null,
+  });
 }
 
 export function formatOnboardingCompleteSlackMessage(payload: {

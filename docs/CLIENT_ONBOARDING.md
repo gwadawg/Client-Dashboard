@@ -102,11 +102,51 @@ Open **Kick-off** from Client Roster after the OB call. Confirms client info, ca
 
 ## 4. Launch checklist
 
-Open **Launch** from Client Roster when kickoff is complete. All checklist answers live in `client_form_submissions.responses` JSON — no extra columns on `clients`.
+Open **Launch** from Client Roster when kickoff is complete. The wizard is a 4-department checklist (18 items). All answers live in `client_form_submissions.responses` JSON — no extra columns on `clients`.
 
-On complete: `lifecycle_status → active`, `launch_date` set, launch call logged, Make → Slack.
+### Departments
 
-Set `MAKE_LAUNCH_COMPLETE_WEBHOOK_URL`. Blueprint: [`ccm-launch-complete.blueprint.json`](../make-blueprints/ccm-launch-complete.blueprint.json)
+**Media Buying**
+- Headline / primary text aligned with creative message
+- Correct states are being targeted
+- Correct budget is set
+- Campaign scheduled for launch at midnight *(type yes)*
+- Correct funnel is in the ad and tested funnel is live correctly
+
+**Funnel**
+- Funnel headline congruent to ad message / angle
+- Split test between two headlines is on
+- Pixel data working with correct conversion event *(type yes)*
+- GHL subaccount correctly integrated
+- Privacy policy and compliant footer added
+- Compliant checkbox for sending SMS with client's name
+
+**GHL Subaccount**
+- Client info NOT updated — client assigned user with HP tag *(type yes)*
+- Custom values all filled out
+- Calendar assigned to correct user
+- A2P approved *(type yes)*
+
+**Admin**
+- Mr. Waiz and ClickUp fields fully filled out
+- Make scenario for Facebook is active
+- Full test lead executed: perspective → SMS → AI booking → appointment booked *(type yes)*
+
+### Confirmation rules
+
+- Routine items: checkbox only
+- Critical items (marked *type yes* above): rep must type `yes` and check the box
+- Final gate: rep types `LAUNCH` before submit
+- **Completed by** dropdown: required; lists users with Client Roster or Billing access
+
+### On complete
+
+- `lifecycle_status → active`, `launch_date` set, launch call logged
+- **ops-alerts** Slack channel: full department audit (configure slug in Automations; default `ops_alerts` via `SLACK_OPS_CHANNEL_SLUG`)
+- **Client Slack channel** (`clients.slack_id`): short go-live announcement
+- Make webhook fallback if Slack is unavailable: `MAKE_LAUNCH_COMPLETE_WEBHOOK_URL`
+
+Blueprint: [`ccm-launch-complete.blueprint.json`](../make-blueprints/ccm-launch-complete.blueprint.json)
 
 ## Slack channel IDs (Automations tab)
 
@@ -156,7 +196,8 @@ Roster shows progress strip: Sign | OB | KO | Live.
 | `ADMIN_WEBHOOK_SECRET` | Yes | Onboard + admin integration routes |
 | `CLICKUP_API_TOKEN` | If auto-creating Hub tasks | When `clickup_task_id` not sent |
 | `MAKE_ONBOARDING_COMPLETE_WEBHOOK_URL` | No | GHL confirmation email trigger |
-| `MAKE_LAUNCH_COMPLETE_WEBHOOK_URL` | No | Slack go-live notification |
+| `MAKE_LAUNCH_COMPLETE_WEBHOOK_URL` | No | Launch go-live fallback when Slack unavailable |
+| `SLACK_OPS_CHANNEL_SLUG` | No | Team channel for launch audit (default `ops_alerts`) |
 
 ## Decommission (ops)
 

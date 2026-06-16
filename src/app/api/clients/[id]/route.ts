@@ -45,7 +45,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { id } = await params;
 
-  const [clientRes, billingsRes, historyRes, notesRes, callsRes, contactsRes] = await Promise.all([
+  const [clientRes, billingsRes, historyRes, notesRes, callsRes, formSubmissionsRes, contactsRes] = await Promise.all([
     ctx.service.from('clients').select(FILE_CLIENT_FIELDS).eq('id', id).single(),
     ctx.service
       .from('client_billings')
@@ -71,6 +71,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .is('deleted_at', null)
       .order('called_at', { ascending: false }),
     ctx.service
+      .from('client_form_submissions')
+      .select('id, form_type, status, submitted_by, submitted_at, responses, applied_patch')
+      .eq('client_id', id)
+      .neq('status', 'dismissed')
+      .order('submitted_at', { ascending: false }),
+    ctx.service
       .from('client_contacts')
       .select(CLIENT_CONTACT_FIELDS)
       .eq('client_id', id)
@@ -86,6 +92,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (historyRes.error) return NextResponse.json({ error: historyRes.error.message }, { status: 500 });
   if (notesRes.error) return NextResponse.json({ error: notesRes.error.message }, { status: 500 });
   if (callsRes.error) return NextResponse.json({ error: callsRes.error.message }, { status: 500 });
+  if (formSubmissionsRes.error) {
+    return NextResponse.json({ error: formSubmissionsRes.error.message }, { status: 500 });
+  }
   if (contactsRes.error) {
     return NextResponse.json({ error: contactsRes.error.message }, { status: 500 });
   }
@@ -97,6 +106,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const statusHistory = historyRes.data ?? [];
   const notes = notesRes.data ?? [];
   const calls = callsRes.data ?? [];
+  const form_submissions = formSubmissionsRes.data ?? [];
   const contacts = contactsRes.data ?? [];
 
   const authorIds = [
@@ -117,6 +127,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       ...c,
       created_by_label: c.created_by ? authorLabels[c.created_by] ?? null : null,
     })),
+    form_submissions,
     contacts,
     author_labels: authorLabels,
     can_view_revenue: includeRevenue,

@@ -3,8 +3,10 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { formatLaunchSlackChecklist } from '@/lib/launch-form';
 import {
-  formatLaunchCompleteSlackMessage,
+  formatLaunchClientSlackMessage,
+  formatLaunchOpsSlackMessage,
   formatOnboardingCompleteSlackMessage,
   getSlackOpsChannelSlug,
   isSlackConfigured,
@@ -68,32 +70,66 @@ export async function notifyOnboardingComplete(
   }
 }
 
-export async function notifyLaunchComplete(payload: {
-  client_id: string;
-  client_name: string;
-  launch_date: string;
-  slack_id: string | null;
-  submitted_by: string | null;
-  checklist: Record<string, unknown>;
-}): Promise<void> {
-  const text = formatLaunchCompleteSlackMessage(payload);
-  let sentViaSlack = false;
+export async function notifyLaunchComplete(
+  service: SupabaseClient,
+  payload: {
+    client_id: string;
+    client_name: string;
+    launch_date: string;
+    slack_id: string | null;
+    completed_by: string | null;
+    responses: Record<string, unknown>;
+  },
+): Promise<void> {
+  const notes = typeof payload.responses.notes === 'string' ? payload.responses.notes : null;
+  const checklistText = formatLaunchSlackChecklist(payload.responses);
 
-  if (isSlackConfigured() && payload.slack_id) {
-    const result = await postSlackMessage({ channel: payload.slack_id, text });
-    if (result.ok) {
-      sentViaSlack = true;
-    } else {
-      console.error('[notifications] launch Slack failed', result.error);
+  const opsText = formatLaunchOpsSlackMessage({
+    client_name: payload.client_name,
+    launch_date: payload.launch_date,
+    completed_by: payload.completed_by,
+    checklist_text: checklistText,
+    notes,
+  });
+
+  const clientText = formatLaunchClientSlackMessage({
+    client_name: payload.client_name,
+    launch_date: payload.launch_date,
+    completed_by: payload.completed_by,
+  });
+
+  let sentAnySlack = false;
+
+  if (isSlackConfigured()) {
+    const opsSlug = getSlackOpsChannelSlug();
+    const opsResult = await postToTeamChannel(service, opsSlug, opsText);
+    if (opsResult?.ok) {
+      sentAnySlack = true;
+    } else if (opsResult && !opsResult.ok) {
+      console.error('[notifications] launch ops Slack failed', opsResult.error);
     }
-  } else if (isSlackConfigured() && !payload.slack_id) {
-    console.warn('[notifications] launch Slack skipped — client has no slack_id', payload.client_id);
+
+    if (payload.slack_id) {
+      const clientResult = await postSlackMessage({ channel: payload.slack_id, text: clientText });
+      if (clientResult.ok) {
+        sentAnySlack = true;
+      } else {
+        console.error('[notifications] launch client Slack failed', clientResult.error);
+      }
+    } else {
+      console.warn('[notifications] launch client Slack skipped — no slack_id', payload.client_id);
+    }
   }
 
-  if (!sentViaSlack) {
+  if (!sentAnySlack) {
     await postMakeWebhook('MAKE_LAUNCH_COMPLETE_WEBHOOK_URL', {
       event: 'launch_complete',
-      ...payload,
+      client_id: payload.client_id,
+      client_name: payload.client_name,
+      launch_date: payload.launch_date,
+      slack_id: payload.slack_id,
+      completed_by: payload.completed_by,
+      checklist: payload.responses,
     });
   }
 }

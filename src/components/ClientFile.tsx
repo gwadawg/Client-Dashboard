@@ -28,6 +28,7 @@ import { formatStatesLicensed } from "@/lib/us-states";
 import { timezoneLabel } from "@/lib/us-timezones";
 import ClientContactsSection from "@/components/ClientContactsSection";
 import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileEditForm";
+import ClientFormsSection, { type FormSubmissionSummary } from "@/components/ClientFormsSection";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
@@ -215,6 +216,7 @@ export default function ClientFile({
   const [client, setClient] = useState<FileClient | null>(null);
   const [billings, setBillings] = useState<FileBilling[]>([]);
   const [statusHistory, setStatusHistory] = useState<StatusHistoryEntry[]>([]);
+  const [formSubmissions, setFormSubmissions] = useState<FormSubmissionSummary[]>([]);
   const [notes, setNotes] = useState<ClientNote[]>([]);
   const [contacts, setContacts] = useState<ClientContact[]>([]);
   const [calls, setCalls] = useState<ClientCall[]>([]);
@@ -268,6 +270,7 @@ export default function ClientFile({
           setNotes(d.notes ?? []);
           setContacts(d.contacts ?? []);
           setCalls(d.calls ?? []);
+          setFormSubmissions(d.form_submissions ?? []);
           if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
           setError(null);
         }
@@ -777,6 +780,10 @@ export default function ClientFile({
                   <Detail label="Performance terms" value={client.performance_terms} wide />
                 </div>
               )}
+            </Section>
+
+            <Section title={`Onboarding forms (${formSubmissions.length})`}>
+              <ClientFormsSection submissions={formSubmissions} />
             </Section>
 
             <Section title={`Lifecycle history (${statusHistory.length})`}>

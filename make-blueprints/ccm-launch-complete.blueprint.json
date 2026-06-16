@@ -1,0 +1,26 @@
+{
+  "name": "CCM - Launch complete (Mr. Waiz → Slack)",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0 },
+        "parameters": [
+          {
+            "name": "hook",
+            "type": "hook:gateway",
+            "label": "Mr. Waiz launch_complete webhook",
+            "required": true
+          }
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "notes": "Set MAKE_LAUNCH_COMPLETE_WEBHOOK_URL in Mr. Waiz to this hook URL. Payload: event=launch_complete, client_id, client_name, launch_date, slack_id, completed_by, checklist. App posts full department audit to ops_alerts (SLACK_OPS_CHANNEL_SLUG) and short go-live to client slack_id. Use this webhook as fallback when Slack API is unavailable. Optionally update ClickUp task status to Live."
+  }
+}
