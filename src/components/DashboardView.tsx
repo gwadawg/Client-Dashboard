@@ -43,7 +43,7 @@ import {
   type ReportingType,
 } from "@/lib/kpi-layouts";
 import { NAV, NAV_GROUPS, type View } from "@/lib/nav";
-import { hasPermission, canViewClientRevenue, type AllowedPermissions } from "@/lib/permissions";
+import { hasPermission, canViewClientRevenue, canAccessAutomations, type AllowedPermissions } from "@/lib/permissions";
 
 type Client = { id: string; name: string; is_live?: boolean; reporting_type?: ReportingType };
 
@@ -322,6 +322,9 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
         || hasPermission("admin_clients", { isOwner, allowedPermissions })
         || hasPermission("admin_billing", { isOwner, allowedPermissions })
       );
+    }
+    if (v === "admin_automations") {
+      return canAccessAutomations({ isOwner, allowedPermissions });
     }
     return hasPermission(v, { isOwner, allowedPermissions });
   };

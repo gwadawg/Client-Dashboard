@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requireAutomationsAccess } from '@/lib/api-auth';
 import { normalizeSlackChannelId } from '@/lib/slack-channels';
-
-const AUTOMATIONS_PERMISSION = 'admin_automations';
 
 // GET /api/slack/client-channels — per-client Slack channel IDs for the Automations tab.
 export async function GET() {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, AUTOMATIONS_PERMISSION);
+  const denied = requireAutomationsAccess(ctx);
   if (denied) return denied;
 
   const { data, error } = await ctx.service
@@ -32,7 +30,7 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, AUTOMATIONS_PERMISSION);
+  const denied = requireAutomationsAccess(ctx);
   if (denied) return denied;
 
   const body = await req.json();

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requireAutomationsAccess } from '@/lib/api-auth';
 import {
   SLACK_CHANNEL_SELECT,
   normalizeSlug,
@@ -7,13 +7,11 @@ import {
   optionalText,
 } from '@/lib/slack-channels';
 
-const AUTOMATIONS_PERMISSION = 'admin_automations';
-
 // PATCH /api/slack/channels/[id]
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, AUTOMATIONS_PERMISSION);
+  const denied = requireAutomationsAccess(ctx);
   if (denied) return denied;
 
   const { id } = await params;
@@ -69,7 +67,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, AUTOMATIONS_PERMISSION);
+  const denied = requireAutomationsAccess(ctx);
   if (denied) return denied;
 
   const { id } = await params;

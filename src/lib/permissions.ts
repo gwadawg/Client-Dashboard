@@ -63,6 +63,15 @@ export function hasPermission(key: string, subject: PermissionSubject): boolean 
   return subject.allowedPermissions.includes(key);
 }
 
+const ADMIN_TAB_KEYS = VIEW_PERMISSIONS.filter(p => p.group === 'Admin').map(p => p.key);
+
+/** Automations tab + API — explicit grant, or any existing Admin tab permission. */
+export function canAccessAutomations(subject: PermissionSubject): boolean {
+  if (hasPermission('admin_automations', subject)) return true;
+  if (subject.isOwner || subject.allowedPermissions === null) return true;
+  return ADMIN_TAB_KEYS.some(key => subject.allowedPermissions!.includes(key));
+}
+
 /** Grant keys (legacy `view_client_total_paid` still honored). */
 export const CLIENT_REVENUE_PERMISSION_KEYS = ['view_client_revenue', 'view_client_total_paid'] as const;
 
