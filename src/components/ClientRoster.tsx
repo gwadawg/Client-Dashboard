@@ -123,29 +123,30 @@ const ROSTER_HEADERS = [
   "",
 ] as const;
 
-const ROSTER_THEAD_HEIGHT = 41;
-
-function RosterTableHead({ stickyTop }: { stickyTop: number }) {
+function RosterColumnHead({ stickyTop }: { stickyTop?: number }) {
+  const sticky = stickyTop != null;
   return (
-    <thead>
-      <tr style={{ background: "#0a1628" }}>
-        {ROSTER_HEADERS.map((h, i) => (
-          <th
-            key={i}
-            className="sticky z-20 text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
-            style={{
-              top: stickyTop,
-              color: "#475569",
-              background: "#0a1628",
-              boxShadow: "0 1px 0 rgba(255,255,255,0.06)",
-            }}
-            title={h === "Sub-account name" ? "GHL sub-account name — matches the client filter on the dashboard" : undefined}
-          >
-            {h}
-          </th>
-        ))}
-      </tr>
-    </thead>
+    <tr style={{ background: "#0a1628" }}>
+      {ROSTER_HEADERS.map((h, i) => (
+        <th
+          key={i}
+          className={`text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap${sticky ? " sticky z-20" : ""}`}
+          style={{
+            color: "#475569",
+            ...(sticky
+              ? {
+                  top: stickyTop,
+                  background: "#0a1628",
+                  boxShadow: "0 1px 0 rgba(255,255,255,0.06)",
+                }
+              : {}),
+          }}
+          title={h === "Sub-account name" ? "GHL sub-account name — matches the client filter on the dashboard" : undefined}
+        >
+          {h}
+        </th>
+      ))}
+    </tr>
   );
 }
 
@@ -153,23 +154,17 @@ function RosterSectionRow({
   label,
   count,
   accent,
-  stickyTop,
 }: {
   label: string;
   count: number;
   accent: string;
-  stickyTop: number;
 }) {
   return (
     <tr style={{ background: "#080f1e" }}>
       <td
         colSpan={ROSTER_COLS}
-        className="sticky z-10 px-3 py-2 border-t border-white/[0.08]"
-        style={{
-          top: stickyTop,
-          background: "#080f1e",
-          boxShadow: "0 1px 0 rgba(255,255,255,0.06)",
-        }}
+        className="px-3 py-2 border-t border-white/[0.08]"
+        style={{ background: "#080f1e" }}
       >
         <span className="flex items-center gap-2">
           <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: accent }} />
@@ -403,8 +398,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const isFiltering = q.length > 0 || statusFilter !== "all";
   const visibleSections = ROSTER_SECTIONS.filter(s => statusFilter === "all" || s.key === statusFilter);
   const matchTotal = visibleSections.reduce((n, s) => n + grouped[s.key].length, 0);
-  const theadStickyTop = toolbarHeight;
-  const sectionStickyTop = toolbarHeight + ROSTER_THEAD_HEIGHT;
+  const columnHeadTop = toolbarHeight;
 
   return (
     <div className="space-y-6">
@@ -445,11 +439,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         <>
           <div
             ref={toolbarRef}
-            className="sticky top-0 z-30 -mx-6 md:-mx-8 px-6 md:px-8 pt-1 pb-2"
-            style={{
-              background: "linear-gradient(#080f1e 85%, rgba(8,15,30,0.97))",
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
-            }}
+            className="sticky top-0 z-30 -mx-6 md:-mx-8 px-6 md:px-8 pb-2"
+            style={{ background: "#080f1e", boxShadow: "0 6px 16px rgba(0,0,0,0.35)" }}
           >
             <div
               className="flex items-center gap-3 flex-wrap rounded-xl px-3 py-2.5"
@@ -506,20 +497,22 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 );
               })}
             </div>
-          </div>
+            </div>
           </div>
 
           {isFiltering && (
-            <p className="text-xs -mt-3" style={{ color: "#475569" }}>
+            <p className="text-xs" style={{ color: "#475569" }}>
               {matchTotal === 0
                 ? "No clients match your filters."
                 : `Showing ${matchTotal} ${matchTotal === 1 ? "client" : "clients"}${q ? ` matching “${query.trim()}”` : ""}.`}
             </p>
           )}
 
-        <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-          <table className="text-sm w-full">
-            <RosterTableHead stickyTop={theadStickyTop} />
+        <div className="rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+          <table className="text-sm w-full min-w-[1080px]">
+            <thead>
+              <RosterColumnHead stickyTop={columnHeadTop} />
+            </thead>
             <tbody>
               {visibleSections.map(section => {
                 const sectionClients = grouped[section.key];
@@ -531,7 +524,6 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                       label={section.label}
                       count={sectionClients.length}
                       accent={accent}
-                      stickyTop={sectionStickyTop}
                     />
                     {sectionClients.length === 0 ? (
                       <tr className="bg-[#080f1e]">
