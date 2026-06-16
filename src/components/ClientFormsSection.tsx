@@ -9,12 +9,6 @@ import {
   LAUNCH_SECTIONS,
   launchResponsesToDraft,
 } from "@/lib/launch-form";
-import {
-  CHURN_CHECKLIST_ITEMS,
-  churnReasonDisplay,
-  churnResponsesToDraft,
-  wouldRejoinLabel,
-} from "@/lib/churn-form";
 import { formatStatesLicensed } from "@/lib/us-states";
 
 export type FormSubmissionSummary = {
@@ -75,38 +69,9 @@ function humanizeLaunchResponses(responses: Record<string, unknown>): { label: s
   return rows;
 }
 
-function humanizeChurnResponses(responses: Record<string, unknown>): { label: string; value: string }[] {
-  const draft = churnResponsesToDraft(responses);
-  const rows: { label: string; value: string }[] = [
-    { label: "Reason", value: churnReasonDisplay(draft.reason_code) },
-    { label: "Effective churn date", value: draft.effective_churn_date },
-    { label: "Client feedback", value: draft.client_feedback || "—" },
-  ];
-  if (draft.internal_notes.trim()) {
-    rows.push({ label: "Internal notes", value: draft.internal_notes });
-  }
-  if (draft.recording_url.trim()) {
-    rows.push({ label: "Exit call recording", value: draft.recording_url });
-  }
-  if (draft.would_rejoin) {
-    rows.push({ label: "Would rejoin", value: wouldRejoinLabel(draft.would_rejoin) });
-  }
-  for (const item of CHURN_CHECKLIST_ITEMS) {
-    rows.push({
-      label: item.label,
-      value: draft.checklist[item.key] ? "✓ Confirmed" : "—",
-    });
-  }
-  return rows;
-}
-
 function humanizeResponses(formType: FormType, responses: Record<string, unknown>): { label: string; value: string; section?: string }[] {
   if (formType === "launch") {
     return humanizeLaunchResponses(responses);
-  }
-
-  if (formType === "churn") {
-    return humanizeChurnResponses(responses);
   }
 
   if (formType === "kickoff") {
