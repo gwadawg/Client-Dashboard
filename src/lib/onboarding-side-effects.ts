@@ -200,12 +200,22 @@ async function notifyOpsSlack(
   service: SupabaseClient,
   text: string,
 ): Promise<void> {
-  if (!isSlackConfigured()) return;
+  const slug = getSlackOpsChannelSlug();
+  if (!isSlackConfigured()) {
+    console.warn('[onboarding-side-effects] skip Slack — SLACK_BOT_TOKEN not set');
+    return;
+  }
   try {
-    const result = await postToTeamChannel(service, getSlackOpsChannelSlug(), text);
-    if (result && !result.ok) {
-      console.error('[onboarding-side-effects] Slack failed', result.error);
+    const result = await postToTeamChannel(service, slug, text);
+    if (!result) {
+      console.warn(`[onboarding-side-effects] skip Slack — no channel for slug "${slug}" (check Admin → Automations)`);
+      return;
     }
+    if (!result.ok) {
+      console.error('[onboarding-side-effects] Slack failed', result.error);
+      return;
+    }
+    console.info('[onboarding-side-effects] Slack ops alert sent to', slug);
   } catch (e) {
     console.error('[onboarding-side-effects] Slack failed', e);
   }

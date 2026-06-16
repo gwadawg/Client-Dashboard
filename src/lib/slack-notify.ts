@@ -23,7 +23,7 @@ export function isSlackConfigured(): boolean {
 
 /** Default team channel slug for internal ops alerts (onboarding, etc.). */
 export function getSlackOpsChannelSlug(): string {
-  return process.env.SLACK_OPS_CHANNEL_SLUG?.trim() || 'client_success';
+  return process.env.SLACK_OPS_CHANNEL_SLUG?.trim() || 'ops_alerts';
 }
 
 export async function postSlackMessage(params: {

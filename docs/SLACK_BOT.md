@@ -32,7 +32,7 @@ SLACK_BOT_TOKEN=xoxb-your-token-here
 Optional — which team channel gets internal alerts (onboarding, etc.):
 
 ```bash
-SLACK_OPS_CHANNEL_SLUG=client_success
+SLACK_OPS_CHANNEL_SLUG=ops_alerts
 ```
 
 This slug must exist in **Admin → Automations → Team channels**.
@@ -52,7 +52,7 @@ Run that in each private client or ops channel you want Mr. Waiz to post to.
 | Event | Channel | Make fallback |
 |-------|---------|---------------|
 | Client launch (go-live) | Client's `slack_id` | `MAKE_LAUNCH_COMPLETE_WEBHOOK_URL` if Slack fails or no token |
-| Onboarding form complete | Team channel (`SLACK_OPS_CHANNEL_SLUG`) | `MAKE_ONBOARDING_COMPLETE_WEBHOOK_URL` if Slack fails |
+| Onboarding form complete | Team channel `#ops-alerts` (slug `ops_alerts`) | — |
 
 ## Test from the dashboard
 

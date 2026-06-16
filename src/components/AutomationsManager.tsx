@@ -79,7 +79,7 @@ export default function AutomationsManager() {
   const [editClientSlackId, setEditClientSlackId] = useState("");
   const [clientFilter, setClientFilter] = useState<"all" | "missing">("all");
   const [slackConfigured, setSlackConfigured] = useState(false);
-  const [opsChannelSlug, setOpsChannelSlug] = useState("client_success");
+  const [opsChannelSlug, setOpsChannelSlug] = useState("ops_alerts");
   const [testingKey, setTestingKey] = useState<string | null>(null);
   const [testSuccess, setTestSuccess] = useState("");
 
