@@ -1,5 +1,7 @@
 "use client";
 
+import { FONT_BODY, FONT_DISPLAY, SHADOW_NAVY, WAIZ, WaizWordmark } from "@/components/onboarding/brand";
+
 type Props = {
   message: string;
   matched: boolean;
@@ -7,46 +9,101 @@ type Props = {
 
 export default function OnboardingThankYou({ message, matched }: Props) {
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#f8fafc" }}>
-      <header className="px-6 py-5">
-        <Logo />
+    <div className="min-h-screen flex flex-col" style={{ background: WAIZ.soft }}>
+      <header className="px-6 sm:px-8 py-5">
+        <span style={{ color: WAIZ.navy }}>
+          <WaizWordmark height={24} />
+        </span>
       </header>
+
       <div className="flex-1 flex items-center justify-center px-4 pb-16">
         <div
-          className="max-w-lg w-full rounded-2xl p-8 sm:p-10 text-center"
-          style={{ background: "#fff", border: "1px solid #e2e8f0" }}
+          className="relative max-w-lg w-full overflow-hidden text-center"
+          style={{
+            borderRadius: 26,
+            background: `linear-gradient(165deg, ${WAIZ.navy} 0%, #040f2a 55%, ${WAIZ.royal} 100%)`,
+            boxShadow: SHADOW_NAVY,
+            padding: "3rem 2.25rem",
+          }}
         >
           <div
-            className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 text-2xl"
-            style={{ background: "#ecfdf5", color: "#059669" }}
-          >
-            ✓
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(70% 60% at 85% 0%, rgba(79,163,255,.18), transparent 55%)",
+            }}
+          />
+          <div className="relative">
+            <div
+              className="mx-auto mb-6 flex items-center justify-center"
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: "50%",
+                background: "rgba(124,255,122,.12)",
+                border: "1px solid rgba(124,255,122,.4)",
+                boxShadow: "0 0 30px -6px rgba(124,255,122,.45)",
+                color: WAIZ.green,
+              }}
+            >
+              <CheckIcon />
+            </div>
+            <p
+              className="mb-3"
+              style={{
+                fontFamily: FONT_BODY,
+                fontSize: ".78rem",
+                fontWeight: 500,
+                letterSpacing: ".12em",
+                textTransform: "uppercase",
+                color: "rgba(159,201,255,.95)",
+              }}
+            >
+              Onboarding received
+            </p>
+            <h1
+              className="mb-4"
+              style={{
+                fontFamily: FONT_DISPLAY,
+                fontSize: "clamp(1.6rem, 1.3rem + 1.4vw, 2.1rem)",
+                fontWeight: 600,
+                color: "#fff",
+                letterSpacing: "-0.02em",
+                lineHeight: 1.15,
+              }}
+            >
+              You&apos;re in. We&apos;re building your engine.
+            </h1>
+            <p
+              style={{
+                fontFamily: FONT_BODY,
+                color: "rgba(255,255,255,.74)",
+                fontSize: ".98rem",
+                lineHeight: 1.6,
+              }}
+            >
+              {message}
+            </p>
+            <p
+              className="mt-5"
+              style={{ fontFamily: FONT_BODY, color: "rgba(255,255,255,.5)", fontSize: ".85rem" }}
+            >
+              {matched
+                ? "Check your email for next steps on your onboarding call."
+                : "Our team will match this to your account and follow up shortly."}
+            </p>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-3">You&apos;re all set!</h1>
-          <p className="text-base text-gray-600 mb-2">{message}</p>
-          {!matched && (
-            <p className="text-sm text-gray-500 mt-4">
-              Our team will match your submission to your account and follow up shortly.
-            </p>
-          )}
-          {matched && (
-            <p className="text-sm text-gray-500 mt-4">
-              We&apos;ll be in touch about your onboarding call. Check your email for next steps.
-            </p>
-          )}
         </div>
       </div>
     </div>
   );
 }
 
-function Logo() {
+function CheckIcon() {
   return (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden>
-      <path
-        d="M6 26V6l10 12L26 6v20h-4V14l-8 9.5L6 14v12H6z"
-        fill="#0f172a"
-      />
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M20 6 9 17l-5-5" />
     </svg>
   );
 }

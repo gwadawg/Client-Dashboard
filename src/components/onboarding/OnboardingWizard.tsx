@@ -3,6 +3,14 @@
 import { useCallback, useMemo, useState } from "react";
 import OnboardingChoiceCard from "@/components/onboarding/OnboardingChoiceCard";
 import OnboardingThankYou from "@/components/onboarding/OnboardingThankYou";
+import {
+  BTN_PRIMARY_BG,
+  FONT_BODY,
+  FONT_DISPLAY,
+  PROGRESS_BG,
+  WAIZ,
+  WaizWordmark,
+} from "@/components/onboarding/brand";
 import { CONTACT_TYPE_OPTIONS } from "@/lib/client-contacts";
 import { draftToSubmitBody } from "@/lib/onboarding-form";
 import {
@@ -15,7 +23,6 @@ import {
   getMemberStepSequence,
   stepQuestion,
   validateStep,
-  type MainStepId,
   type MemberDraft,
   type MemberStepId,
   type OnboardingDraft,
@@ -24,8 +31,7 @@ import {
 import { US_STATES } from "@/lib/us-states";
 import { US_CLIENT_TIMEZONES } from "@/lib/us-timezones";
 
-const INPUT =
-  "w-full px-4 py-3 rounded-xl text-sm border border-gray-300 focus:border-gray-900 outline-none text-gray-900 bg-white";
+const INPUT = "ob-input w-full px-4 py-3 text-sm outline-none";
 
 export default function OnboardingWizard() {
   const [draft, setDraft] = useState<OnboardingDraft>(EMPTY_ONBOARDING_DRAFT);
@@ -187,49 +193,121 @@ export default function OnboardingWizard() {
   const emphasizeMembers = emphasizesAddMembers(draft.account_management);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#f8fafc" }}>
-      <header className="px-6 py-5 flex items-center justify-between">
-        <Logo />
+    <div className="min-h-screen flex flex-col" style={{ background: WAIZ.soft, color: WAIZ.ink }}>
+      <BrandStyles />
+
+      <header className="px-6 sm:px-8 py-5 flex items-center justify-between">
+        <span style={{ color: WAIZ.navy }}>
+          <WaizWordmark height={24} />
+        </span>
         {step !== "welcome" && (
-          <span className="text-xs text-gray-500 font-medium">
-            {stepIndex + 1} / {sequence.length}
+          <span
+            style={{
+              fontFamily: FONT_DISPLAY,
+              fontSize: ".8rem",
+              fontWeight: 500,
+              color: WAIZ.muted,
+              letterSpacing: ".02em",
+            }}
+          >
+            {stepIndex + 1} <span style={{ opacity: 0.5 }}>/ {sequence.length}</span>
           </span>
         )}
       </header>
 
       {step !== "welcome" && (
-        <div className="px-6 mb-6">
-          <div className="h-1 rounded-full overflow-hidden" style={{ background: "#e2e8f0" }}>
+        <div className="px-6 sm:px-8 mb-8">
+          <div
+            className="overflow-hidden"
+            style={{ height: 5, borderRadius: 999, background: "rgba(11,18,32,.08)" }}
+          >
             <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${progress}%`, background: "#0f172a" }}
+              style={{
+                width: `${progress}%`,
+                height: "100%",
+                borderRadius: 999,
+                background: PROGRESS_BG,
+                boxShadow: "0 0 14px rgba(79,163,255,.55)",
+                transition: "width .45s cubic-bezier(.22,.61,.36,1)",
+              }}
             />
           </div>
         </div>
       )}
 
-      <main className="flex-1 flex flex-col items-center px-4 pb-12">
+      <main className="flex-1 flex flex-col items-center px-4 pb-16">
         <div className="w-full max-w-2xl">
           {step === "welcome" && (
-            <div className="text-center pt-8 sm:pt-16">
+            <div className="text-center pt-6 sm:pt-14">
               <span
-                className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold mb-6"
-                style={{ background: "#fef08a", color: "#713f12" }}
+                className="inline-flex items-center gap-2 mb-7"
+                style={{
+                  fontFamily: FONT_BODY,
+                  fontSize: ".78rem",
+                  fontWeight: 500,
+                  letterSpacing: ".1em",
+                  textTransform: "uppercase",
+                  color: WAIZ.accent700,
+                }}
               >
-                Glad You&apos;re Here — Let&apos;s Get You Onboarded
+                <span style={{ width: 18, height: 1, background: "currentColor", opacity: 0.45 }} />
+                Glad you&apos;re here
               </span>
-              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4 tracking-tight">
-                The 6-Minute Fast-Track Onboarding™
+              <h1
+                className="mb-5 mx-auto"
+                style={{
+                  fontFamily: FONT_DISPLAY,
+                  fontSize: "clamp(2rem, 1.5rem + 2.6vw, 3.1rem)",
+                  fontWeight: 600,
+                  lineHeight: 1.08,
+                  letterSpacing: "-0.03em",
+                  color: WAIZ.ink,
+                  maxWidth: "14ch",
+                }}
+              >
+                The 6-Minute{" "}
+                <span
+                  style={{
+                    background: `linear-gradient(105deg, ${WAIZ.royal}, ${WAIZ.accent700})`,
+                    WebkitBackgroundClip: "text",
+                    backgroundClip: "text",
+                    color: "transparent",
+                  }}
+                >
+                  Fast-Track
+                </span>{" "}
+                Onboarding
               </h1>
-              <p className="text-gray-600 text-sm sm:text-base mb-10 max-w-md mx-auto">
-                A few quick questions so we can set up your account, landing page, and campaigns.
+              <p
+                className="mb-10 mx-auto"
+                style={{
+                  fontFamily: FONT_BODY,
+                  color: WAIZ.muted,
+                  fontSize: "1.02rem",
+                  lineHeight: 1.6,
+                  maxWidth: "40ch",
+                }}
+              >
+                A few quick questions so we can build your ads, landing page, and booking system —
+                before your first appointment lands.
               </p>
               <ContinueButton onClick={() => goToStep("management")} label="Get started" />
             </div>
           )}
 
           {step !== "welcome" && question && (
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 text-center mb-8 px-2">
+            <h2
+              className="text-center mb-9 mx-auto px-2"
+              style={{
+                fontFamily: FONT_DISPLAY,
+                fontSize: "clamp(1.35rem, 1.1rem + 1.1vw, 1.8rem)",
+                fontWeight: 600,
+                letterSpacing: "-0.02em",
+                color: WAIZ.ink,
+                lineHeight: 1.2,
+                maxWidth: "24ch",
+              }}
+            >
               {question}
             </h2>
           )}
@@ -459,24 +537,21 @@ export default function OnboardingWizard() {
                 hideButton
               />
               <ContinueButton onClick={goNext} label="Continue" />
-              <button
-                type="button"
+              <SkipLink
+                label="Skip — I don't have reviews yet"
                 onClick={() => {
                   patchDraft({ review_url: "" });
                   goNext();
                 }}
-                className="w-full text-sm text-gray-500 hover:text-gray-700 py-2"
-              >
-                Skip — I don&apos;t have reviews yet
-              </button>
+              />
             </div>
           )}
 
           {step === "bio" && (
             <div className="max-w-md mx-auto space-y-4">
               <textarea
-                className={`${INPUT} min-h-[140px] resize-y`}
-                placeholder="Short biography (doesn't need to be perfect — we'll refine later)"
+                className={`${INPUT} min-h-[150px] resize-y`}
+                placeholder="Short biography (doesn't need to be perfect — we'll refine it for your page)"
                 value={draft.biography}
                 onChange={e => patchDraft({ biography: e.target.value })}
               />
@@ -487,14 +562,22 @@ export default function OnboardingWizard() {
           {step === "headshot" && (
             <div className="max-w-md mx-auto space-y-4">
               <label
-                className="flex flex-col items-center justify-center gap-3 p-8 rounded-2xl cursor-pointer border-2 border-dashed border-gray-300 hover:border-gray-400 transition-colors"
-                style={{ background: "#fafafa" }}
+                className="ob-drop flex flex-col items-center justify-center gap-3 p-8 cursor-pointer text-center"
+                style={{
+                  borderRadius: 18,
+                  border: `1.5px dashed ${WAIZ.line}`,
+                  background: "#fff",
+                }}
               >
-                <span className="text-3xl text-gray-400">📁</span>
-                <span className="text-sm font-medium text-gray-700 text-center">
-                  {draft.headshot ? draft.headshot.name : "Headshot / Professional Photo"}
+                <span style={{ color: WAIZ.accent700 }}>
+                  <UploadIcon />
                 </span>
-                <span className="text-xs text-gray-500">max 25MB — JPG, PNG, WEBP, or GIF</span>
+                <span style={{ fontFamily: FONT_DISPLAY, fontWeight: 500, color: WAIZ.ink, fontSize: ".95rem" }}>
+                  {draft.headshot ? draft.headshot.name : "Headshot / professional photo"}
+                </span>
+                <span style={{ fontFamily: FONT_BODY, color: WAIZ.muted, fontSize: ".8rem" }}>
+                  max 25MB — JPG, PNG, WEBP, or GIF
+                </span>
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif"
@@ -509,11 +592,26 @@ export default function OnboardingWizard() {
           {step === "add_members" && !inMemberFlow && (
             <div className="max-w-md mx-auto space-y-4">
               {draft.additional_members.length > 0 && (
-                <ul className="rounded-xl p-4 space-y-2 mb-4" style={{ background: "#f1f5f9" }}>
+                <ul
+                  className="p-4 space-y-2.5 mb-2"
+                  style={{ borderRadius: 16, background: "#fff", border: `1px solid ${WAIZ.line}` }}
+                >
                   {draft.additional_members.map((m, i) => (
-                    <li key={i} className="text-sm text-gray-700 flex justify-between gap-2">
-                      <span className="font-medium">{m.name}</span>
-                      <span className="text-gray-500">
+                    <li
+                      key={i}
+                      className="flex justify-between gap-2 items-center"
+                      style={{ fontFamily: FONT_BODY }}
+                    >
+                      <span style={{ fontWeight: 500, color: WAIZ.ink, fontSize: ".92rem" }}>{m.name}</span>
+                      <span
+                        style={{
+                          fontSize: ".72rem",
+                          fontWeight: 500,
+                          letterSpacing: ".04em",
+                          textTransform: "uppercase",
+                          color: WAIZ.accent700,
+                        }}
+                      >
                         {CONTACT_TYPE_OPTIONS.find(o => o.value === m.contact_type)?.label}
                       </span>
                     </li>
@@ -522,7 +620,7 @@ export default function OnboardingWizard() {
               )}
               <OnboardingChoiceCard
                 label={emphasizeMembers ? "Yes — add a team member" : "Add someone else (optional)"}
-                icon={<span className="text-3xl">+</span>}
+                icon={<PlusIcon />}
                 onClick={() => {
                   setInMemberFlow(true);
                   setMemberDraft(EMPTY_MEMBER_DRAFT);
@@ -543,7 +641,7 @@ export default function OnboardingWizard() {
                 <OnboardingChoiceCard
                   key={opt.value}
                   label={opt.label}
-                  icon={<span className="text-2xl">👤</span>}
+                  icon={<PersonIcon />}
                   selected={memberDraft.contact_type === opt.value}
                   onClick={() => {
                     patchMember({ contact_type: opt.value });
@@ -593,16 +691,13 @@ export default function OnboardingWizard() {
                 hideButton
               />
               <ContinueButton onClick={goNext} label="Continue" />
-              <button
-                type="button"
+              <SkipLink
+                label="Skip"
                 onClick={() => {
                   patchMember({ nmls: "" });
                   goNext();
                 }}
-                className="w-full text-sm text-gray-500 hover:text-gray-700 py-2"
-              >
-                Skip
-              </button>
+              />
             </div>
           )}
 
@@ -615,7 +710,18 @@ export default function OnboardingWizard() {
           )}
 
           {error && (
-            <p className="mt-6 text-sm text-center text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 max-w-md mx-auto">
+            <p
+              className="mt-6 mx-auto max-w-md text-center"
+              style={{
+                fontFamily: FONT_BODY,
+                fontSize: ".88rem",
+                color: "#b42318",
+                background: "#fef3f2",
+                border: "1px solid #fecdca",
+                borderRadius: 12,
+                padding: ".75rem 1rem",
+              }}
+            >
               {error}
             </p>
           )}
@@ -624,7 +730,13 @@ export default function OnboardingWizard() {
             <button
               type="button"
               onClick={goBack}
-              className="mt-8 mx-auto block text-sm text-gray-500 hover:text-gray-800"
+              className="mt-8 mx-auto block"
+              style={{
+                fontFamily: FONT_BODY,
+                fontSize: ".88rem",
+                fontWeight: 500,
+                color: WAIZ.muted,
+              }}
             >
               ← Back
             </button>
@@ -692,26 +804,38 @@ function StatesGrid({
   return (
     <div className="max-w-md mx-auto">
       <div
-        className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-64 overflow-y-auto p-3 rounded-xl mb-4"
-        style={{ background: "#f1f5f9" }}
+        className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-64 overflow-y-auto p-3 mb-4"
+        style={{ borderRadius: 16, background: "#fff", border: `1px solid ${WAIZ.line}` }}
       >
-        {US_STATES.map(({ code }) => (
-          <button
-            key={code}
-            type="button"
-            onClick={() => toggle(code)}
-            className="py-2 rounded-lg text-xs font-semibold transition-colors"
-            style={{
-              background: selected.has(code) ? "#0f172a" : "#fff",
-              color: selected.has(code) ? "#fff" : "#475569",
-              border: "1px solid #e2e8f0",
-            }}
-          >
-            {code}
-          </button>
-        ))}
+        {US_STATES.map(({ code }) => {
+          const on = selected.has(code);
+          return (
+            <button
+              key={code}
+              type="button"
+              onClick={() => toggle(code)}
+              style={{
+                fontFamily: FONT_DISPLAY,
+                fontSize: ".78rem",
+                fontWeight: 600,
+                padding: ".5rem 0",
+                borderRadius: 10,
+                background: on ? BTN_PRIMARY_BG : WAIZ.soft,
+                color: on ? "#fff" : WAIZ.muted,
+                border: `1px solid ${on ? "transparent" : WAIZ.line}`,
+                boxShadow: on ? "0 8px 18px -10px rgba(46,123,224,.7)" : "none",
+                transition: "background .15s, color .15s",
+              }}
+            >
+              {code}
+            </button>
+          );
+        })}
       </div>
-      <p className="text-xs text-gray-500 text-center mb-4">
+      <p
+        className="text-center mb-4"
+        style={{ fontFamily: FONT_BODY, fontSize: ".82rem", color: WAIZ.muted }}
+      >
         {value.length ? `${value.length} selected` : "Select at least one state"}
       </p>
       <ContinueButton onClick={onContinue} />
@@ -733,78 +857,157 @@ function ContinueButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="w-full max-w-md mx-auto block py-3.5 rounded-xl text-sm font-semibold text-white transition-opacity"
-      style={{ background: disabled ? "#94a3b8" : "#0f172a" }}
+      className="ob-btn w-full max-w-md mx-auto block"
+      style={{
+        fontFamily: FONT_BODY,
+        fontSize: ".98rem",
+        fontWeight: 500,
+        letterSpacing: "-0.01em",
+        color: "#fff",
+        padding: ".95rem 1.35rem",
+        borderRadius: 999,
+        background: disabled ? "#9bb4d6" : BTN_PRIMARY_BG,
+        boxShadow: disabled ? "none" : "0 12px 28px -10px rgba(46,123,224,.65)",
+        transition: "transform .2s, box-shadow .2s",
+      }}
     >
       {label}
     </button>
   );
 }
 
-function Logo() {
+function SkipLink({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden>
-      <path d="M6 26V6l10 12L26 6v20h-4V14l-8 9.5L6 14v12H6z" fill="#0f172a" />
-    </svg>
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full py-2"
+      style={{ fontFamily: FONT_BODY, fontSize: ".85rem", fontWeight: 500, color: WAIZ.muted }}
+    >
+      {label}
+    </button>
   );
 }
 
+function BrandStyles() {
+  return (
+    <style>{`
+      .ob-input {
+        font-family: ${FONT_BODY};
+        color: ${WAIZ.ink};
+        background: #fff;
+        border: 1.5px solid ${WAIZ.line};
+        border-radius: 12px;
+        transition: border-color .18s, box-shadow .18s;
+      }
+      .ob-input::placeholder { color: #9aa4b5; }
+      .ob-input:focus {
+        border-color: ${WAIZ.accent};
+        box-shadow: 0 0 0 4px rgba(79,163,255,.16);
+      }
+      .ob-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 18px 36px -12px rgba(46,123,224,.75);
+      }
+      .ob-card:hover { transform: translateY(-2px); box-shadow: 0 18px 40px -22px rgba(6,26,74,.4); }
+      .ob-drop:hover { border-color: ${WAIZ.accent} !important; background: ${WAIZ.tint} !important; }
+      @media (prefers-reduced-motion: reduce) {
+        .ob-input, .ob-btn, .ob-card { transition: none; }
+        .ob-btn:hover:not(:disabled), .ob-card:hover { transform: none; }
+      }
+    `}</style>
+  );
+}
+
+const ICON = {
+  width: 26,
+  height: 26,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
 function managementIcon(kind: string) {
-  const common = { width: 48, height: 48, viewBox: "0 0 48 48", fill: "currentColor" };
   if (kind === "solo") {
     return (
-      <svg {...common}>
-        <circle cx="24" cy="16" r="8" />
-        <path d="M10 42c0-8 6-14 14-14s14 6 14 14" />
-        <path d="M30 12l2 2 4-4" stroke="currentColor" strokeWidth="2" fill="none" />
+      <svg {...ICON}>
+        <circle cx="12" cy="8" r="4" />
+        <path d="M5 21c0-3.9 3.1-7 7-7s7 3.1 7 7" />
       </svg>
     );
   }
   if (kind === "team") {
     return (
-      <svg {...common}>
-        <circle cx="16" cy="18" r="6" />
-        <circle cx="32" cy="18" r="6" />
-        <circle cx="24" cy="14" r="6" opacity="0.6" />
-        <path d="M6 40c0-6 4-10 10-10M42 40c0-6-4-10-10-10" />
+      <svg {...ICON}>
+        <circle cx="9" cy="8" r="3.2" />
+        <circle cx="17" cy="9.5" r="2.6" />
+        <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+        <path d="M16 14c2.8 0 5 2.2 5 5" />
       </svg>
     );
   }
   if (kind === "assistant") {
     return (
-      <svg {...common}>
-        <circle cx="20" cy="16" r="7" />
-        <path d="M8 40c0-7 5-12 12-12" />
-        <rect x="30" y="22" width="10" height="8" rx="2" opacity="0.7" />
+      <svg {...ICON}>
+        <circle cx="10" cy="8" r="3.4" />
+        <path d="M4 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+        <path d="M18 7.5v5M15.5 10h5" />
       </svg>
     );
   }
   return (
-    <svg {...common}>
-      <circle cx="18" cy="18" r="7" />
-      <circle cx="30" cy="18" r="7" />
-      <path d="M10 40c0-6 4-10 8-10M38 40c0-6-4-10-8-10" />
+    <svg {...ICON}>
+      <circle cx="8.5" cy="8.5" r="3" />
+      <circle cx="15.5" cy="8.5" r="3" />
+      <path d="M3.5 19c0-2.8 2.2-5 5-5M20.5 19c0-2.8-2.2-5-5-5" />
     </svg>
   );
 }
 
 function roleIcon(kind: string) {
-  const common = { width: 48, height: 48, viewBox: "0 0 48 48" };
   if (kind === "mlo") {
     return (
-      <svg {...common} fill="currentColor">
-        <rect x="14" y="8" width="20" height="28" rx="2" opacity="0.25" />
-        <circle cx="24" cy="16" r="5" />
-        <path d="M16 38c0-5 3-8 8-8s8 3 8 8" />
-        <rect x="12" y="22" width="24" height="14" rx="1" opacity="0.4" />
+      <svg {...ICON}>
+        <path d="M4 21V7l8-4 8 4v14" />
+        <path d="M9 21v-5h6v5" />
+        <path d="M8 10h.01M12 10h.01M16 10h.01" />
       </svg>
     );
   }
   return (
-    <svg {...common} fill="currentColor">
-      <circle cx="24" cy="16" r="6" />
-      <path d="M14 38c0-6 4-10 10-10s10 4 10 10" />
-      <path d="M18 8h12v4H18z" opacity="0.5" />
+    <svg {...ICON}>
+      <circle cx="12" cy="7.5" r="3.5" />
+      <path d="M5.5 21c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5" />
+      <path d="M9.5 3.5 12 1.8l2.5 1.7" />
+    </svg>
+  );
+}
+
+function PersonIcon() {
+  return (
+    <svg {...ICON} width={22} height={22}>
+      <circle cx="12" cy="8" r="3.6" />
+      <path d="M5.5 20c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg {...ICON} width={24} height={24}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg {...ICON} width={28} height={28}>
+      <path d="M12 16V4M7 9l5-5 5 5" />
+      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
     </svg>
   );
 }
