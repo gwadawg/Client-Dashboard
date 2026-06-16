@@ -26,12 +26,13 @@ type TrendsResponse = {
   kpiSeries: KpiTimelineBucket[];
 };
 
-type RateKey = "net_show_rate" | "show_rate" | "booking_rate" | "lead_booking_rate" | "conversation_rate";
+type RateKey = "net_show_rate" | "show_rate" | "hand_raise_rate" | "booking_rate" | "lead_booking_rate" | "conversation_rate";
 
 const CHARTS: { key: RateKey; title: string; subtitle: string; color: string; heOnly?: boolean; rmOnly?: boolean }[] = [
   { key: "net_show_rate", title: "Net show rate", subtitle: "Shows ÷ (Shows + No-Shows)", color: "#34d399" },
   { key: "show_rate", title: "Show rate (of booked)", subtitle: "Shows ÷ (Shows + No Shows + LO bailed)", color: "#3b82f6" },
-  { key: "booking_rate", title: "Booking rate", subtitle: "Booked ÷ Qualified Leads", color: "#f59e0b", rmOnly: true },
+  { key: "hand_raise_rate", title: "Hand-raise rate", subtitle: "(Booked + Claimed + Live Transfers) ÷ Qualified", color: "#f59e0b", rmOnly: true },
+  { key: "booking_rate", title: "Booking rate", subtitle: "Booked ÷ Qualified Leads", color: "#fb923c", rmOnly: true },
   { key: "lead_booking_rate", title: "Booking rate", subtitle: "Booked ÷ Total Leads", color: "#f59e0b", heOnly: true },
   { key: "conversation_rate", title: "Conversation rate", subtitle: "(Claimed + Shows + Live Transfers) ÷ Qualified", color: "#a78bfa" },
 ];

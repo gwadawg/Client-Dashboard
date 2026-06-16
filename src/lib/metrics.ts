@@ -75,6 +75,8 @@ export type MetricsResult = {
   lo_bail_rate: number;
   /** (claimed + shows + live transfers) ÷ qualified leads. */
   conversation_rate: number;
+  /** (booked + claimed + live transfers) ÷ qualified — intent to talk, before show. */
+  hand_raise_rate: number;
   appointment_cancelled: number;
   cancel_rate: number;
   /** Partner LO did not attend scheduled appointment with lead (“bailed”). */
@@ -225,6 +227,7 @@ export function calculateMetrics(
   const speed_to_lead_min = speed.median_min ?? 0;
 
   const client_conversations = live_transfers + claimed + shows;
+  const hand_raises = booked + live_transfers + claimed;
 
   return {
     new_leads: leads,
@@ -241,6 +244,7 @@ export function calculateMetrics(
     net_show_pct: shows + no_shows > 0 ? (shows / (shows + no_shows)) * 100 : 0,
     lo_bail_rate: booked > 0 ? (lo_bailed / booked) * 100 : 0,
     conversation_rate: qualified_leads > 0 ? (client_conversations / qualified_leads) * 100 : 0,
+    hand_raise_rate: qualified_leads > 0 ? (hand_raises / qualified_leads) * 100 : 0,
     appointment_cancelled: cancelled,
     cancel_rate: scheduled_total > 0 ? (cancelled / scheduled_total) * 100 : 0,
     lo_bailed,
@@ -408,6 +412,7 @@ export type KpiTimelineBucket = {
   /** Appointments Booked ÷ Total Leads (HE overview). */
   lead_booking_rate: number | null;
   conversation_rate: number | null;
+  hand_raise_rate: number | null;
   lead_to_qual: number | null;
 };
 
@@ -461,6 +466,10 @@ function finalizeBucket(c: RawCounts): KpiTimelineBucket {
     booking_rate: c.qualified_leads > 0 ? (c.booked / c.qualified_leads) * 100 : null,
     lead_booking_rate: c.leads > 0 ? (c.booked / c.leads) * 100 : null,
     conversation_rate: c.qualified_leads > 0 ? (client_conversations / c.qualified_leads) * 100 : null,
+    hand_raise_rate:
+      c.qualified_leads > 0
+        ? ((c.booked + c.live_transfers + c.claimed) / c.qualified_leads) * 100
+        : null,
     lead_to_qual: c.leads > 0 ? (c.qualified_leads / c.leads) * 100 : null,
   };
 }

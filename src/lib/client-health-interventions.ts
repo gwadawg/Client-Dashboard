@@ -124,6 +124,7 @@ function minVolumeForMetric(key: SuccessMetricKey, snap: ClientHealthSnapshot): 
     case 'show_rate':
       return m.shows + m.no_shows >= 10;
     case 'booking_rate':
+    case 'hand_raise_rate':
       return m.qualified_leads >= 5;
     case 'lead_to_qual':
       return m.new_leads >= 5;
