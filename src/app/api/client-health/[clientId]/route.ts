@@ -8,7 +8,9 @@ import {
   maturedWindow,
   recentWindow,
   recentWindowDaysForVerdict,
+  freshCostWindow,
   type ClientKpiBenchmarks,
+  type CostWindowSlice,
 } from '@/lib/client-health';
 import { OPEN_ACTION_STATUSES } from '@/lib/client-health-interventions';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
@@ -50,9 +52,12 @@ export async function GET(
   const recentDays = recentWindowDaysForVerdict(verdictDays);
   const recent = recentWindow(start_date, end_date, recentDays);
   const recentPrior = getRecentPriorPeriod(recent.start, recent.end);
-  const rangeStart = [verdictPrior?.start, recentPrior?.start, start_date]
+  const freshCost = freshCostWindow();
+  const freshCostPrior = getPriorPeriod(freshCost.start, freshCost.end);
+  const rangeStart = [verdictPrior?.start, recentPrior?.start, freshCostPrior?.start, start_date]
     .filter(Boolean)
     .sort()[0] as string;
+  const rangeEnd = freshCost.end > end_date ? freshCost.end : end_date;
 
   const [{ data: client, error: clientError }, { data: events, error: eventsError }, { data: actionRows }] =
     await Promise.all([
@@ -62,7 +67,7 @@ export async function GET(
         .select(EVENT_SELECT)
         .eq('client_id', clientId)
         .gte('occurred_at', `${rangeStart}T00:00:00.000Z`)
-        .lte('occurred_at', `${end_date}T23:59:59.999Z`)
+        .lte('occurred_at', `${rangeEnd}T23:59:59.999Z`)
         .limit(200000),
       ctx.service
         .from('client_action_logs')
@@ -92,12 +97,17 @@ export async function GET(
   const filterSpend = async (s: string, e: string) =>
     isHe ? [] : fetchCombinedSpendForMetrics(ctx.service, { client_id: clientId, start_date: s, end_date: e });
 
-  const [verdictSpend, priorSpend, recentSpend, recentPriorSpend] = await Promise.all([
-    filterSpend(start_date, end_date),
-    verdictPrior ? filterSpend(verdictPrior.start, verdictPrior.end) : Promise.resolve([]),
-    filterSpend(recent.start, recent.end),
-    recentPrior ? filterSpend(recentPrior.start, recentPrior.end) : Promise.resolve([]),
-  ]);
+  const [verdictSpend, priorSpend, recentSpend, recentPriorSpend, freshCostSpend, freshCostPriorSpend] =
+    await Promise.all([
+      filterSpend(start_date, end_date),
+      verdictPrior ? filterSpend(verdictPrior.start, verdictPrior.end) : Promise.resolve([]),
+      filterSpend(recent.start, recent.end),
+      recentPrior ? filterSpend(recentPrior.start, recentPrior.end) : Promise.resolve([]),
+      isHe ? Promise.resolve([]) : filterSpend(freshCost.start, freshCost.end),
+      isHe || !freshCostPrior
+        ? Promise.resolve([])
+        : filterSpend(freshCostPrior.start, freshCostPrior.end),
+    ]);
 
   const openActions = (actionRows ?? []) as { id: string; title: string; review_date: string | null; status: string }[];
   const nextAction = openActions[0]
@@ -109,6 +119,26 @@ export async function GET(
         overdue: !!openActions[0].review_date && openActions[0].review_date < today,
       }
     : null;
+
+  const freshCostSlice: CostWindowSlice | null = isHe
+    ? null
+    : {
+        start: freshCost.start,
+        end: freshCost.end,
+        window_days: freshCost.window_days,
+        events: allEvents.filter(e => inRange(e, freshCost.start, freshCost.end)),
+        spend: freshCostSpend,
+      };
+  const freshCostPriorSlice: CostWindowSlice | null =
+    isHe || !freshCostPrior
+      ? null
+      : {
+          start: freshCostPrior.start,
+          end: freshCostPrior.end,
+          window_days: freshCost.window_days,
+          events: allEvents.filter(e => inRange(e, freshCostPrior.start, freshCostPrior.end)),
+          spend: freshCostPriorSpend,
+        };
 
   const row = buildClientHealthRow({
     client_id: client.id,
@@ -124,6 +154,8 @@ export async function GET(
     priorSpend,
     recentSpend,
     recentPriorSpend,
+    freshCost: freshCostSlice,
+    freshCostPrior: freshCostPriorSlice,
     start_date,
     end_date,
     verdictPrior,
@@ -149,6 +181,9 @@ export async function GET(
       recent_end: recent.end,
       recent_prior_start: recentPrior?.start ?? null,
       recent_prior_end: recentPrior?.end ?? null,
+      fresh_cost_window_days: freshCost.window_days,
+      fresh_cost_start: freshCost.start,
+      fresh_cost_end: freshCost.end,
     },
     current: row.current,
     prior: row.prior,

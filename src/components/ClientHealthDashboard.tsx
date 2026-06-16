@@ -22,8 +22,10 @@ import {
   type HealthTier,
   type KpiKey,
 } from "@/lib/client-health";
+import Link from "next/link";
 import ClientFile from "./ClientFile";
 import ClientHealthDetail from "./ClientHealthDetail";
+import { churnFormHref } from "@/lib/internal-forms";
 
 // The grading view owns its own date range, deliberately decoupled from the global
 // explore filter. A health verdict must use a consistent, defined period so a
@@ -168,6 +170,9 @@ export default function ClientHealthDashboard(_props: Props) {
     recent_window_days: number;
     recent_start: string;
     recent_end: string;
+    fresh_cost_window_days?: number;
+    fresh_cost_start?: string;
+    fresh_cost_end?: string;
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [liveOnly, setLiveOnly] = useState(true);
@@ -349,7 +354,8 @@ export default function ClientHealthDashboard(_props: Props) {
 
   return (
     <div className="space-y-6 max-w-[1400px]">
-      <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
         <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>
           Client Success Overview
         </h2>
@@ -369,6 +375,14 @@ export default function ClientHealthDashboard(_props: Props) {
             <span style={{ color: "#64748b" }}> Progress vs prior period ({priorLabel}).</span>
           ) : null}
         </p>
+        </div>
+        <Link
+          href={churnFormHref()}
+          className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap shrink-0"
+          style={{ color: "#f87171", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)" }}
+        >
+          Churn offboarding →
+        </Link>
       </div>
 
       <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: "#0a1628" }}>
@@ -401,7 +415,8 @@ export default function ClientHealthDashboard(_props: Props) {
           {maturity.days}-day maturity window, lag-sensitive KPIs
           {isHeSegment ? " (show rate)" : " (CPConv, show rate, close rate)"} may{" "}
           <em>understate</em> until those cohorts finish resolving (bookings → appointments → outcomes).
-          Leading KPIs ({isHeSegment ? "leads, dials, booking rate" : "leads, qualified %, booking rate"}) are unaffected. The{" "}
+          Leading KPIs ({isHeSegment ? "leads, dials, booking rate" : "leads, qualified %, booking rate"}) use the
+          matured window. CPL and CPQL use the calendar-last {maturity.fresh_cost_window_days ?? 7} days through today. The{" "}
           <strong>Recent ({maturity.recent_window_days}d)</strong> indicators (expand a client) are your
           early-warning view.
         </div>
@@ -550,7 +565,7 @@ export default function ClientHealthDashboard(_props: Props) {
               <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                 {(isHeSegment
                   ? ["Client", "Focus", "30d status", "Follow-up", "Leads", "Dials", "Book %", "Show %", ""]
-                  : ["Client", "Focus", "30d CPConv", "Follow-up", "Leads", "Qual %", "Book %", "Show %", ""]
+                  : ["Client", "Focus", "30d CPConv", "Follow-up", "Leads", "Qual %", "Hand-raise", "Show %", ""]
                 ).map(h => (
                   <th
                     key={h}
@@ -651,8 +666,8 @@ export default function ClientHealthDashboard(_props: Props) {
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                <KpiDot tier={grade("booking_rate")?.tier ?? "insufficient"} />
-                                {m.appt_booking_rate.toFixed(0)}%
+                                <KpiDot tier={grade("hand_raise_rate")?.tier ?? "insufficient"} />
+                                {m.hand_raise_rate.toFixed(0)}%
                               </div>
                             </td>
                             <td className="px-4 py-3">
@@ -715,8 +730,14 @@ export default function ClientHealthDashboard(_props: Props) {
                                   ) : (
                                     <>
                                       <span>{row.recent.lead_to_qualified_pct.toFixed(0)}% lead→qual</span>
-                                      <span>{row.recent.booking_rate.toFixed(0)}% booking</span>
-                                      <span>CPL ${Math.round(row.recent.cpl)} · CPQL ${Math.round(row.recent.cpql)}</span>
+                                      <span>{row.recent.hand_raise_rate.toFixed(0)}% hand-raise</span>
+                                      <span style={{ color: "#475569" }}>({row.recent.booking_rate.toFixed(0)}% booked)</span>
+                                      <span>
+                                        CPL ${Math.round(row.recent.cpl)} · CPQL ${Math.round(row.recent.cpql)}
+                                        {row.recent.cost_window_days
+                                          ? ` (last ${row.recent.cost_window_days}d · through today)`
+                                          : ""}
+                                      </span>
                                       <span>{row.recent.conversations} conv (LT+show+claimed)</span>
                                     </>
                                   )}
@@ -759,8 +780,8 @@ export default function ClientHealthDashboard(_props: Props) {
           </>
         ) : (
           <>
-            RM verdict anchored on CPConv (spend ÷ live transfers + shows + claimed). Focus = 911 on 30d CPConv
-            or 911 on leading CPL/CPQL/booking/qual in the recent window.
+            RM verdict anchored on CPConv (spend ÷ live transfers + shows + claimed). Hand-raise = booked + claimed + LT ÷ qualified.
+            Focus = 911 on CPConv or leading CPL/CPQL/hand-raise/qual; Monitor only when a KPI is below target.
           </>
         )}
       </p>

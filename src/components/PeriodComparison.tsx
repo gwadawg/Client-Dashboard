@@ -72,7 +72,14 @@ function verdictRows(
   ];
   if (!isHe) {
     rows.splice(1, 0, {
-      label: "Booking rate (÷ qual)",
+      label: "Hand-raise rate (booked + claimed + LT)",
+      current: `${cm.hand_raise_rate.toFixed(0)}%`,
+      prior: `${pm.hand_raise_rate.toFixed(0)}%`,
+      delta: `${(cm.hand_raise_rate - pm.hand_raise_rate).toFixed(0)} pts`,
+      improved: deltaNum(cm.hand_raise_rate, pm.hand_raise_rate, false),
+    });
+    rows.splice(2, 0, {
+      label: "Appt booked only (÷ qual)",
       current: `${cm.appt_booking_rate.toFixed(0)}%`,
       prior: `${pm.appt_booking_rate.toFixed(0)}%`,
       delta: `${(cm.appt_booking_rate - pm.appt_booking_rate).toFixed(0)} pts`,
@@ -93,11 +100,19 @@ function leadingRows(recent: RecentLeading, prior: RecentLeading | null, isHe: b
   if (!prior) return [];
   const rows: RowDef[] = [
     {
-      label: "Booking rate",
-      current: `${recent.booking_rate.toFixed(1)}%`,
-      prior: `${prior.booking_rate.toFixed(1)}%`,
-      delta: `${(recent.booking_rate - prior.booking_rate).toFixed(1)} pts`,
-      improved: deltaNum(recent.booking_rate, prior.booking_rate, false),
+      label: isHe ? "Booking rate (÷ leads)" : "Hand-raise rate",
+      current: isHe
+        ? `${recent.booking_rate.toFixed(1)}%`
+        : `${recent.hand_raise_rate.toFixed(1)}%`,
+      prior: isHe
+        ? `${prior.booking_rate.toFixed(1)}%`
+        : `${prior.hand_raise_rate.toFixed(1)}%`,
+      delta: isHe
+        ? `${(recent.booking_rate - prior.booking_rate).toFixed(1)} pts`
+        : `${(recent.hand_raise_rate - prior.hand_raise_rate).toFixed(1)} pts`,
+      improved: isHe
+        ? deltaNum(recent.booking_rate, prior.booking_rate, false)
+        : deltaNum(recent.hand_raise_rate, prior.hand_raise_rate, false),
     },
     {
       label: "Leads",
@@ -124,14 +139,18 @@ function leadingRows(recent: RecentLeading, prior: RecentLeading | null, isHe: b
     });
     rows.push(
       {
-        label: "CPL",
+        label: recent.cost_window_days
+          ? `CPL (last ${recent.cost_window_days}d · through today)`
+          : "CPL",
         current: fmtMoney(recent.cpl),
         prior: fmtMoney(prior.cpl),
         delta: fmtMoney(recent.cpl - prior.cpl),
         improved: deltaNum(recent.cpl, prior.cpl, true),
       },
       {
-        label: "CPQL",
+        label: recent.cost_window_days
+          ? `CPQL (last ${recent.cost_window_days}d · through today)`
+          : "CPQL",
         current: fmtMoney(recent.cpql),
         prior: fmtMoney(prior.cpql),
         delta: fmtMoney(recent.cpql - prior.cpql),
@@ -242,6 +261,14 @@ export default function PeriodComparison({
           </table>
         </div>
       )}
+
+      {tab === "leading" && recent?.cost_window_days ? (
+        <p className="text-[10px] mt-3" style={{ color: "#334155" }}>
+          Funnel metrics use the matured leading window ({recent.start} → {recent.end}). CPL and CPQL use the
+          calendar-last {recent.cost_window_days} days through today ({recent.cost_start} → {recent.cost_end}) so ad-cost
+          spikes surface before CPConv matures.
+        </p>
+      ) : null}
 
       {tab === "verdict" && prior && (
         <p className="text-[10px] mt-3" style={{ color: "#334155" }}>

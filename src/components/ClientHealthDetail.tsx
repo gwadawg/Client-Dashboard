@@ -78,7 +78,7 @@ const TIER_STYLES: Record<HealthTier, { bg: string; text: string; border: string
 const LAYER_GROUPS: { layer: FunnelLayer; label: string; keys: KpiKey[] }[] = [
   { layer: "L1", label: "L1 — Ads", keys: ["cpl", "cpql"] },
   { layer: "L2", label: "L2 — Landing", keys: ["lead_to_qualified"] },
-  { layer: "L3", label: "L3 — Call center", keys: ["booking_rate"] },
+  { layer: "L3", label: "L3 — Call center", keys: ["hand_raise_rate"] },
   { layer: "L4", label: "L4 — Client / LO", keys: ["show_rate", "close_rate"] },
 ];
 
@@ -245,8 +245,16 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                   ) : (
                     <>
                       <span>{data.recent.lead_to_qualified_pct.toFixed(0)}% lead→qual</span>
-                      <span>{data.recent.booking_rate.toFixed(0)}% booking</span>
-                      <span>CPL {Math.round(data.recent.cpl)} · CPQL {Math.round(data.recent.cpql)}</span>
+                      <span>{data.recent.hand_raise_rate.toFixed(0)}% hand-raise</span>
+                      <span className="text-[10px]" style={{ color: "#475569" }}>
+                        ({data.recent.booking_rate.toFixed(0)}% booked only)
+                      </span>
+                      <span>
+                        CPL {Math.round(data.recent.cpl)} · CPQL {Math.round(data.recent.cpql)}
+                        {data.recent.cost_window_days
+                          ? ` (last ${data.recent.cost_window_days}d · through today)`
+                          : ""}
+                      </span>
                       <span>{data.recent.conversations} conversations</span>
                     </>
                   )}
@@ -268,10 +276,10 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                   ]
                 : [
                     { label: "CPConv (cost / conv)", value: money(data.current.cpconv) },
+                    { label: "Hand-raise rate", value: `${m.hand_raise_rate.toFixed(0)}%` },
+                    { label: "Booked only (÷ qual)", value: `${m.appt_booking_rate.toFixed(0)}%` },
                     { label: "CPQL", value: money(data.current.cpql) },
-                    { label: "Conversation yield", value: data.current.conversation_yield.toFixed(3) },
                     { label: "Leads / convs", value: `${m.new_leads} / ${m.live_transfers + m.claimed + m.shows}` },
-                    { label: "LO bail rate (client-side)", value: `${m.lo_bail_rate.toFixed(0)}%` },
                   ]
               ).map(s => (
                 <div key={s.label} className="rounded-lg px-3 py-2" style={{ background: "#050c18" }}>

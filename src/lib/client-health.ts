@@ -16,6 +16,7 @@ export type KpiKey =
   | 'lead_to_qualified'
   | 'pickup_rate'
   | 'booking_rate'
+  | 'hand_raise_rate'
   | 'lead_booking_rate'
   | 'show_rate'
   | 'close_rate'
@@ -126,13 +127,31 @@ export type RecentLeading = {
   lead_to_qualified_pct: number;
   /** Live transfers + claimed + shows in the recent window. */
   conversations: number;
+  /** Appointments booked only (RM reference). */
   booking_rate: number;
+  /** Booked + claimed + live transfer ÷ qualified (RM leading + L3 grade). */
+  hand_raise_rate: number;
   /** RM only — leading cost signals for early warning. */
   cpl: number;
   cpql: number;
+  /**
+   * RM only — CPL/CPQL are graded on this fresh window (ends today) so ad-cost
+   * spikes surface before the 7-day maturity lag on CPConv.
+   */
+  cost_window_days?: number;
+  cost_start?: string;
+  cost_end?: string;
   /** Graded tiers for leading KPIs only (no CPConv / show on this window). */
   leading_grades: KpiGrade[];
   momentum: 'improving' | 'slipping' | 'stable' | 'insufficient';
+};
+
+export type CostWindowSlice = {
+  start: string;
+  end: string;
+  window_days: number;
+  events: EventRow[];
+  spend: SpendRow[];
 };
 
 const TIER_WEIGHT: Record<HealthTier, number> = {
@@ -155,6 +174,7 @@ export const KPI_META: Record<KpiKey, { label: string; short: string }> = {
   lead_to_qualified: { label: 'Lead-to-Qualified %', short: 'Qual %' },
   pickup_rate: { label: 'Contact / Pickup Rate', short: 'Pickup' },
   booking_rate: { label: 'Booking Rate (÷ qualified)', short: 'Booking' },
+  hand_raise_rate: { label: 'Hand-raise Rate (booked + claimed + LT)', short: 'Hand-raise' },
   lead_booking_rate: { label: 'Booking Rate (÷ total leads)', short: 'Book %' },
   show_rate: { label: 'Show Rate (true, ex-LO-bail)', short: 'Show' },
   close_rate: { label: 'Close Rate', short: 'Close' },
@@ -184,13 +204,14 @@ export const HE_KPI_KEYS: KpiKey[] = ['lead_booking_rate', 'show_rate'];
 
 /** KPIs graded for RM (paid-ads) clients — pickup omitted (many bookings via text). */
 export const RM_KPI_KEYS: KpiKey[] = [
-  'lead_to_qualified', 'booking_rate', 'show_rate', 'close_rate', 'cpl', 'cpql', 'cps',
+  'lead_to_qualified', 'hand_raise_rate', 'show_rate', 'close_rate', 'cpl', 'cpql', 'cps',
 ];
 
 export const DEFAULT_KPI_BANDS: Record<KpiKey, KpiBandSpec> = {
   lead_to_qualified: { bands: { critical: 40, below: 50, at: 65 }, higherIsBetter: true, unit: 'pct' },
   pickup_rate:       { bands: { critical: 20, below: 30, at: 45 }, higherIsBetter: true, unit: 'pct' },
   booking_rate:      { bands: { critical: 20, below: 25, at: 30 }, higherIsBetter: true, unit: 'pct' },
+  hand_raise_rate:   { bands: { critical: 20, below: 25, at: 30 }, higherIsBetter: true, unit: 'pct' },
   lead_booking_rate: { bands: { critical: 3, below: 5, at: 8 }, higherIsBetter: true, unit: 'pct' },
   show_rate:         { bands: { critical: 55, below: 63, at: 70 }, higherIsBetter: true, unit: 'pct' },
   close_rate:        { bands: { critical: 10, below: 20, at: 35 }, higherIsBetter: true, unit: 'pct' },
@@ -204,6 +225,7 @@ const KPI_MIN_DENOMINATOR: Record<KpiKey, number> = {
   lead_to_qualified: 5,
   pickup_rate: 20,
   booking_rate: 5,
+  hand_raise_rate: 5,
   lead_booking_rate: 5,
   show_rate: 10,
   close_rate: 10,
@@ -337,7 +359,7 @@ export function buildClientHealthSnapshot(
 
   const grades: KpiGrade[] = [
     grade('lead_to_qualified', lead_to_qualified_pct, formatPct(lead_to_qualified_pct), metrics.new_leads),
-    grade('booking_rate', metrics.appt_booking_rate, formatPct(metrics.appt_booking_rate), metrics.qualified_leads),
+    grade('hand_raise_rate', metrics.hand_raise_rate, formatPct(metrics.hand_raise_rate), metrics.qualified_leads),
     // True (LO-bail-fair) show rate: shows / (shows + no_shows). Denominator is
     // resolved appointments only, so still-pending recent bookings don't deflate it.
     grade('show_rate', metrics.net_show_pct, formatPct(metrics.net_show_pct), metrics.shows + metrics.no_shows),
@@ -450,8 +472,8 @@ function inferConstraint(
     byKey.cpql != null &&
     byKey.cpql.tier !== 'insufficient' &&
     (byKey.cpql.tier === 'at' || byKey.cpql.tier === 'above');
-  const bookingBad =
-    byKey.booking_rate?.tier === 'critical' || byKey.booking_rate?.tier === 'below';
+  const handRaiseBad =
+    byKey.hand_raise_rate?.tier === 'critical' || byKey.hand_raise_rate?.tier === 'below';
   const showBad = byKey.show_rate?.tier === 'critical' || byKey.show_rate?.tier === 'below';
   const qualBad =
     byKey.lead_to_qualified?.tier === 'critical' || byKey.lead_to_qualified?.tier === 'below';
@@ -472,10 +494,10 @@ function inferConstraint(
   if (cplBad && cpqlBad) {
     return { constraint: 'lead_cost', constraint_label: 'Lead cost — ads / audience' };
   }
-  if (cpqlOk && bookingBad) {
+  if (cpqlOk && handRaiseBad) {
     return { constraint: 'call_center', constraint_label: 'Call center — script / booking flow' };
   }
-  if (!bookingBad && showBad && metrics.booked_appointments >= 3) {
+  if (!handRaiseBad && showBad && metrics.booked_appointments >= 3) {
     return { constraint: 'show_rate', constraint_label: 'Show rate — confirmations / LO prep' };
   }
   if (grades.every(g => g.tier === 'insufficient')) {
@@ -610,18 +632,18 @@ export function buildConstraintGuidance(
     case 'call_center':
       return {
         ...base,
-        headline: 'Call center — leads qualify but are not converting to booked appointments',
+        headline: 'Call center — leads qualify but are not raising their hand',
         whatsWrong: `Lead cost is healthy (CPQL ${formatMoney(
           snapshot.cpql,
-        )}) but booking rate is ${m.appt_booking_rate.toFixed(
+        )}) but hand-raise rate is ${m.hand_raise_rate.toFixed(
           0,
-        )}%. The constraint is in the booking script or follow-up flow (many bookings happen over text, not phone pickup).`,
+        )}% (booked + claimed + live transfers ÷ qualified). The constraint is in the booking script, live-transfer path, or follow-up flow.`,
         fixSteps: [
           {
             owner: 'CSR manager (L3)',
-            action: 'Audit booking script, text/SMS follow-up, and speed-to-lead for qualified leads.',
+            action: 'Audit booking script, live-transfer handoff, text/SMS follow-up, and speed-to-lead for qualified leads.',
             timebox: '5 business days',
-            successMetric: 'Booking rate ≥ 28% of qualified leads',
+            successMetric: 'Hand-raise rate ≥ 28% of qualified leads',
           },
           {
             owner: 'CSR manager (L3)',
@@ -806,6 +828,7 @@ export type SuccessMetricKey =
   | 'cpql'
   | 'cpl'
   | 'show_rate'
+  | 'hand_raise_rate'
   | 'booking_rate'
   | 'lead_booking_rate'
   | 'lead_to_qual'
@@ -819,6 +842,7 @@ export const SUCCESS_METRIC_META: Record<
   cpql: { label: 'Cost per qualified lead', lowerIsBetter: true, unit: 'money' },
   cpl: { label: 'Cost per lead', lowerIsBetter: true, unit: 'money' },
   show_rate: { label: 'Show rate', lowerIsBetter: false, unit: 'pct' },
+  hand_raise_rate: { label: 'Hand-raise rate (booked + claimed + LT)', lowerIsBetter: false, unit: 'pct' },
   booking_rate: { label: 'Booking rate (÷ qualified)', lowerIsBetter: false, unit: 'pct' },
   lead_booking_rate: { label: 'Booking rate (÷ total leads)', lowerIsBetter: false, unit: 'pct' },
   lead_to_qual: { label: 'Lead-to-qualified', lowerIsBetter: false, unit: 'pct' },
@@ -841,6 +865,8 @@ export function metricValue(
       return snapshot.metrics.cpl;
     case 'show_rate':
       return snapshot.metrics.net_show_pct;
+    case 'hand_raise_rate':
+      return snapshot.metrics.hand_raise_rate;
     case 'booking_rate':
       return isHe ? snapshot.metrics.lead_booking_rate : snapshot.metrics.appt_booking_rate;
     case 'lead_booking_rate':
@@ -883,6 +909,12 @@ export const MATURITY_DAYS = 7;
 
 /** Window (days) for the leading-indicator "Recent" early-warning instrument. */
 export const RECENT_WINDOW_DAYS = 14;
+
+/**
+ * Fresh cost window (days). CPL/CPQL resolve same-day as spend + leads, so they
+ * use the calendar-last N days through today — independent of the matured verdict.
+ */
+export const FRESH_COST_WINDOW_DAYS = MATURITY_DAYS;
 
 function shiftDays(date: string, n: number): string {
   const ms = new Date(`${date}T00:00:00.000Z`).getTime() + n * 86400000;
@@ -933,6 +965,15 @@ export function recentWindowDaysForVerdict(verdictDays: number): number {
   return 30;
 }
 
+/** Calendar-last N days through today — for CPL/CPQL leading cost alarms. */
+export function freshCostWindow(
+  days: number = FRESH_COST_WINDOW_DAYS,
+  today: string = utcToday(),
+): { start: string; end: string; window_days: number } {
+  const start = shiftDays(today, -(days - 1));
+  return { start, end: today, window_days: days };
+}
+
 /** Prior equal-length window immediately before [recentStart, recentEnd]. */
 export function getRecentPriorPeriod(
   recentStart: string,
@@ -941,7 +982,9 @@ export function getRecentPriorPeriod(
   return getPriorPeriod(recentStart, recentEnd);
 }
 
-const LEADING_RM_KEYS: KpiKey[] = ['cpl', 'cpql', 'lead_to_qualified', 'booking_rate'];
+const LEADING_RM_FUNNEL_KEYS: KpiKey[] = ['lead_to_qualified', 'hand_raise_rate'];
+const LEADING_RM_COST_KEYS: KpiKey[] = ['cpl', 'cpql'];
+const LEADING_RM_KEYS: KpiKey[] = [...LEADING_RM_COST_KEYS, ...LEADING_RM_FUNNEL_KEYS];
 const LEADING_HE_KEYS: KpiKey[] = ['lead_booking_rate'];
 
 function gradeLeadingOnly(
@@ -958,11 +1001,16 @@ function gradeLeadingOnly(
 function compareLeadingMomentum(
   current: RecentLeading,
   prior: RecentLeading | null,
+  isHe = false,
 ): RecentLeading['momentum'] {
   if (!prior) return 'insufficient';
   const checks: boolean[] = [];
   if (current.leads >= 5 && prior.leads >= 5) {
-    checks.push(current.booking_rate >= prior.booking_rate);
+    if (isHe) {
+      checks.push(current.booking_rate >= prior.booking_rate);
+    } else {
+      checks.push(current.hand_raise_rate >= prior.hand_raise_rate);
+    }
     checks.push(current.lead_to_qualified_pct >= prior.lead_to_qualified_pct);
   }
   if (current.cpl > 0 && prior.cpl > 0) checks.push(current.cpl <= prior.cpl);
@@ -976,8 +1024,8 @@ function compareLeadingMomentum(
 }
 
 /**
- * Focus triage: Act now = 911 on 30d north star OR 911 on 14d leading (CPL/CPQL/booking/qual).
- * Monitor = Below KPI (not 911). Recovering = verdict weak but leading momentum improving.
+ * Focus triage: Act now = 911 on 30d north star OR 911 on leading KPIs.
+ * Monitor = Below KPI only (not normal campaign variance). Momentum is informational.
  */
 export function computeFocus(
   current: ClientHealthSnapshot,
@@ -1028,15 +1076,6 @@ export function computeFocus(
     };
   }
 
-  if (recent?.momentum === 'slipping') {
-    return {
-      focus: 'monitor',
-      label: 'Monitor',
-      verdict_critical: false,
-      leading_critical: false,
-    };
-  }
-
   return {
     focus: 'on_track',
     label: 'On track',
@@ -1073,14 +1112,31 @@ export function buildRecentLeading(
   spendRows: SpendRow[] = [],
   benchmarks?: ClientKpiBenchmarks | null,
   prior?: RecentLeading | null,
+  costSlice?: CostWindowSlice | null,
 ): RecentLeading {
   const isHe = normalizeReportingType(reportingType) === 'HE';
-  const snap = isHe
+  const funnelSnap = isHe
     ? buildHeClientHealthSnapshot(events, benchmarks)
-    : buildClientHealthSnapshot(events, spendRows, benchmarks);
-  const m = snap.metrics;
-  const leadingKeys = isHe ? LEADING_HE_KEYS : LEADING_RM_KEYS;
-  const leading_grades = gradeLeadingOnly(snap, leadingKeys, benchmarks);
+    : buildClientHealthSnapshot(events, costSlice ? [] : spendRows, benchmarks);
+  const m = funnelSnap.metrics;
+
+  let cpl = m.cpl;
+  let cpql = isHe ? 0 : (funnelSnap as ClientHealthSnapshot).cpql;
+  let leading_grades: KpiGrade[];
+
+  if (isHe) {
+    leading_grades = gradeLeadingOnly(funnelSnap, LEADING_HE_KEYS, benchmarks);
+  } else if (costSlice) {
+    const costSnap = buildClientHealthSnapshot(costSlice.events, costSlice.spend, benchmarks);
+    cpl = costSnap.metrics.cpl;
+    cpql = costSnap.cpql;
+    leading_grades = [
+      ...gradeLeadingOnly(costSnap, LEADING_RM_COST_KEYS, benchmarks),
+      ...gradeLeadingOnly(funnelSnap, LEADING_RM_FUNNEL_KEYS, benchmarks),
+    ];
+  } else {
+    leading_grades = gradeLeadingOnly(funnelSnap, LEADING_RM_KEYS, benchmarks);
+  }
 
   const base: RecentLeading = {
     window_days: windowDays,
@@ -1092,12 +1148,20 @@ export function buildRecentLeading(
     lead_to_qualified_pct: m.new_leads > 0 ? (m.qualified_leads / m.new_leads) * 100 : 0,
     conversations: m.live_transfers + m.claimed + m.shows,
     booking_rate: isHe ? m.lead_booking_rate : m.appt_booking_rate,
-    cpl: m.cpl,
-    cpql: snap.cpql,
+    hand_raise_rate: m.hand_raise_rate,
+    cpl,
+    cpql,
+    ...(costSlice
+      ? {
+          cost_window_days: costSlice.window_days,
+          cost_start: costSlice.start,
+          cost_end: costSlice.end,
+        }
+      : {}),
     leading_grades,
     momentum: 'insufficient',
   };
-  base.momentum = compareLeadingMomentum(base, prior ?? null);
+  base.momentum = compareLeadingMomentum(base, prior ?? null, isHe);
   return base;
 }
 
@@ -1169,6 +1233,9 @@ export type BuildHealthRowInput = {
   priorSpend: SpendRow[];
   recentSpend: SpendRow[];
   recentPriorSpend: SpendRow[];
+  /** RM only — fresh calendar-last-7d slice for CPL/CPQL leading grades. */
+  freshCost?: CostWindowSlice | null;
+  freshCostPrior?: CostWindowSlice | null;
   start_date: string;
   end_date: string;
   verdictPrior: { start: string; end: string } | null;
@@ -1188,6 +1255,8 @@ export function buildClientHealthRow(input: BuildHealthRowInput): ClientHealthRo
     priorSpend,
     recentSpend,
     recentPriorSpend,
+    freshCost = null,
+    freshCostPrior = null,
     start_date,
     end_date,
     verdictPrior,
@@ -1226,6 +1295,7 @@ export function buildClientHealthRow(input: BuildHealthRowInput): ClientHealthRo
           recentPriorSpend,
           benchmarks,
           null,
+          freshCostPrior,
         )
       : null;
 
@@ -1238,6 +1308,7 @@ export function buildClientHealthRow(input: BuildHealthRowInput): ClientHealthRo
     recentSpend,
     benchmarks,
     recentPriorLeading,
+    freshCost,
   );
 
   const { trend, trend_delta_score } = compareHealthTrend(current, priorSnapshot);

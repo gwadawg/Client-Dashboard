@@ -9,13 +9,16 @@ import {
   maturedWindow,
   recentWindow,
   recentWindowDaysForVerdict,
+  freshCostWindow,
   type ClientEventWithDate,
   type ClientKpiBenchmarks,
+  type CostWindowSlice,
   type OpenActionSummary,
 } from '@/lib/client-health';
 import { OPEN_ACTION_STATUSES } from '@/lib/client-health-interventions';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
+import type { EventRow, SpendRow } from '@/lib/metrics';
 
 const EVENT_SELECT =
   'client_id, occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state';
@@ -90,6 +93,8 @@ export async function GET(req: Request) {
   const recentDays = recentWindowDaysForVerdict(verdictDays);
   const recent = recentWindow(start_date, end_date, recentDays);
   const recentPrior = getRecentPriorPeriod(recent.start, recent.end);
+  const freshCost = freshCostWindow();
+  const freshCostPrior = getPriorPeriod(freshCost.start, freshCost.end);
 
   let clientQuery = ctx.service
     .from('clients')
@@ -103,10 +108,10 @@ export async function GET(req: Request) {
     liveClientIds = await getLiveClientIds(ctx.service);
   }
 
-  const rangeStart = [verdictPrior?.start, recentPrior?.start, start_date]
+  const rangeStart = [verdictPrior?.start, recentPrior?.start, freshCostPrior?.start, start_date]
     .filter(Boolean)
     .sort()[0] as string;
-  const rangeEnd = end_date;
+  const rangeEnd = freshCost.end > end_date ? freshCost.end : end_date;
 
   let eventsQuery = ctx.service.from('events').select(EVENT_SELECT);
   if (liveClientIds) eventsQuery = eventsQuery.in('client_id', liveClientFilter(liveClientIds));
@@ -174,6 +179,14 @@ export async function GET(req: Request) {
   const recentPriorSpend = recentPrior
     ? spendInRange(spendRows, recentPrior.start, recentPrior.end)
     : [];
+  const freshCostEvents = allEvents.filter(e => inRange(e, freshCost.start, freshCost.end));
+  const freshCostPriorEvents = freshCostPrior
+    ? allEvents.filter(e => inRange(e, freshCostPrior.start, freshCostPrior.end))
+    : [];
+  const freshCostSpend = spendInRange(spendRows, freshCost.start, freshCost.end);
+  const freshCostPriorSpend = freshCostPrior
+    ? spendInRange(spendRows, freshCostPrior.start, freshCostPrior.end)
+    : [];
 
   const currentByClient = groupEventsByClient(verdictEvents);
   const priorByClient = groupEventsByClient(priorEvents);
@@ -188,6 +201,11 @@ export async function GET(req: Request) {
   const recentSpendByClient = spendByClient(recentSpend);
   const recentPriorSpendByClient = spendByClient(recentPriorSpend);
 
+  const freshCostByClient = groupEventsByClient(freshCostEvents);
+  const freshCostPriorByClient = groupEventsByClient(freshCostPriorEvents);
+  const freshCostSpendByClient = spendByClient(freshCostSpend);
+  const freshCostPriorSpendByClient = spendByClient(freshCostPriorSpend);
+
   const actionsByClient = new Map<string, ActionRow[]>();
   for (const a of actionRows ?? []) {
     const list = actionsByClient.get(a.client_id) ?? [];
@@ -198,6 +216,18 @@ export async function GET(req: Request) {
   const rows = (clients ?? []).map(c => {
     const benchmarks = (c.kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
     const reporting_type = normalizeReportingType(c.reporting_type);
+    const isHe = reporting_type === 'HE';
+    const toCostSlice = (
+      events: EventRow[],
+      spend: SpendRow[],
+      win: { start: string; end: string; window_days: number },
+    ): CostWindowSlice => ({
+      start: win.start,
+      end: win.end,
+      window_days: win.window_days,
+      events: events ?? [],
+      spend: spend ?? [],
+    });
     return buildClientHealthRow({
       client_id: c.id,
       client_name: c.name,
@@ -212,6 +242,21 @@ export async function GET(req: Request) {
       priorSpend: priorSpendByClient.get(c.id) ?? [],
       recentSpend: recentSpendByClient.get(c.id) ?? [],
       recentPriorSpend: recentPriorSpendByClient.get(c.id) ?? [],
+      freshCost: isHe
+        ? null
+        : toCostSlice(
+            freshCostByClient.get(c.id) ?? [],
+            freshCostSpendByClient.get(c.id) ?? [],
+            freshCost,
+          ),
+      freshCostPrior:
+        isHe || !freshCostPrior
+          ? null
+          : toCostSlice(
+              freshCostPriorByClient.get(c.id) ?? [],
+              freshCostPriorSpendByClient.get(c.id) ?? [],
+              { ...freshCostPrior, window_days: freshCost.window_days },
+            ),
       start_date,
       end_date,
       verdictPrior,
@@ -235,6 +280,9 @@ export async function GET(req: Request) {
       recent_end: recent.end,
       recent_prior_start: recentPrior?.start ?? null,
       recent_prior_end: recentPrior?.end ?? null,
+      fresh_cost_window_days: freshCost.window_days,
+      fresh_cost_start: freshCost.start,
+      fresh_cost_end: freshCost.end,
     },
     summary: {
       act_now: rows.filter(r => r.focus.focus === 'act_now' && r.has_activity).length,
