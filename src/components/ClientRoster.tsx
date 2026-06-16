@@ -95,6 +95,14 @@ const ROSTER_SECTIONS = [
 
 type SectionKey = (typeof ROSTER_SECTIONS)[number]["key"];
 
+/** Lifecycle accent per section — gives each zone a recognizable color anchor. */
+const SECTION_ACCENT: Record<SectionKey, string> = {
+  onboarding: "#38bdf8",
+  active: "#22c55e",
+  paused: "#f59e0b",
+  churned: "#64748b",
+};
+
 const ROSTER_COLS = 9;
 
 const ROSTER_HEADERS = [
@@ -144,6 +152,31 @@ function fieldStyle() {
   return { background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" } as const;
 }
 
+/**
+ * Inline cell input that reads as plain text at rest and only reveals its
+ * editable chrome (fill + border) on hover/focus. Keeps the roster scannable
+ * instead of presenting a wall of form boxes.
+ */
+const QUIET_INPUT =
+  "rounded-lg text-sm outline-none bg-transparent border border-transparent text-slate-200 transition-colors " +
+  "hover:bg-[#0f2040] hover:border-white/10 focus:bg-[#0f2040] focus:border-[#38bdf8]/50";
+
+/** Searchable haystack for a client row. */
+function clientMatchesQuery(c: Client, q: string): boolean {
+  if (!q) return true;
+  const hay = [
+    c.name,
+    c.primary_contact_name,
+    c.primary_contact,
+    c.clickup_task_id,
+    ...(c.states_licensed ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q);
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
@@ -165,6 +198,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean; scrollToCalls?: boolean; openCheckinForm?: boolean } | null>(null);
   const [kickoffFor, setKickoffFor] = useState<{ id: string; name: string } | null>(null);
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<SectionKey | "all">("all");
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
@@ -278,7 +313,13 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 
   if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#334155" }}>Loading…</p>;
 
-  const grouped = groupClientsBySection(clients);
+  const q = query.trim().toLowerCase();
+  const matched = q ? clients.filter(c => clientMatchesQuery(c, q)) : clients;
+  const grouped = groupClientsBySection(matched);
+  const counts = groupClientsBySection(clients);
+  const isFiltering = q.length > 0 || statusFilter !== "all";
+  const visibleSections = ROSTER_SECTIONS.filter(s => statusFilter === "all" || s.key === statusFilter);
+  const matchTotal = visibleSections.reduce((n, s) => n + grouped[s.key].length, 0);
 
   return (
     <div className="space-y-6">
@@ -307,13 +348,88 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
           No clients yet. Add one above.
         </div>
       ) : (
+        <>
+          <div
+            className="flex items-center gap-3 flex-wrap rounded-xl px-3 py-2.5"
+            style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}
+          >
+            <div className="relative flex-1 min-w-[14rem]">
+              <svg
+                className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ color: "#475569" }}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+              </svg>
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search by sub-account, contact, state, or ClickUp ID…"
+                className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none"
+                style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm leading-none"
+                  style={{ color: "#64748b" }}
+                  title="Clear search"
+                  aria-label="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {([{ key: "all", label: "All" }, ...ROSTER_SECTIONS] as const).map(opt => {
+                const isAll = opt.key === "all";
+                const count = isAll ? clients.length : counts[opt.key as SectionKey].length;
+                const active = statusFilter === opt.key;
+                const accent = isAll ? "#94a3b8" : SECTION_ACCENT[opt.key as SectionKey];
+                return (
+                  <button
+                    key={opt.key}
+                    onClick={() => setStatusFilter(opt.key as SectionKey | "all")}
+                    className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5"
+                    style={{
+                      color: active ? "#e2e8f0" : "#64748b",
+                      background: active ? "rgba(255,255,255,0.07)" : "transparent",
+                      border: `1px solid ${active ? "rgba(255,255,255,0.14)" : "transparent"}`,
+                    }}
+                  >
+                    {!isAll && <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: accent }} />}
+                    {opt.label}
+                    <span style={{ color: active ? accent : "#475569" }}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {isFiltering && (
+            <p className="text-xs -mt-3" style={{ color: "#475569" }}>
+              {matchTotal === 0
+                ? "No clients match your filters."
+                : `Showing ${matchTotal} ${matchTotal === 1 ? "client" : "clients"}${q ? ` matching “${query.trim()}”` : ""}.`}
+            </p>
+          )}
+
         <div className="space-y-8">
-          {ROSTER_SECTIONS.map(section => {
+          {visibleSections.map(section => {
             const sectionClients = grouped[section.key];
+            if (isFiltering && sectionClients.length === 0) return null;
+            const accent = SECTION_ACCENT[section.key];
             return (
               <section key={section.key}>
-                <h3 className="text-sm font-semibold mb-2" style={{ color: "#94a3b8" }}>
-                  {section.label} ({sectionClients.length})
+                <h3 className="flex items-center gap-2 mb-2.5">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: accent }} />
+                  <span className="text-sm font-semibold" style={{ color: "#cbd5e1" }}>{section.label}</span>
+                  <span
+                    className="text-xs font-semibold px-1.5 py-0.5 rounded-md"
+                    style={{ color: accent, background: `${accent}1a` }}
+                  >
+                    {sectionClients.length}
+                  </span>
                 </h3>
                 <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
                   <table className="text-sm w-full">
@@ -322,8 +438,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                         {ROSTER_HEADERS.map((h, i) => (
                           <th
                             key={i}
-                            className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
-                            style={{ color: "#334155" }}
+                            className="text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
+                            style={{ color: "#475569" }}
                             title={h === "Sub-account name" ? "GHL sub-account name — matches the client filter on the dashboard" : undefined}
                           >
                             {h}
@@ -334,8 +450,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                     <tbody>
                       {sectionClients.length === 0 ? (
                         <tr>
-                          <td colSpan={ROSTER_COLS} className="px-4 py-4 text-center text-sm" style={{ color: "#334155" }}>
-                            No clients
+                          <td colSpan={ROSTER_COLS} className="px-4 py-6 text-center text-sm" style={{ color: "#334155" }}>
+                            No clients in this group
                           </td>
                         </tr>
                       ) : (
@@ -372,10 +488,11 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
             );
           })}
         </div>
+        </>
       )}
 
       <p className="text-xs" style={{ color: "#334155" }}>
-        Offline clients are excluded when using the &ldquo;Live Clients&rdquo; filter on the dashboard. Open a client&rsquo;s file to oversee their full billing history. Pausing or churning a client is best done from the Client Billing tab so the schedule updates too.
+        Live clients include New account, Onboarding, and Active. Paused, Off-boarding, and Churned are treated as offline and excluded from the &ldquo;Live Clients&rdquo; dashboard filter. Open a client&rsquo;s file to oversee their full billing history. Pausing or churning a client is best done from the Client Billing tab so the schedule updates too.
       </p>
 
       {kickoffFor && (
@@ -428,8 +545,8 @@ function ClientRow({
   onDelete: () => void;
 }) {
   const c = client;
-  const rowBg = striped ? "#080f1e" : "#060d1a";
-  const cell = "px-3 py-2 whitespace-nowrap";
+  const rowBg = striped ? "bg-[#0b1424]" : "bg-[#080f1e]";
+  const cell = "px-3 py-2.5 whitespace-nowrap";
   const clientName = c.primary_contact_name ?? c.primary_contact ?? "";
   const hasOverrides = !!c.kpi_benchmarks && Object.keys(c.kpi_benchmarks).length > 0;
   const stale = benchmarksStale(c);
@@ -451,7 +568,7 @@ function ClientRow({
 
   return (
     <>
-    <tr style={{ background: rowBg, borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+    <tr className={`${rowBg} border-t border-white/[0.05] transition-colors hover:bg-[#0f1c30]`}>
       <td className={cell}>
         <span className="flex items-center gap-2">
           <input
@@ -460,8 +577,7 @@ function ClientRow({
             onBlur={onBlurField("name", c.name ?? "")}
             placeholder="GHL sub-account name"
             title="GHL sub-account name — what appears in the dashboard client filter"
-            className="px-2 py-1 rounded-lg text-sm outline-none w-36 font-medium"
-            style={fieldStyle()}
+            className={`${QUIET_INPUT} px-2 py-1 w-40 font-medium`}
           />
           {needsGhlMapping && (
             <span
@@ -483,8 +599,7 @@ function ClientRow({
           }}
           placeholder="Client / contact name"
           title="The client's name (person or business contact)"
-          className="px-2 py-1 rounded-lg text-sm outline-none w-32"
-          style={fieldStyle()}
+          className={`${QUIET_INPUT} px-2 py-1 w-36`}
         />
       </td>
       <td className={cell}>
@@ -502,10 +617,10 @@ function ClientRow({
         />
       </td>
       <td className={cell}>
-        <input type="date" value={c.date_signed ?? ""} disabled={busy} onChange={e => onPatch(c.id, { date_signed: e.target.value })} className="px-2 py-1 rounded-lg text-xs outline-none" style={fieldStyle()} />
+        <input type="date" value={c.date_signed ?? ""} disabled={busy} onChange={e => onPatch(c.id, { date_signed: e.target.value })} className={`${QUIET_INPUT} px-2 py-1 text-xs`} />
       </td>
       <td className={cell}>
-        <input type="date" value={c.launch_date ?? ""} disabled={busy} onChange={e => onPatch(c.id, { launch_date: e.target.value })} className="px-2 py-1 rounded-lg text-xs outline-none" style={fieldStyle()} />
+        <input type="date" value={c.launch_date ?? ""} disabled={busy} onChange={e => onPatch(c.id, { launch_date: e.target.value })} className={`${QUIET_INPUT} px-2 py-1 text-xs`} />
       </td>
       <td className={cell}>
         <span className="text-xs" style={{ color: c.churned_at ? "#94a3b8" : "#334155" }}>
@@ -573,12 +688,12 @@ function ClientRow({
             </span>
           </div>
         ) : (
-          <span className="flex items-center justify-end gap-3">
+          <span className="flex items-center justify-end gap-3.5">
             {showKickoffAction && (
               <button
                 onClick={onOpenKickoff}
-                className="text-xs font-semibold flex items-center gap-1.5"
-                style={{ color: kickoffPending ? "#f59e0b" : "#22c55e" }}
+                className={`text-xs font-semibold flex items-center gap-1.5 transition-colors ${kickoffPending ? "" : "text-slate-500 hover:text-green-500"}`}
+                style={kickoffPending ? { color: "#f59e0b" } : undefined}
                 title={kickoffPending ? "Kick-off call incomplete — open wizard" : "Open kick-off call wizard"}
               >
                 Kick-off
@@ -591,19 +706,20 @@ function ClientRow({
                 )}
               </button>
             )}
-            <button onClick={onOpenFile} className="text-xs font-semibold" style={{ color: "#38bdf8" }} title="Open this client's file">Open file</button>
-            <button onClick={onLogCheckin} className="text-xs font-semibold" style={{ color: "#38bdf8" }} title="Log a client check-in call">Check-in</button>
-            <button onClick={onOpenCalls} className="text-xs font-semibold" style={{ color: "#f59e0b" }} title="Add or view account calls">Calls</button>
-            <button onClick={onOpenNotes} className="text-xs font-semibold" style={{ color: "#a78bfa" }} title="Add or view client notes">Notes</button>
+            <button onClick={onOpenFile} className="text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors" title="Open this client's file">Open file</button>
+            <button onClick={onLogCheckin} className="text-xs font-medium text-slate-500 hover:text-sky-400 transition-colors" title="Log a client check-in call">Check-in</button>
+            <button onClick={onOpenCalls} className="text-xs font-medium text-slate-500 hover:text-amber-500 transition-colors" title="Add or view account calls">Calls</button>
+            <button onClick={onOpenNotes} className="text-xs font-medium text-slate-500 hover:text-violet-400 transition-colors" title="Add or view client notes">Notes</button>
             <button
               onClick={onToggleBenchmarks}
-              className="text-xs font-medium"
+              className="text-xs font-medium transition-colors"
               style={{ color: benchmarkColor }}
               title={stale ? `Benchmarks last reviewed ${relativeAge(c.kpi_benchmarks_updated_at)} — review` : "Per-client KPI benchmark overrides"}
             >
               {benchmarkLabel}
             </button>
-            <button onClick={onAskDelete} className="text-xs" style={{ color: "#334155" }}>Remove</button>
+            <span className="inline-block w-px h-3.5" style={{ background: "rgba(255,255,255,0.1)" }} aria-hidden />
+            <button onClick={onAskDelete} className="text-xs font-medium text-slate-600 hover:text-red-400 transition-colors">Remove</button>
           </span>
         )}
       </td>
@@ -809,7 +925,7 @@ function AddClientForm({
       email,
       reporting_type: reportingType,
       lifecycle_status: lifecycle,
-      is_live: lifecycle === "active",
+      is_live: lifecycle === "active" || lifecycle === "onboarding" || lifecycle === "new_account",
       billing_type: billingType,
       ...(showRevenue ? { mrr } : {}),
       billing_day: billingDay,
