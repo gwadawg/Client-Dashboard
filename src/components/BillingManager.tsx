@@ -4,6 +4,18 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import { useNavigateChurnOffboard } from "@/hooks/useNavigateChurnOffboard";
 
+const STICKY_TH_BG = "#0a1628";
+
+function stickyThStyle(bg = STICKY_TH_BG): React.CSSProperties {
+  return {
+    position: "sticky",
+    top: 0,
+    zIndex: 10,
+    background: bg,
+    boxShadow: "0 1px 0 rgba(255,255,255,0.06)",
+  };
+}
+
 type Billing = {
   id: string;
   client_id: string;
@@ -418,12 +430,12 @@ function WorklistSection({
         <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#cbd5e1" }}>{title}</h3>
         <span className="text-xs" style={{ color: "#475569" }}>({rows.length})</span>
       </div>
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: "#0a1628" }}>
+            <tr style={{ background: STICKY_TH_BG }}>
               {headers.map((h, i) => (
-                <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
+                <th key={i} className="sticky z-10 text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ ...stickyThStyle(), color: "#334155" }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -646,12 +658,12 @@ function PaidSection({
         <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#cbd5e1" }}>Paid</h3>
         <span className="text-xs" style={{ color: "#475569" }}>({rows.length})</span>
       </div>
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: "#0a1628" }}>
+            <tr style={{ background: STICKY_TH_BG }}>
               {headers.map((h, i) => (
-                <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
+                <th key={i} className="sticky z-10 text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ ...stickyThStyle(), color: "#334155" }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -720,7 +732,7 @@ function SetupTable({
         <thead>
           <tr style={{ background: "#081225" }}>
             {headers.map((h, i) => (
-              <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
+              <th key={i} className="sticky z-10 text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ ...stickyThStyle("#081225"), color: "#334155" }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -783,7 +795,7 @@ function InactiveTable({
       <thead>
         <tr style={{ background: "#081225" }}>
           {headers.map((h, i) => (
-            <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
+            <th key={i} className="sticky z-10 text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ ...stickyThStyle("#081225"), color: "#334155" }}>{h}</th>
           ))}
         </tr>
       </thead>

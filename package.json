@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify:onboard": "npx tsx scripts/verify-onboard-payload.ts",
+    "audit:roster": "node scripts/audit-client-roster.mjs",
+    "reconcile:payments": "node scripts/reconcile-client-payments.mjs",
+    "cleanup:roster": "npx tsx scripts/apply-roster-cleanup.ts",
+    "cleanup:roster:apply": "npx tsx scripts/apply-roster-cleanup.ts --apply"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

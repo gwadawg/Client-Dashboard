@@ -15,6 +15,9 @@ const MERGE_TABLES = [
   'client_calling_windows',
   'client_mrr_history',
   'billing_reminder_log',
+  'pd_schedule',
+  'client_contacts',
+  'client_form_submissions',
 ] as const;
 
 async function dedupeConflicts(service: SupabaseClient, sourceId: string, targetId: string) {
@@ -87,6 +90,44 @@ async function dedupeConflicts(service: SupabaseClient, sourceId: string, target
       .in('attr_key', attrKeys);
     if (error) throw new Error(`client_attributes dedupe: ${error.message}`);
   }
+
+  const { data: targetPd } = await service
+    .from('pd_schedule')
+    .select('scheduled_date, slot_time, agent_id')
+    .eq('client_id', targetId);
+  const { data: sourcePd } = await service
+    .from('pd_schedule')
+    .select('id, scheduled_date, slot_time, agent_id')
+    .eq('client_id', sourceId);
+  const pdKeys = new Set(
+    (targetPd ?? []).map(r => `${r.scheduled_date}\0${r.slot_time}\0${r.agent_id ?? ''}`),
+  );
+  const pdDupIds = (sourcePd ?? [])
+    .filter(r => pdKeys.has(`${r.scheduled_date}\0${r.slot_time}\0${r.agent_id ?? ''}`))
+    .map(r => r.id);
+  if (pdDupIds.length) {
+    const { error } = await service.from('pd_schedule').delete().in('id', pdDupIds);
+    if (error) throw new Error(`pd_schedule dedupe: ${error.message}`);
+  }
+
+  const { data: targetContacts } = await service
+    .from('client_contacts')
+    .select('contact_type, name')
+    .eq('client_id', targetId);
+  const { data: sourceContacts } = await service
+    .from('client_contacts')
+    .select('id, contact_type, name')
+    .eq('client_id', sourceId);
+  const contactKeys = new Set(
+    (targetContacts ?? []).map(r => `${r.contact_type}\0${r.name.toLowerCase()}`),
+  );
+  const contactDupIds = (sourceContacts ?? [])
+    .filter(r => contactKeys.has(`${r.contact_type}\0${r.name.toLowerCase()}`))
+    .map(r => r.id);
+  if (contactDupIds.length) {
+    const { error } = await service.from('client_contacts').delete().in('id', contactDupIds);
+    if (error) throw new Error(`client_contacts dedupe: ${error.message}`);
+  }
 }
 
 export async function mergeClients(
@@ -111,6 +152,13 @@ export async function mergeClients(
     if (error) throw new Error(`${table}: ${error.message}`);
     moved_tables.push(table);
   }
+
+  const { error: pendingErr } = await service
+    .from('pending_events')
+    .update({ resolved_client_id: targetId })
+    .eq('resolved_client_id', sourceId);
+  if (pendingErr) throw new Error(`pending_events: ${pendingErr.message}`);
+  moved_tables.push('pending_events.resolved_client_id');
 
   const { error: deleteErr } = await service.from('clients').delete().eq('id', sourceId);
   if (deleteErr) throw new Error(deleteErr.message);

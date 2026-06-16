@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import PendingEventsPanel from "@/components/PendingEventsPanel";
+import Link from "next/link";
 import { useNavigateChurnOffboard } from "@/hooks/useNavigateChurnOffboard";
-import { isChurnOffboardEligible } from "@/lib/internal-forms";
+import { churnFormHref, isChurnOffboardEligible } from "@/lib/internal-forms";
 import { FormProgressStrip } from "@/components/ClientFormsSection";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import TimezoneSelect from "@/components/TimezoneSelect";
@@ -122,6 +123,69 @@ const ROSTER_HEADERS = [
   "",
 ] as const;
 
+const ROSTER_THEAD_HEIGHT = 41;
+
+function RosterTableHead({ stickyTop }: { stickyTop: number }) {
+  return (
+    <thead>
+      <tr style={{ background: "#0a1628" }}>
+        {ROSTER_HEADERS.map((h, i) => (
+          <th
+            key={i}
+            className="sticky z-20 text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
+            style={{
+              top: stickyTop,
+              color: "#475569",
+              background: "#0a1628",
+              boxShadow: "0 1px 0 rgba(255,255,255,0.06)",
+            }}
+            title={h === "Sub-account name" ? "GHL sub-account name — matches the client filter on the dashboard" : undefined}
+          >
+            {h}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+}
+
+function RosterSectionRow({
+  label,
+  count,
+  accent,
+  stickyTop,
+}: {
+  label: string;
+  count: number;
+  accent: string;
+  stickyTop: number;
+}) {
+  return (
+    <tr style={{ background: "#080f1e" }}>
+      <td
+        colSpan={ROSTER_COLS}
+        className="sticky z-10 px-3 py-2 border-t border-white/[0.08]"
+        style={{
+          top: stickyTop,
+          background: "#080f1e",
+          boxShadow: "0 1px 0 rgba(255,255,255,0.06)",
+        }}
+      >
+        <span className="flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: accent }} />
+          <span className="text-sm font-semibold" style={{ color: "#cbd5e1" }}>{label}</span>
+          <span
+            className="text-xs font-semibold px-1.5 py-0.5 rounded-md"
+            style={{ color: accent, background: `${accent}1a` }}
+          >
+            {count}
+          </span>
+        </span>
+      </td>
+    </tr>
+  );
+}
+
 function clientSectionKey(c: Client): SectionKey {
   const status = c.lifecycle_status ?? "active";
   for (const section of ROSTER_SECTIONS) {
@@ -207,6 +271,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<SectionKey | "all">("all");
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarHeight, setToolbarHeight] = useState(52);
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
@@ -218,6 +284,16 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    const el = toolbarRef.current;
+    if (!el) return;
+    const measure = () => setToolbarHeight(el.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [loading, showAdd, clients.length]);
 
   async function reload() {
     const d = await (await fetch("/api/clients?detail=1")).json();
@@ -327,6 +403,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const isFiltering = q.length > 0 || statusFilter !== "all";
   const visibleSections = ROSTER_SECTIONS.filter(s => statusFilter === "all" || s.key === statusFilter);
   const matchTotal = visibleSections.reduce((n, s) => n + grouped[s.key].length, 0);
+  const theadStickyTop = toolbarHeight;
+  const sectionStickyTop = toolbarHeight + ROSTER_THEAD_HEIGHT;
 
   return (
     <div className="space-y-6">
@@ -337,13 +415,22 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
             Clients are grouped by lifecycle status. Sub-account name must match the GHL location name — that is how leads map in. Client name is the person or business contact. If you see duplicates, merge into the file you want to keep; do not delete a row that has reporting data.
           </p>
         </div>
-        <button
-          onClick={() => setShowAdd(s => !s)}
-          className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
-          style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)" }}
-        >
-          {showAdd ? "Close" : "+ Add client"}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href={churnFormHref()}
+            className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
+            style={{ color: "#f87171", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)" }}
+          >
+            Churn offboarding
+          </Link>
+          <button
+            onClick={() => setShowAdd(s => !s)}
+            className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
+            style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)" }}
+          >
+            {showAdd ? "Close" : "+ Add client"}
+          </button>
+        </div>
       </div>
 
       {showAdd && <AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} />}
@@ -357,9 +444,17 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
       ) : (
         <>
           <div
-            className="flex items-center gap-3 flex-wrap rounded-xl px-3 py-2.5"
-            style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}
+            ref={toolbarRef}
+            className="sticky top-0 z-30 -mx-6 md:-mx-8 px-6 md:px-8 pt-1 pb-2"
+            style={{
+              background: "linear-gradient(#080f1e 85%, rgba(8,15,30,0.97))",
+              borderBottom: "1px solid rgba(255,255,255,0.06)",
+            }}
           >
+            <div
+              className="flex items-center gap-3 flex-wrap rounded-xl px-3 py-2.5"
+              style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}
+            >
             <div className="relative flex-1 min-w-[14rem]">
               <svg
                 className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
@@ -412,6 +507,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
               })}
             </div>
           </div>
+          </div>
 
           {isFiltering && (
             <p className="text-xs -mt-3" style={{ color: "#475569" }}>
@@ -421,87 +517,72 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
             </p>
           )}
 
-        <div className="space-y-8">
-          {visibleSections.map(section => {
-            const sectionClients = grouped[section.key];
-            if (isFiltering && sectionClients.length === 0) return null;
-            const accent = SECTION_ACCENT[section.key];
-            return (
-              <section key={section.key}>
-                <h3 className="flex items-center gap-2 mb-2.5">
-                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: accent }} />
-                  <span className="text-sm font-semibold" style={{ color: "#cbd5e1" }}>{section.label}</span>
-                  <span
-                    className="text-xs font-semibold px-1.5 py-0.5 rounded-md"
-                    style={{ color: accent, background: `${accent}1a` }}
-                  >
-                    {sectionClients.length}
-                  </span>
-                </h3>
-                <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <table className="text-sm w-full">
-                    <thead>
-                      <tr style={{ background: "#0a1628" }}>
-                        {ROSTER_HEADERS.map((h, i) => (
-                          <th
-                            key={i}
-                            className="text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
-                            style={{ color: "#475569" }}
-                            title={h === "Sub-account name" ? "GHL sub-account name — matches the client filter on the dashboard" : undefined}
-                          >
-                            {h}
-                          </th>
-                        ))}
+        <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+          <table className="text-sm w-full">
+            <RosterTableHead stickyTop={theadStickyTop} />
+            <tbody>
+              {visibleSections.map(section => {
+                const sectionClients = grouped[section.key];
+                if (isFiltering && sectionClients.length === 0) return null;
+                const accent = SECTION_ACCENT[section.key];
+                return (
+                  <Fragment key={section.key}>
+                    <RosterSectionRow
+                      label={section.label}
+                      count={sectionClients.length}
+                      accent={accent}
+                      stickyTop={sectionStickyTop}
+                    />
+                    {sectionClients.length === 0 ? (
+                      <tr className="bg-[#080f1e]">
+                        <td colSpan={ROSTER_COLS} className="px-4 py-6 text-center text-sm" style={{ color: "#334155" }}>
+                          No clients in this group
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {sectionClients.length === 0 ? (
-                        <tr>
-                          <td colSpan={ROSTER_COLS} className="px-4 py-6 text-center text-sm" style={{ color: "#334155" }}>
-                            No clients in this group
-                          </td>
-                        </tr>
-                      ) : (
-                        sectionClients.map((c, i) => (
-                          <ClientRow
-                            key={c.id}
-                            client={c}
-                            allClients={clients}
-                            striped={i % 2 === 0}
-                            busy={busy === c.id}
-                            confirmingDelete={confirmDelete === c.id}
-                            deleteSummary={confirmDelete === c.id ? deleteSummary : null}
-                            mergeTargetId={mergeTargetId}
-                            onMergeTargetChange={setMergeTargetId}
-                            benchmarksOpen={benchmarksFor === c.id}
-                            onPatch={patchClient}
-                            onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
-                            onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
-                            onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
-                            onOpenOffboard={() => navigateChurnOffboard(c.id)}
-                            onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
-                            onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
-                            onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
-                            onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
-                            onAskDelete={() => askDelete(c)}
-                            onCancelDelete={cancelDelete}
-                            onMerge={() => handleMerge(c.id)}
-                            onDelete={() => handleDelete(c.id)}
-                          />
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            );
-          })}
+                    ) : (
+                      sectionClients.map((c, i) => (
+                        <ClientRow
+                          key={c.id}
+                          client={c}
+                          allClients={clients}
+                          striped={i % 2 === 0}
+                          busy={busy === c.id}
+                          confirmingDelete={confirmDelete === c.id}
+                          deleteSummary={confirmDelete === c.id ? deleteSummary : null}
+                          mergeTargetId={mergeTargetId}
+                          onMergeTargetChange={setMergeTargetId}
+                          benchmarksOpen={benchmarksFor === c.id}
+                          onPatch={patchClient}
+                          onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
+                          onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
+                          onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
+                          onOpenOffboard={() => navigateChurnOffboard(c.id)}
+                          onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
+                          onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
+                          onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
+                          onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
+                          onAskDelete={() => askDelete(c)}
+                          onCancelDelete={cancelDelete}
+                          onMerge={() => handleMerge(c.id)}
+                          onDelete={() => handleDelete(c.id)}
+                        />
+                      ))
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
         </>
       )}
 
       <p className="text-xs" style={{ color: "#334155" }}>
-        Live clients include New account, Onboarding, and Active. Paused, Off-boarding, and Churned are treated as offline and excluded from the &ldquo;Live Clients&rdquo; dashboard filter. Churn offboarding lives at /forms/churn (also under Resources → Team Forms).
+        Live clients include New account, Onboarding, and Active. Paused, Off-boarding, and Churned are treated as offline and excluded from the &ldquo;Live Clients&rdquo; dashboard filter.{" "}
+        <Link href={churnFormHref()} className="font-semibold underline-offset-2 hover:underline" style={{ color: "#64748b" }}>
+          Churn offboarding form
+        </Link>{" "}
+        — also under Resources → Team Forms.
       </p>
 
       {kickoffFor && (

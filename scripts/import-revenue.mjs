@@ -31,6 +31,10 @@ const NAME_MAP = {
   'Anthony Usher': 'Tony Usher',
   'Amir S': 'Amir Abuhalimeh',
   'Bryan Ashby': "Bryan Ashby's office",
+  'Brian Ross': "Brian Ross's Office",
+  "Lawrence Berggoetz's office": "Lawrence Berggoetz's Office",
+  "Jesse Beard's Office": 'Jesse Beard',
+  'Tom Dowden': "Tom Dowden's Office",
 };
 
 // Confirmed: create these (no roster match) as churned historical clients.
