@@ -154,12 +154,14 @@ export default function ClientFileEditForm({
   saving,
   saveError,
   onSave,
+  onRequestOffboard,
 }: {
   client: EditableClient;
   canViewRevenue: boolean;
   saving: boolean;
   saveError: string | null;
   onSave: (body: Record<string, unknown>) => void;
+  onRequestOffboard?: () => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => clientToDraft(client));
 
@@ -169,6 +171,10 @@ export default function ClientFileEditForm({
 
   function submit() {
     if (!draft.name.trim()) return;
+    if (draft.lifecycle_status === "churned" && client.lifecycle_status !== "churned") {
+      onRequestOffboard?.();
+      return;
+    }
     onSave(draftToPatchBody(draft, canViewRevenue));
   }
 
@@ -217,7 +223,13 @@ export default function ClientFileEditForm({
               onChange={tz => patch("timezone", tz ?? "")}
             />
           </label>
-          <SelectField label="Lifecycle" value={draft.lifecycle_status} onChange={v => patch("lifecycle_status", v)}>
+          <SelectField label="Lifecycle" value={draft.lifecycle_status} onChange={v => {
+            if (v === "churned" && client.lifecycle_status !== "churned") {
+              onRequestOffboard?.();
+              return;
+            }
+            patch("lifecycle_status", v);
+          }}>
             {LIFECYCLE_OPTIONS.map(o => <option key={o} value={o}>{o.replace(/_/g, " ")}</option>)}
           </SelectField>
           <SelectField label="Dashboard status" value={draft.is_live ? "live" : "offline"} onChange={v => patch("is_live", v === "live")}>

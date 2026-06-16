@@ -31,6 +31,7 @@ import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileE
 import ClientFormsSection, { type FormSubmissionSummary } from "@/components/ClientFormsSection";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import StatusChangeModal from "@/components/StatusChangeModal";
+import { useNavigateChurnOffboard } from "@/hooks/useNavigateChurnOffboard";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import type { ClientContact } from "@/lib/client-contacts";
@@ -251,6 +252,7 @@ export default function ClientFile({
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [statusChange, setStatusChange] = useState<{ targetStatus: string; pendingBody: Record<string, unknown> } | null>(null);
   const [showKickoff, setShowKickoff] = useState(false);
+  const navigateChurnOffboard = useNavigateChurnOffboard();
   const notesRef = useRef<HTMLElement>(null);
   const callsRef = useRef<HTMLElement>(null);
 
@@ -545,6 +547,11 @@ export default function ClientFile({
     }
     const newLifecycle = typeof body.lifecycle_status === "string" ? body.lifecycle_status : null;
     const currentLifecycle = client?.lifecycle_status ?? null;
+    if (newLifecycle === "churned" && newLifecycle !== currentLifecycle) {
+      navigateChurnOffboard(clientId);
+      onClose();
+      return;
+    }
     if (
       newLifecycle &&
       newLifecycle !== currentLifecycle &&
@@ -622,13 +629,28 @@ export default function ClientFile({
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {!loading && !error && client && !editing && (
-              <button
-                onClick={() => { setEditing(true); setSaveError(null); }}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
-                style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.25)" }}
-              >
-                Edit
-              </button>
+              <>
+                {client.lifecycle_status !== "churned" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigateChurnOffboard(clientId);
+                      onClose();
+                    }}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                    style={{ color: "#ef4444", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)" }}
+                  >
+                    Offboard
+                  </button>
+                )}
+                <button
+                  onClick={() => { setEditing(true); setSaveError(null); }}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                  style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.25)" }}
+                >
+                  Edit
+                </button>
+              </>
             )}
             {editing && (
               <button
@@ -659,6 +681,10 @@ export default function ClientFile({
               saving={savingProfile}
               saveError={saveError}
               onSave={saveProfile}
+              onRequestOffboard={() => {
+                navigateChurnOffboard(clientId);
+                onClose();
+              }}
             />
           </div>
         ) : (

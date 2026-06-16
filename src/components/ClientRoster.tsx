@@ -5,6 +5,8 @@ import ClientFile from "@/components/ClientFile";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import PendingEventsPanel from "@/components/PendingEventsPanel";
+import { useNavigateChurnOffboard } from "@/hooks/useNavigateChurnOffboard";
+import { isChurnOffboardEligible } from "@/lib/internal-forms";
 import { FormProgressStrip } from "@/components/ClientFormsSection";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import TimezoneSelect from "@/components/TimezoneSelect";
@@ -201,6 +203,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean; scrollToCalls?: boolean; openCheckinForm?: boolean } | null>(null);
   const [kickoffFor, setKickoffFor] = useState<{ id: string; name: string } | null>(null);
   const [launchFor, setLaunchFor] = useState<{ id: string; name: string } | null>(null);
+  const navigateChurnOffboard = useNavigateChurnOffboard();
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<SectionKey | "all">("all");
@@ -475,6 +478,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                             onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
                             onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
                             onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
+                            onOpenOffboard={() => navigateChurnOffboard(c.id)}
                             onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
                             onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
                             onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
@@ -497,7 +501,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
       )}
 
       <p className="text-xs" style={{ color: "#334155" }}>
-        Live clients include New account, Onboarding, and Active. Paused, Off-boarding, and Churned are treated as offline and excluded from the &ldquo;Live Clients&rdquo; dashboard filter. Open a client&rsquo;s file to oversee their full billing history. Pausing or churning a client is best done from the Client Billing tab so the schedule updates too.
+        Live clients include New account, Onboarding, and Active. Paused, Off-boarding, and Churned are treated as offline and excluded from the &ldquo;Live Clients&rdquo; dashboard filter. Churn offboarding lives at /forms/churn (also under Resources → Team Forms).
       </p>
 
       {kickoffFor && (
@@ -535,7 +539,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 }
 
 function ClientRow({
-  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange, benchmarksOpen, onPatch, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenNotes, onOpenCalls, onLogCheckin, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete,
+  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange, benchmarksOpen, onPatch, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete,
 }: {
   client: Client;
   allClients: Client[];
@@ -550,6 +554,7 @@ function ClientRow({
   onOpenFile: () => void;
   onOpenKickoff: () => void;
   onOpenLaunch: () => void;
+  onOpenOffboard: () => void;
   onOpenNotes: () => void;
   onOpenCalls: () => void;
   onLogCheckin: () => void;
@@ -569,6 +574,7 @@ function ClientRow({
   const needsGhlMapping = clientNeedsGhlMapping(c);
   const showKickoffAction = isKickoffLifecycle(c.lifecycle_status) || kickoffPending;
   const showLaunchAction = c.lifecycle_status === "onboarding" || c.lifecycle_status === "new_account";
+  const showOffboardAction = isChurnOffboardEligible(c.lifecycle_status);
   const benchmarkColor = benchmarksOpen ? "#38bdf8" : stale ? "#f59e0b" : hasOverrides ? "#38bdf8" : "#475569";
   const benchmarkLabel = benchmarksOpen
     ? "Close bands"
@@ -730,6 +736,15 @@ function ClientRow({
                 title="Launch checklist — mark client live"
               >
                 Launch
+              </button>
+            )}
+            {showOffboardAction && (
+              <button
+                onClick={onOpenOffboard}
+                className="text-xs font-semibold text-slate-500 hover:text-red-400 transition-colors"
+                title="Open churn offboarding form"
+              >
+                Offboard
               </button>
             )}
             <button onClick={onOpenFile} className="text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors" title="Open this client's file">Open file</button>

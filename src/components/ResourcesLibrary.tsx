@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import TeamFormsSection from "@/components/TeamFormsSection";
 
 type Category = "form" | "sop" | "document" | "template" | "other";
 
@@ -46,11 +47,18 @@ const EMPTY_FORM: FormState = {
 };
 
 function normalizeUrl(url: string): string {
-  if (/^https?:\/\//i.test(url)) return url;
-  return `https://${url}`;
+  const trimmed = url.trim();
+  if (trimmed.startsWith("/")) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function isInternalPath(url: string): boolean {
+  return url.trim().startsWith("/");
 }
 
 function hostFromUrl(url: string): string {
+  if (isInternalPath(url)) return url.trim();
   try {
     return new URL(normalizeUrl(url)).hostname.replace(/^www\./, "");
   } catch {
@@ -234,6 +242,8 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
           </button>
         )}
       </div>
+
+      {(activeCategory === "all" || activeCategory === "form") && <TeamFormsSection />}
 
       {/* Search */}
       <div
@@ -489,12 +499,14 @@ function ResourceCard({
 
         <a
           href={normalizeUrl(resource.url)}
-          target="_blank"
-          rel="noopener noreferrer"
+          target={isInternalPath(resource.url) ? undefined : "_blank"}
+          rel={isInternalPath(resource.url) ? undefined : "noopener noreferrer"}
           className="group mt-auto pt-5 flex items-center gap-2 text-sm font-semibold"
           style={{ color: "#f59e0b" }}
         >
-          <span className="truncate" style={{ maxWidth: "10rem" }}>{hostFromUrl(resource.url)}</span>
+          <span className="truncate" style={{ maxWidth: "10rem" }}>
+            {isInternalPath(resource.url) ? "Open in Mr. Waiz" : hostFromUrl(resource.url)}
+          </span>
           <span
             className="flex items-center justify-center w-6 h-6 rounded-full ml-auto"
             style={{ background: "rgba(245,158,11,0.12)", transition: `transform 400ms ${EASE}` }}

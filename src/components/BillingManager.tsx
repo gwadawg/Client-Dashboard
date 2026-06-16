@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import StatusChangeModal from "@/components/StatusChangeModal";
+import { useNavigateChurnOffboard } from "@/hooks/useNavigateChurnOffboard";
 
 type Billing = {
   id: string;
@@ -143,6 +144,7 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     clientName: string;
     targetStatus: string;
   } | null>(null);
+  const navigateChurnOffboard = useNavigateChurnOffboard();
 
   async function load() {
     const res = await fetch("/api/billings");
@@ -355,9 +357,10 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
             busy={busy}
             canViewRevenue={canViewRevenue}
             onPatch={patchClient}
-            onRequestStatusChange={(clientId, clientName, targetStatus) =>
-              setStatusChange({ clientId, clientName, targetStatus })
+            onRequestPause={(clientId, clientName) =>
+              setStatusChange({ clientId, clientName, targetStatus: "paused" })
             }
+            onRequestOffboard={clientId => navigateChurnOffboard(clientId)}
           />
         )}
       </div>
@@ -692,13 +695,14 @@ function PaidSection({
 }
 
 function SetupTable({
-  clients, busy, canViewRevenue, onPatch, onRequestStatusChange,
+  clients, busy, canViewRevenue, onPatch, onRequestPause, onRequestOffboard,
 }: {
   clients: ClientBilling[];
   busy: string | null;
   canViewRevenue: boolean;
   onPatch: (clientId: string, body: Record<string, unknown>) => void;
-  onRequestStatusChange: (clientId: string, clientName: string, targetStatus: string) => void;
+  onRequestPause: (clientId: string, clientName: string) => void;
+  onRequestOffboard: (clientId: string) => void;
 }) {
   const sorted = clients.filter(isActive).sort((a, b) => a.name.localeCompare(b.name));
   const missing = sorted.filter(c => !c.next_billing_date).length;
@@ -748,8 +752,8 @@ function SetupTable({
                 <td className="px-4 py-2.5 text-xs" style={{ color: c.next_billing_date ? "#cbd5e1" : "#475569" }}>{c.next_billing_date ?? "needs launch date"}</td>
                 <td className="px-4 py-2.5 text-xs" style={{ color: "#94a3b8" }}>{c.next_billing_date ? relativeLabel(c.next_billing_date) : "—"}</td>
                 <td className="px-4 py-2.5 whitespace-nowrap">
-                  <button onClick={() => onRequestStatusChange(c.id, c.name, "paused")} disabled={isBusy} className="text-xs font-semibold mr-3" style={{ color: "#f59e0b" }}>Pause</button>
-                  <button onClick={() => onRequestStatusChange(c.id, c.name, "churned")} disabled={isBusy} className="text-xs font-semibold" style={{ color: "#ef4444" }}>Churn</button>
+                  <button onClick={() => onRequestPause(c.id, c.name)} disabled={isBusy} className="text-xs font-semibold mr-3" style={{ color: "#f59e0b" }}>Pause</button>
+                  <button onClick={() => onRequestOffboard(c.id)} disabled={isBusy} className="text-xs font-semibold" style={{ color: "#ef4444" }}>Churn</button>
                 </td>
               </tr>
             );

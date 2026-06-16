@@ -4,6 +4,11 @@ const GHL_BASE = 'https://services.leadconnectorhq.com';
 const GHL_VERSION = '2021-07-28';
 
 export const GHL_OB_FORM_FILLED_TAG = 'OB form Filled';
+export const GHL_CLIENT_CHURNED_TAG_DEFAULT = 'Client Churned';
+
+export function getGhlClientChurnedTag(): string {
+  return process.env.GHL_CLIENT_CHURNED_TAG?.trim() || GHL_CLIENT_CHURNED_TAG_DEFAULT;
+}
 
 export function getGhlApiToken(): string | undefined {
   return (
