@@ -180,7 +180,7 @@ async function main() {
   const statusFixes = approval.status_fixes ?? [];
 
   for (const merge of merges) {
-    const action = { type: 'merge', ...merge };
+    const action: Record<string, unknown> = { type: 'merge', ...merge };
     if (applyMode) {
       const enrich = await enrichTargetFromSource(service, merge.source_id, merge.target_id, false);
       if (enrich) action.enriched_target = enrich;
@@ -236,7 +236,7 @@ async function main() {
       .select('id, name')
       .eq('id', clientId)
       .maybeSingle();
-    const action = { type: 'delete', client_id: clientId, name: client?.name, footprint: fp };
+    const action: Record<string, unknown> = { type: 'delete', client_id: clientId, name: client?.name, footprint: fp };
     if (fp > 0) {
       action.blocked = true;
       action.reason = 'client still has related data — merge first';
