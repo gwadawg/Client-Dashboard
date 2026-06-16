@@ -488,7 +488,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
         : "All clients";
 
   return (
-    <div className="min-h-screen flex" style={{ background: "#080f1e" }}>
+    <div className="h-screen flex overflow-hidden" style={{ background: "#080f1e" }}>
 
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
@@ -567,7 +567,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
       </aside>
 
       {/* Main */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
 
         {/* Header */}
         <header className="flex items-center gap-3 px-6 py-4 flex-wrap"
@@ -671,7 +671,12 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
         </header>
 
         {/* Content */}
-        <main className="flex-1 p-6 md:p-8 overflow-auto" style={{ background: "#080f1e" }}>
+        <main
+          className={`flex-1 min-h-0 p-6 md:p-8 flex flex-col ${
+            view === "admin_clients" || view === "admin_billing" ? "overflow-hidden" : "overflow-auto"
+          }`}
+          style={{ background: "#080f1e" }}
+        >
 
           {!firstVisibleView && (
             <div className="flex items-center justify-center py-24">
@@ -893,9 +898,15 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
           {/* ── Admin ── */}
           {view === "admin_agents"  && <AgentAdmin />}
           {view === "admin_clients" && (
-            <ClientRoster canViewRevenue={canViewRevenue} />
+            <div className="flex-1 min-h-0 flex flex-col">
+              <ClientRoster canViewRevenue={canViewRevenue} />
+            </div>
           )}
-          {view === "admin_billing" && <BillingManager canViewRevenue={canViewRevenue} />}
+          {view === "admin_billing" && (
+            <div className="flex-1 min-h-0 flex flex-col overflow-auto">
+              <BillingManager canViewRevenue={canViewRevenue} />
+            </div>
+          )}
           {view === "admin_agent_payroll" && (
             <AgentPayrollReport
               preset={preset}

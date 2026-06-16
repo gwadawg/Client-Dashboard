@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
@@ -123,30 +123,26 @@ const ROSTER_HEADERS = [
   "",
 ] as const;
 
-function RosterColumnHead({ stickyTop }: { stickyTop?: number }) {
-  const sticky = stickyTop != null;
+function RosterColumnHead() {
   return (
-    <tr style={{ background: "#0a1628" }}>
-      {ROSTER_HEADERS.map((h, i) => (
-        <th
-          key={i}
-          className={`text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap${sticky ? " sticky z-20" : ""}`}
-          style={{
-            color: "#475569",
-            ...(sticky
-              ? {
-                  top: stickyTop,
-                  background: "#0a1628",
-                  boxShadow: "0 1px 0 rgba(255,255,255,0.06)",
-                }
-              : {}),
-          }}
-          title={h === "Sub-account name" ? "GHL sub-account name — matches the client filter on the dashboard" : undefined}
-        >
-          {h}
-        </th>
-      ))}
-    </tr>
+    <thead>
+      <tr style={{ background: "#0a1628" }}>
+        {ROSTER_HEADERS.map((h, i) => (
+          <th
+            key={i}
+            className="sticky top-0 z-10 text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
+            style={{
+              color: "#475569",
+              background: "#0a1628",
+              boxShadow: "0 1px 0 rgba(255,255,255,0.06)",
+            }}
+            title={h === "Sub-account name" ? "GHL sub-account name — matches the client filter on the dashboard" : undefined}
+          >
+            {h}
+          </th>
+        ))}
+      </tr>
+    </thead>
   );
 }
 
@@ -266,8 +262,6 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<SectionKey | "all">("all");
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const [toolbarHeight, setToolbarHeight] = useState(52);
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
@@ -279,16 +273,6 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         setLoading(false);
       });
   }, []);
-
-  useEffect(() => {
-    const el = toolbarRef.current;
-    if (!el) return;
-    const measure = () => setToolbarHeight(el.offsetHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [loading, showAdd, clients.length]);
 
   async function reload() {
     const d = await (await fetch("/api/clients?detail=1")).json();
@@ -398,11 +382,10 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const isFiltering = q.length > 0 || statusFilter !== "all";
   const visibleSections = ROSTER_SECTIONS.filter(s => statusFilter === "all" || s.key === statusFilter);
   const matchTotal = visibleSections.reduce((n, s) => n + grouped[s.key].length, 0);
-  const columnHeadTop = toolbarHeight;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+    <div className="flex flex-col gap-6 min-h-0 flex-1 h-full">
+      <div className="shrink-0 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Roster</h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
@@ -427,25 +410,23 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         </div>
       </div>
 
-      {showAdd && <AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} />}
+      {showAdd && <div className="shrink-0"><AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} /></div>}
 
-      <PendingEventsPanel onReplayed={reload} />
+      <div className="shrink-0"><PendingEventsPanel onReplayed={reload} /></div>
 
       {clients.length === 0 ? (
         <div className="rounded-xl px-4 py-8 text-center text-sm" style={{ border: "1px solid rgba(255,255,255,0.06)", color: "#334155" }}>
           No clients yet. Add one above.
         </div>
       ) : (
-        <>
+        <div
+          className="flex flex-1 min-h-0 flex-col rounded-xl overflow-hidden"
+          style={{ border: "1px solid rgba(255,255,255,0.06)" }}
+        >
           <div
-            ref={toolbarRef}
-            className="sticky top-0 z-30 -mx-6 md:-mx-8 px-6 md:px-8 pb-2"
-            style={{ background: "#080f1e", boxShadow: "0 6px 16px rgba(0,0,0,0.35)" }}
+            className="shrink-0 flex items-center gap-3 flex-wrap px-3 py-2.5"
+            style={{ background: "#0a1628", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
           >
-            <div
-              className="flex items-center gap-3 flex-wrap rounded-xl px-3 py-2.5"
-              style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}
-            >
             <div className="relative flex-1 min-w-[14rem]">
               <svg
                 className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
@@ -497,79 +478,76 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 );
               })}
             </div>
-            </div>
           </div>
 
           {isFiltering && (
-            <p className="text-xs" style={{ color: "#475569" }}>
+            <p className="shrink-0 text-xs px-3 py-1.5" style={{ color: "#475569", background: "#080f1e" }}>
               {matchTotal === 0
                 ? "No clients match your filters."
                 : `Showing ${matchTotal} ${matchTotal === 1 ? "client" : "clients"}${q ? ` matching “${query.trim()}”` : ""}.`}
             </p>
           )}
 
-        <div className="rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-          <table className="text-sm w-full min-w-[1080px]">
-            <thead>
-              <RosterColumnHead stickyTop={columnHeadTop} />
-            </thead>
-            <tbody>
-              {visibleSections.map(section => {
-                const sectionClients = grouped[section.key];
-                if (isFiltering && sectionClients.length === 0) return null;
-                const accent = SECTION_ACCENT[section.key];
-                return (
-                  <Fragment key={section.key}>
-                    <RosterSectionRow
-                      label={section.label}
-                      count={sectionClients.length}
-                      accent={accent}
-                    />
-                    {sectionClients.length === 0 ? (
-                      <tr className="bg-[#080f1e]">
-                        <td colSpan={ROSTER_COLS} className="px-4 py-6 text-center text-sm" style={{ color: "#334155" }}>
-                          No clients in this group
-                        </td>
-                      </tr>
-                    ) : (
-                      sectionClients.map((c, i) => (
-                        <ClientRow
-                          key={c.id}
-                          client={c}
-                          allClients={clients}
-                          striped={i % 2 === 0}
-                          busy={busy === c.id}
-                          confirmingDelete={confirmDelete === c.id}
-                          deleteSummary={confirmDelete === c.id ? deleteSummary : null}
-                          mergeTargetId={mergeTargetId}
-                          onMergeTargetChange={setMergeTargetId}
-                          benchmarksOpen={benchmarksFor === c.id}
-                          onPatch={patchClient}
-                          onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
-                          onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
-                          onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
-                          onOpenOffboard={() => navigateChurnOffboard(c.id)}
-                          onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
-                          onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
-                          onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
-                          onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
-                          onAskDelete={() => askDelete(c)}
-                          onCancelDelete={cancelDelete}
-                          onMerge={() => handleMerge(c.id)}
-                          onDelete={() => handleDelete(c.id)}
-                        />
-                      ))
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="flex-1 min-h-0 overflow-auto" style={{ background: "#080f1e" }}>
+            <table className="text-sm w-full min-w-[1080px] border-separate border-spacing-0">
+              <RosterColumnHead />
+              <tbody>
+                {visibleSections.map(section => {
+                  const sectionClients = grouped[section.key];
+                  if (isFiltering && sectionClients.length === 0) return null;
+                  const accent = SECTION_ACCENT[section.key];
+                  return (
+                    <Fragment key={section.key}>
+                      <RosterSectionRow
+                        label={section.label}
+                        count={sectionClients.length}
+                        accent={accent}
+                      />
+                      {sectionClients.length === 0 ? (
+                        <tr className="bg-[#080f1e]">
+                          <td colSpan={ROSTER_COLS} className="px-4 py-6 text-center text-sm" style={{ color: "#334155" }}>
+                            No clients in this group
+                          </td>
+                        </tr>
+                      ) : (
+                        sectionClients.map((c, i) => (
+                          <ClientRow
+                            key={c.id}
+                            client={c}
+                            allClients={clients}
+                            striped={i % 2 === 0}
+                            busy={busy === c.id}
+                            confirmingDelete={confirmDelete === c.id}
+                            deleteSummary={confirmDelete === c.id ? deleteSummary : null}
+                            mergeTargetId={mergeTargetId}
+                            onMergeTargetChange={setMergeTargetId}
+                            benchmarksOpen={benchmarksFor === c.id}
+                            onPatch={patchClient}
+                            onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
+                            onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
+                            onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
+                            onOpenOffboard={() => navigateChurnOffboard(c.id)}
+                            onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
+                            onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
+                            onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
+                            onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
+                            onAskDelete={() => askDelete(c)}
+                            onCancelDelete={cancelDelete}
+                            onMerge={() => handleMerge(c.id)}
+                            onDelete={() => handleDelete(c.id)}
+                          />
+                        ))
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-        </>
       )}
 
-      <p className="text-xs" style={{ color: "#334155" }}>
+      <p className="shrink-0 text-xs" style={{ color: "#334155" }}>
         Live clients include New account, Onboarding, and Active. Paused, Off-boarding, and Churned are treated as offline and excluded from the &ldquo;Live Clients&rdquo; dashboard filter.{" "}
         <Link href={churnFormHref()} className="font-semibold underline-offset-2 hover:underline" style={{ color: "#64748b" }}>
           Churn offboarding form
