@@ -370,6 +370,11 @@ The **Media Buyer** view (Overview group) ranks Facebook ads **globally across a
 | Metric | Formula (per ad name, summed across clients) |
 |--------|----------------------------------------------|
 | **Spend** | `SUM(meta_ad_insights.spend)` |
+| **Impressions** | `SUM(meta_ad_insights.impressions)` |
+| **Clicks** | `SUM(meta_ad_insights.clicks)` |
+| **CTR** | `Clicks ÷ Impressions × 100` |
+| **CPC** | `Spend ÷ Clicks` |
+| **CPM** | `Spend ÷ Impressions × 1000` |
 | **Leads / Qualified / Closes** | `COUNT(attributed lead / qualified lead / loan_funded)` |
 | **CPL** | `Spend ÷ Leads` |
 | **Cost per Show** | `Spend ÷ Shows` |

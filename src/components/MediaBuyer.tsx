@@ -167,6 +167,11 @@ function num(v: number | null | undefined): string {
   return v.toLocaleString();
 }
 
+function pct(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return `${v.toFixed(2)}%`;
+}
+
 /** Turn a Google Drive share link into a thumbnail URL when possible. */
 function driveThumb(entry: { drive_url: string | null; thumbnail_url: string | null }): string | null {
   if (entry.thumbnail_url) return entry.thumbnail_url;
@@ -179,6 +184,11 @@ function driveThumb(entry: { drive_url: string | null; thumbnail_url: string | n
 
 type SortKey =
   | "spend"
+  | "impressions"
+  | "clicks"
+  | "ctr"
+  | "cpc"
+  | "cpm"
   | "leads"
   | "qualified"
   | "appointments"
@@ -486,6 +496,11 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                   Ad
                 </th>
                 <SortHeader label="Spend" k="spend" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="Impr" k="impressions" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="Clicks" k="clicks" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="CTR" k="ctr" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="CPC" k="cpc" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="CPM" k="cpm" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Leads" k="leads" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Qual" k="qualified" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Appts" k="appointments" sortKey={sortKey} asc={asc} onSort={onSort} />
@@ -668,6 +683,11 @@ function FragmentRow({
           ) : null}
         </td>
         <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money(ad.spend)}</td>
+        <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.impressions)}</td>
+        <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.clicks)}</td>
+        <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{pct(ad.ctr)}</td>
+        <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money(ad.cpc)}</td>
+        <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money(ad.cpm)}</td>
         <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.leads)}</td>
         <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.qualified)}</td>
         <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.appointments)}</td>
@@ -679,7 +699,7 @@ function FragmentRow({
       </tr>
       {isOpen ? (
         <tr style={{ background: "#060e1c" }}>
-          <td colSpan={10} className="px-4 py-4">
+          <td colSpan={15} className="px-4 py-4">
             {drilldown === "loading" || !drilldown ? (
               <p className="text-sm" style={{ color: "#475569" }}>Loading breakdown…</p>
             ) : (
