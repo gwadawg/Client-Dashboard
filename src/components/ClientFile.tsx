@@ -26,11 +26,13 @@ import {
 } from "@/lib/client-feedback";
 import { formatStatesLicensed } from "@/lib/us-states";
 import { timezoneLabel } from "@/lib/us-timezones";
+import ClientContactsSection from "@/components/ClientContactsSection";
 import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileEditForm";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
+import type { ClientContact } from "@/lib/client-contacts";
 
 // The client "file": a single place to oversee everything about one client.
 // Profile, billing history, lifecycle transitions, and ongoing notes.
@@ -214,6 +216,7 @@ export default function ClientFile({
   const [billings, setBillings] = useState<FileBilling[]>([]);
   const [statusHistory, setStatusHistory] = useState<StatusHistoryEntry[]>([]);
   const [notes, setNotes] = useState<ClientNote[]>([]);
+  const [contacts, setContacts] = useState<ClientContact[]>([]);
   const [calls, setCalls] = useState<ClientCall[]>([]);
   const [canViewRevenue, setCanViewRevenue] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -263,6 +266,7 @@ export default function ClientFile({
           setBillings(d.billings ?? []);
           setStatusHistory(d.status_history ?? []);
           setNotes(d.notes ?? []);
+          setContacts(d.contacts ?? []);
           setCalls(d.calls ?? []);
           if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
           setError(null);
@@ -704,6 +708,24 @@ export default function ClientFile({
                 <Detail label="Licensed in" value={formatStatesLicensed(client?.states_licensed)} wide missing={!client?.states_licensed?.length} />
                 <Detail label="Timezone" value={timezoneLabel(client?.timezone)} missing={!client?.timezone} />
               </div>
+            </Section>
+
+            <Section title={`Contacts (${contacts.length + 1})`}>
+              <ClientContactsSection
+                clientId={clientId}
+                primary={{
+                  primary_contact_name: client?.primary_contact_name ?? null,
+                  primary_contact: client?.primary_contact ?? null,
+                  email: client?.email ?? null,
+                  billing_email: client?.billing_email ?? null,
+                  phone: client?.phone ?? null,
+                  nmls: client?.nmls ?? null,
+                  states_licensed: client?.states_licensed ?? null,
+                }}
+                contacts={contacts}
+                onReload={() => { load(); }}
+                onEditProfile={() => setEditing(true)}
+              />
             </Section>
 
             <Section title="Account timeline">

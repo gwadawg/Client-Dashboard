@@ -20,6 +20,7 @@ import {
   formatClientConflictMessage,
 } from '@/lib/client-duplicate-check';
 import { replayPendingForClientId } from '@/lib/pending-events';
+import { CLIENT_CONTACT_FIELDS } from '@/lib/client-contacts';
 
 const STATUS_HISTORY_FIELDS =
   'id, previous_status, new_status, reason_code, note, mrr_at_change, changed_at, changed_by, source, related_call_id';
@@ -44,7 +45,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { id } = await params;
 
-  const [clientRes, billingsRes, historyRes, notesRes, callsRes] = await Promise.all([
+  const [clientRes, billingsRes, historyRes, notesRes, callsRes, contactsRes] = await Promise.all([
     ctx.service.from('clients').select(FILE_CLIENT_FIELDS).eq('id', id).single(),
     ctx.service
       .from('client_billings')
@@ -69,6 +70,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .eq('client_id', id)
       .is('deleted_at', null)
       .order('called_at', { ascending: false }),
+    ctx.service
+      .from('client_contacts')
+      .select(CLIENT_CONTACT_FIELDS)
+      .eq('client_id', id)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true }),
   ]);
 
   if (clientRes.error) {
@@ -79,6 +86,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (historyRes.error) return NextResponse.json({ error: historyRes.error.message }, { status: 500 });
   if (notesRes.error) return NextResponse.json({ error: notesRes.error.message }, { status: 500 });
   if (callsRes.error) return NextResponse.json({ error: callsRes.error.message }, { status: 500 });
+  if (contactsRes.error) {
+    return NextResponse.json({ error: contactsRes.error.message }, { status: 500 });
+  }
 
   const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
   const includeRevenue = canViewClientRevenue(subject);
@@ -87,6 +97,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const statusHistory = historyRes.data ?? [];
   const notes = notesRes.data ?? [];
   const calls = callsRes.data ?? [];
+  const contacts = contactsRes.data ?? [];
 
   const authorIds = [
     ...notes.map((n: { created_by?: string | null }) => n.created_by),
@@ -106,6 +117,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       ...c,
       created_by_label: c.created_by ? authorLabels[c.created_by] ?? null : null,
     })),
+    contacts,
     author_labels: authorLabels,
     can_view_revenue: includeRevenue,
   });

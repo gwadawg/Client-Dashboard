@@ -636,6 +636,29 @@ create table if not exists client_notes (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 14d. Client Contacts (additional team members per account)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists client_contacts (
+  id               uuid    primary key default gen_random_uuid(),
+  client_id        uuid    not null references clients(id) on delete cascade,
+  contact_type     text    not null,
+  name             text    not null,
+  email            text,
+  phone            text,
+  nmls             text,
+  states_licensed  text[],
+  notes            text,
+  sort_order       int     not null default 0,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz,
+  created_by       uuid    references auth.users(id) on delete set null,
+  updated_by       uuid    references auth.users(id) on delete set null,
+  constraint client_contacts_type_check check (
+    contact_type in ('loa', 'co_lo', 'other')
+  )
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 15. Client Monthly Snapshots (point-in-time per client per month)
 --     Powers MRR-over-time, churn rate, retention/cohort, expansion/contraction.
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -821,6 +844,7 @@ create index if not exists client_calls_called                   on client_calls
 create index if not exists client_calls_checkin_form             on client_calls(client_id, called_at desc)
   where call_type = 'checkin' and checkin_form is not null;
 create index if not exists client_notes_client_created           on client_notes(client_id, created_at desc);
+create index if not exists idx_client_contacts_client_id         on client_contacts(client_id);
 create index if not exists client_monthly_snapshots_period       on client_monthly_snapshots(period_month);
 create index if not exists client_monthly_snapshots_client       on client_monthly_snapshots(client_id, period_month desc);
 create index if not exists business_metrics_key_period           on business_metrics(metric_key, period_date desc);
