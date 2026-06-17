@@ -13,7 +13,7 @@ import {
   type LibraryOwner,
 } from "@/lib/library-manifest";
 
-export type LibSection = "all" | "playbooks" | "forms" | "links";
+export type LibSection = "playbooks" | "forms" | "links";
 
 export type LinkCategory = "form" | "sop" | "document" | "template" | "other";
 
@@ -214,12 +214,6 @@ export const LIB_SECTION_META: Record<
   LibSection,
   { label: string; description: string; color: string; tint: string }
 > = {
-  all: {
-    label: "Browse",
-    description: "Overview of everything in the library",
-    color: "#f59e0b",
-    tint: "rgba(245,158,11,0.10)",
-  },
   playbooks: {
     label: "Playbooks",
     description: "Native scripts, SOPs, and guides — interactive and cross-linked",

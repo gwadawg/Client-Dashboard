@@ -9,15 +9,12 @@ import {
   filterPlaybooks,
   getAllFormItems,
   getAllPlaybookItems,
-  getSetterPlaybookItems,
   groupByKind,
   groupPlaybooksByDepartment,
   countPlaybooksByDepartment,
   LIB_SECTION_META,
   linkToItem,
-  PLAYBOOK_ARTIFACT_FILTERS,
   PLAYBOOK_DEPARTMENT_FILTERS,
-  PLAYBOOK_OWNER_FILTERS,
   searchItems,
   type FormItem,
   type LibSection,
@@ -26,7 +23,7 @@ import {
   type LinkResource,
   type PlaybookItem,
 } from "@/lib/resource-index";
-import type { LibraryArtifactType, LibraryDepartment, LibraryOwner } from "@/lib/library-manifest";
+import type { LibraryDepartment } from "@/lib/library-manifest";
 import { DEPARTMENT_META } from "@/lib/library-manifest";
 
 type Category = LinkCategory;
@@ -43,7 +40,7 @@ const CATEGORY_META: Record<Category, { label: string; color: string; tint: stri
 
 const CATEGORY_ORDER: Category[] = ["form", "sop", "document", "template", "other"];
 const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
-const VALID_SECTIONS: LibSection[] = ["all", "playbooks", "forms", "links"];
+const TAB_SECTIONS: LibSection[] = ["playbooks", "forms", "links"];
 
 type FormState = {
   id: string | null;
@@ -84,8 +81,8 @@ function hostFromUrl(url: string): string {
 }
 
 function parseSection(raw: string | null): LibSection {
-  if (raw && VALID_SECTIONS.includes(raw as LibSection)) return raw as LibSection;
-  return "all";
+  if (raw && TAB_SECTIONS.includes(raw as LibSection)) return raw as LibSection;
+  return "playbooks";
 }
 
 export default function ResourcesLibrary({ canManage = false }: { canManage?: boolean }) {
@@ -97,8 +94,6 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [playbookDepartment, setPlaybookDepartment] = useState<LibraryDepartment | "all">("all");
-  const [playbookOwner, setPlaybookOwner] = useState<LibraryOwner | "all">("all");
-  const [playbookArtifact, setPlaybookArtifact] = useState<LibraryArtifactType | "all">("all");
   const [linkCategory, setLinkCategory] = useState<Category | "all">("all");
   const [linkTags, setLinkTags] = useState<string[]>([]);
 
@@ -121,12 +116,11 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
 
   const counts = useMemo(
     () => ({
-      all: unifiedIndex.length,
       playbooks: playbookItems.length,
       forms: formItems.length,
       links: linkItems.length,
     }),
-    [unifiedIndex.length, playbookItems.length, formItems.length, linkItems.length],
+    [playbookItems.length, formItems.length, linkItems.length],
   );
 
   const isSearching = query.trim().length > 0;
@@ -136,22 +130,14 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
   );
 
   const filteredPlaybooks = useMemo(
-    () =>
-      filterPlaybooks(playbookItems, {
-        department: playbookDepartment,
-        owner: playbookOwner,
-        artifact: playbookArtifact,
-      }),
-    [playbookItems, playbookDepartment, playbookOwner, playbookArtifact],
+    () => filterPlaybooks(playbookItems, { department: playbookDepartment }),
+    [playbookItems, playbookDepartment],
   );
 
-  const playbookDeptCounts = useMemo(() => {
-    const roleTypeFiltered = filterPlaybooks(playbookItems, {
-      owner: playbookOwner,
-      artifact: playbookArtifact,
-    });
-    return countPlaybooksByDepartment(roleTypeFiltered);
-  }, [playbookItems, playbookOwner, playbookArtifact]);
+  const playbookDeptCounts = useMemo(
+    () => countPlaybooksByDepartment(playbookItems),
+    [playbookItems],
+  );
 
   const filteredLinks = useMemo(() => {
     return linkItems.filter((item) => {
@@ -197,8 +183,7 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
   function setSection(next: LibSection) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "resources");
-    if (next === "all") params.delete("lib");
-    else params.set("lib", next);
+    params.set("lib", next);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
@@ -345,7 +330,7 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
           className="flex flex-wrap gap-2 p-1.5 rounded-2xl"
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
         >
-          {VALID_SECTIONS.map((key) => (
+          {TAB_SECTIONS.map((key) => (
             <SectionTab
               key={key}
               label={LIB_SECTION_META[key].label}
@@ -369,23 +354,13 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
           onEdit={(r) => openEdit(r)}
           onDelete={handleDelete}
         />
-      ) : section === "all" ? (
-        <BrowseHub
-          counts={counts}
-          featured={playbookItems.find((p) => p.featured) ?? getSetterPlaybookItems()[0]}
-          onNavigate={setSection}
-        />
       ) : section === "playbooks" ? (
         <PlaybooksPanel
           items={filteredPlaybooks}
           allItems={playbookItems}
           department={playbookDepartment}
-          owner={playbookOwner}
-          artifact={playbookArtifact}
           deptCounts={playbookDeptCounts}
           onDepartmentChange={setPlaybookDepartment}
-          onOwnerChange={setPlaybookOwner}
-          onArtifactChange={setPlaybookArtifact}
         />
       ) : section === "forms" ? (
         <FormsPanel items={formItems} />
@@ -460,82 +435,20 @@ function SectionTab({
   );
 }
 
-function BrowseHub({
-  counts,
-  featured,
-  onNavigate,
-}: {
-  counts: Record<LibSection, number>;
-  featured?: PlaybookItem;
-  onNavigate: (s: LibSection) => void;
-}) {
-  return (
-    <div className="space-y-8">
-      <div className="grid gap-3 sm:grid-cols-3">
-        {(["playbooks", "forms", "links"] as const).map((key) => {
-          const meta = LIB_SECTION_META[key];
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onNavigate(key)}
-              className="res-rise text-left rounded-[1.4rem] p-1.5 active:scale-[0.99]"
-              style={{ background: meta.tint, border: `1px solid ${meta.color}33` }}
-            >
-              <div className="rounded-[1.05rem] p-5 h-full" style={{ background: "#0a1628" }}>
-                <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: meta.color }}>
-                  {meta.label}
-                </p>
-                <p className="mt-2 text-2xl font-semibold tabular-nums" style={{ color: "#f1f5f9" }}>
-                  {counts[key]}
-                </p>
-                <p className="mt-2 text-sm leading-relaxed" style={{ color: "#64748b" }}>
-                  {meta.description}
-                </p>
-                <span className="mt-4 inline-block text-sm font-semibold" style={{ color: meta.color }}>
-                  Browse →
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {featured && (
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#cbd5e1" }}>
-            Featured
-          </h3>
-          <LibraryDocCard item={featured} featured />
-        </section>
-      )}
-    </div>
-  );
-}
-
 function PlaybooksPanel({
   items,
   allItems,
   department,
-  owner,
-  artifact,
   deptCounts,
   onDepartmentChange,
-  onOwnerChange,
-  onArtifactChange,
 }: {
   items: PlaybookItem[];
   allItems: PlaybookItem[];
   department: LibraryDepartment | "all";
-  owner: LibraryOwner | "all";
-  artifact: LibraryArtifactType | "all";
   deptCounts: Record<LibraryDepartment, number>;
   onDepartmentChange: (v: LibraryDepartment | "all") => void;
-  onOwnerChange: (v: LibraryOwner | "all") => void;
-  onArtifactChange: (v: LibraryArtifactType | "all") => void;
 }) {
-  const showGrouped =
-    department === "all" && owner === "all" && artifact === "all";
+  const showGrouped = department === "all";
   const featured = items.find((i) => i.featured);
   const groups = showGrouped ? groupPlaybooksByDepartment(items) : [];
   const flatItems = featured ? items.filter((i) => !i.featured) : items;
@@ -547,7 +460,6 @@ function PlaybooksPanel({
         description={LIB_SECTION_META.playbooks.description}
       />
 
-      {/* Departments — primary organizer */}
       <div className="space-y-2">
         <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#475569" }}>
           Department
@@ -583,31 +495,9 @@ function PlaybooksPanel({
         </p>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {PLAYBOOK_OWNER_FILTERS.map((f) => (
-          <FilterChip
-            key={f.value}
-            label={f.label}
-            active={owner === f.value}
-            onClick={() => onOwnerChange(f.value)}
-          />
-        ))}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {PLAYBOOK_ARTIFACT_FILTERS.map((f) => (
-          <FilterChip
-            key={f.value}
-            label={f.label}
-            active={artifact === f.value}
-            onClick={() => onArtifactChange(f.value)}
-            subtle
-          />
-        ))}
-      </div>
-
       {items.length === 0 ? (
         <EmptyPanel
-          message="No playbooks match those filters."
+          message="No playbooks in this department yet."
           hint={
             department !== "all"
               ? `${DEPARTMENT_META[department].label} playbooks will appear here as they are imported.`
@@ -623,15 +513,11 @@ function PlaybooksPanel({
         </div>
       ) : (
         <div className="space-y-6">
-          {featured && department !== "all" && owner === "all" && artifact === "all" && (
-            <LibraryDocCard item={featured} featured />
-          )}
+          {featured && <LibraryDocCard item={featured} featured />}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {(featured && department !== "all" && owner === "all" && artifact === "all" ? flatItems : items).map(
-              (item, i) => (
-                <LibraryDocCard key={item.id} item={item} index={i} />
-              ),
-            )}
+            {flatItems.map((item, i) => (
+              <LibraryDocCard key={item.id} item={item} index={i} />
+            ))}
           </div>
         </div>
       )}
@@ -984,25 +870,6 @@ function SectionIntro({ title, description }: { title: string; description: stri
       <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>{title}</h3>
       <p className="text-sm mt-1" style={{ color: "#64748b" }}>{description}</p>
     </div>
-  );
-}
-
-function FilterChip({
-  label, active, onClick, subtle = false,
-}: { label: string; active: boolean; onClick: () => void; subtle?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-full px-3 py-1.5 text-xs font-medium"
-      style={{
-        background: active ? (subtle ? "rgba(255,255,255,0.08)" : "rgba(52,211,153,0.14)") : "rgba(255,255,255,0.03)",
-        color: active ? (subtle ? "#e2e8f0" : "#34d399") : "#64748b",
-        border: `1px solid ${active ? (subtle ? "rgba(255,255,255,0.12)" : "rgba(52,211,153,0.35)") : "rgba(255,255,255,0.06)"}`,
-      }}
-    >
-      {label}
-    </button>
   );
 }
 
