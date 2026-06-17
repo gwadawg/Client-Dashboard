@@ -5,10 +5,14 @@ import { FORM_TYPE_LABELS, type FormType } from "@/lib/form-submissions";
 import { ONBOARDING_FIELD_LABELS } from "@/lib/onboarding-form";
 import {
   formatLaunchItemStatus,
-  LAUNCH_CHECKLIST_ITEMS,
-  LAUNCH_SECTIONS,
+  getLaunchItemsForProfile,
+  getLaunchSectionsForProfile,
   launchResponsesToDraft,
+  profileFromLaunchResponses,
 } from "@/lib/launch-form";
+import { CC_KICKOFF_FIELD_LABELS } from "@/lib/kickoff";
+import { getReportingTypeLabel } from "@/lib/reporting-types";
+import { getServiceProgramLabel } from "@/lib/service-program";
 import { formatStatesLicensed } from "@/lib/us-states";
 
 export type FormSubmissionSummary = {
@@ -29,6 +33,13 @@ const PM_LABELS: Record<string, string> = {
   pm_funnel_requirements: "Funnel requirements",
 };
 
+const KICKOFF_META_LABELS: Record<string, string> = {
+  reporting_type: "Client vertical",
+  service_program: "Service program",
+  form_profile: "Form profile",
+  vertical_confirmed: "Vertical confirmed",
+};
+
 function formatValue(key: string, value: unknown): string {
   if (value == null || value === "") return "—";
   if (key === "states_licensed" && Array.isArray(value)) {
@@ -40,9 +51,16 @@ function formatValue(key: string, value: unknown): string {
 }
 
 function humanizeLaunchResponses(responses: Record<string, unknown>): { label: string; value: string; section?: string }[] {
-  const draft = launchResponsesToDraft(responses);
+  const profile = profileFromLaunchResponses(responses);
+  const draft = launchResponsesToDraft(responses, profile);
   const rows: { label: string; value: string; section?: string }[] = [];
 
+  if (responses.reporting_type) {
+    rows.push({ label: "Client vertical", value: getReportingTypeLabel(responses.reporting_type) });
+  }
+  if (responses.service_program) {
+    rows.push({ label: "Service program", value: getServiceProgramLabel(responses.service_program) ?? String(responses.service_program) });
+  }
   if (responses.completed_by_label) {
     rows.push({ label: "Completed by", value: String(responses.completed_by_label) });
   }
@@ -50,9 +68,9 @@ function humanizeLaunchResponses(responses: Record<string, unknown>): { label: s
     rows.push({ label: "Launch date", value: String(responses.launch_date) });
   }
 
-  for (const section of LAUNCH_SECTIONS) {
+  for (const section of getLaunchSectionsForProfile(profile)) {
     rows.push({ label: section.label, value: "", section: section.label });
-    const items = LAUNCH_CHECKLIST_ITEMS.filter(item => item.section === section.id);
+    const items = getLaunchItemsForProfile(profile).filter(item => item.section === section.id);
     for (const item of items) {
       const status = formatLaunchItemStatus(item, draft);
       const value =
@@ -75,9 +93,23 @@ function humanizeResponses(formType: FormType, responses: Record<string, unknown
   }
 
   if (formType === "kickoff") {
-    return Object.entries(PM_LABELS)
-      .filter(([k]) => responses[k])
-      .map(([k, label]) => ({ label, value: formatValue(k, responses[k]) }));
+    const rows: { label: string; value: string }[] = [];
+    if (responses.reporting_type) {
+      rows.push({ label: KICKOFF_META_LABELS.reporting_type, value: getReportingTypeLabel(responses.reporting_type) });
+    }
+    if (responses.service_program) {
+      rows.push({
+        label: KICKOFF_META_LABELS.service_program,
+        value: getServiceProgramLabel(responses.service_program) ?? String(responses.service_program),
+      });
+    }
+    for (const [k, label] of Object.entries(PM_LABELS)) {
+      if (responses[k]) rows.push({ label, value: formatValue(k, responses[k]) });
+    }
+    for (const [k, label] of Object.entries(CC_KICKOFF_FIELD_LABELS)) {
+      if (responses[k]) rows.push({ label, value: formatValue(k, responses[k]) });
+    }
+    return rows;
   }
 
   if (formType === "onboarding") {

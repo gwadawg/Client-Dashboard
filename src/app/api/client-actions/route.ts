@@ -14,6 +14,7 @@ import {
   type ActionLogRow,
 } from '@/lib/client-health-interventions';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
+import { usesCallCenterKpiLayout } from '@/lib/reporting-types';
 import { fetchCombinedSpendForMetrics } from '@/lib/spend';
 import type { EventRow } from '@/lib/metrics';
 
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
 
   const reporting_type = normalizeReportingType(client.reporting_type);
   const benchmarks = (client.kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
-  const isHe = reporting_type === 'HE';
+  const isHe = usesCallCenterKpiLayout(reporting_type);
 
   let baseline_snapshot_id: string | null = null;
   let baseline_value: number | null =
@@ -232,7 +233,7 @@ async function evaluateOneAction(
       .gte('occurred_at', `${createdDate}T00:00:00.000Z`)
       .lte('occurred_at', `${reviewEnd}T23:59:59.999Z`)
       .limit(200000),
-    reporting_type === 'HE'
+    usesCallCenterKpiLayout(reporting_type)
       ? Promise.resolve([])
       : fetchCombinedSpendForMetrics(ctx.service, {
           client_id: action.client_id,

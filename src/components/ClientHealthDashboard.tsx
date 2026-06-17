@@ -36,7 +36,9 @@ type Props = {
   endDate?: string;
 };
 
-type ClientSegment = "RM" | "HE";
+import { usesCallCenterKpiLayout } from "@/lib/kpi-layouts";
+
+type ClientSegment = "RM" | "CALL_CENTER";
 
 type SortKey =
   | "priority"
@@ -114,8 +116,8 @@ const HE_CHART_METRICS: { key: SortKey; label: string }[] = [
 ];
 
 const SEGMENT_TABS: { key: ClientSegment; label: string }[] = [
-  { key: "RM", label: "Paid Ads (RM)" },
-  { key: "HE", label: "Appointment Only (HE)" },
+  { key: "RM", label: "Paid Ads (RM + DSCR)" },
+  { key: "CALL_CENTER", label: "Call Center" },
 ];
 
 function TierBadge({ tier }: { tier: HealthTier }) {
@@ -228,16 +230,18 @@ export default function ClientHealthDashboard(_props: Props) {
       .catch(() => setLoading(false));
   }, [startDate, endDate, liveOnly]);
 
-  const isHeSegment = clientSegment === "HE";
-  const chartMetrics = isHeSegment ? HE_CHART_METRICS : RM_CHART_METRICS;
+  const isCallCenterSegment = clientSegment === "CALL_CENTER";
+  const chartMetrics = isCallCenterSegment ? HE_CHART_METRICS : RM_CHART_METRICS;
 
   const filtered = useMemo(() => {
     let list = rows.filter(r =>
-      isHeSegment ? r.reporting_type === "HE" : r.reporting_type !== "HE",
+      isCallCenterSegment
+        ? usesCallCenterKpiLayout(r.reporting_type)
+        : !usesCallCenterKpiLayout(r.reporting_type),
     );
     if (hideInactive) list = list.filter(r => r.has_activity);
     return list;
-  }, [rows, hideInactive, isHeSegment]);
+  }, [rows, hideInactive, isCallCenterSegment]);
 
   const sorted = useMemo(() => {
     const list = [...filtered];
@@ -298,7 +302,7 @@ export default function ClientHealthDashboard(_props: Props) {
   function handleSegmentChange(segment: ClientSegment) {
     setClientSegment(segment);
     setExpandedId(null);
-    if (segment === "HE" && (sortKey === "cps" || chartMetric === "cps")) {
+    if (segment === "CALL_CENTER" && (sortKey === "cps" || chartMetric === "cps")) {
       setSortKey("priority");
       setChartMetric("priority");
     }
@@ -360,7 +364,7 @@ export default function ClientHealthDashboard(_props: Props) {
           Client Success Overview
         </h2>
         <p className="text-sm mt-1 max-w-3xl" style={{ color: "#475569" }}>
-          {isHeSegment ? (
+          {isCallCenterSegment ? (
             <>
               HE clients side-by-side — booking (÷ leads) and show rate on a matured window{" "}
             </>
@@ -413,9 +417,9 @@ export default function ClientHealthDashboard(_props: Props) {
           <span style={{ color: "#38bdf8", fontWeight: 600 }}>Heads up — recent days are still resolving.</span>{" "}
           KPIs below are graded on your selected range. Because that range includes days inside the{" "}
           {maturity.days}-day maturity window, lag-sensitive KPIs
-          {isHeSegment ? " (show rate)" : " (CPConv, show rate, close rate)"} may{" "}
+          {isCallCenterSegment ? " (show rate)" : " (CPConv, show rate, close rate)"} may{" "}
           <em>understate</em> until those cohorts finish resolving (bookings → appointments → outcomes).
-          Leading KPIs ({isHeSegment ? "leads, dials, booking rate" : "leads, qualified %, booking rate"}) use the
+          Leading KPIs ({isCallCenterSegment ? "leads, dials, booking rate" : "leads, qualified %, booking rate"}) use the
           matured window. CPL and CPQL use the calendar-last {maturity.fresh_cost_window_days ?? 7} days through today. The{" "}
           <strong>Recent ({maturity.recent_window_days}d)</strong> indicators (expand a client) are your
           early-warning view.
@@ -465,7 +469,7 @@ export default function ClientHealthDashboard(_props: Props) {
           <option value="priority">Sort: Focus priority</option>
           <option value="focus">Sort: Focus label</option>
           <option value="show_rate">Sort: Show rate</option>
-          {isHeSegment ? (
+          {isCallCenterSegment ? (
             <>
               <option value="booking_rate">Sort: Booking rate (÷ leads)</option>
               <option value="dials">Sort: Outbound dials</option>
@@ -563,7 +567,7 @@ export default function ClientHealthDashboard(_props: Props) {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                {(isHeSegment
+                {(isCallCenterSegment
                   ? ["Client", "Focus", "30d status", "Follow-up", "Leads", "Dials", "Book %", "Show %", ""]
                   : ["Client", "Focus", "30d CPConv", "Follow-up", "Leads", "Qual %", "Hand-raise", "Show %", ""]
                 ).map(h => (
@@ -616,7 +620,7 @@ export default function ClientHealthDashboard(_props: Props) {
                           <FocusBadge focus={row.focus} />
                         </td>
                         <td className="px-4 py-3">
-                          {isHeSegment ? (
+                          {isCallCenterSegment ? (
                             <TierBadge tier={row.current.worst_tier} />
                           ) : (
                             <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
@@ -638,7 +642,7 @@ export default function ClientHealthDashboard(_props: Props) {
                         <td className="px-4 py-3 tabular-nums" style={{ color: "#94a3b8" }}>
                           {m.new_leads}
                         </td>
-                        {isHeSegment ? (
+                        {isCallCenterSegment ? (
                           <>
                             <td className="px-4 py-3 tabular-nums font-medium" style={{ color: "#e2e8f0" }}>
                               {m.outbound_dials}
@@ -704,7 +708,7 @@ export default function ClientHealthDashboard(_props: Props) {
                             {row.prior && row.prior.metrics.new_leads + row.prior.metrics.booked_appointments > 0 && (
                               <p className="text-xs mt-2" style={{ color: "#475569" }}>
                                 Prior period: {row.prior.metrics.new_leads} leads
-                                {isHeSegment ? (
+                                {isCallCenterSegment ? (
                                   <>
                                     {" "}· {row.prior.metrics.outbound_dials} dials · {row.prior.metrics.lead_booking_rate.toFixed(1)}% book · {row.prior.metrics.net_show_pct.toFixed(0)}% show
                                   </>
@@ -725,7 +729,7 @@ export default function ClientHealthDashboard(_props: Props) {
                                 <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums" style={{ color: "#94a3b8" }}>
                                   <span>{row.recent.leads} leads</span>
                                   <span>{row.recent.dials} dials</span>
-                                  {isHeSegment ? (
+                                  {isCallCenterSegment ? (
                                     <span>{row.recent.booking_rate.toFixed(1)}% booking (÷ leads)</span>
                                   ) : (
                                     <>
@@ -747,7 +751,7 @@ export default function ClientHealthDashboard(_props: Props) {
                                 </div>
                               </div>
                             )}
-                            {isHeSegment && (
+                            {isCallCenterSegment && (
                               <p className="text-[10px] mt-2" style={{ color: "#475569" }}>
                                 HE booking rate = appointments booked ÷ total leads (not qualified leads).
                               </p>
@@ -773,7 +777,7 @@ export default function ClientHealthDashboard(_props: Props) {
       </div>
 
       <p className="text-[10px]" style={{ color: "#334155" }}>
-        {isHeSegment ? (
+        {isCallCenterSegment ? (
           <>
             HE grades: booking rate (÷ total leads) and net show rate. Focus = 911 on verdict or leading window.
             Dials shown for volume only.

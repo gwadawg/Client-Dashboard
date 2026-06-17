@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { KPI_META, TIER_LABEL, type ClientHealthSnapshot, type KpiKey, type RecentLeading } from "@/lib/client-health";
-import { normalizeReportingType } from "@/lib/kpi-layouts";
+import { normalizeReportingType, usesCallCenterKpiLayout } from "@/lib/kpi-layouts";
 
 type CompareTab = "verdict" | "leading";
 
@@ -171,7 +171,7 @@ export default function PeriodComparison({
   priorVerdictLabel = "Prior period",
 }: Props) {
   const [tab, setTab] = useState<CompareTab>("verdict");
-  const isHe = normalizeReportingType(reportingType) === "HE";
+  const isHe = usesCallCenterKpiLayout(reportingType);
 
   const rows =
     tab === "verdict"

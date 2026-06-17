@@ -8,7 +8,7 @@ import {
   type SuccessMetricKey,
 } from '@/lib/client-health';
 import type { EventRow, SpendRow, TrendSpendRow } from '@/lib/metrics';
-import { normalizeReportingType, type ReportingType } from '@/lib/kpi-layouts';
+import { normalizeReportingType, usesCallCenterKpiLayout, type ReportingType } from '@/lib/kpi-layouts';
 
 export type ActionLogRow = {
   id: string;
@@ -54,7 +54,7 @@ export function snapshotForWindow(
   reportingType: ReportingType,
   benchmarks?: ClientKpiBenchmarks | null,
 ): ClientHealthSnapshot {
-  const isHe = normalizeReportingType(reportingType) === 'HE';
+  const isHe = usesCallCenterKpiLayout(reportingType);
   const spend: SpendRow[] = spendRows.map(r => ({ amount: r.amount, platform: 'platform' in r ? r.platform : undefined }));
   return isHe
     ? buildHeClientHealthSnapshot(events, benchmarks)

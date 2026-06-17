@@ -30,6 +30,14 @@ const MONTHS = {
   july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
 };
 
+export function normalizeReportingTypeForBackfill(value) {
+  const raw = String(value ?? '').trim().toUpperCase().replace(/\s+/g, '_');
+  if (raw === 'CALL_CENTER' || raw === 'CALLCENTER' || raw === 'CC' || raw === 'HE') return 'CALL_CENTER';
+  if (raw === 'DSCR') return 'DSCR';
+  if (raw === 'RM' || raw.includes('REVERSE')) return 'RM';
+  return 'RM';
+}
+
 export function loadJson(name) {
   return JSON.parse(readFileSync(resolve(IMPORT_DIR, name), 'utf-8'));
 }

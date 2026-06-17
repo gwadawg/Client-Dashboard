@@ -16,7 +16,7 @@ import {
   type OpenActionSummary,
 } from '@/lib/client-health';
 import { OPEN_ACTION_STATUSES } from '@/lib/client-health-interventions';
-import { normalizeReportingType } from '@/lib/kpi-layouts';
+import { normalizeReportingType, usesCallCenterKpiLayout } from '@/lib/kpi-layouts';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import type { EventRow, SpendRow } from '@/lib/metrics';
 
@@ -214,7 +214,7 @@ export async function GET(req: Request) {
   const rows = (clients ?? []).map(c => {
     const benchmarks = (c.kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
     const reporting_type = normalizeReportingType(c.reporting_type);
-    const isHe = reporting_type === 'HE';
+    const isHe = usesCallCenterKpiLayout(reporting_type);
     const toCostSlice = (
       events: EventRow[],
       spend: SpendRow[],

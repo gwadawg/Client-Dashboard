@@ -3,8 +3,10 @@
 import { useState, type ReactNode } from "react";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import TimezoneSelect from "@/components/TimezoneSelect";
-import ReportingTypeBadge, { ReportingTypeSelectOptions } from "@/components/ReportingTypeBadge";
+import ReportingTypeBadge, { ReportingTypeSelectOptions, ServiceProgramSelectOptions } from "@/components/ReportingTypeBadge";
 import { normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
+import { normalizeServiceProgram, serviceProgramApplies, type ServiceProgram, getServiceProgramLabel } from "@/lib/service-program";
+import { getReportingTypeLabel } from "@/lib/reporting-types";
 
 export type EditableClient = {
   name: string;
@@ -14,6 +16,7 @@ export type EditableClient = {
   billing_email: string | null;
   phone: string | null;
   reporting_type: string | null;
+  service_program?: string | null;
   source: string | null;
   website: string | null;
   brokerage_name: string | null;
@@ -41,6 +44,7 @@ type Draft = {
   email: string;
   phone: string;
   reporting_type: ReportingType;
+  service_program: ServiceProgram | "";
   source: string;
   website: string;
   brokerage_name: string;
@@ -76,6 +80,7 @@ export function clientToDraft(c: EditableClient): Draft {
     email: c.email || c.billing_email || "",
     phone: c.phone ?? "",
     reporting_type: normalizeReportingType(c.reporting_type),
+    service_program: normalizeServiceProgram(c.service_program) ?? "",
     source: c.source ?? "",
     website: c.website ?? "",
     brokerage_name: c.brokerage_name ?? "",
@@ -104,6 +109,9 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     email: draft.email.trim() || null,
     phone: draft.phone.trim() || null,
     reporting_type: draft.reporting_type,
+    service_program: serviceProgramApplies(draft.reporting_type)
+      ? normalizeServiceProgram(draft.service_program)
+      : null,
     source: draft.source.trim() || null,
     website: draft.website.trim() || null,
     brokerage_name: draft.brokerage_name.trim() || null,
@@ -193,9 +201,23 @@ export default function ClientFileEditForm({
           <Field label="Client name" value={draft.primary_contact_name} onChange={v => patch("primary_contact_name", v)} highlightEmpty />
           <Field label="Email" type="email" value={draft.email} onChange={v => patch("email", v)} highlightEmpty />
           <Field label="Phone" value={draft.phone} onChange={v => patch("phone", v)} highlightEmpty />
-          <SelectField label="Reporting type" value={draft.reporting_type} onChange={v => patch("reporting_type", normalizeReportingType(v))}>
+          <SelectField label="Client vertical" value={draft.reporting_type} onChange={v => {
+            const vertical = normalizeReportingType(v);
+            patch("reporting_type", vertical);
+            if (!serviceProgramApplies(vertical)) patch("service_program", "");
+          }}>
             <ReportingTypeSelectOptions />
           </SelectField>
+          {serviceProgramApplies(draft.reporting_type) ? (
+            <SelectField label="Service program" value={draft.service_program} onChange={v => patch("service_program", normalizeServiceProgram(v) ?? "")}>
+              <ServiceProgramSelectOptions />
+            </SelectField>
+          ) : (
+            <div>
+              <p className="text-xs uppercase tracking-wider mb-0.5" style={{ color: "#475569" }}>Service program</p>
+              <p className="text-sm" style={{ color: "#64748b" }}>N/A for Call Center clients</p>
+            </div>
+          )}
           <Field label="Lead source" value={draft.source} onChange={v => patch("source", v)} highlightEmpty />
           <Field label="Website" value={draft.website} onChange={v => patch("website", v)} highlightEmpty />
           <Field label="Brokerage" value={draft.brokerage_name} onChange={v => patch("brokerage_name", v)} highlightEmpty />

@@ -2,6 +2,7 @@ import type { MetricsResult } from "@/lib/metrics";
 import {
   DEFAULT_REPORTING_TYPE,
   normalizeReportingType,
+  usesCallCenterKpiLayout,
   usesHeKpiLayout,
   type ReportingType,
 } from "@/lib/reporting-types";
@@ -10,6 +11,7 @@ export {
   DEFAULT_REPORTING_TYPE,
   normalizeReportingType,
   usesHeKpiLayout,
+  usesCallCenterKpiLayout,
   usesRmKpiLayout,
   getReportingTypeLabel,
   REPORTING_TYPE_META,
@@ -225,7 +227,7 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
 ];
 
 export function getKpiSections(reportingType: ReportingType): KpiSectionDefinition[] {
-  return usesHeKpiLayout(reportingType) ? HE_KPI_SECTIONS : RM_KPI_SECTIONS;
+  return usesCallCenterKpiLayout(reportingType) ? HE_KPI_SECTIONS : RM_KPI_SECTIONS;
 }
 
 export function formatKpiValue(value: number, format: KpiFormat): string {

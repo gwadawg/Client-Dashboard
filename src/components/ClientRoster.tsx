@@ -16,9 +16,10 @@ import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import { syncIsLiveWithLifecycle } from "@/lib/lifecycle-sync";
 import { clientNeedsGhlMapping } from "@/lib/client-ghl-mapping";
-import { DEFAULT_REPORTING_TYPE, normalizeReportingType, usesHeKpiLayout, type ReportingType } from "@/lib/kpi-layouts";
+import { DEFAULT_REPORTING_TYPE, normalizeReportingType, usesCallCenterKpiLayout, type ReportingType } from "@/lib/kpi-layouts";
 import { REPORTING_TYPE_META, REPORTING_TYPES } from "@/lib/reporting-types";
-import ReportingTypeBadge, { ReportingTypeSelectOptions } from "@/components/ReportingTypeBadge";
+import { normalizeServiceProgram, SERVICE_PROGRAM_META, serviceProgramApplies } from "@/lib/service-program";
+import ReportingTypeBadge, { ReportingTypeSelectOptions, ServiceProgramBadge, ServiceProgramSelectOptions } from "@/components/ReportingTypeBadge";
 import {
   DEFAULT_KPI_BANDS,
   HE_KPI_KEYS,
@@ -41,6 +42,7 @@ type Client = {
   name: string;
   is_live?: boolean;
   reporting_type?: ReportingType;
+  service_program?: string | null;
   lifecycle_status?: string | null;
   mrr?: number | null;
   daily_adspend?: number | null;
@@ -92,7 +94,7 @@ function relativeAge(iso: string | null | undefined): string {
 }
 
 function kpiOrderForClient(client: Client): KpiKey[] {
-  return usesHeKpiLayout(client.reporting_type) ? HE_KPI_KEYS : RM_KPI_KEYS;
+  return usesCallCenterKpiLayout(client.reporting_type) ? HE_KPI_KEYS : RM_KPI_KEYS;
 }
 
 const BAND_KEYS: (keyof NonNullable<ClientKpiBenchmarks[KpiKey]>)[] = ["critical", "below", "at"];
@@ -334,6 +336,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<SectionKey | "all">("all");
   const [offerFilter, setOfferFilter] = useState<ReportingType | "all">("all");
+  const [programFilter, setProgramFilter] = useState<"all" | "core" | "lead_gen" | "unset">("all");
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [statusChange, setStatusChange] = useState<{ clientId: string; clientName: string; targetStatus: string } | null>(null);
@@ -491,12 +494,15 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const q = query.trim().toLowerCase();
   const matched = clients.filter(c => {
     if (offerFilter !== "all" && normalizeReportingType(c.reporting_type) !== offerFilter) return false;
+    if (programFilter === "core" && normalizeServiceProgram(c.service_program) !== "core") return false;
+    if (programFilter === "lead_gen" && normalizeServiceProgram(c.service_program) !== "lead_gen") return false;
+    if (programFilter === "unset" && normalizeServiceProgram(c.service_program) != null) return false;
     if (!q) return true;
     return clientMatchesQuery(c, q);
   });
   const grouped = groupClientsBySection(matched);
   const counts = groupClientsBySection(clients);
-  const isFiltering = q.length > 0 || statusFilter !== "all" || offerFilter !== "all";
+  const isFiltering = q.length > 0 || statusFilter !== "all" || offerFilter !== "all" || programFilter !== "all";
   const visibleSections = ROSTER_SECTIONS.filter(s => statusFilter === "all" || s.key === statusFilter);
   const matchTotal = visibleSections.reduce((n, s) => n + grouped[s.key].length, 0);
 
@@ -625,7 +631,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 );
               })}
             </div>
-            <div className="flex items-center gap-1 flex-wrap" title="Filter by client offer type">
+            <div className="flex items-center gap-1 flex-wrap" title="Filter by client vertical">
               <button
                 onClick={() => setOfferFilter("all")}
                 className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors"
@@ -635,7 +641,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                   border: `1px solid ${offerFilter === "all" ? "rgba(255,255,255,0.14)" : "transparent"}`,
                 }}
               >
-                All offers
+                All verticals
               </button>
               {REPORTING_TYPES.map(type => {
                 const active = offerFilter === type;
@@ -655,6 +661,30 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                   >
                     {meta.shortLabel}
                     <span style={{ color: active ? meta.color : "#475569" }}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-1 flex-wrap" title="Filter by service program (RM/DSCR)">
+              {([
+                { key: "all", label: "All programs" },
+                { key: "core", label: "Core" },
+                { key: "lead_gen", label: "Lead Gen" },
+                { key: "unset", label: "Unset" },
+              ] as const).map(opt => {
+                const active = programFilter === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    onClick={() => setProgramFilter(opt.key)}
+                    className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors"
+                    style={{
+                      color: active ? "#e2e8f0" : "#64748b",
+                      background: active ? "rgba(255,255,255,0.07)" : "transparent",
+                      border: `1px solid ${active ? "rgba(255,255,255,0.14)" : "transparent"}`,
+                    }}
+                  >
+                    {opt.label}
                   </button>
                 );
               })}
@@ -858,6 +888,7 @@ function ClientRow({
         <div className="flex flex-col gap-0.5 min-w-0">
             <span className="flex items-center gap-2 min-w-0">
             <ReportingTypeBadge value={c.reporting_type} />
+            <ServiceProgramBadge value={c.service_program} />
             <span className="text-sm font-medium truncate max-w-[16rem]" style={{ color: clientName ? "#e2e8f0" : "#475569" }} title={clientName || "No client name set"}>
               {clientName || "Unnamed client"}
             </span>
@@ -1073,7 +1104,7 @@ function BenchmarkEditor({
   const overrideCount = Object.values(draft).reduce((n, b) => n + Object.keys(b ?? {}).length, 0);
 
   const kpiOrder = kpiOrderForClient(client);
-  const isHe = usesHeKpiLayout(client.reporting_type);
+  const isCallCenter = usesCallCenterKpiLayout(client.reporting_type);
 
   return (
     <div className="space-y-3">
@@ -1085,7 +1116,7 @@ function BenchmarkEditor({
           <p className="text-xs mt-0.5 max-w-2xl" style={{ color: "#475569" }}>
             Leave a field blank to use the global default (shown as the placeholder). Overrides let you judge each
             client against its own bar — measurement stays identical, only the thresholds move.
-            {isHe ? " HE clients grade booking (÷ total leads), show rate, and pickup only." : ""}
+            {isCallCenter ? " Call Center clients grade booking (÷ total leads) and show rate only." : ""}
           </p>
           {hasOverrides && (
             <p className="text-xs mt-1" style={{ color: stale ? "#f59e0b" : "#64748b" }}>
@@ -1277,7 +1308,7 @@ function AddClientForm({
         <Field label="Email">
           <input value={email} onChange={e => setEmail(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} />
         </Field>
-        <Field label="Reporting type">
+        <Field label="Client vertical">
           <select value={reportingType} onChange={e => setReportingType(normalizeReportingType(e.target.value))} className="px-2 py-1.5 rounded-lg text-sm outline-none cursor-pointer" style={fieldStyle()}>
             <ReportingTypeSelectOptions />
           </select>

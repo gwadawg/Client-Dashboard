@@ -30,8 +30,9 @@ import {
   noteTypeLabel,
   reasonLabel,
 } from "@/lib/client-feedback";
+import ReportingTypeBadge, { ServiceProgramBadge } from "@/components/ReportingTypeBadge";
 import { getReportingTypeLabel } from "@/lib/reporting-types";
-import ReportingTypeBadge from "@/components/ReportingTypeBadge";
+import { getServiceProgramLabel } from "@/lib/service-program";
 import { formatStatesLicensed } from "@/lib/us-states";
 import { timezoneLabel } from "@/lib/us-timezones";
 import ClientContactsSection from "@/components/ClientContactsSection";
@@ -77,6 +78,7 @@ type FileClient = {
   name: string;
   is_live: boolean | null;
   reporting_type: string | null;
+  service_program?: string | null;
   lifecycle_status: string | null;
   client_stage: string | null;
   mrr: number | null;
@@ -618,6 +620,7 @@ export default function ClientFile({
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>{name}</h2>
               {client?.reporting_type && <ReportingTypeBadge value={client.reporting_type} size="md" />}
+              {client?.service_program && <ServiceProgramBadge value={client.service_program} size="md" />}
               {client && !editing ? (
                 <LifecycleStatusSelect
                   value={client.lifecycle_status}
@@ -771,7 +774,7 @@ export default function ClientFile({
                 <Detail label="Email" value={client?.email || client?.billing_email} missing={!client?.email && !client?.billing_email} />
                 <Detail label="Phone" value={client?.phone} missing={!client?.phone} />
                 <Detail
-                  label="Offer type"
+                  label="Client vertical"
                   value={client?.reporting_type ? (
                     <span className="inline-flex items-center gap-2">
                       <ReportingTypeBadge value={client.reporting_type} size="md" />
@@ -779,6 +782,15 @@ export default function ClientFile({
                     </span>
                   ) : null}
                   missing={!client?.reporting_type}
+                />
+                <Detail
+                  label="Service program"
+                  value={client?.service_program ? (
+                    <span className="inline-flex items-center gap-2">
+                      <ServiceProgramBadge value={client.service_program} size="md" />
+                      <span>{getServiceProgramLabel(client.service_program)}</span>
+                    </span>
+                  ) : "—"}
                 />
                 <Detail label="Lead source" value={client?.source} missing={!client?.source} />
                 <Detail label="Website" value={client?.website} missing={!client?.website} />

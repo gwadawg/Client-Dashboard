@@ -8,6 +8,7 @@ import {
   type SuccessMetricKey,
 } from "@/lib/client-health";
 import { defaultReviewDateFromTimebox } from "@/lib/client-health-interventions";
+import { normalizeReportingType } from "@/lib/kpi-layouts";
 
 export type ActionLog = {
   id: string;
@@ -177,7 +178,7 @@ export default function ClientActionLog({
   const submit = async () => {
     if (!title.trim()) return;
     setSaving(true);
-    const baseline = metricValue(snapshot, successMetric, reportingType as "RM" | "HE");
+    const baseline = metricValue(snapshot, successMetric, normalizeReportingType(reportingType));
     const res = await fetch(`/api/client-actions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -300,7 +301,7 @@ export default function ClientActionLog({
                 ))}
               </select>
               <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
-                Baseline now: {formatMetric(successMetric, metricValue(snapshot, successMetric, reportingType as "RM" | "HE"))}
+                Baseline now: {formatMetric(successMetric, metricValue(snapshot, successMetric, normalizeReportingType(reportingType)))}
               </p>
             </div>
             <div>

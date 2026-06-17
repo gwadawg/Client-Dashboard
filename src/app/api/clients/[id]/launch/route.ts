@@ -7,13 +7,15 @@ import { isKickoffIncomplete } from '@/lib/kickoff';
 import {
   getLaunchChecklistConfig,
   getFirstIncompleteItemKey,
+  getLaunchItemsForProfile,
   isLaunchChecklistComplete,
   isLaunchItemSatisfied,
-  LAUNCH_CHECKLIST_ITEMS,
   LAUNCH_FINAL_CONFIRMATION,
   launchDraftToResponses,
+  profileFromClient,
   type LaunchFormDraft,
 } from '@/lib/launch-form';
+import type { OnboardingFormProfile } from '@/lib/onboarding-form-profile';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import { hasPermission } from '@/lib/permissions';
 import { notifyLaunchComplete } from '@/lib/notifications';
@@ -60,25 +62,26 @@ export async function listAssignableLaunchUsers(
     .sort((a, b) => a.email.localeCompare(b.email));
 }
 
-function parseLaunchDraft(body: Record<string, unknown>): LaunchFormDraft {
+function parseLaunchDraft(body: Record<string, unknown>, profile: OnboardingFormProfile): LaunchFormDraft {
+  const items = getLaunchItemsForProfile(profile);
   const confirmations: Record<string, string> = {};
   const rawConfirmations = body.confirmations;
   if (rawConfirmations && typeof rawConfirmations === 'object') {
-    for (const item of LAUNCH_CHECKLIST_ITEMS) {
+    for (const item of items) {
       if (item.confirmType === 'type_yes') {
         const val = (rawConfirmations as Record<string, unknown>)[item.key];
         confirmations[item.key] = typeof val === 'string' ? val : '';
       }
     }
   } else {
-    for (const item of LAUNCH_CHECKLIST_ITEMS) {
+    for (const item of items) {
       if (item.confirmType === 'type_yes') confirmations[item.key] = '';
     }
   }
 
   const checklist: Record<string, boolean> = {};
   const rawChecklist = body.checklist;
-  for (const item of LAUNCH_CHECKLIST_ITEMS) {
+  for (const item of items) {
     checklist[item.key] =
       rawChecklist && typeof rawChecklist === 'object'
         ? !!(rawChecklist as Record<string, boolean>)[item.key]
@@ -98,6 +101,7 @@ function parseLaunchDraft(body: Record<string, unknown>): LaunchFormDraft {
 
 function validateLaunchDraft(
   draft: LaunchFormDraft,
+  profile: OnboardingFormProfile,
   assignableUsers: { id: string; email: string }[],
 ): NextResponse | null {
   if (!draft.completed_by_user_id) {
@@ -120,9 +124,9 @@ function validateLaunchDraft(
     );
   }
 
-  if (!isLaunchChecklistComplete(draft)) {
-    const incompleteKey = getFirstIncompleteItemKey(draft);
-    const incompleteItem = LAUNCH_CHECKLIST_ITEMS.find(item => item.key === incompleteKey);
+  if (!isLaunchChecklistComplete(draft, profile)) {
+    const incompleteKey = getFirstIncompleteItemKey(draft, profile);
+    const incompleteItem = getLaunchItemsForProfile(profile).find(item => item.key === incompleteKey);
     const hint = incompleteItem
       ? incompleteItem.confirmType === 'type_yes'
         ? `"${incompleteItem.label}" requires typing yes and checking the box`
@@ -145,7 +149,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const [clientRes, launchSubRes, onboardingCallRes, assignableUsers] = await Promise.all([
     ctx.service
       .from('clients')
-      .select('id, name, lifecycle_status, ghl_location_id, primary_contact_name, launch_date, slack_id')
+      .select('id, name, lifecycle_status, ghl_location_id, primary_contact_name, launch_date, slack_id, reporting_type, service_program')
       .eq('id', clientId)
       .single(),
     ctx.service
@@ -174,6 +178,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: clientRes.error.message }, { status });
   }
 
+  const formProfile = profileFromClient(clientRes.data);
   const kickoffIncomplete = isKickoffIncomplete(clientRes.data, onboardingCallRes.data);
   const defaultUser = assignableUsers.find(u => u.id === ctx.userId);
 
@@ -182,7 +187,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     kickoff_complete: !kickoffIncomplete,
     already_launched: !!launchSubRes.data,
     default_launch_date: clientRes.data.launch_date ?? new Date().toISOString().slice(0, 10),
-    checklist_config: getLaunchChecklistConfig(),
+    form_profile: formProfile,
+    checklist_config: getLaunchChecklistConfig(formProfile),
     assignable_users: assignableUsers,
     default_completed_by: ctx.userId,
     default_completed_by_label: defaultUser?.email ?? ctx.userId,
@@ -196,17 +202,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (denied) return denied;
 
   const { id: clientId } = await params;
-  const body = await req.json();
-  const draft = parseLaunchDraft(body);
-
-  const assignableUsers = await listAssignableLaunchUsers(ctx.service);
-  const validationError = validateLaunchDraft(draft, assignableUsers);
-  if (validationError) return validationError;
 
   const [clientRes, launchSubRes, onboardingCallRes] = await Promise.all([
     ctx.service
       .from('clients')
-      .select('id, name, lifecycle_status, slack_id, launch_date, ghl_location_id, primary_contact_name')
+      .select('id, name, lifecycle_status, slack_id, launch_date, ghl_location_id, primary_contact_name, reporting_type, service_program')
       .eq('id', clientId)
       .single(),
     ctx.service
@@ -233,6 +233,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const client = clientRes.data;
+  const formProfile = profileFromClient(client);
+  const body = await req.json();
+  const draft = parseLaunchDraft(body, formProfile);
+
+  const assignableUsers = await listAssignableLaunchUsers(ctx.service);
+  const validationError = validateLaunchDraft(draft, formProfile, assignableUsers);
+  if (validationError) return validationError;
 
   if (launchSubRes.data) {
     return NextResponse.json({ error: 'This client already has a completed launch checklist' }, { status: 409 });
@@ -252,8 +259,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     );
   }
 
-  // Belt-and-suspenders: re-validate each item explicitly
-  for (const item of LAUNCH_CHECKLIST_ITEMS) {
+  const profileItems = getLaunchItemsForProfile(formProfile);
+  for (const item of profileItems) {
     if (!isLaunchItemSatisfied(item, draft)) {
       return NextResponse.json(
         { error: `Checklist item not satisfied: ${item.label}` },
@@ -262,7 +269,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
-  const responses = launchDraftToResponses(draft);
+  const responses = launchDraftToResponses(draft, {
+    reporting_type: client.reporting_type ?? undefined,
+    service_program: client.service_program ?? null,
+    form_profile: formProfile,
+  });
   const lifecycleStatus = 'active';
   const syncedLive = syncIsLiveWithLifecycle(lifecycleStatus, undefined);
 

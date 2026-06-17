@@ -1,22 +1,31 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReportingTypeBadge, { ServiceProgramBadge } from "@/components/ReportingTypeBadge";
+import { ONBOARDING_PROFILE_META } from "@/lib/onboarding-form-profile";
 import {
   countSatisfiedInSection,
   countSatisfiedItems,
   emptyLaunchDraft,
+  getLaunchItemsForProfile,
+  getLaunchSectionsForProfile,
   isLaunchChecklistComplete,
   isLaunchItemSatisfied,
   isTypedYes,
-  LAUNCH_CHECKLIST_ITEMS,
   LAUNCH_FINAL_CONFIRMATION,
-  LAUNCH_SECTIONS,
   type LaunchChecklistItemDef,
   type LaunchFormDraft,
   type LaunchSectionId,
 } from "@/lib/launch-form";
+import type { OnboardingFormProfile } from "@/lib/onboarding-form-profile";
 
 type AssignableUser = { id: string; email: string };
+
+type ChecklistConfig = {
+  profile: OnboardingFormProfile;
+  sections: { id: LaunchSectionId; label: string }[];
+  items: LaunchChecklistItemDef[];
+};
 
 type Props = {
   clientId: string;
@@ -40,6 +49,9 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
   const [kickoffComplete, setKickoffComplete] = useState(true);
   const [alreadyLaunched, setAlreadyLaunched] = useState(false);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  const [formProfile, setFormProfile] = useState<OnboardingFormProfile>("marketing_core");
+  const [checklistConfig, setChecklistConfig] = useState<ChecklistConfig | null>(null);
+  const [clientMeta, setClientMeta] = useState<{ reporting_type?: string; service_program?: string | null }>({});
   const [draft, setDraft] = useState<LaunchFormDraft>(emptyLaunchDraft());
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -54,12 +66,20 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
         setLoading(false);
         return;
       }
+      const profile = (data.form_profile ?? "marketing_core") as OnboardingFormProfile;
       setClientName(data.client?.name ?? fallbackName);
       setKickoffComplete(!!data.kickoff_complete);
       setAlreadyLaunched(!!data.already_launched);
       setAssignableUsers(data.assignable_users ?? []);
+      setFormProfile(profile);
+      setChecklistConfig(data.checklist_config ?? null);
+      setClientMeta({
+        reporting_type: data.client?.reporting_type,
+        service_program: data.client?.service_program,
+      });
       setDraft(
         emptyLaunchDraft(
+          profile,
           data.default_launch_date ?? "",
           data.default_completed_by ?? "",
           data.default_completed_by_label ?? "",
@@ -109,9 +129,10 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
       setSaveError("Complete the kick-off call before launching.");
       return;
     }
-    if (!isLaunchChecklistComplete(draft)) {
+    if (!isLaunchChecklistComplete(draft, formProfile)) {
       setSaveError("Confirm every checklist item, select completed-by, and type LAUNCH before going live.");
-      const firstIncomplete = LAUNCH_CHECKLIST_ITEMS.find(item => !isLaunchItemSatisfied(item, draft));
+      const items = getLaunchItemsForProfile(formProfile);
+      const firstIncomplete = items.find(item => !isLaunchItemSatisfied(item, draft));
       if (firstIncomplete) scrollToItem(firstIncomplete.key);
       return;
     }
@@ -132,9 +153,10 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
     onClose();
   }
 
-  const totalItems = LAUNCH_CHECKLIST_ITEMS.length;
-  const satisfiedCount = countSatisfiedItems(draft);
-  const canSubmit = kickoffComplete && isLaunchChecklistComplete(draft) && !saving;
+  const totalItems = checklistConfig?.items.length ?? getLaunchItemsForProfile(formProfile).length;
+  const satisfiedCount = countSatisfiedItems(draft, formProfile);
+  const canSubmit = kickoffComplete && isLaunchChecklistComplete(draft, formProfile) && !saving;
+  const sections = checklistConfig?.sections ?? getLaunchSectionsForProfile(formProfile);
 
   return (
     <div
@@ -149,9 +171,13 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
       >
         <div className="px-6 py-4 flex items-start justify-between gap-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
           <div>
-            <h2 className="text-lg font-semibold text-slate-200">Launch Checklist</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-semibold text-slate-200">Launch Checklist</h2>
+              {clientMeta.reporting_type && <ReportingTypeBadge value={clientMeta.reporting_type} size="sm" />}
+              {clientMeta.service_program && <ServiceProgramBadge value={clientMeta.service_program} size="sm" />}
+            </div>
             <p className="text-sm mt-0.5 text-slate-500">
-              {clientName} — confirm every department is ready before going live.
+              {clientName} — {ONBOARDING_PROFILE_META[formProfile].label}
             </p>
             {!loading && !error && !alreadyLaunched && (
               <p className="text-xs mt-1 text-slate-400">{satisfiedCount} / {totalItems} confirmed</p>
@@ -206,11 +232,12 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
                 </label>
               </div>
 
-              {LAUNCH_SECTIONS.map(section => (
+              {sections.map(section => (
                 <SectionBlock
                   key={section.id}
                   sectionId={section.id}
                   label={section.label}
+                  profile={formProfile}
                   draft={draft}
                   itemRefs={itemRefs}
                   onPatchChecklist={patchChecklist}
@@ -272,6 +299,7 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
 function SectionBlock({
   sectionId,
   label,
+  profile,
   draft,
   itemRefs,
   onPatchChecklist,
@@ -279,13 +307,15 @@ function SectionBlock({
 }: {
   sectionId: LaunchSectionId;
   label: string;
+  profile: OnboardingFormProfile;
   draft: LaunchFormDraft;
   itemRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
   onPatchChecklist: (key: string, checked: boolean) => void;
   onPatchConfirmation: (key: string, value: string) => void;
 }) {
-  const { satisfied, total } = countSatisfiedInSection(sectionId, draft);
-  const items = LAUNCH_CHECKLIST_ITEMS.filter(item => item.section === sectionId);
+  const { satisfied, total } = countSatisfiedInSection(sectionId, draft, profile);
+  const items = getLaunchItemsForProfile(profile).filter(item => item.section === sectionId);
+  if (items.length === 0) return null;
 
   return (
     <section

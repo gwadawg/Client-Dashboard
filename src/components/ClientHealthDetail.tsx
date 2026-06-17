@@ -21,7 +21,7 @@ type MaturityInfo = {
   recent_start: string;
   recent_end: string;
 };
-import { normalizeReportingType } from "@/lib/kpi-layouts";
+import { normalizeReportingType, usesCallCenterKpiLayout } from "@/lib/kpi-layouts";
 import { callTypeLabel } from "@/lib/client-calls";
 import { noteTypeLabel, reasonLabel } from "@/lib/client-feedback";
 import ClientActionLog from "./ClientActionLog";
@@ -176,7 +176,7 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
         </div>
       ) : data ? (
         (() => {
-          const isHe = normalizeReportingType(data.reporting_type) === "HE";
+          const isHe = usesCallCenterKpiLayout(data.reporting_type);
           const layerGroups = isHe ? HE_LAYER_GROUPS : LAYER_GROUPS;
           const m = data.current.metrics;
 

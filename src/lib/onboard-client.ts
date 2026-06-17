@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import type { ReportingType } from '@/lib/reporting-types';
+import { normalizeServiceProgram, serviceProgramApplies } from '@/lib/service-program';
 import { findClientConflicts } from '@/lib/client-duplicate-check';
 import { clientNamesMatch } from '@/lib/client-name-match';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
@@ -48,7 +49,9 @@ function normalizeOffer(v: unknown): ReportingType | null {
 }
 
 function reportingTypeFromOffer(offer: ReportingType | null, explicit: unknown): ReportingType {
-  if (explicit === 'HE' || explicit === 'RM' || explicit === 'DSCR') return explicit as ReportingType;
+  if (explicit === 'HE' || explicit === 'RM' || explicit === 'DSCR' || explicit === 'CALL_CENTER') {
+    return normalizeReportingType(explicit);
+  }
   if (offer) return offer;
   return normalizeReportingType(explicit);
 }
@@ -73,6 +76,10 @@ export function parseOnboardPayload(body: OnboardPayload) {
   const email = trimString(body.email);
   const billingEmail = trimString(body.billing_email) ?? email;
   const offer = normalizeOffer(body.offer) ?? normalizeOffer(body.reporting_type);
+  const reporting_type = reportingTypeFromOffer(offer, body.reporting_type);
+  const service_program = serviceProgramApplies(reporting_type)
+    ? normalizeServiceProgram(body.service_program ?? body.serviceProgram)
+    : null;
   const dateSigned = trimString(body.date_signed);
 
   const lifecycleStatus = trimString(body.lifecycle_status) ?? 'new_account';
@@ -90,7 +97,8 @@ export function parseOnboardPayload(body: OnboardPayload) {
     contract_term_months: numberField(body.contract_term_months),
     date_signed: dateSigned,
     offer,
-    reporting_type: reportingTypeFromOffer(offer, body.reporting_type),
+    reporting_type,
+    service_program,
     nmls: trimString(body.nmls),
     brokerage_name: trimString(body.brokerage_name),
     ghl_location_id: trimString(body.ghl_location_id) ?? trimString(body.location_id),
@@ -195,7 +203,7 @@ function buildClientRecord(parsed: ParsedOnboard): Record<string, unknown> {
   };
   const optional: (keyof ParsedOnboard)[] = [
     'email', 'billing_email', 'primary_contact_name', 'phone', 'mrr',
-    'billing_type', 'contract_term_months', 'date_signed', 'offer', 'nmls',
+    'billing_type', 'contract_term_months', 'date_signed', 'offer', 'service_program', 'nmls',
     'brokerage_name', 'ghl_location_id', 'ghl_contact_id',
     'ghl_subaccount_url', 'source',
     'clickup_task_id', 'slack_id',

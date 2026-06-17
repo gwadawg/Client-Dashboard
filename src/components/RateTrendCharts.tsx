@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import type { KpiTimelineBucket } from "@/lib/metrics";
-import type { ReportingType } from "@/lib/kpi-layouts";
+import { usesCallCenterKpiLayout, type ReportingType } from "@/lib/kpi-layouts";
 
 type Props = {
   clientId?: string;
@@ -161,7 +161,7 @@ export default function RateTrendCharts({ clientId, liveOnly, startDate, endDate
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {CHARTS.filter(chart =>
-        reportingType === "HE" ? !chart.rmOnly : !chart.heOnly,
+        usesCallCenterKpiLayout(reportingType) ? !chart.rmOnly : !chart.heOnly,
       ).map(chart => (
         <ChartPanel
           key={chart.key}

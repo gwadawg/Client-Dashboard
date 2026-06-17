@@ -77,7 +77,8 @@ create table if not exists clients (
   kpi_benchmarks jsonb,
 
   -- Offer / identity
-  offer               text,       -- RM | HE (mirrors reporting_type)
+  offer               text,       -- RM | DSCR | CALL_CENTER (mirrors reporting_type)
+  service_program     text,       -- core | lead_gen (RM/DSCR only)
   nmls                text,
   brokerage_name      text,
   legal_business_name text,
@@ -111,7 +112,7 @@ create table if not exists clients (
   -- Sync key for a future ClickUp → Supabase import
   clickup_task_id text,
 
-  constraint clients_reporting_type_check check (reporting_type in ('RM', 'HE', 'DSCR'))
+  constraint clients_reporting_type_check check (reporting_type in ('RM', 'DSCR', 'CALL_CENTER', 'HE'))
 );
 
 -- Additive columns (so re-running on an older clients table backfills them)
@@ -129,6 +130,7 @@ alter table clients add column if not exists contract_end_date      date;
 alter table clients add column if not exists cs_status              text;
 alter table clients add column if not exists ad_status              text;
 alter table clients add column if not exists offer                  text;
+alter table clients add column if not exists service_program        text;
 alter table clients add column if not exists nmls                   text;
 alter table clients add column if not exists brokerage_name         text;
 alter table clients add column if not exists legal_business_name    text;

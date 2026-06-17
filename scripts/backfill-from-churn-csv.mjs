@@ -21,6 +21,7 @@ import {
   buildChurnResponses,
   isBlank,
   formatChurnHistoryNote,
+  normalizeReportingTypeForBackfill,
 } from './lib/backfill-match.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -110,8 +111,8 @@ async function main() {
       lifecycle_status: 'churned',
       is_live: false,
     };
-    if (row.offer && ['HE', 'RM', 'DSCR'].includes(row.offer) && isBlank(client.reporting_type)) {
-      patch.reporting_type = row.offer;
+    if (row.offer && ['HE', 'RM', 'DSCR', 'CALL_CENTER', 'CC'].includes(row.offer) && isBlank(client.reporting_type)) {
+      patch.reporting_type = normalizeReportingTypeForBackfill(row.offer);
     }
 
     const actions = {

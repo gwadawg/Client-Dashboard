@@ -8,10 +8,23 @@ import {
 } from '@/lib/client-revenue-access';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import {
+  getOnboardingFormProfile,
+  isClientVerticalConfirmed,
+  resolveServiceProgramForSave,
+  validateKickoffClassification,
+} from '@/lib/onboarding-form-profile';
+import {
   KICKOFF_CLIENT_FIELDS,
+  getKickoffConfig,
+  isKickoffFieldVisible,
   isKickoffIncomplete,
+  kickoffDraftFromClient,
+  kickoffExtraFieldsFromDraft,
   type KickoffClient,
+  type KickoffDraft,
 } from '@/lib/kickoff';
+import { insertFormSubmission } from '@/lib/form-submissions';
+import { normalizeReportingType } from '@/lib/reporting-types';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 import {
   findClientConflicts,
@@ -51,6 +64,61 @@ async function findOnboardingCall(service: SupabaseClient, clientId: string) {
   return data;
 }
 
+async function findLatestKickoffVerticalConfirmed(
+  service: SupabaseClient,
+  clientId: string,
+): Promise<boolean> {
+  const { data } = await service
+    .from('client_form_submissions')
+    .select('responses')
+    .eq('client_id', clientId)
+    .eq('form_type', 'kickoff')
+    .eq('status', 'applied')
+    .order('submitted_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const responses = data?.responses as Record<string, unknown> | undefined;
+  return responses?.vertical_confirmed === true;
+}
+
+function draftFromBody(body: Record<string, unknown>): KickoffDraft {
+  return {
+    reporting_type: normalizeReportingType(body.reporting_type),
+    service_program: (optionalText(body.service_program) as KickoffDraft['service_program']) || '',
+    vertical_confirmed: body.vertical_confirmed === true,
+    sub_account_name: optionalText(body.sub_account_name) ?? '',
+    phone: optionalText(body.phone) ?? '',
+    contact_role: optionalText(body.contact_role) ?? '',
+    states_licensed: normalizeStatesLicensed(body.states_licensed) ?? [],
+    nmls: optionalText(body.nmls) ?? '',
+    brokerage_name: optionalText(body.brokerage_name) ?? '',
+    timezone: optionalText(body.timezone) ?? '',
+    appointment_settings: optionalText(body.appointment_settings) ?? '',
+    daily_adspend: body.daily_adspend != null ? String(body.daily_adspend) : '',
+    facebook_page_name: optionalText(body.facebook_page_name) ?? '',
+    phone_notifications: optionalText(body.phone_notifications) ?? '',
+    phone_live_transfer: optionalText(body.phone_live_transfer) ?? '',
+    live_transfer_approved:
+      body.live_transfer_approved === true || body.live_transfer_approved === 'yes'
+        ? 'yes'
+        : body.live_transfer_approved === false || body.live_transfer_approved === 'no'
+          ? 'no'
+          : '',
+    ghl_location_id: optionalText(body.ghl_location_id) ?? '',
+    recording_url: optionalText(body.recording_url) ?? '',
+    advance_lifecycle: body.advance_lifecycle !== false,
+    pm_landing_copy: optionalText(body.pm_landing_copy) ?? '',
+    pm_brand_assets: optionalText(body.pm_brand_assets) ?? '',
+    pm_compliance_notes: optionalText(body.pm_compliance_notes) ?? '',
+    pm_competitor_refs: optionalText(body.pm_competitor_refs) ?? '',
+    pm_funnel_requirements: optionalText(body.pm_funnel_requirements) ?? '',
+    cc_lead_source: optionalText(body.cc_lead_source) ?? '',
+    cc_qualification_criteria: optionalText(body.cc_qualification_criteria) ?? '',
+    cc_hp_tag_user: optionalText(body.cc_hp_tag_user) ?? '',
+    cc_setter_notes: optionalText(body.cc_setter_notes) ?? '',
+  };
+}
+
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -61,9 +129,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
   const includeRevenue = canViewClientRevenue(subject);
 
-  const [clientRes, onboardingCall] = await Promise.all([
+  const [clientRes, onboardingCall, priorKickoffConfirmed] = await Promise.all([
     ctx.service.from('clients').select(KICKOFF_CLIENT_FIELDS).eq('id', id).single(),
     findOnboardingCall(ctx.service, id),
+    findLatestKickoffVerticalConfirmed(ctx.service, id),
   ]);
 
   if (clientRes.error) {
@@ -71,15 +140,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: clientRes.error.message }, { status });
   }
 
+  const rawClient = clientRes.data as KickoffClient;
+  const verticalConfirmed = isClientVerticalConfirmed({
+    reporting_type: rawClient.reporting_type,
+    offer: rawClient.offer,
+    service_program: rawClient.service_program,
+    vertical_confirmed: priorKickoffConfirmed,
+  });
+
   const client = includeRevenue
-    ? (clientRes.data as KickoffClient)
-    : (redactClientMoneyFields(clientRes.data) as KickoffClient);
+    ? rawClient
+    : (redactClientMoneyFields(rawClient) as KickoffClient);
+
+  const formProfile = getOnboardingFormProfile(client.reporting_type, client.service_program);
 
   return NextResponse.json({
     client,
     onboarding_call: onboardingCall,
     kickoff_complete: !isKickoffIncomplete(client, onboardingCall),
     can_view_revenue: includeRevenue,
+    vertical_confirmed: verticalConfirmed,
+    form_profile: formProfile,
+    kickoff_config: getKickoffConfig(formProfile, includeRevenue),
   });
 }
 
@@ -95,6 +177,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const includeRevenue = canViewClientRevenue(subject);
 
   const saveMode = body.save_mode === 'progress' ? 'progress' : 'complete';
+  const draft = draftFromBody(body);
+  const formProfile = getOnboardingFormProfile(draft.reporting_type, draft.service_program);
+
+  const classificationError = validateKickoffClassification(
+    draft.reporting_type,
+    draft.service_program,
+    saveMode,
+  );
+  if (classificationError) {
+    return NextResponse.json({ error: classificationError }, { status: 400 });
+  }
+
+  if (saveMode === 'complete' && !draft.vertical_confirmed) {
+    return NextResponse.json(
+      { error: 'Confirm client vertical before completing kick-off' },
+      { status: 400 },
+    );
+  }
+
   let ghlLocationId = optionalText(body.ghl_location_id);
   let recordingUrl = optionalText(body.recording_url);
   const subAccountName = optionalText(body.sub_account_name);
@@ -151,25 +252,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const updates: Record<string, unknown> = {
+    reporting_type: draft.reporting_type,
+    service_program: resolveServiceProgramForSave(draft.reporting_type, draft.service_program),
     phone: optionalText(body.phone),
     contact_role: optionalText(body.contact_role),
     states_licensed: normalizeStatesLicensed(body.states_licensed),
     nmls: optionalText(body.nmls),
     brokerage_name: optionalText(body.brokerage_name),
     timezone: optionalText(body.timezone),
-    appointment_settings: optionalText(body.appointment_settings),
-    facebook_page_name: optionalText(body.facebook_page_name),
-    phone_notifications: optionalText(body.phone_notifications),
-    phone_live_transfer: optionalText(body.phone_live_transfer),
-    live_transfer_approved: parseLiveTransferApproved(body.live_transfer_approved),
   };
+
+  if (isKickoffFieldVisible('appointment_settings', formProfile, includeRevenue)) {
+    updates.appointment_settings = optionalText(body.appointment_settings);
+  }
+  if (isKickoffFieldVisible('facebook_page_name', formProfile, includeRevenue)) {
+    updates.facebook_page_name = optionalText(body.facebook_page_name);
+  }
+  if (isKickoffFieldVisible('phone_notifications', formProfile, includeRevenue)) {
+    updates.phone_notifications = optionalText(body.phone_notifications);
+  }
+  if (isKickoffFieldVisible('phone_live_transfer', formProfile, includeRevenue)) {
+    updates.phone_live_transfer = optionalText(body.phone_live_transfer);
+    updates.live_transfer_approved = parseLiveTransferApproved(body.live_transfer_approved);
+  }
+  if (includeRevenue && isKickoffFieldVisible('daily_adspend', formProfile, includeRevenue)) {
+    updates.daily_adspend = parseDailyAdspend(body.daily_adspend);
+  }
 
   if (ghlLocationId) updates.ghl_location_id = ghlLocationId;
   if (subAccountName) updates.name = subAccountName;
-
-  if (includeRevenue) {
-    updates.daily_adspend = parseDailyAdspend(body.daily_adspend);
-  }
 
   if (saveMode === 'complete') {
     const advanceLifecycle = body.advance_lifecycle !== false;
@@ -246,11 +357,46 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
+  if (saveMode === 'complete') {
+    try {
+      const extraFields = kickoffExtraFieldsFromDraft(formProfile, draft);
+      await insertFormSubmission(ctx.service, {
+        client_id: clientId,
+        form_type: 'kickoff',
+        status: 'applied',
+        submitted_by: ctx.userId,
+        responses: {
+          ...extraFields,
+          reporting_type: draft.reporting_type,
+          service_program: resolveServiceProgramForSave(draft.reporting_type, draft.service_program),
+          form_profile: formProfile,
+          vertical_confirmed: draft.vertical_confirmed,
+          sub_account_name: subAccountName,
+          ghl_location_id: ghlLocationId,
+          recording_url: recordingUrl,
+        },
+        applied_patch: updates,
+      });
+    } catch (e) {
+      console.error('[kickoff] form submission log failed', e);
+    }
+  }
+
+  const verticalConfirmed = isClientVerticalConfirmed({
+    reporting_type: kickoffClient.reporting_type,
+    offer: kickoffClient.offer,
+    service_program: kickoffClient.service_program,
+    vertical_confirmed: draft.vertical_confirmed,
+  });
+
   return NextResponse.json({
     client: redactedClient,
     onboarding_call: onboardingCall,
     kickoff_complete: !isKickoffIncomplete(kickoffClient, onboardingCall),
     saved_mode: saveMode,
     pending_replay,
+    vertical_confirmed: verticalConfirmed,
+    form_profile: formProfile,
+    kickoff_config: getKickoffConfig(formProfile, includeRevenue),
   });
 }

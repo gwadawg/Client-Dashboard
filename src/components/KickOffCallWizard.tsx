@@ -1,18 +1,37 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import ReportingTypeBadge, { ServiceProgramBadge } from "@/components/ReportingTypeBadge";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import {
+  getOnboardingFormProfile,
+} from "@/lib/onboarding-form-profile";
+import {
+  CC_KICKOFF_FIELD_LABELS,
   CONTACT_ROLE_OPTIONS,
   countKickoffFieldsOnFile,
+  getKickoffConfig,
+  isKickoffFieldVisible,
+  isKickoffSetupResolved,
   kickoffDraftFromClient,
   kickoffDraftToBody,
   kickoffFieldHadValue,
   kickoffFieldsMatch,
   type KickoffClient,
+  type KickoffConfig,
   type KickoffDraft,
 } from "@/lib/kickoff";
+import {
+  getReportingTypeLabel,
+  REPORTING_TYPE_META,
+  type ReportingType,
+} from "@/lib/reporting-types";
+import {
+  SERVICE_PROGRAM_META,
+  serviceProgramApplies,
+  type ServiceProgram,
+} from "@/lib/service-program";
 
 type Props = {
   clientId: string;
@@ -65,6 +84,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
   const [initialSnapshot, setInitialSnapshot] = useState<KickoffDraft | null>(null);
   const [kickoffComplete, setKickoffComplete] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [showVerticalPicker, setShowVerticalPicker] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,21 +101,55 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
       }
       const c = data.client as KickoffClient;
       const recording = data.onboarding_call?.recording_url ?? "";
-      const nextDraft = kickoffDraftFromClient(c, recording);
+      const verticalConfirmed = !!data.vertical_confirmed;
+      const nextDraft = kickoffDraftFromClient(c, recording, verticalConfirmed);
       setClientName(c.name || fallbackName);
       setCanViewRevenue(!!data.can_view_revenue);
       setDraft(nextDraft);
       setInitialSnapshot(nextDraft);
       setKickoffComplete(!!data.kickoff_complete);
+      setShowVerticalPicker(!verticalConfirmed);
       setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [clientId, fallbackName]);
 
+  const formProfile = useMemo(
+    () => (draft ? getOnboardingFormProfile(draft.reporting_type, draft.service_program) : "marketing_core"),
+    [draft],
+  );
+
+  const kickoffConfig: KickoffConfig = useMemo(
+    () => getKickoffConfig(formProfile, canViewRevenue),
+    [formProfile, canViewRevenue],
+  );
+
+  function visible(key: Parameters<typeof isKickoffFieldVisible>[0]) {
+    return isKickoffFieldVisible(key, formProfile, canViewRevenue);
+  }
+
   function patch<K extends keyof KickoffDraft>(key: K, value: KickoffDraft[K]) {
     setDraft(prev => (prev ? { ...prev, [key]: value } : prev));
     setSaveError(null);
     setSaveNotice(null);
+  }
+
+  function selectVertical(vertical: ReportingType) {
+    setDraft(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        reporting_type: vertical,
+        vertical_confirmed: true,
+        service_program: serviceProgramApplies(vertical) ? prev.service_program : "",
+      };
+    });
+    setShowVerticalPicker(false);
+    setSaveError(null);
+  }
+
+  function selectServiceProgram(program: ServiceProgram) {
+    patch("service_program", program);
   }
 
   function fieldStatus(key: keyof KickoffDraft): "empty" | "on_file" | "edited" {
@@ -107,6 +161,14 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
 
   async function submit(saveMode: "progress" | "complete") {
     if (!draft) return;
+    if (saveMode === "complete" && !draft.vertical_confirmed) {
+      setSaveError("Select client vertical before completing kick-off.");
+      return;
+    }
+    if (saveMode === "complete" && serviceProgramApplies(draft.reporting_type) && !draft.service_program) {
+      setSaveError("Select a service program (Core or Lead Gen) before completing.");
+      return;
+    }
     if (saveMode === "complete" && shareMode) {
       setSaveError("Turn off Share Mode to fill in post-call fields before completing.");
       return;
@@ -139,10 +201,15 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
       return;
     }
     const recording = data.onboarding_call?.recording_url ?? draft.recording_url;
-    const refreshed = kickoffDraftFromClient(data.client as KickoffClient, recording);
+    const refreshed = kickoffDraftFromClient(
+      data.client as KickoffClient,
+      recording,
+      !!data.vertical_confirmed,
+    );
     setDraft(refreshed);
     setInitialSnapshot(refreshed);
     setKickoffComplete(!!data.kickoff_complete);
+    setShowVerticalPicker(!data.vertical_confirmed);
     setSaving(false);
     if (saveMode === "complete") {
       onCompleted?.();
@@ -153,6 +220,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
   }
 
   const onFileCount = initialSnapshot ? countKickoffFieldsOnFile(initialSnapshot) : 0;
+  const setupResolved = draft ? isKickoffSetupResolved(draft) : false;
 
   const shellBg = shareMode ? "#f9fafb" : "#060d1a";
   const headerBg = shareMode ? "#ffffff" : "#0a1628";
@@ -176,9 +244,19 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
           style={{ background: headerBg, borderBottom: `1px solid ${borderColor}` }}
         >
           <div>
-            <h2 className="text-lg font-semibold" style={{ color: titleColor }}>
-              Kick-Off Call
-            </h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-semibold" style={{ color: titleColor }}>
+                Kick-Off Call
+              </h2>
+              {draft?.vertical_confirmed && (
+                <>
+                  <ReportingTypeBadge value={draft.reporting_type} size="sm" />
+                  {draft.service_program && (
+                    <ServiceProgramBadge value={draft.service_program} size="sm" />
+                  )}
+                </>
+              )}
+            </div>
             <p className="text-sm mt-0.5" style={{ color: subtitleColor }}>
               {clientName} — review what we have on file, confirm with the client, and edit anything that changed.
             </p>
@@ -229,266 +307,258 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
           <p className="text-sm py-16 text-center px-6" style={{ color: "#ef4444" }}>{error}</p>
         ) : draft ? (
           <div className="px-6 py-6 space-y-8">
-            {onFileCount > 0 && (
-              <div
-                className="rounded-lg px-4 py-3 text-sm"
-                style={{
-                  color: shareMode ? "#166534" : "#86efac",
-                  background: shareMode ? "#f0fdf4" : "rgba(34,197,94,0.08)",
-                  border: shareMode ? "1px solid #bbf7d0" : "1px solid rgba(34,197,94,0.25)",
-                }}
-              >
-                <strong>{onFileCount} field{onFileCount === 1 ? "" : "s"} pre-filled</strong> from the client record.
-                Green labels mean unchanged on file — edit any field if the client gives you updates.
-              </div>
-            )}
-
-            <Section title="Confirm Information" shareMode={shareMode}>
-              <div className="space-y-4">
-                <Field
-                  label="Phone"
-                  required
-                  shareMode={shareMode}
-                  status={fieldStatus("phone")}
-                  helper="Primary contact number on file."
-                >
-                  <input
-                    type="tel"
-                    value={draft.phone}
-                    disabled={saving}
-                    onChange={e => patch("phone", e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, fieldStatus("phone"))}
-                  />
-                </Field>
-                <Field
-                  label="What position best describes your role?"
-                  shareMode={shareMode}
-                  status={fieldStatus("contact_role")}
-                >
-                  <select
-                    value={draft.contact_role}
-                    disabled={saving}
-                    onChange={e => patch("contact_role", e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
-                    style={fieldStyle(shareMode, fieldStatus("contact_role"))}
-                  >
-                    <option value="">Select…</option>
-                    {CONTACT_ROLE_OPTIONS.map(o => (
-                      <option key={o} value={o}>{o}</option>
-                    ))}
-                    {draft.contact_role && !CONTACT_ROLE_OPTIONS.includes(draft.contact_role as typeof CONTACT_ROLE_OPTIONS[number]) && (
-                      <option value={draft.contact_role}>{draft.contact_role}</option>
-                    )}
-                  </select>
-                </Field>
-                <Field
-                  label="States Licensed"
-                  shareMode={shareMode}
-                  status={fieldStatus("states_licensed")}
-                >
-                  <StatesLicensedSelect
-                    value={draft.states_licensed}
-                    disabled={saving}
-                    onChange={codes => patch("states_licensed", codes)}
-                    className="w-full"
-                  />
-                </Field>
-                <Field label="NMLS #" shareMode={shareMode} status={fieldStatus("nmls")}>
-                  <input
-                    value={draft.nmls}
-                    disabled={saving}
-                    onChange={e => patch("nmls", e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                    style={fieldStyle(shareMode, fieldStatus("nmls"))}
-                  />
-                </Field>
-                <Field
-                  label="Bank / Broker / Lender Working For"
-                  shareMode={shareMode}
-                  status={fieldStatus("brokerage_name")}
-                  helper="Wherever their license is hung up."
-                >
-                  <input
-                    value={draft.brokerage_name}
-                    disabled={saving}
-                    onChange={e => patch("brokerage_name", e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, fieldStatus("brokerage_name"))}
-                  />
-                </Field>
-                <Field label="Current Timezone" shareMode={shareMode} status={fieldStatus("timezone")}>
-                  <TimezoneSelect
-                    value={draft.timezone}
-                    disabled={saving}
-                    highlightEmpty
-                    onChange={tz => patch("timezone", tz ?? "")}
-                    className="w-full px-3 py-2 rounded-lg text-sm"
-                  />
-                </Field>
-              </div>
-            </Section>
-
-            <Section title="Get Information" shareMode={shareMode}>
-              <div className="space-y-4">
-                <Field
-                  label="Appointment Length, Details & Buffer Time"
-                  shareMode={shareMode}
-                  status={fieldStatus("appointment_settings")}
-                  helper='Recommended: 15-min time slots, 30-min calls. Max availability to increase booking/show rate.'
-                >
-                  <input
-                    value={draft.appointment_settings}
-                    disabled={saving}
-                    onChange={e => patch("appointment_settings", e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, fieldStatus("appointment_settings"))}
-                  />
-                </Field>
-                {canViewRevenue && (
-                  <Field
-                    label="Daily Adspend"
-                    shareMode={shareMode}
-                    status={fieldStatus("daily_adspend")}
-                    helper="Average starting point is $50–$100/day."
-                  >
-                    <div className="relative">
-                      <span
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-sm"
-                        style={{ color: helperColor(shareMode) }}
-                      >
-                        $
-                      </span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={draft.daily_adspend}
-                        disabled={saving}
-                        onChange={e => patch("daily_adspend", e.target.value)}
-                        className="w-full pl-7 pr-3 py-2 rounded-lg text-sm outline-none"
-                        style={fieldStyle(shareMode, fieldStatus("daily_adspend"))}
-                      />
-                    </div>
-                  </Field>
-                )}
-                <Field
-                  label="Facebook Page Name"
-                  shareMode={shareMode}
-                  status={fieldStatus("facebook_page_name")}
-                >
-                  <input
-                    value={draft.facebook_page_name}
-                    disabled={saving}
-                    onChange={e => patch("facebook_page_name", e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, fieldStatus("facebook_page_name"))}
-                  />
-                </Field>
-                <Field
-                  label="Phone number to receive texts"
-                  shareMode={shareMode}
-                  status={fieldStatus("phone_notifications")}
-                  helper="Typically cell or Bonzo number. Defaults to primary phone if blank on file."
-                >
-                  <input
-                    type="tel"
-                    value={draft.phone_notifications}
-                    disabled={saving}
-                    onChange={e => patch("phone_notifications", e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, fieldStatus("phone_notifications"))}
-                  />
-                </Field>
-                <Field
-                  label="Phone Number to Receive Live Transfers (Ring Central)"
-                  shareMode={shareMode}
-                  status={fieldStatus("phone_live_transfer")}
-                >
-                  <input
-                    type="tel"
-                    value={draft.phone_live_transfer}
-                    disabled={saving}
-                    onChange={e => patch("phone_live_transfer", e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={fieldStyle(shareMode, fieldStatus("phone_live_transfer"))}
-                  />
-                </Field>
-                <Field label="Live Transfer Approved?" shareMode={shareMode} status={fieldStatus("live_transfer_approved")}>
-                  <select
-                    value={draft.live_transfer_approved}
-                    disabled={saving}
-                    onChange={e => patch("live_transfer_approved", e.target.value as KickoffDraft["live_transfer_approved"])}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
-                    style={fieldStyle(shareMode, fieldStatus("live_transfer_approved"))}
-                  >
-                    <option value="">Select…</option>
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                  </select>
-                </Field>
-              </div>
-            </Section>
-
-            {!shareMode && (
-              <Section title="Post Call" shareMode={shareMode}>
-                <div className="space-y-4">
-                  <Field
-                    label="GHL sub-account name"
-                    required
-                    shareMode={shareMode}
-                    status={fieldStatus("sub_account_name")}
-                    helper="Copy exact location name from GHL. This is how leads map in — not the person's name."
-                  >
-                    <input
-                      value={draft.sub_account_name}
-                      disabled={saving}
-                      onChange={e => patch("sub_account_name", e.target.value)}
-                      placeholder="e.g. Ken Adler's Office"
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={fieldStyle(shareMode, fieldStatus("sub_account_name"))}
-                    />
-                  </Field>
-                  <Field label="Client GHL Location ID" required shareMode={shareMode} status={fieldStatus("ghl_location_id")}>
-                    <input
-                      value={draft.ghl_location_id}
-                      disabled={saving}
-                      onChange={e => patch("ghl_location_id", e.target.value)}
-                      placeholder="GHL subaccount location id"
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono"
-                      style={fieldStyle(shareMode, fieldStatus("ghl_location_id"))}
-                    />
-                  </Field>
-                  <Field label="OB Call Recording Link" required shareMode={shareMode} status={fieldStatus("recording_url")}>
-                    <input
-                      type="url"
-                      value={draft.recording_url}
-                      disabled={saving}
-                      onChange={e => patch("recording_url", e.target.value)}
-                      placeholder="https://…"
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={fieldStyle(shareMode, fieldStatus("recording_url"))}
-                    />
-                  </Field>
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={draft.advance_lifecycle}
-                      disabled={saving}
-                      onChange={e => patch("advance_lifecycle", e.target.checked)}
-                      className="mt-1"
-                    />
-                    <span className="text-sm" style={{ color: labelColor(shareMode) }}>
-                      Move lifecycle from <strong>new account</strong> to <strong>onboarding</strong> when saved
-                    </span>
-                  </label>
+            <Section title="Service setup" shareMode={shareMode}>
+              {(showVerticalPicker || !draft.vertical_confirmed) ? (
+                <div className="space-y-3">
+                  <p className="text-sm" style={{ color: labelColor(shareMode) }}>
+                    What type of client is this?
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {(["RM", "DSCR", "CALL_CENTER"] as ReportingType[]).map(v => {
+                      const meta = REPORTING_TYPE_META[v];
+                      const selected = draft.reporting_type === v && draft.vertical_confirmed;
+                      return (
+                        <button
+                          key={v}
+                          type="button"
+                          disabled={saving}
+                          onClick={() => selectVertical(v)}
+                          className="text-left px-3 py-3 rounded-lg text-sm transition-colors"
+                          style={{
+                            color: titleColor,
+                            background: selected
+                              ? shareMode ? meta.background : meta.background
+                              : shareMode ? "#ffffff" : "rgba(255,255,255,0.04)",
+                            border: selected
+                              ? `2px solid ${meta.color}`
+                              : `1px solid ${borderColor}`,
+                          }}
+                        >
+                          <span className="font-semibold block">{meta.shortLabel}</span>
+                          <span className="text-xs mt-1 block" style={{ color: subtitleColor }}>
+                            {meta.description}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </Section>
+              ) : (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <ReportingTypeBadge value={draft.reporting_type} size="md" />
+                  <span className="text-sm" style={{ color: labelColor(shareMode) }}>
+                    {getReportingTypeLabel(draft.reporting_type)}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs font-medium underline"
+                    style={{ color: shareMode ? "#2563eb" : "#60a5fa" }}
+                    onClick={() => setShowVerticalPicker(true)}
+                  >
+                    Change
+                  </button>
+                </div>
+              )}
+
+              {draft.vertical_confirmed && serviceProgramApplies(draft.reporting_type) && (
+                <div className="mt-5 space-y-3">
+                  <p className="text-sm font-medium" style={{ color: labelColor(shareMode) }}>
+                    What fulfillment are we doing?
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {(["core", "lead_gen"] as ServiceProgram[]).map(p => {
+                      const meta = SERVICE_PROGRAM_META[p];
+                      const selected = draft.service_program === p;
+                      return (
+                        <button
+                          key={p}
+                          type="button"
+                          disabled={saving}
+                          onClick={() => selectServiceProgram(p)}
+                          className="text-left px-3 py-3 rounded-lg text-sm transition-colors"
+                          style={{
+                            color: titleColor,
+                            background: selected ? meta.background : shareMode ? "#ffffff" : "rgba(255,255,255,0.04)",
+                            border: selected ? `2px solid ${meta.color}` : `1px solid ${borderColor}`,
+                          }}
+                        >
+                          <span className="font-semibold block">{meta.label}</span>
+                          <span className="text-xs mt-1 block" style={{ color: subtitleColor }}>
+                            {meta.description}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {draft.vertical_confirmed && draft.reporting_type === "CALL_CENTER" && (
+                <p className="text-sm mt-3" style={{ color: subtitleColor }}>
+                  Service program is not applicable for Call Center clients.
+                </p>
+              )}
+            </Section>
+
+            {!setupResolved && (
+              <p className="text-sm rounded-lg px-4 py-3" style={{ color: subtitleColor, background: shareMode ? "#f3f4f6" : "#0f2040", border: `1px solid ${borderColor}` }}>
+                Complete service setup above to unlock the rest of the kick-off form.
+              </p>
             )}
 
-            {shareMode && (
-              <p className="text-sm rounded-lg px-4 py-3" style={{ color: subtitleColor, background: shareMode ? "#eff6ff" : "#0f2040", border: `1px solid ${shareMode ? "#bfdbfe" : "rgba(255,255,255,0.08)"}` }}>
-                Post-call fields (GHL Location ID, recording link) appear when Share Mode is off.
-              </p>
+            {setupResolved && (
+              <>
+                {onFileCount > 0 && (
+                  <div
+                    className="rounded-lg px-4 py-3 text-sm"
+                    style={{
+                      color: shareMode ? "#166534" : "#86efac",
+                      background: shareMode ? "#f0fdf4" : "rgba(34,197,94,0.08)",
+                      border: shareMode ? "1px solid #bbf7d0" : "1px solid rgba(34,197,94,0.25)",
+                    }}
+                  >
+                    <strong>{onFileCount} field{onFileCount === 1 ? "" : "s"} pre-filled</strong> from the client record.
+                  </div>
+                )}
+
+                <Section title="Confirm Information" shareMode={shareMode}>
+                  <div className="space-y-4">
+                    {visible("phone") && (
+                      <Field label="Phone" required shareMode={shareMode} status={fieldStatus("phone")} helper="Primary contact number on file.">
+                        <input type="tel" value={draft.phone} disabled={saving} onChange={e => patch("phone", e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("phone"))} />
+                      </Field>
+                    )}
+                    {visible("contact_role") && (
+                      <Field label="What position best describes your role?" shareMode={shareMode} status={fieldStatus("contact_role")}>
+                        <select value={draft.contact_role} disabled={saving} onChange={e => patch("contact_role", e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer" style={fieldStyle(shareMode, fieldStatus("contact_role"))}>
+                          <option value="">Select…</option>
+                          {CONTACT_ROLE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </Field>
+                    )}
+                    {visible("states_licensed") && (
+                      <Field label="States Licensed" shareMode={shareMode} status={fieldStatus("states_licensed")}>
+                        <StatesLicensedSelect value={draft.states_licensed} disabled={saving} onChange={codes => patch("states_licensed", codes)} className="w-full" />
+                      </Field>
+                    )}
+                    {visible("nmls") && (
+                      <Field label="NMLS #" shareMode={shareMode} status={fieldStatus("nmls")}>
+                        <input value={draft.nmls} disabled={saving} onChange={e => patch("nmls", e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono" style={fieldStyle(shareMode, fieldStatus("nmls"))} />
+                      </Field>
+                    )}
+                    {visible("brokerage_name") && (
+                      <Field label="Bank / Broker / Lender Working For" shareMode={shareMode} status={fieldStatus("brokerage_name")} helper="Wherever their license is hung up.">
+                        <input value={draft.brokerage_name} disabled={saving} onChange={e => patch("brokerage_name", e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("brokerage_name"))} />
+                      </Field>
+                    )}
+                    {visible("timezone") && (
+                      <Field label="Current Timezone" shareMode={shareMode} status={fieldStatus("timezone")}>
+                        <TimezoneSelect value={draft.timezone} disabled={saving} highlightEmpty onChange={tz => patch("timezone", tz ?? "")} className="w-full px-3 py-2 rounded-lg text-sm" />
+                      </Field>
+                    )}
+                  </div>
+                </Section>
+
+                {(visible("appointment_settings") || visible("daily_adspend") || visible("facebook_page_name") || visible("phone_notifications") || visible("phone_live_transfer")) && (
+                  <Section title="Get Information" shareMode={shareMode}>
+                    <div className="space-y-4">
+                      {visible("appointment_settings") && (
+                        <Field label="Appointment Length, Details & Buffer Time" shareMode={shareMode} status={fieldStatus("appointment_settings")} helper="Recommended: 15-min time slots, 30-min calls.">
+                          <input value={draft.appointment_settings} disabled={saving} onChange={e => patch("appointment_settings", e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("appointment_settings"))} />
+                        </Field>
+                      )}
+                      {visible("daily_adspend") && (
+                        <Field label="Daily Adspend" shareMode={shareMode} status={fieldStatus("daily_adspend")} helper="Average starting point is $50–$100/day.">
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: helperColor(shareMode) }}>$</span>
+                            <input type="number" min={0} value={draft.daily_adspend} disabled={saving} onChange={e => patch("daily_adspend", e.target.value)} className="w-full pl-7 pr-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("daily_adspend"))} />
+                          </div>
+                        </Field>
+                      )}
+                      {visible("facebook_page_name") && (
+                        <Field label="Facebook Page Name" shareMode={shareMode} status={fieldStatus("facebook_page_name")}>
+                          <input value={draft.facebook_page_name} disabled={saving} onChange={e => patch("facebook_page_name", e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("facebook_page_name"))} />
+                        </Field>
+                      )}
+                      {visible("phone_notifications") && (
+                        <Field label="Phone number to receive texts" shareMode={shareMode} status={fieldStatus("phone_notifications")} helper="Typically cell or Bonzo number.">
+                          <input type="tel" value={draft.phone_notifications} disabled={saving} onChange={e => patch("phone_notifications", e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("phone_notifications"))} />
+                        </Field>
+                      )}
+                      {visible("phone_live_transfer") && (
+                        <>
+                          <Field label="Phone Number to Receive Live Transfers (Ring Central)" shareMode={shareMode} status={fieldStatus("phone_live_transfer")}>
+                            <input type="tel" value={draft.phone_live_transfer} disabled={saving} onChange={e => patch("phone_live_transfer", e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("phone_live_transfer"))} />
+                          </Field>
+                          <Field label="Live Transfer Approved?" shareMode={shareMode} status={fieldStatus("live_transfer_approved")}>
+                            <select value={draft.live_transfer_approved} disabled={saving} onChange={e => patch("live_transfer_approved", e.target.value as KickoffDraft["live_transfer_approved"])} className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer" style={fieldStyle(shareMode, fieldStatus("live_transfer_approved"))}>
+                              <option value="">Select…</option>
+                              <option value="yes">Yes</option>
+                              <option value="no">No</option>
+                            </select>
+                          </Field>
+                        </>
+                      )}
+                    </div>
+                  </Section>
+                )}
+
+                {!shareMode && kickoffConfig.showPmSection && (
+                  <Section title="PM / Landing Page" shareMode={shareMode}>
+                    <div className="space-y-4">
+                      {(["pm_landing_copy", "pm_brand_assets", "pm_compliance_notes", "pm_competitor_refs", "pm_funnel_requirements"] as const).map(key => (
+                        <Field key={key} label={{ pm_landing_copy: "Landing page copy notes", pm_brand_assets: "Brand colors / asset links", pm_compliance_notes: "Compliance disclaimers", pm_competitor_refs: "Competitor references", pm_funnel_requirements: "Special funnel requirements" }[key]} shareMode={shareMode}>
+                          {key === "pm_competitor_refs" ? (
+                            <input value={draft[key]} disabled={saving} onChange={e => patch(key, e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, "empty")} />
+                          ) : (
+                            <textarea value={draft[key]} disabled={saving} onChange={e => patch(key, e.target.value)} rows={key === "pm_landing_copy" ? 3 : 2} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, "empty")} />
+                          )}
+                        </Field>
+                      ))}
+                    </div>
+                  </Section>
+                )}
+
+                {!shareMode && kickoffConfig.showCallCenterSection && (
+                  <Section title="Call Center Setup" shareMode={shareMode}>
+                    <div className="space-y-4">
+                      {(["cc_lead_source", "cc_qualification_criteria", "cc_hp_tag_user", "cc_setter_notes"] as const).map(key => (
+                        <Field key={key} label={CC_KICKOFF_FIELD_LABELS[key]} shareMode={shareMode} status={fieldStatus(key)}>
+                          <textarea value={draft[key]} disabled={saving} onChange={e => patch(key, e.target.value)} rows={2} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus(key))} />
+                        </Field>
+                      ))}
+                    </div>
+                  </Section>
+                )}
+
+                {!shareMode && (
+                  <Section title="Post Call" shareMode={shareMode}>
+                    <div className="space-y-4">
+                      <Field label="GHL sub-account name" required shareMode={shareMode} status={fieldStatus("sub_account_name")} helper="Copy exact location name from GHL.">
+                        <input value={draft.sub_account_name} disabled={saving} onChange={e => patch("sub_account_name", e.target.value)} placeholder="e.g. Ken Adler's Office" className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("sub_account_name"))} />
+                      </Field>
+                      <Field label="Client GHL Location ID" required shareMode={shareMode} status={fieldStatus("ghl_location_id")}>
+                        <input value={draft.ghl_location_id} disabled={saving} onChange={e => patch("ghl_location_id", e.target.value)} placeholder="GHL subaccount location id" className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono" style={fieldStyle(shareMode, fieldStatus("ghl_location_id"))} />
+                      </Field>
+                      <Field label="OB Call Recording Link" required shareMode={shareMode} status={fieldStatus("recording_url")}>
+                        <input type="url" value={draft.recording_url} disabled={saving} onChange={e => patch("recording_url", e.target.value)} placeholder="https://…" className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("recording_url"))} />
+                      </Field>
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" checked={draft.advance_lifecycle} disabled={saving} onChange={e => patch("advance_lifecycle", e.target.checked)} className="mt-1" />
+                        <span className="text-sm" style={{ color: labelColor(shareMode) }}>
+                          Move lifecycle from <strong>new account</strong> to <strong>onboarding</strong> when saved
+                        </span>
+                      </label>
+                    </div>
+                  </Section>
+                )}
+
+                {shareMode && (
+                  <p className="text-sm rounded-lg px-4 py-3" style={{ color: subtitleColor, background: shareMode ? "#eff6ff" : "#0f2040", border: `1px solid ${shareMode ? "#bfdbfe" : "rgba(255,255,255,0.08)"}` }}>
+                    Post-call fields (GHL Location ID, recording link) appear when Share Mode is off.
+                  </p>
+                )}
+              </>
             )}
 
             {saveNotice && (
@@ -507,28 +577,24 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
               <button
                 type="button"
                 onClick={() => submit("progress")}
-                disabled={saving}
+                disabled={saving || !draft.vertical_confirmed}
                 className="flex-1 text-sm font-semibold px-4 py-3 rounded-lg"
                 style={{
                   color: shareMode ? "#374151" : "#e2e8f0",
                   background: shareMode ? "#ffffff" : "rgba(255,255,255,0.06)",
                   border: `1px solid ${borderColor}`,
-                  opacity: saving ? 0.6 : 1,
+                  opacity: saving || !draft.vertical_confirmed ? 0.6 : 1,
                 }}
               >
                 {saving ? "Saving…" : "Save progress"}
               </button>
-              {!shareMode && (
+              {!shareMode && setupResolved && (
                 <button
                   type="button"
                   onClick={() => submit("complete")}
                   disabled={saving}
                   className="flex-1 text-sm font-semibold px-4 py-3 rounded-lg"
-                  style={{
-                    color: "#ffffff",
-                    background: "#2563eb",
-                    opacity: saving ? 0.6 : 1,
-                  }}
+                  style={{ color: "#ffffff", background: "#2563eb", opacity: saving ? 0.6 : 1 }}
                 >
                   {saving ? "Saving…" : kickoffComplete ? "Save changes" : "Complete Kick-Off"}
                 </button>
@@ -575,17 +641,11 @@ function Field({
       <span className="text-sm font-medium" style={{ color: labelColor(shareMode) }}>
         {label}
         {required && <span style={{ color: "#ef4444" }}> *</span>}
-        {status === "on_file" && (
-          <span className="ml-2 text-xs font-normal" style={{ color: "#22c55e" }}>on file</span>
-        )}
-        {status === "edited" && (
-          <span className="ml-2 text-xs font-normal" style={{ color: "#f59e0b" }}>edited</span>
-        )}
+        {status === "on_file" && <span className="ml-2 text-xs font-normal" style={{ color: "#22c55e" }}>on file</span>}
+        {status === "edited" && <span className="ml-2 text-xs font-normal" style={{ color: "#f59e0b" }}>edited</span>}
       </span>
       <div className="mt-1.5">{children}</div>
-      {helper && (
-        <p className="text-xs mt-1.5" style={{ color: helperColor(shareMode) }}>{helper}</p>
-      )}
+      {helper && <p className="text-xs mt-1.5" style={{ color: helperColor(shareMode) }}>{helper}</p>}
     </label>
   );
 }

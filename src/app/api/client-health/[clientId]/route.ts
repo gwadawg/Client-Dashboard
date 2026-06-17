@@ -13,7 +13,7 @@ import {
   type CostWindowSlice,
 } from '@/lib/client-health';
 import { OPEN_ACTION_STATUSES } from '@/lib/client-health-interventions';
-import { normalizeReportingType } from '@/lib/kpi-layouts';
+import { normalizeReportingType, usesCallCenterKpiLayout } from '@/lib/kpi-layouts';
 import { fetchCombinedSpendForMetrics } from '@/lib/spend';
 import type { EventRow } from '@/lib/metrics';
 
@@ -87,7 +87,7 @@ export async function GET(
   const reporting_type = normalizeReportingType(
     (client as { reporting_type?: unknown }).reporting_type,
   );
-  const isHe = reporting_type === 'HE';
+  const isHe = usesCallCenterKpiLayout(reporting_type);
   const benchmarks = ((client as { kpi_benchmarks?: unknown }).kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
 
   const allEvents = (events ?? []) as DatedEventRow[];

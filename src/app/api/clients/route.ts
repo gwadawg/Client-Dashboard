@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission, requireAnyPermission, requireClientRevenue } from '@/lib/api-auth';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
+import { normalizeServiceProgram, serviceProgramApplies } from '@/lib/service-program';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 import { canViewClientRevenue, redactClientMoneyFields } from '@/lib/client-revenue-access';
 import {
@@ -11,7 +12,7 @@ import { replayPendingForClientId } from '@/lib/pending-events';
 import { getFormProgressForClients } from '@/lib/form-submissions';
 
 const DETAIL_FIELDS =
-  'id, name, is_live, reporting_type, share_token, created_at, lifecycle_status, mrr, daily_adspend, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id';
+  'id, name, is_live, reporting_type, service_program, share_token, created_at, lifecycle_status, mrr, daily_adspend, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id';
 
 // GET is intentionally open to any authenticated user: the client list powers
 // the global client-filter dropdown on nearly every tab, so it is a shared
@@ -97,7 +98,11 @@ export async function POST(req: Request) {
   const insert: Record<string, unknown> = {
     name: name.trim(),
     reporting_type: normalizeReportingType(reporting_type),
+    offer: normalizeReportingType(reporting_type),
   };
+  if ('service_program' in body) {
+    insert.service_program = normalizeServiceProgram(body.service_program);
+  }
   const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend', 'billing_day']);
   const revenueFields = new Set(['mrr', 'daily_adspend']);
   const optional = [

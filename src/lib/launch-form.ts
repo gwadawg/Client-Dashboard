@@ -1,5 +1,12 @@
 // Launch checklist — stored in client_form_submissions.responses, not clients columns.
 
+import {
+  getOnboardingFormProfile,
+  type OnboardingFormProfile,
+} from '@/lib/onboarding-form-profile';
+import { normalizeReportingType } from '@/lib/reporting-types';
+import { normalizeServiceProgram } from '@/lib/service-program';
+
 export const LAUNCH_SECTIONS = [
   { id: 'media_buying', label: 'Media Buying' },
   { id: 'funnel', label: 'Funnel' },
@@ -15,76 +22,90 @@ export type LaunchChecklistItemDef = {
   section: LaunchSectionId;
   confirmType: 'checkbox' | 'type_yes';
   helpText?: string;
+  profiles?: OnboardingFormProfile[];
 };
 
+const ALL_PROFILES: OnboardingFormProfile[] = ['marketing_core', 'marketing_lead_gen', 'call_center'];
+
 export const LAUNCH_CHECKLIST_ITEMS: LaunchChecklistItemDef[] = [
-  // Media Buying
+  // Media Buying — marketing profiles only
   {
     key: 'mb_creative_message_aligned',
     label: 'Headline / primary text aligned with creative message',
     section: 'media_buying',
     confirmType: 'checkbox',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
   {
     key: 'mb_states_targeted',
     label: 'Correct states are being targeted',
     section: 'media_buying',
     confirmType: 'checkbox',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
   {
     key: 'mb_budget_set',
     label: 'Correct budget is set',
     section: 'media_buying',
     confirmType: 'checkbox',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
   {
     key: 'mb_midnight_schedule',
     label: 'Campaign scheduled for launch at midnight',
     section: 'media_buying',
     confirmType: 'type_yes',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
   {
     key: 'mb_funnel_in_ad_live',
     label: 'Correct funnel is in the ad and tested funnel is live correctly',
     section: 'media_buying',
     confirmType: 'checkbox',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
-  // Funnel
+  // Funnel — marketing profiles only
   {
     key: 'fn_headline_congruent',
     label: 'Funnel headline congruent to ad message / angle',
     section: 'funnel',
     confirmType: 'checkbox',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
   {
     key: 'fn_split_test_headlines',
     label: 'Split test between two headlines is on',
     section: 'funnel',
     confirmType: 'checkbox',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
   {
     key: 'fn_pixel_conversion_event',
     label: 'Pixel data working with correct conversion event',
     section: 'funnel',
     confirmType: 'type_yes',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
   {
     key: 'fn_ghl_integrated',
     label: 'GHL subaccount correctly integrated',
     section: 'funnel',
     confirmType: 'checkbox',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
   {
     key: 'fn_privacy_compliant_footer',
     label: 'Privacy policy and compliant footer added',
     section: 'funnel',
     confirmType: 'checkbox',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
   {
     key: 'fn_sms_compliant_checkbox',
     label: "Compliant checkbox for sending SMS with client's name",
     section: 'funnel',
     confirmType: 'checkbox',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
   // GHL Subaccount
   {
@@ -93,24 +114,28 @@ export const LAUNCH_CHECKLIST_ITEMS: LaunchChecklistItemDef[] = [
     section: 'ghl_subaccount',
     confirmType: 'type_yes',
     helpText: 'Verify you did not change client info; confirm assigned user has HP tag if on call center model.',
+    profiles: ['marketing_core', 'call_center'],
   },
   {
     key: 'ghl_custom_values_filled',
     label: 'Custom values all filled out',
     section: 'ghl_subaccount',
     confirmType: 'checkbox',
+    profiles: ALL_PROFILES,
   },
   {
     key: 'ghl_calendar_assigned',
     label: 'Calendar assigned to correct user',
     section: 'ghl_subaccount',
     confirmType: 'checkbox',
+    profiles: ALL_PROFILES,
   },
   {
     key: 'ghl_a2p_approved',
     label: 'A2P approved',
     section: 'ghl_subaccount',
     confirmType: 'type_yes',
+    profiles: ALL_PROFILES,
   },
   // Admin
   {
@@ -118,18 +143,63 @@ export const LAUNCH_CHECKLIST_ITEMS: LaunchChecklistItemDef[] = [
     label: 'Mr. Waiz and ClickUp fields fully filled out',
     section: 'admin',
     confirmType: 'checkbox',
+    profiles: ALL_PROFILES,
   },
   {
     key: 'adm_make_facebook_active',
     label: 'Make scenario for Facebook is active',
     section: 'admin',
     confirmType: 'checkbox',
+    profiles: ['marketing_core', 'marketing_lead_gen'],
   },
   {
     key: 'adm_full_test_lead_flow',
     label: 'Full test lead executed: perspective → SMS → AI booking → appointment booked',
     section: 'admin',
     confirmType: 'type_yes',
+    profiles: ['marketing_core'],
+  },
+  {
+    key: 'lg_test_lead_flow',
+    label: 'Full test executed: ad → landing → lead in GHL → client notified',
+    section: 'admin',
+    confirmType: 'type_yes',
+    profiles: ['marketing_lead_gen'],
+  },
+  {
+    key: 'cc_test_lead_flow',
+    label: 'Full test executed: lead ingested → setter dial → qualified → appointment booked',
+    section: 'admin',
+    confirmType: 'type_yes',
+    profiles: ['call_center'],
+  },
+  {
+    key: 'cc_setter_schedule_assigned',
+    label: 'Setter watch schedule assigned',
+    section: 'admin',
+    confirmType: 'checkbox',
+    profiles: ['call_center'],
+  },
+  {
+    key: 'cc_scripts_loaded',
+    label: 'Call scripts loaded in GHL',
+    section: 'admin',
+    confirmType: 'checkbox',
+    profiles: ['call_center'],
+  },
+  {
+    key: 'cc_hp_tag_verified',
+    label: 'Assigned user has HP tag verified',
+    section: 'admin',
+    confirmType: 'checkbox',
+    profiles: ['call_center'],
+  },
+  {
+    key: 'cc_make_ghl_active',
+    label: 'Make scenario for GHL lead ingestion is active',
+    section: 'admin',
+    confirmType: 'checkbox',
+    profiles: ['call_center'],
   },
 ];
 
@@ -147,10 +217,51 @@ export type LaunchFormDraft = {
   final_confirmation: string;
 };
 
-export function emptyLaunchDraft(launchDate = '', completedByUserId = '', completedByLabel = ''): LaunchFormDraft {
+export function itemAppliesToProfile(
+  item: LaunchChecklistItemDef,
+  profile: OnboardingFormProfile,
+): boolean {
+  if (!item.profiles) return profile === 'marketing_core';
+  return item.profiles.includes(profile);
+}
+
+export function getLaunchItemsForProfile(profile: OnboardingFormProfile): LaunchChecklistItemDef[] {
+  return LAUNCH_CHECKLIST_ITEMS.filter(item => itemAppliesToProfile(item, profile));
+}
+
+export function getLaunchSectionsForProfile(profile: OnboardingFormProfile) {
+  const itemSections = new Set(getLaunchItemsForProfile(profile).map(i => i.section));
+  return LAUNCH_SECTIONS.filter(s => itemSections.has(s.id));
+}
+
+export function profileFromLaunchResponses(responses: Record<string, unknown>): OnboardingFormProfile {
+  const stored = responses.form_profile;
+  if (
+    stored === 'marketing_core' ||
+    stored === 'marketing_lead_gen' ||
+    stored === 'call_center'
+  ) {
+    return stored;
+  }
+  return getOnboardingFormProfile(responses.reporting_type, responses.service_program);
+}
+
+export function profileFromClient(client: {
+  reporting_type?: unknown;
+  service_program?: unknown;
+}): OnboardingFormProfile {
+  return getOnboardingFormProfile(client.reporting_type, client.service_program);
+}
+
+export function emptyLaunchDraft(
+  profile: OnboardingFormProfile = 'marketing_core',
+  launchDate = '',
+  completedByUserId = '',
+  completedByLabel = '',
+): LaunchFormDraft {
   const checklist: Record<string, boolean> = {};
   const confirmations: Record<string, string> = {};
-  for (const item of LAUNCH_CHECKLIST_ITEMS) {
+  for (const item of getLaunchItemsForProfile(profile)) {
     checklist[item.key] = false;
     if (item.confirmType === 'type_yes') confirmations[item.key] = '';
   }
@@ -177,36 +288,53 @@ export function isLaunchItemSatisfied(item: LaunchChecklistItemDef, draft: Launc
   return true;
 }
 
-export function countSatisfiedItems(draft: LaunchFormDraft): number {
-  return LAUNCH_CHECKLIST_ITEMS.filter(item => isLaunchItemSatisfied(item, draft)).length;
+export function countSatisfiedItems(
+  draft: LaunchFormDraft,
+  profile: OnboardingFormProfile = 'marketing_core',
+): number {
+  return getLaunchItemsForProfile(profile).filter(item => isLaunchItemSatisfied(item, draft)).length;
 }
 
-export function countSatisfiedInSection(sectionId: LaunchSectionId, draft: LaunchFormDraft): {
-  satisfied: number;
-  total: number;
-} {
-  const items = LAUNCH_CHECKLIST_ITEMS.filter(item => item.section === sectionId);
+export function countSatisfiedInSection(
+  sectionId: LaunchSectionId,
+  draft: LaunchFormDraft,
+  profile: OnboardingFormProfile = 'marketing_core',
+): { satisfied: number; total: number } {
+  const items = getLaunchItemsForProfile(profile).filter(item => item.section === sectionId);
   return {
     satisfied: items.filter(item => isLaunchItemSatisfied(item, draft)).length,
     total: items.length,
   };
 }
 
-export function isLaunchChecklistComplete(draft: LaunchFormDraft): boolean {
+export function isLaunchChecklistComplete(
+  draft: LaunchFormDraft,
+  profile: OnboardingFormProfile = 'marketing_core',
+): boolean {
   if (!draft.launch_date.trim()) return false;
   if (!draft.completed_by_user_id.trim()) return false;
   if (draft.final_confirmation.trim().toUpperCase() !== LAUNCH_FINAL_CONFIRMATION) return false;
-  return LAUNCH_CHECKLIST_ITEMS.every(item => isLaunchItemSatisfied(item, draft));
+  return getLaunchItemsForProfile(profile).every(item => isLaunchItemSatisfied(item, draft));
 }
 
-export function getFirstIncompleteItemKey(draft: LaunchFormDraft): string | null {
-  for (const item of LAUNCH_CHECKLIST_ITEMS) {
+export function getFirstIncompleteItemKey(
+  draft: LaunchFormDraft,
+  profile: OnboardingFormProfile = 'marketing_core',
+): string | null {
+  for (const item of getLaunchItemsForProfile(profile)) {
     if (!isLaunchItemSatisfied(item, draft)) return item.key;
   }
   return null;
 }
 
-export function launchDraftToResponses(draft: LaunchFormDraft): Record<string, unknown> {
+export function launchDraftToResponses(
+  draft: LaunchFormDraft,
+  meta?: {
+    reporting_type?: string;
+    service_program?: string | null;
+    form_profile?: OnboardingFormProfile;
+  },
+): Record<string, unknown> {
   return {
     launch_date: draft.launch_date,
     completed_by_user_id: draft.completed_by_user_id,
@@ -215,11 +343,19 @@ export function launchDraftToResponses(draft: LaunchFormDraft): Record<string, u
     checklist: draft.checklist,
     confirmations: draft.confirmations,
     final_confirmation: draft.final_confirmation.trim().toUpperCase(),
+    ...(meta?.reporting_type != null ? { reporting_type: meta.reporting_type } : {}),
+    ...(meta?.service_program !== undefined ? { service_program: meta.service_program } : {}),
+    ...(meta?.form_profile ? { form_profile: meta.form_profile } : {}),
   };
 }
 
-export function launchResponsesToDraft(responses: Record<string, unknown>): LaunchFormDraft {
+export function launchResponsesToDraft(
+  responses: Record<string, unknown>,
+  profileOverride?: OnboardingFormProfile,
+): LaunchFormDraft {
+  const profile = profileOverride ?? profileFromLaunchResponses(responses);
   const draft = emptyLaunchDraft(
+    profile,
     typeof responses.launch_date === 'string' ? responses.launch_date : undefined,
     typeof responses.completed_by_user_id === 'string' ? responses.completed_by_user_id : '',
     typeof responses.completed_by_label === 'string' ? responses.completed_by_label : '',
@@ -230,14 +366,14 @@ export function launchResponsesToDraft(responses: Record<string, unknown>): Laun
 
   const rawChecklist = responses.checklist;
   if (rawChecklist && typeof rawChecklist === 'object') {
-    for (const item of LAUNCH_CHECKLIST_ITEMS) {
+    for (const item of getLaunchItemsForProfile(profile)) {
       draft.checklist[item.key] = !!(rawChecklist as Record<string, boolean>)[item.key];
     }
   }
 
   const rawConfirmations = responses.confirmations;
   if (rawConfirmations && typeof rawConfirmations === 'object') {
-    for (const item of LAUNCH_CHECKLIST_ITEMS) {
+    for (const item of getLaunchItemsForProfile(profile)) {
       if (item.confirmType === 'type_yes') {
         const val = (rawConfirmations as Record<string, string>)[item.key];
         draft.confirmations[item.key] = typeof val === 'string' ? val : '';
@@ -249,8 +385,11 @@ export function launchResponsesToDraft(responses: Record<string, unknown>): Laun
 }
 
 export function launchChecklistSummary(responses: Record<string, unknown>): string[] {
-  const draft = launchResponsesToDraft(responses);
-  return LAUNCH_CHECKLIST_ITEMS.filter(item => isLaunchItemSatisfied(item, draft)).map(item => item.label);
+  const profile = profileFromLaunchResponses(responses);
+  const draft = launchResponsesToDraft(responses, profile);
+  return getLaunchItemsForProfile(profile)
+    .filter(item => isLaunchItemSatisfied(item, draft))
+    .map(item => item.label);
 }
 
 export function formatLaunchItemStatus(
@@ -263,12 +402,13 @@ export function formatLaunchItemStatus(
 }
 
 export function formatLaunchSlackChecklist(responses: Record<string, unknown>): string {
-  const draft = launchResponsesToDraft(responses);
+  const profile = profileFromLaunchResponses(responses);
+  const draft = launchResponsesToDraft(responses, profile);
   const lines: string[] = [];
 
-  for (const section of LAUNCH_SECTIONS) {
+  for (const section of getLaunchSectionsForProfile(profile)) {
     lines.push(section.label);
-    const items = LAUNCH_CHECKLIST_ITEMS.filter(item => item.section === section.id);
+    const items = getLaunchItemsForProfile(profile).filter(item => item.section === section.id);
     for (const item of items) {
       const status = formatLaunchItemStatus(item, draft);
       if (status === 'missing') {
@@ -285,9 +425,20 @@ export function formatLaunchSlackChecklist(responses: Record<string, unknown>): 
   return lines.join('\n').trimEnd();
 }
 
-export function getLaunchChecklistConfig() {
+export function getLaunchChecklistConfig(profile: OnboardingFormProfile = 'marketing_core') {
   return {
-    sections: LAUNCH_SECTIONS,
-    items: LAUNCH_CHECKLIST_ITEMS,
+    profile,
+    sections: getLaunchSectionsForProfile(profile),
+    items: getLaunchItemsForProfile(profile),
   };
+}
+
+export function inferLaunchProfileFromResponses(responses: Record<string, unknown>): OnboardingFormProfile {
+  if (responses.form_profile) return profileFromLaunchResponses(responses);
+  const vertical = normalizeReportingType(responses.reporting_type);
+  const program = normalizeServiceProgram(responses.service_program);
+  if (vertical || program) {
+    return getOnboardingFormProfile(vertical, program);
+  }
+  return 'marketing_core';
 }

@@ -1,5 +1,5 @@
 import { calculateMetrics, type EventRow, type MetricsResult, type SpendRow } from '@/lib/metrics';
-import { type ReportingType, normalizeReportingType } from '@/lib/kpi-layouts';
+import { normalizeReportingType, usesCallCenterKpiLayout, type ReportingType } from '@/lib/kpi-layouts';
 
 export type HealthTier = 'critical' | 'below' | 'at' | 'above' | 'insufficient';
 
@@ -552,7 +552,7 @@ export function buildConstraintGuidance(
   snapshot: ClientHealthSnapshot,
   reportingType: ReportingType = 'RM',
 ): ConstraintGuidance {
-  if (normalizeReportingType(reportingType) === 'HE') {
+  if (usesCallCenterKpiLayout(reportingType)) {
     return buildHeConstraintGuidance(snapshot);
   }
   const m = snapshot.metrics;
@@ -855,7 +855,7 @@ export function metricValue(
   key: SuccessMetricKey,
   reportingType: ReportingType = 'RM',
 ): number {
-  const isHe = normalizeReportingType(reportingType) === 'HE';
+  const isHe = usesCallCenterKpiLayout(reportingType);
   switch (key) {
     case 'cpconv':
       return snapshot.cpconv;
@@ -1032,7 +1032,7 @@ export function computeFocus(
   recent: RecentLeading | null,
   reportingType: ReportingType = 'RM',
 ): FocusResult {
-  const isHe = normalizeReportingType(reportingType) === 'HE';
+  const isHe = usesCallCenterKpiLayout(reportingType);
   const northStar = isHe
     ? current.grades.find(g => g.tier === 'critical')
     : current.grades.find(g => g.key === 'cps');
@@ -1095,7 +1095,7 @@ export function computeFocusPriority(row: ClientHealthRow): number {
   if (!row.has_activity) return -1;
   const base = FOCUS_PRIORITY[row.focus.focus] * 10;
   const spendBoost =
-    normalizeReportingType(row.reporting_type) === 'HE'
+    usesCallCenterKpiLayout(row.reporting_type)
       ? 0
       : Math.min(3, Math.log10(Math.max(1, row.current.metrics.ad_spend)) / 2);
   const overdueBoost = row.open_action?.overdue ? 5 : 0;
@@ -1114,7 +1114,7 @@ export function buildRecentLeading(
   prior?: RecentLeading | null,
   costSlice?: CostWindowSlice | null,
 ): RecentLeading {
-  const isHe = normalizeReportingType(reportingType) === 'HE';
+  const isHe = usesCallCenterKpiLayout(reportingType);
   const funnelSnap = isHe
     ? buildHeClientHealthSnapshot(events, benchmarks)
     : buildClientHealthSnapshot(events, costSlice ? [] : spendRows, benchmarks);
@@ -1262,7 +1262,7 @@ export function buildClientHealthRow(input: BuildHealthRowInput): ClientHealthRo
     verdictPrior,
     open_action = null,
   } = input;
-  const isHe = normalizeReportingType(reporting_type) === 'HE';
+  const isHe = usesCallCenterKpiLayout(reporting_type);
 
   const verdictDays =
     Math.floor(
