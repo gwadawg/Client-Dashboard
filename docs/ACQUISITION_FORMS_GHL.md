@@ -8,6 +8,8 @@ Mr. Waiz native forms replace GHL disposition forms for structured logging. Afte
 GHL_ACQUISITION_LOCATION_ID=AcDN4LEPnbiqOCWzG1NH
 GHL_ACQUISITION_API_TOKEN=<PIT with contacts.write + opportunities.write>
 ACQUISITION_FORM_SECRET=<random string; or falls back to ADMIN_WEBHOOK_SECRET>
+# Slack channel slug (register in Admin → Automations → Slack channels):
+# ACQUISITION_SETTER_PENDING_SLACK_SLUG=setter_pending_actions
 # Optional — skip pipeline stage lookup:
 GHL_STAGE_DEMO_BOOKED_ID=<GHL stage id for Demo Booked>
 ```
@@ -32,12 +34,18 @@ node scripts/sign-acquisition-demo-link.mjs CONTACT_ID [APPOINTMENT_ID]
 
 Or call from a small Make scenario: **only** to sign the URL (HTTP to an internal token endpoint is not exposed — use the Node script locally or embed signing in Make with the same HMAC logic).
 
-### GHL workflow (recommended)
+### GHL workflow (optional)
+
+Mr. Waiz also posts to Slack `#setter-pending-actions` when Make sends a demo appointment webhook. Setters can use that link or the in-app queue (below).
 
 1. **Trigger:** Appointment Status → Booked (Demo calendar `71fF0PpCgY8Qv1PqeMFa`)
-2. **Action:** Send SMS or email to setter with magic link
-3. **Optional filter:** `location.id == AcDN4LEPnbiqOCWzG1NH`
+2. **Action:** Make → `POST /api/acquisition/webhooks/appointment` (existing thin webhook)
+3. **Slack:** Mr. Waiz posts magic link to `setter_pending_actions` (register channel in Automations)
 4. **Retire:** Old GHL booking credit form / workflow that duplicated fields
+
+### Setter Credit Queue (in-app)
+
+Dashboard → **Acquisition** → **Credit Queue** lists demo bookings without booking credit. Each row has an **Open form** link (signed server-side). Toggle **My queue** to filter rows assigned to your sales rep name.
 
 ### What syncs to GHL on submit
 
@@ -51,6 +59,7 @@ If GHL sync fails, the form still saves in Mr. Waiz (`ghl_sync_status: failed` o
 
 - `GET /api/acquisition/forms/demo-booked?contact_id&appointment_id&token` — prefetch lead for form
 - `POST /api/acquisition/forms/demo-booked` — submit body + token
+- `GET /api/acquisition/setter-credit-queue` — authenticated queue with `form_url` per row
 
 ## What stays on Make
 

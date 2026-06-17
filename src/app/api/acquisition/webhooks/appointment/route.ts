@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { upsertAcquisitionAppointment } from '@/lib/acquisition-ingest';
+import { notifyDemoBookingCreditPendingIfNeeded } from '@/lib/acquisition-setter-notify';
 
 export async function POST(req: NextRequest) {
   if (!validateWebhookSecret(req)) {
@@ -16,5 +17,8 @@ export async function POST(req: NextRequest) {
   const service = createServiceClient();
   const result = await upsertAcquisitionAppointment(service, payload as Record<string, unknown>);
   if ('error' in result) return NextResponse.json({ error: result.error }, { status: 400 });
+
+  await notifyDemoBookingCreditPendingIfNeeded(service, result.id);
+
   return NextResponse.json({ ok: true, id: result.id });
 }

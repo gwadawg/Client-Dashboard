@@ -2,6 +2,7 @@
 
 import AcquisitionDashboard from "../AcquisitionDashboard";
 import AcquisitionTeamBoard from "../AcquisitionTeamBoard";
+import AcquisitionSetterCreditQueue from "../AcquisitionSetterCreditQueue";
 import ViewHub from "../nav/ViewHub";
 import { ACQUISITION_TABS, type AcquisitionTab } from "@/lib/nav";
 
@@ -21,6 +22,9 @@ export default function AcquisitionHub({ tab, onTabChange, startDate, endDate }:
     >
       {tab === "overview" && <AcquisitionDashboard startDate={startDate} endDate={endDate} />}
       {tab === "team" && <AcquisitionTeamBoard startDate={startDate} endDate={endDate} />}
+      {tab === "credit_queue" && (
+        <AcquisitionSetterCreditQueue startDate={startDate} endDate={endDate} />
+      )}
     </ViewHub>
   );
 }

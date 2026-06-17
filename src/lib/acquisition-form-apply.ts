@@ -238,6 +238,16 @@ export async function applyDemoBookingCredit(
     submissionId = data.id;
   }
 
+  await service
+    .from('acquisition_appointments')
+    .update({
+      demo_credit_claimed_at: new Date().toISOString(),
+      setter_name: input.setter_name,
+      booking_source: input.booking_source,
+      how_booked: 'setter_booked',
+    })
+    .eq('id', appointmentId);
+
   return {
     submission_id: submissionId,
     lead_id: leadId,

@@ -44,6 +44,7 @@ export const SUGGESTED_TEAM_CHANNEL_SLUGS = [
   'client_success',
   'billing',
   'setters',
+  'setter_pending_actions',
 ] as const;
 
 export function normalizeSlug(input: unknown): string | null {

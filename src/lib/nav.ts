@@ -3,7 +3,7 @@
 
 export type HeatmapTab = "show_rate" | "pickup_rate" | "new_leads";
 export type DataExplorerTab = "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
-export type AcquisitionTab = "overview" | "team";
+export type AcquisitionTab = "overview" | "team" | "credit_queue";
 export type AcquisitionDataExplorerTab = "leads" | "appointments" | "offers" | "dials" | "closes" | "ads";
 export type AgentsTab = "stats" | "scorecards" | "goals" | "credit_queue" | "recordings";
 
@@ -46,6 +46,7 @@ export type LegacyView =
   | "goals"
   | "acquisition_funnel"
   | "acquisition_team"
+  | "acquisition_setter_credit_queue"
   | "acquisition_leads"
   | "acquisition_appointments"
   | "acquisition_offers"
@@ -74,6 +75,7 @@ export const DATA_EXPLORER_TABS: HubTabDef<DataExplorerTab>[] = [
 export const ACQUISITION_TABS: HubTabDef<AcquisitionTab>[] = [
   { key: "overview", label: "Overview" },
   { key: "team", label: "Team" },
+  { key: "credit_queue", label: "Credit Queue" },
 ];
 
 export const ACQUISITION_DATA_EXPLORER_TABS: HubTabDef<AcquisitionDataExplorerTab>[] = [
@@ -101,6 +103,7 @@ export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
     "acquisition",
     "acquisition_funnel",
     "acquisition_team",
+    "acquisition_setter_credit_queue",
     "acquisition_leads",
     "acquisition_appointments",
     "acquisition_offers",
@@ -142,6 +145,7 @@ export const LEGACY_VIEW_REDIRECTS: Record<LegacyView, { view: View; tab: string
   goals: { view: "agents", tab: "goals" },
   acquisition_funnel: { view: "acquisition", tab: "overview" },
   acquisition_team: { view: "acquisition", tab: "team" },
+  acquisition_setter_credit_queue: { view: "acquisition", tab: "credit_queue" },
   acquisition_leads: { view: "acquisition_data_explorer", tab: "leads" },
   acquisition_appointments: { view: "acquisition_data_explorer", tab: "appointments" },
   acquisition_offers: { view: "acquisition_data_explorer", tab: "offers" },
