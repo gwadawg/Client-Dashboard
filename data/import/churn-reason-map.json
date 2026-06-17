@@ -1,0 +1,21 @@
+{
+  "patterns": [
+    { "match": "referral business", "reason_code": "went_in_house" },
+    { "match": "off board", "reason_code": "service_issues" },
+    { "match": "offboard", "reason_code": "service_issues" },
+    { "match": "delusional", "reason_code": "poor_results" },
+    { "match": "performing good", "reason_code": "poor_results" },
+    { "match": "bandwith", "reason_code": "service_issues" },
+    { "match": "bandwidth", "reason_code": "service_issues" },
+    { "match": "dispute", "reason_code": "mutual_decision" },
+    { "match": "good terms", "reason_code": "mutual_decision" },
+    { "match": "seperate ways", "reason_code": "mutual_decision" },
+    { "match": "competitor", "reason_code": "competitor" },
+    { "match": "pricing", "reason_code": "pricing_cost" },
+    { "match": "cost", "reason_code": "pricing_cost" },
+    { "match": "roi", "reason_code": "poor_results" },
+    { "match": "in house", "reason_code": "went_in_house" },
+    { "match": "unresponsive", "reason_code": "unresponsive" }
+  ],
+  "default_reason_code": "other"
+}

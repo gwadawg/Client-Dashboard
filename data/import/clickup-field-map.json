@@ -1,0 +1,36 @@
+{
+  "skip_task_names": ["New Client Template", "CC Onboarding Template"],
+  "old_database": {
+    "task_id": "Task ID",
+    "task_name": "Task Name",
+    "date_signed": "Date Signed (date)",
+    "launch_date": "Launch Date (date)",
+    "phone": "Phone number (phone)",
+    "nmls": "NMLS (short text)",
+    "website": "Website (url)",
+    "timezone": "Time Zone (drop down)",
+    "states_licensed": "States Licensed  (labels)",
+    "status": "Status",
+    "location": "Client Location (location)",
+    "cs_status": "CS Status (drop down)"
+  },
+  "client_hub": {
+    "task_id": "Task ID",
+    "task_name": "Task Name",
+    "daily_adspend": "Daily Adspend (currency)",
+    "client_stage": "Client Stage (drop down)",
+    "ad_status": "Ad Status (drop down)",
+    "states_licensed": "States Licensed  (labels)",
+    "timezone": "Time Zone (drop down)",
+    "funnel_url": "Funnel URL (url)",
+    "ad_account_url": "Ad Account URL (url)",
+    "page_name": "Page Name (short text)",
+    "client_drive_link": "Client Drive Link (url)"
+  },
+  "status_to_lifecycle": {
+    "launched": "active",
+    "ads paused": "paused",
+    "off boarded": "churned",
+    "paused": "paused"
+  }
+}

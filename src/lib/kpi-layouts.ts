@@ -1,12 +1,22 @@
 import type { MetricsResult } from "@/lib/metrics";
+import {
+  DEFAULT_REPORTING_TYPE,
+  normalizeReportingType,
+  usesHeKpiLayout,
+  type ReportingType,
+} from "@/lib/reporting-types";
 
-export type ReportingType = "RM" | "HE";
-
-export const DEFAULT_REPORTING_TYPE: ReportingType = "RM";
-
-export function normalizeReportingType(value: unknown): ReportingType {
-  return value === "HE" ? "HE" : DEFAULT_REPORTING_TYPE;
-}
+export {
+  DEFAULT_REPORTING_TYPE,
+  normalizeReportingType,
+  usesHeKpiLayout,
+  usesRmKpiLayout,
+  getReportingTypeLabel,
+  REPORTING_TYPE_META,
+  REPORTING_TYPE_OPTIONS,
+  REPORTING_TYPES,
+  type ReportingType,
+} from "@/lib/reporting-types";
 
 export type KpiFormat = "int" | "pct" | "money" | "decimal";
 
@@ -215,7 +225,7 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
 ];
 
 export function getKpiSections(reportingType: ReportingType): KpiSectionDefinition[] {
-  return reportingType === "HE" ? HE_KPI_SECTIONS : RM_KPI_SECTIONS;
+  return usesHeKpiLayout(reportingType) ? HE_KPI_SECTIONS : RM_KPI_SECTIONS;
 }
 
 export function formatKpiValue(value: number, format: KpiFormat): string {

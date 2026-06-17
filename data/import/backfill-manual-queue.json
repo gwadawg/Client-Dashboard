@@ -1,0 +1,70 @@
+{
+  "generated_at": "2026-06-17T14:30:00.000Z",
+  "summary": "Backfill applied. Remaining items need manual resolution in Client File or roster.",
+  "unmatched_clickup": [
+    {
+      "clickup_name": "John O'Connell",
+      "clickup_task_id": "86a6uavvp",
+      "action": "No roster row found. Create a minimal churned client or map to an existing row, then re-run clickup backfill.",
+      "proposed_patch": {
+        "date_signed": "2025-02-19",
+        "launch_date": "2025-03-31",
+        "phone": "+1 949 916 9608",
+        "website": "http://www.ochmloans.com"
+      },
+      "note": "Cancellation sheet lists Patrick O Connel — may be the same person under a different name."
+    }
+  ],
+  "bad_churn_dates": [
+    {
+      "name": "Kevin Guttman",
+      "issue": "Cancellation sheet Date Churned = '6' (invalid). Churn applied without historical churned_at.",
+      "action": "Set churned_at manually in Client File from billing records or ClickUp (ads paused since ~Feb 2025)."
+    }
+  ],
+  "field_conflicts_skipped": [
+    {
+      "note": "23 clients had existing roster values that differed from ClickUp. Empty fields were filled; non-empty fields were left unchanged.",
+      "examples": [
+        "Timezone abbrev (PST/EST) vs IANA — roster kept abbrev unless blank",
+        "John Jameson launch_date: roster 2026-01-16 vs ClickUp 2024-08-12",
+        "Reed Olson lifecycle: was active in roster before churn pass (now churned)"
+      ],
+      "force_rerun": "node scripts/backfill-from-clickup-csv.mjs --apply --force-field <field>"
+    }
+  ],
+  "task_id_conflicts": [
+    {
+      "note": "9 clients had a different clickup_task_id in roster vs Hub CSV. Hub ID applied only when roster field was blank.",
+      "action": "Review task_id_conflicts in clickup-backfill-preview.json; use --force-field clickup_task_id if Hub ID should win."
+    }
+  ],
+  "active_client_gaps": [
+    {
+      "note": "Stage cards now show Sign/OB/KO/Live from inferred backfill submissions. Active Hub clients may still lack rich kickoff JSON (PM brief, headshot, launch checklist detail).",
+      "clients_in_hub": [
+        "John Fagan's Office",
+        "Community First National Bank",
+        "Kenneth Walker",
+        "John Jameson",
+        "Bryan Ashby's office",
+        "Tom Dowden's Office",
+        "JP Dauber's Office",
+        "Brian Thomas's Office",
+        "Armis Attar's Office",
+        "Mike Lena's Office",
+        "Lawrence Berggoetz's Office",
+        "Anthony Williamson's office"
+      ],
+      "action": "Use real Kickoff/Launch wizards in Client File only for active clients where you need full operational detail."
+    }
+  ],
+  "roster_cleanup": {
+    "note": "Preflight audit found 1 duplicate cluster and 74 status issues. Run apply-roster-cleanup after reviewing roster-audit-preflight.json if merges are still needed.",
+    "commands": [
+      "node scripts/audit-client-roster.mjs --out data/import/roster-audit-preflight",
+      "npx tsx scripts/apply-roster-cleanup.ts",
+      "npx tsx scripts/apply-roster-cleanup.ts --apply"
+    ]
+  }
+}

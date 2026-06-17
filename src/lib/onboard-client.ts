@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
+import type { ReportingType } from '@/lib/reporting-types';
 import { findClientConflicts } from '@/lib/client-duplicate-check';
 import { clientNamesMatch } from '@/lib/client-name-match';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
@@ -40,18 +41,14 @@ function normalizeBillingType(v: unknown): string | null {
   return lower;
 }
 
-function normalizeOffer(v: unknown): 'RM' | 'HE' | null {
+function normalizeOffer(v: unknown): ReportingType | null {
   const s = trimString(v);
   if (!s) return null;
-  const upper = s.toUpperCase();
-  if (upper === 'RM' || upper === 'HE') return upper;
-  if (upper.includes('HE') || upper.includes('HOME EQUITY')) return 'HE';
-  if (upper.includes('RM') || upper.includes('REVERSE')) return 'RM';
-  return null;
+  return normalizeReportingType(s);
 }
 
-function reportingTypeFromOffer(offer: 'RM' | 'HE' | null, explicit: unknown): 'RM' | 'HE' {
-  if (explicit === 'HE' || explicit === 'RM') return explicit;
+function reportingTypeFromOffer(offer: ReportingType | null, explicit: unknown): ReportingType {
+  if (explicit === 'HE' || explicit === 'RM' || explicit === 'DSCR') return explicit as ReportingType;
   if (offer) return offer;
   return normalizeReportingType(explicit);
 }

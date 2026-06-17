@@ -16,7 +16,9 @@ import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import { syncIsLiveWithLifecycle } from "@/lib/lifecycle-sync";
 import { clientNeedsGhlMapping } from "@/lib/client-ghl-mapping";
-import { DEFAULT_REPORTING_TYPE, normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
+import { DEFAULT_REPORTING_TYPE, normalizeReportingType, usesHeKpiLayout, type ReportingType } from "@/lib/kpi-layouts";
+import { REPORTING_TYPE_META, REPORTING_TYPES } from "@/lib/reporting-types";
+import ReportingTypeBadge, { ReportingTypeSelectOptions } from "@/components/ReportingTypeBadge";
 import {
   DEFAULT_KPI_BANDS,
   HE_KPI_KEYS,
@@ -90,7 +92,7 @@ function relativeAge(iso: string | null | undefined): string {
 }
 
 function kpiOrderForClient(client: Client): KpiKey[] {
-  return normalizeReportingType(client.reporting_type) === "HE" ? HE_KPI_KEYS : RM_KPI_KEYS;
+  return usesHeKpiLayout(client.reporting_type) ? HE_KPI_KEYS : RM_KPI_KEYS;
 }
 
 const BAND_KEYS: (keyof NonNullable<ClientKpiBenchmarks[KpiKey]>)[] = ["critical", "below", "at"];
@@ -331,6 +333,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<SectionKey | "all">("all");
+  const [offerFilter, setOfferFilter] = useState<ReportingType | "all">("all");
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [statusChange, setStatusChange] = useState<{ clientId: string; clientName: string; targetStatus: string } | null>(null);
@@ -486,10 +489,14 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#334155" }}>Loading…</p>;
 
   const q = query.trim().toLowerCase();
-  const matched = q ? clients.filter(c => clientMatchesQuery(c, q)) : clients;
+  const matched = clients.filter(c => {
+    if (offerFilter !== "all" && normalizeReportingType(c.reporting_type) !== offerFilter) return false;
+    if (!q) return true;
+    return clientMatchesQuery(c, q);
+  });
   const grouped = groupClientsBySection(matched);
   const counts = groupClientsBySection(clients);
-  const isFiltering = q.length > 0 || statusFilter !== "all";
+  const isFiltering = q.length > 0 || statusFilter !== "all" || offerFilter !== "all";
   const visibleSections = ROSTER_SECTIONS.filter(s => statusFilter === "all" || s.key === statusFilter);
   const matchTotal = visibleSections.reduce((n, s) => n + grouped[s.key].length, 0);
 
@@ -614,6 +621,40 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                     {!isAll && <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: accent }} />}
                     {opt.label}
                     <span style={{ color: active ? accent : "#475569" }}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-1 flex-wrap" title="Filter by client offer type">
+              <button
+                onClick={() => setOfferFilter("all")}
+                className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors"
+                style={{
+                  color: offerFilter === "all" ? "#e2e8f0" : "#64748b",
+                  background: offerFilter === "all" ? "rgba(255,255,255,0.07)" : "transparent",
+                  border: `1px solid ${offerFilter === "all" ? "rgba(255,255,255,0.14)" : "transparent"}`,
+                }}
+              >
+                All offers
+              </button>
+              {REPORTING_TYPES.map(type => {
+                const active = offerFilter === type;
+                const meta = REPORTING_TYPE_META[type];
+                const count = clients.filter(c => normalizeReportingType(c.reporting_type) === type).length;
+                return (
+                  <button
+                    key={type}
+                    onClick={() => setOfferFilter(type)}
+                    className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5"
+                    style={{
+                      color: active ? meta.color : "#64748b",
+                      background: active ? meta.background : "transparent",
+                      border: `1px solid ${active ? `${meta.color}55` : "transparent"}`,
+                    }}
+                    title={meta.description}
+                  >
+                    {meta.shortLabel}
+                    <span style={{ color: active ? meta.color : "#475569" }}>{count}</span>
                   </button>
                 );
               })}
@@ -815,7 +856,8 @@ function ClientRow({
     <tr className={`${rowBg} border-t border-white/[0.05] transition-colors hover:bg-[#0f1c30]`}>
       <td className={cell}>
         <div className="flex flex-col gap-0.5 min-w-0">
-          <span className="flex items-center gap-2 min-w-0">
+            <span className="flex items-center gap-2 min-w-0">
+            <ReportingTypeBadge value={c.reporting_type} />
             <span className="text-sm font-medium truncate max-w-[16rem]" style={{ color: clientName ? "#e2e8f0" : "#475569" }} title={clientName || "No client name set"}>
               {clientName || "Unnamed client"}
             </span>
@@ -1031,7 +1073,7 @@ function BenchmarkEditor({
   const overrideCount = Object.values(draft).reduce((n, b) => n + Object.keys(b ?? {}).length, 0);
 
   const kpiOrder = kpiOrderForClient(client);
-  const isHe = normalizeReportingType(client.reporting_type) === "HE";
+  const isHe = usesHeKpiLayout(client.reporting_type);
 
   return (
     <div className="space-y-3">
@@ -1237,8 +1279,7 @@ function AddClientForm({
         </Field>
         <Field label="Reporting type">
           <select value={reportingType} onChange={e => setReportingType(normalizeReportingType(e.target.value))} className="px-2 py-1.5 rounded-lg text-sm outline-none cursor-pointer" style={fieldStyle()}>
-            <option value="RM">RM - Reverse Mortgage</option>
-            <option value="HE">HE - Appointment Only</option>
+            <ReportingTypeSelectOptions />
           </select>
         </Field>
         <Field label="Lifecycle">

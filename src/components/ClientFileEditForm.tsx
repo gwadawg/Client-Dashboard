@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import TimezoneSelect from "@/components/TimezoneSelect";
+import ReportingTypeBadge, { ReportingTypeSelectOptions } from "@/components/ReportingTypeBadge";
 import { normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 
 export type EditableClient = {
@@ -193,8 +194,7 @@ export default function ClientFileEditForm({
           <Field label="Email" type="email" value={draft.email} onChange={v => patch("email", v)} highlightEmpty />
           <Field label="Phone" value={draft.phone} onChange={v => patch("phone", v)} highlightEmpty />
           <SelectField label="Reporting type" value={draft.reporting_type} onChange={v => patch("reporting_type", normalizeReportingType(v))}>
-            <option value="RM">RM - Reverse Mortgage</option>
-            <option value="HE">HE - Appointment Only</option>
+            <ReportingTypeSelectOptions />
           </SelectField>
           <Field label="Lead source" value={draft.source} onChange={v => patch("source", v)} highlightEmpty />
           <Field label="Website" value={draft.website} onChange={v => patch("website", v)} highlightEmpty />

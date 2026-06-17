@@ -30,6 +30,8 @@ import {
   noteTypeLabel,
   reasonLabel,
 } from "@/lib/client-feedback";
+import { getReportingTypeLabel } from "@/lib/reporting-types";
+import ReportingTypeBadge from "@/components/ReportingTypeBadge";
 import { formatStatesLicensed } from "@/lib/us-states";
 import { timezoneLabel } from "@/lib/us-timezones";
 import ClientContactsSection from "@/components/ClientContactsSection";
@@ -615,6 +617,7 @@ export default function ClientFile({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>{name}</h2>
+              {client?.reporting_type && <ReportingTypeBadge value={client.reporting_type} size="md" />}
               {client && !editing ? (
                 <LifecycleStatusSelect
                   value={client.lifecycle_status}
@@ -767,7 +770,16 @@ export default function ClientFile({
                 <Detail label="Client name" value={client?.primary_contact_name || client?.primary_contact} missing={!client?.primary_contact_name && !client?.primary_contact} />
                 <Detail label="Email" value={client?.email || client?.billing_email} missing={!client?.email && !client?.billing_email} />
                 <Detail label="Phone" value={client?.phone} missing={!client?.phone} />
-                <Detail label="Reporting type" value={client?.reporting_type} />
+                <Detail
+                  label="Offer type"
+                  value={client?.reporting_type ? (
+                    <span className="inline-flex items-center gap-2">
+                      <ReportingTypeBadge value={client.reporting_type} size="md" />
+                      <span>{getReportingTypeLabel(client.reporting_type)}</span>
+                    </span>
+                  ) : null}
+                  missing={!client?.reporting_type}
+                />
                 <Detail label="Lead source" value={client?.source} missing={!client?.source} />
                 <Detail label="Website" value={client?.website} missing={!client?.website} />
                 <Detail label="Brokerage" value={client?.brokerage_name} missing={!client?.brokerage_name} />
