@@ -4,14 +4,17 @@ import { Fragment, useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
+import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
 import PendingEventsPanel from "@/components/PendingEventsPanel";
+import PendingFormSubmissionsPanel from "@/components/PendingFormSubmissionsPanel";
 import Link from "next/link";
-import { useNavigateChurnOffboard } from "@/hooks/useNavigateChurnOffboard";
 import { churnFormHref, isChurnOffboardEligible } from "@/lib/internal-forms";
 import { FormProgressStrip } from "@/components/ClientFormsSection";
-import StatesLicensedSelect from "@/components/StatesLicensedSelect";
-import TimezoneSelect from "@/components/TimezoneSelect";
+import LifecycleStatusSelect from "@/components/LifecycleStatusSelect";
+import StatusChangeModal from "@/components/StatusChangeModal";
+import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
+import { syncIsLiveWithLifecycle } from "@/lib/lifecycle-sync";
 import { clientNeedsGhlMapping } from "@/lib/client-ghl-mapping";
 import { DEFAULT_REPORTING_TYPE, normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import {
@@ -38,6 +41,7 @@ type Client = {
   reporting_type?: ReportingType;
   lifecycle_status?: string | null;
   mrr?: number | null;
+  daily_adspend?: number | null;
   billing_type?: string | null;
   billing_day?: number | null;
   launch_date?: string | null;
@@ -109,34 +113,106 @@ const SECTION_ACCENT: Record<SectionKey, string> = {
   churned: "#64748b",
 };
 
-const ROSTER_COLS = 9;
+/** Optional middle columns, swapped per role-based view preset. */
+type ColumnKey = "stage" | "tenure" | "adspend" | "launch";
 
-const ROSTER_HEADERS = [
-  "Sub-account name",
-  "Client name",
-  "Licensed in",
-  "Timezone",
-  "Signed",
-  "Launch",
-  "Churned",
-  "ClickUp",
-  "",
-] as const;
+type RosterView = "full" | "cs" | "media";
 
-function RosterColumnHead() {
+const ROSTER_VIEWS: { key: RosterView; label: string }[] = [
+  { key: "full", label: "Full" },
+  { key: "cs", label: "Client Success" },
+  { key: "media", label: "Media Buying" },
+];
+
+const VIEW_COLUMNS: Record<RosterView, ColumnKey[]> = {
+  full: ["stage", "tenure", "adspend"],
+  cs: ["stage", "tenure"],
+  media: ["launch", "adspend", "tenure"],
+};
+
+function moneyShort(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return `$${Math.round(n).toLocaleString()}`;
+}
+
+const COLUMN_DEFS: Record<ColumnKey, { header: string; revenueOnly?: boolean; render: (c: Client) => ReactNode }> = {
+  stage: {
+    header: "Stage",
+    render: c => <FormProgressStrip progress={c.form_progress} />,
+  },
+  tenure: {
+    header: "Tenure",
+    render: c => {
+      const t = tenureLabel(c);
+      return <span className="text-xs whitespace-nowrap" style={{ color: t.muted ? "#64748b" : "#cbd5e1" }} title={t.title}>{t.text}</span>;
+    },
+  },
+  adspend: {
+    header: "Ad spend",
+    revenueOnly: true,
+    render: c => <span className="text-xs whitespace-nowrap" style={{ color: c.daily_adspend != null ? "#cbd5e1" : "#334155" }}>{c.daily_adspend != null ? `${moneyShort(c.daily_adspend)}/day` : "—"}</span>,
+  },
+  launch: {
+    header: "Launch",
+    render: c => <span className="text-xs whitespace-nowrap" style={{ color: c.launch_date ? "#cbd5e1" : "#334155" }}>{c.launch_date ? formatDate(c.launch_date) : "—"}</span>,
+  },
+};
+
+/** Columns for a view, dropping revenue-only ones when the user can't see revenue. */
+function resolveColumns(view: RosterView, showRevenue: boolean): ColumnKey[] {
+  return VIEW_COLUMNS[view].filter(k => showRevenue || !COLUMN_DEFS[k].revenueOnly);
+}
+
+/** Whole calendar months elapsed since an ISO date (date-only safe). */
+function monthsSince(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let m = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+  if (now.getDate() < d.getDate()) m -= 1;
+  return Math.max(0, m);
+}
+
+/**
+ * Tenure cell content: how long a client has been with us, framed by where
+ * they are. Live clients show the month-of-engagement they're in; others show
+ * how long they've sat in their current phase.
+ */
+function tenureLabel(c: Client): { text: string; title: string; muted: boolean } {
+  const status = c.lifecycle_status ?? "active";
+  if (status === "churned") {
+    return { text: `Churned ${relativeAge(c.churned_at)}`, title: `Churned ${formatDate(c.churned_at)}`, muted: true };
+  }
+  const live = status === "active";
+  const monthsLive = monthsSince(c.launch_date);
+  if (live && monthsLive != null) {
+    return {
+      text: `Mo ${monthsLive + 1} live`,
+      title: `Live since ${formatDate(c.launch_date)} · ${monthsLive} full month${monthsLive === 1 ? "" : "s"}`,
+      muted: false,
+    };
+  }
+  if (c.date_signed) {
+    return { text: `Signed ${relativeAge(c.date_signed)}`, title: `Signed ${formatDate(c.date_signed)}`, muted: true };
+  }
+  return { text: "—", title: "No launch or signed date on file", muted: true };
+}
+
+function RosterColumnHead({ columns }: { columns: ColumnKey[] }) {
+  const headers = ["Client", "Status", ...columns.map(k => COLUMN_DEFS[k].header), ""];
   return (
     <thead>
       <tr style={{ background: "#0a1628" }}>
-        {ROSTER_HEADERS.map((h, i) => (
+        {headers.map((h, i) => (
           <th
             key={i}
-            className="sticky top-0 z-10 text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
+            className={`sticky top-0 z-10 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${i === headers.length - 1 ? "text-right" : "text-left"}`}
             style={{
               color: "#475569",
               background: "#0a1628",
               boxShadow: "0 1px 0 rgba(255,255,255,0.06)",
             }}
-            title={h === "Sub-account name" ? "GHL sub-account name — matches the client filter on the dashboard" : undefined}
           >
             {h}
           </th>
@@ -150,15 +226,17 @@ function RosterSectionRow({
   label,
   count,
   accent,
+  colSpan,
 }: {
   label: string;
   count: number;
   accent: string;
+  colSpan: number;
 }) {
   return (
     <tr style={{ background: "#080f1e" }}>
       <td
-        colSpan={ROSTER_COLS}
+        colSpan={colSpan}
         className="px-3 py-2 border-t border-white/[0.08]"
         style={{ background: "#080f1e" }}
       >
@@ -212,15 +290,6 @@ function fieldStyle() {
   return { background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" } as const;
 }
 
-/**
- * Inline cell input that reads as plain text at rest and only reveals its
- * editable chrome (fill + border) on hover/focus. Keeps the roster scannable
- * instead of presenting a wall of form boxes.
- */
-const QUIET_INPUT =
-  "rounded-lg text-sm outline-none bg-transparent border border-transparent text-slate-200 transition-colors " +
-  "hover:bg-[#0f2040] hover:border-white/10 focus:bg-[#0f2040] focus:border-[#38bdf8]/50";
-
 /** Searchable haystack for a client row. */
 function clientMatchesQuery(c: Client, q: string): boolean {
   if (!q) return true;
@@ -258,10 +327,18 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean; scrollToCalls?: boolean; openCheckinForm?: boolean } | null>(null);
   const [kickoffFor, setKickoffFor] = useState<{ id: string; name: string } | null>(null);
   const [launchFor, setLaunchFor] = useState<{ id: string; name: string } | null>(null);
-  const navigateChurnOffboard = useNavigateChurnOffboard();
+  const [offboardFor, setOffboardFor] = useState<{ id: string; name: string } | null>(null);
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<SectionKey | "all">("all");
+  const [actionsFor, setActionsFor] = useState<string | null>(null);
+  const [showInfo, setShowInfo] = useState(false);
+  const [statusChange, setStatusChange] = useState<{ clientId: string; clientName: string; targetStatus: string } | null>(null);
+  const [rosterView, setRosterView] = useState<RosterView>(() => {
+    if (typeof window === "undefined") return "full";
+    const saved = window.localStorage.getItem("rosterView");
+    return saved === "cs" || saved === "media" ? saved : "full";
+  });
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
@@ -273,6 +350,14 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         setLoading(false);
       });
   }, []);
+
+  function changeRosterView(v: RosterView) {
+    setRosterView(v);
+    window.localStorage.setItem("rosterView", v);
+  }
+
+  const columns = resolveColumns(rosterView, showRevenue);
+  const colSpan = columns.length + 3;
 
   async function reload() {
     const d = await (await fetch("/api/clients?detail=1")).json();
@@ -294,6 +379,31 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     }
     await reload();
     setBusy(null);
+  }
+
+  function requestStatusChange(client: Client, target: string) {
+    if (target === (client.lifecycle_status ?? "active")) return;
+    if (target === "churned") {
+      setOffboardFor({ id: client.id, name: client.name });
+      return;
+    }
+    if (requiresLifecycleFeedback(target)) {
+      setStatusChange({ clientId: client.id, clientName: client.name, targetStatus: target });
+      return;
+    }
+    // Direct transition — is_live is derived server-side from lifecycle.
+    patchClient(client.id, { lifecycle_status: target });
+  }
+
+  async function confirmStatusChange(reason: string | null, note: string) {
+    if (!statusChange) return;
+    const { clientId, targetStatus } = statusChange;
+    await patchClient(clientId, {
+      lifecycle_status: targetStatus,
+      status_change_reason: reason,
+      status_change_note: note || undefined,
+    });
+    setStatusChange(null);
   }
 
   async function createClient(body: Record<string, unknown>) {
@@ -385,12 +495,30 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 
   return (
     <div className="flex flex-col gap-6 min-h-0 flex-1 h-full">
-      <div className="shrink-0 flex items-start justify-between gap-4 flex-wrap">
-        <div>
+      <div className="shrink-0 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Roster</h2>
-          <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            Clients are grouped by lifecycle status. Sub-account name must match the GHL location name — that is how leads map in. Client name is the person or business contact. If you see duplicates, merge into the file you want to keep; do not delete a row that has reporting data.
-          </p>
+          <div className="relative">
+            <button
+              onClick={() => setShowInfo(s => !s)}
+              className="w-5 h-5 rounded-full text-xs font-semibold flex items-center justify-center"
+              style={{ color: showInfo ? "#e2e8f0" : "#64748b", background: showInfo ? "rgba(255,255,255,0.08)" : "transparent", border: "1px solid rgba(255,255,255,0.12)" }}
+              title="How the roster works"
+              aria-label="How the roster works"
+            >
+              i
+            </button>
+            {showInfo && (
+              <div
+                className="absolute left-0 top-7 z-30 w-80 rounded-xl p-4 text-xs leading-relaxed shadow-xl"
+                style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.12)", color: "#94a3b8" }}
+              >
+                <p>Clients are grouped by lifecycle status. The <strong style={{ color: "#cbd5e1" }}>sub-account name</strong> must match the GHL location name — that is how leads map in. The <strong style={{ color: "#cbd5e1" }}>client name</strong> is the person or business contact.</p>
+                <p className="mt-2">Live clients (New account, Onboarding, Active) feed the dashboard&rsquo;s &ldquo;Live Clients&rdquo; filter. Paused, Off-boarding, and Churned are treated as offline.</p>
+                <p className="mt-2">Open a client&rsquo;s file to edit details, log calls/notes, or run kick-off, launch, and offboarding. If you see duplicates, merge into the file you want to keep — do not delete a row that has reporting data.</p>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Link
@@ -401,18 +529,30 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
             Churn offboarding
           </Link>
           <button
-            onClick={() => setShowAdd(s => !s)}
+            onClick={() => setShowAdd(true)}
             className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
             style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)" }}
           >
-            {showAdd ? "Close" : "+ Add client"}
+            + Add client
           </button>
         </div>
       </div>
 
-      {showAdd && <div className="shrink-0"><AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} /></div>}
+      {showAdd && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
+          style={{ background: "rgba(2,6,15,0.6)" }}
+          onClick={() => setShowAdd(false)}
+        >
+          <div className="w-full max-w-3xl" onClick={e => e.stopPropagation()}>
+            <AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} onCancel={() => setShowAdd(false)} />
+          </div>
+        </div>
+      )}
 
-      <div className="shrink-0"><PendingEventsPanel onReplayed={reload} /></div>
+      <div className="shrink-0 empty:hidden"><PendingFormSubmissionsPanel onResolved={reload} /></div>
+
+      <div className="shrink-0 empty:hidden"><PendingEventsPanel onReplayed={reload} /></div>
 
       {clients.length === 0 ? (
         <div className="rounded-xl px-4 py-8 text-center text-sm" style={{ border: "1px solid rgba(255,255,255,0.06)", color: "#334155" }}>
@@ -478,6 +618,24 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 );
               })}
             </div>
+            <div className="flex items-center gap-0.5 rounded-lg p-0.5" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.1)" }} title="Choose which columns are most relevant to your role">
+              {ROSTER_VIEWS.map(v => {
+                const active = rosterView === v.key;
+                return (
+                  <button
+                    key={v.key}
+                    onClick={() => changeRosterView(v.key)}
+                    className="text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap transition-colors"
+                    style={{
+                      color: active ? "#e2e8f0" : "#64748b",
+                      background: active ? "rgba(56,189,248,0.14)" : "transparent",
+                    }}
+                  >
+                    {v.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {isFiltering && (
@@ -489,8 +647,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
           )}
 
           <div className="flex-1 min-h-0 overflow-auto" style={{ background: "#080f1e" }}>
-            <table className="text-sm w-full min-w-[1080px] border-separate border-spacing-0">
-              <RosterColumnHead />
+            <table className="text-sm w-full min-w-[720px] border-separate border-spacing-0">
+              <RosterColumnHead columns={columns} />
               <tbody>
                 {visibleSections.map(section => {
                   const sectionClients = grouped[section.key];
@@ -502,10 +660,11 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                         label={section.label}
                         count={sectionClients.length}
                         accent={accent}
+                        colSpan={colSpan}
                       />
                       {sectionClients.length === 0 ? (
                         <tr className="bg-[#080f1e]">
-                          <td colSpan={ROSTER_COLS} className="px-4 py-6 text-center text-sm" style={{ color: "#334155" }}>
+                          <td colSpan={colSpan} className="px-4 py-6 text-center text-sm" style={{ color: "#334155" }}>
                             No clients in this group
                           </td>
                         </tr>
@@ -515,6 +674,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                             key={c.id}
                             client={c}
                             allClients={clients}
+                            columns={columns}
+                            colSpan={colSpan}
                             striped={i % 2 === 0}
                             busy={busy === c.id}
                             confirmingDelete={confirmDelete === c.id}
@@ -522,11 +683,14 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                             mergeTargetId={mergeTargetId}
                             onMergeTargetChange={setMergeTargetId}
                             benchmarksOpen={benchmarksFor === c.id}
+                            actionsOpen={actionsFor === c.id}
+                            onToggleActions={() => setActionsFor(prev => (prev === c.id ? null : c.id))}
+                            onRequestStatusChange={target => requestStatusChange(c, target)}
                             onPatch={patchClient}
                             onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
                             onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
                             onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
-                            onOpenOffboard={() => navigateChurnOffboard(c.id)}
+                            onOpenOffboard={() => setOffboardFor({ id: c.id, name: c.name })}
                             onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
                             onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
                             onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
@@ -547,13 +711,14 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         </div>
       )}
 
-      <p className="shrink-0 text-xs" style={{ color: "#334155" }}>
-        Live clients include New account, Onboarding, and Active. Paused, Off-boarding, and Churned are treated as offline and excluded from the &ldquo;Live Clients&rdquo; dashboard filter.{" "}
-        <Link href={churnFormHref()} className="font-semibold underline-offset-2 hover:underline" style={{ color: "#64748b" }}>
-          Churn offboarding form
-        </Link>{" "}
-        — also under Resources → Team Forms.
-      </p>
+      <StatusChangeModal
+        open={!!statusChange}
+        clientName={statusChange?.clientName ?? ""}
+        targetStatus={statusChange?.targetStatus ?? "paused"}
+        saving={!!statusChange && busy === statusChange.clientId}
+        onConfirm={confirmStatusChange}
+        onCancel={() => setStatusChange(null)}
+      />
 
       {kickoffFor && (
         <KickOffCallWizard
@@ -569,6 +734,15 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
           clientId={launchFor.id}
           fallbackName={launchFor.name}
           onClose={() => setLaunchFor(null)}
+          onCompleted={reload}
+        />
+      )}
+
+      {offboardFor && (
+        <ChurnOffboardingWizard
+          clientId={offboardFor.id}
+          fallbackName={offboardFor.name}
+          onClose={() => setOffboardFor(null)}
           onCompleted={reload}
         />
       )}
@@ -590,10 +764,12 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 }
 
 function ClientRow({
-  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange, benchmarksOpen, onPatch, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete,
+  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange,   columns, colSpan, benchmarksOpen, actionsOpen, onToggleActions, onRequestStatusChange, onPatch, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete,
 }: {
   client: Client;
   allClients: Client[];
+  columns: ColumnKey[];
+  colSpan: number;
   striped: boolean;
   busy: boolean;
   confirmingDelete: boolean;
@@ -601,6 +777,9 @@ function ClientRow({
   mergeTargetId: string;
   onMergeTargetChange: (id: string) => void;
   benchmarksOpen: boolean;
+  actionsOpen: boolean;
+  onToggleActions: () => void;
+  onRequestStatusChange: (target: string) => void;
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onOpenFile: () => void;
   onOpenKickoff: () => void;
@@ -617,7 +796,7 @@ function ClientRow({
 }) {
   const c = client;
   const rowBg = striped ? "bg-[#0b1424]" : "bg-[#080f1e]";
-  const cell = "px-3 py-2.5 whitespace-nowrap";
+  const cell = "px-3 py-2.5 align-middle";
   const clientName = c.primary_contact_name ?? c.primary_contact ?? "";
   const hasOverrides = !!c.kpi_benchmarks && Object.keys(c.kpi_benchmarks).length > 0;
   const stale = benchmarksStale(c);
@@ -626,97 +805,57 @@ function ClientRow({
   const showKickoffAction = isKickoffLifecycle(c.lifecycle_status) || kickoffPending;
   const showLaunchAction = c.lifecycle_status === "onboarding" || c.lifecycle_status === "new_account";
   const showOffboardAction = isChurnOffboardEligible(c.lifecycle_status);
-  const benchmarkColor = benchmarksOpen ? "#38bdf8" : stale ? "#f59e0b" : hasOverrides ? "#38bdf8" : "#475569";
-  const benchmarkLabel = benchmarksOpen
-    ? "Close bands"
-    : stale
-      ? "● KPI bands ⚠"
-      : hasOverrides
-        ? "● KPI bands"
-        : "KPI bands";
 
-  const onBlurField = (field: string, current: string) => (e: React.FocusEvent<HTMLInputElement>) => {
-    if (e.target.value !== current) onPatch(c.id, { [field]: e.target.value });
-  };
+  const status = c.lifecycle_status ?? "active";
+  const derivedLive = syncIsLiveWithLifecycle(status, undefined);
+  const drift = derivedLive !== undefined && c.is_live !== undefined && derivedLive !== c.is_live;
 
   return (
     <>
     <tr className={`${rowBg} border-t border-white/[0.05] transition-colors hover:bg-[#0f1c30]`}>
       <td className={cell}>
-        <span className="flex items-center gap-2">
-          <input
-            defaultValue={c.name ?? ""}
-            disabled={busy}
-            onBlur={onBlurField("name", c.name ?? "")}
-            placeholder="GHL sub-account name"
-            title="GHL sub-account name — what appears in the dashboard client filter"
-            className={`${QUIET_INPUT} px-2 py-1 w-40 font-medium`}
-          />
-          {needsGhlMapping && (
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="text-sm font-medium truncate max-w-[16rem]" style={{ color: clientName ? "#e2e8f0" : "#475569" }} title={clientName || "No client name set"}>
+              {clientName || "Unnamed client"}
+            </span>
+            {needsGhlMapping && (
+              <span
+                className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded shrink-0"
+                style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)" }}
+                title="Sub-account name still matches the person name — open Kick-off and set the exact GHL location name"
+              >
+                Map GHL
+              </span>
+            )}
+          </span>
+          <span className="text-xs truncate max-w-[18rem]" style={{ color: "#64748b" }} title={`GHL sub-account: ${c.name ?? "—"}`}>
+            {c.name || "—"}
+          </span>
+        </div>
+      </td>
+      <td className={cell}>
+        <span className="flex items-center gap-1.5">
+          <LifecycleStatusSelect value={status} disabled={busy} onRequestChange={onRequestStatusChange} />
+          {kickoffPending && (
+            <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#f59e0b" }} title="Kick-off call incomplete" />
+          )}
+          {drift && (
             <span
-              className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
-              style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)" }}
-              title="Sub-account name still matches the person name — open Kick-off and set the exact GHL location name"
+              className="text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
+              style={{ color: c.is_live ? "#22c55e" : "#ef4444", background: c.is_live ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)" }}
+              title={`Dashboard status manually overridden to ${c.is_live ? "Live" : "Offline"}, which differs from this lifecycle stage`}
             >
-              Map GHL
+              {c.is_live ? "Live*" : "Offline*"}
             </span>
           )}
-          <FormProgressStrip progress={c.form_progress} />
         </span>
       </td>
-      <td className={cell}>
-        <input
-          defaultValue={clientName}
-          disabled={busy}
-          onBlur={(e) => {
-            if (e.target.value !== clientName) onPatch(c.id, { primary_contact_name: e.target.value });
-          }}
-          placeholder="Client / contact name"
-          title="The client's name (person or business contact)"
-          className={`${QUIET_INPUT} px-2 py-1 w-36`}
-        />
-      </td>
-      <td className={cell}>
-        <StatesLicensedSelect
-          value={c.states_licensed}
-          disabled={busy}
-          onChange={codes => onPatch(c.id, { states_licensed: codes })}
-        />
-      </td>
-      <td className={cell}>
-        <TimezoneSelect
-          value={c.timezone}
-          disabled={busy}
-          onChange={tz => onPatch(c.id, { timezone: tz })}
-        />
-      </td>
-      <td className={cell}>
-        <input type="date" value={c.date_signed ?? ""} disabled={busy} onChange={e => onPatch(c.id, { date_signed: e.target.value })} className={`${QUIET_INPUT} px-2 py-1 text-xs`} />
-      </td>
-      <td className={cell}>
-        <input type="date" value={c.launch_date ?? ""} disabled={busy} onChange={e => onPatch(c.id, { launch_date: e.target.value })} className={`${QUIET_INPUT} px-2 py-1 text-xs`} />
-      </td>
-      <td className={cell}>
-        <span className="text-xs" style={{ color: c.churned_at ? "#94a3b8" : "#334155" }}>
-          {formatDate(c.churned_at)}
-        </span>
-      </td>
-      <td className={cell}>
-        {c.clickup_task_id ? (
-          <a
-            href={`https://app.clickup.com/t/${c.clickup_task_id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs font-mono underline"
-            style={{ color: "#38bdf8" }}
-            title="Open ClickUp Client Hub task"
-          >
-            {c.clickup_task_id.slice(0, 8)}…
-          </a>
-        ) : (
-          <span className="text-xs" style={{ color: "#334155" }}>—</span>
-        )}
-      </td>
+      {columns.map(key => (
+        <td key={key} className={cell}>
+          {COLUMN_DEFS[key].render(c)}
+        </td>
+      ))}
       <td className="px-3 py-2 text-right whitespace-nowrap">
         {confirmingDelete ? (
           <div className="flex flex-col items-end gap-2 max-w-md ml-auto">
@@ -762,63 +901,81 @@ function ClientRow({
             </span>
           </div>
         ) : (
-          <span className="flex items-center justify-end gap-3.5">
-            {showKickoffAction && (
-              <button
-                onClick={onOpenKickoff}
-                className={`text-xs font-semibold flex items-center gap-1.5 transition-colors ${kickoffPending ? "" : "text-slate-500 hover:text-green-500"}`}
-                style={kickoffPending ? { color: "#f59e0b" } : undefined}
-                title={kickoffPending ? "Kick-off call incomplete — open wizard" : "Open kick-off call wizard"}
-              >
-                Kick-off
-                {kickoffPending && (
-                  <span
-                    className="inline-block w-1.5 h-1.5 rounded-full"
-                    style={{ background: "#f59e0b" }}
-                    aria-label="Kick-off incomplete"
-                  />
-                )}
-              </button>
-            )}
-            {showLaunchAction && (
-              <button
-                onClick={onOpenLaunch}
-                className="text-xs font-semibold text-slate-500 hover:text-emerald-400 transition-colors"
-                title="Launch checklist — mark client live"
-              >
-                Launch
-              </button>
-            )}
-            {showOffboardAction && (
-              <button
-                onClick={onOpenOffboard}
-                className="text-xs font-semibold text-slate-500 hover:text-red-400 transition-colors"
-                title="Open churn offboarding form"
-              >
-                Offboard
-              </button>
-            )}
-            <button onClick={onOpenFile} className="text-xs font-semibold text-sky-400 hover:text-sky-300 transition-colors" title="Open this client's file">Open file</button>
-            <button onClick={onLogCheckin} className="text-xs font-medium text-slate-500 hover:text-sky-400 transition-colors" title="Log a client check-in call">Check-in</button>
-            <button onClick={onOpenCalls} className="text-xs font-medium text-slate-500 hover:text-amber-500 transition-colors" title="Add or view account calls">Calls</button>
-            <button onClick={onOpenNotes} className="text-xs font-medium text-slate-500 hover:text-violet-400 transition-colors" title="Add or view client notes">Notes</button>
+          <span className="flex items-center justify-end gap-2">
             <button
-              onClick={onToggleBenchmarks}
-              className="text-xs font-medium transition-colors"
-              style={{ color: benchmarkColor }}
-              title={stale ? `Benchmarks last reviewed ${relativeAge(c.kpi_benchmarks_updated_at)} — review` : "Per-client KPI benchmark overrides"}
+              onClick={onOpenFile}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap transition-colors"
+              style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.25)" }}
+              title="Open this client's file"
             >
-              {benchmarkLabel}
+              Open
             </button>
-            <span className="inline-block w-px h-3.5" style={{ background: "rgba(255,255,255,0.1)" }} aria-hidden />
-            <button onClick={onAskDelete} className="text-xs font-medium text-slate-600 hover:text-red-400 transition-colors">Remove</button>
+            <button
+              onClick={onToggleActions}
+              className="text-sm font-semibold px-2 py-1 rounded-lg leading-none transition-colors"
+              style={{
+                color: actionsOpen ? "#e2e8f0" : "#64748b",
+                background: actionsOpen ? "rgba(255,255,255,0.08)" : "transparent",
+                border: `1px solid ${actionsOpen ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.08)"}`,
+              }}
+              title="More actions"
+              aria-label="More actions"
+              aria-expanded={actionsOpen}
+            >
+              ⋯
+            </button>
           </span>
         )}
       </td>
     </tr>
+    {actionsOpen && !confirmingDelete && (
+      <tr style={{ background: "#050c18" }}>
+        <td colSpan={colSpan} className="px-4 py-3 border-t border-white/[0.04]">
+          <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
+            {showKickoffAction && (
+              <ActionButton onClick={onOpenKickoff} color={kickoffPending ? "#f59e0b" : "#22c55e"} title={kickoffPending ? "Kick-off call incomplete" : "Open kick-off call wizard"}>
+                Kick-off{kickoffPending ? " ⚠" : ""}
+              </ActionButton>
+            )}
+            {showLaunchAction && (
+              <ActionButton onClick={onOpenLaunch} color="#34d399" title="Launch checklist — mark client live">Launch</ActionButton>
+            )}
+            {showOffboardAction && (
+              <ActionButton onClick={onOpenOffboard} color="#f87171" title="Open churn offboarding form">Offboard</ActionButton>
+            )}
+            <span className="inline-block w-px h-4" style={{ background: "rgba(255,255,255,0.1)" }} aria-hidden />
+            <ActionButton onClick={onLogCheckin} color="#38bdf8" title="Log a client check-in call">Check-in</ActionButton>
+            <ActionButton onClick={onOpenCalls} color="#f59e0b" title="Add or view account calls">Calls</ActionButton>
+            <ActionButton onClick={onOpenNotes} color="#a78bfa" title="Add or view client notes">Notes</ActionButton>
+            <ActionButton
+              onClick={onToggleBenchmarks}
+              color={benchmarksOpen ? "#38bdf8" : stale ? "#f59e0b" : hasOverrides ? "#38bdf8" : "#94a3b8"}
+              title={stale ? `Benchmarks last reviewed ${relativeAge(c.kpi_benchmarks_updated_at)} — review` : "Per-client KPI benchmark overrides"}
+            >
+              {benchmarksOpen ? "Close bands" : stale ? "KPI bands ⚠" : hasOverrides ? "KPI bands ●" : "KPI bands"}
+            </ActionButton>
+            {c.clickup_task_id && (
+              <a
+                href={`https://app.clickup.com/t/${c.clickup_task_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-semibold transition-colors hover:underline"
+                style={{ color: "#38bdf8" }}
+                title="Open ClickUp Client Hub task"
+              >
+                ClickUp ↗
+              </a>
+            )}
+            <span className="ml-auto">
+              <button onClick={onAskDelete} className="text-xs font-medium text-slate-500 hover:text-red-400 transition-colors">Remove client</button>
+            </span>
+          </div>
+        </td>
+      </tr>
+    )}
     {benchmarksOpen && (
       <tr style={{ background: "#050c18" }}>
-        <td colSpan={ROSTER_COLS} className="px-4 py-4">
+        <td colSpan={colSpan} className="px-4 py-4">
           <BenchmarkEditor
             client={c}
             busy={busy}
@@ -828,6 +985,20 @@ function ClientRow({
       </tr>
     )}
     </>
+  );
+}
+
+/** Compact text action used inside a row's expandable actions tray. */
+function ActionButton({ onClick, color, title, children }: { onClick: () => void; color: string; title?: string; children: ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="text-xs font-semibold transition-opacity hover:opacity-80"
+      style={{ color }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -968,11 +1139,12 @@ function structuredCopy(b: ClientKpiBenchmarks | null | undefined): ClientKpiBen
 }
 
 function AddClientForm({
-  busy, showRevenue, onCreate,
+  busy, showRevenue, onCreate, onCancel,
 }: {
   busy: string | null;
   showRevenue: boolean;
   onCreate: (body: Record<string, unknown>) => void;
+  onCancel?: () => void;
 }) {
   const [name, setName] = useState("");
   const [clientName, setClientName] = useState("");
@@ -1031,11 +1203,22 @@ function AddClientForm({
 
   return (
     <div className="rounded-xl p-5 space-y-4" style={{ background: "#0a1628", border: "1px solid rgba(34,197,94,0.2)" }}>
-      <div>
-        <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Add a new client</h3>
-        <p className="text-xs mt-1 max-w-2xl" style={{ color: "#64748b" }}>
-          Only use this if the client is not already in the roster from the New Client Form. If they signed up through the form, open their existing file and set the GHL sub-account name during kick-off.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Add a new client</h3>
+          <p className="text-xs mt-1 max-w-2xl" style={{ color: "#64748b" }}>
+            Only use this if the client is not already in the roster from the New Client Form. If they signed up through the form, open their existing file and set the GHL sub-account name during kick-off.
+          </p>
+        </div>
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap shrink-0"
+            style={{ color: "#94a3b8", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+          >
+            Close ✕
+          </button>
+        )}
       </div>
       {duplicateWarning && (
         <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#f87171", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)" }}>

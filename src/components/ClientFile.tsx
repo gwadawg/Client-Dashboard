@@ -1,8 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import CheckinCallFormFields from "@/components/CheckinCallFormFields";
 import CheckinCallSummary from "@/components/CheckinCallSummary";
+import ClientCallFormFields from "@/components/ClientCallFormFields";
+import {
+  defaultCallDraft,
+  callDraftToApiBody,
+  validateCallDraft,
+  type ClientCallDraft,
+} from "@/lib/client-call-draft";
 import {
   CALL_DISPOSITION_OPTIONS,
   CALL_TYPE_OPTIONS,
@@ -10,7 +17,6 @@ import {
   dispositionLabel,
 } from "@/lib/client-calls";
 import {
-  EMPTY_CHECKIN_FORM,
   buildCheckinSummary,
   draftToStored,
   storedToDraft,
@@ -28,10 +34,12 @@ import { formatStatesLicensed } from "@/lib/us-states";
 import { timezoneLabel } from "@/lib/us-timezones";
 import ClientContactsSection from "@/components/ClientContactsSection";
 import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileEditForm";
+import LifecycleStatusSelect from "@/components/LifecycleStatusSelect";
 import ClientFormsSection, { type FormSubmissionSummary } from "@/components/ClientFormsSection";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
+import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
+import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
 import StatusChangeModal from "@/components/StatusChangeModal";
-import { useNavigateChurnOffboard } from "@/hooks/useNavigateChurnOffboard";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import type { ClientContact } from "@/lib/client-contacts";
@@ -141,6 +149,15 @@ type ActivityRow = {
   source_table: string;
 };
 
+type TabKey = "overview" | "records" | "activity" | "billing";
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "records", label: "Forms & history" },
+  { key: "activity", label: "Calls & notes" },
+  { key: "billing", label: "Billing" },
+];
+
 const ACTIVITY_STYLE: Record<string, { color: string; bg: string }> = {
   lifecycle: { color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
   call: { color: "#38bdf8", bg: "rgba(56,189,248,0.12)" },
@@ -193,10 +210,6 @@ function toDatetimeLocal(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function defaultCalledAtLocal(): string {
-  return toDatetimeLocal(new Date().toISOString());
-}
-
 export default function ClientFile({
   clientId,
   fallbackName,
@@ -228,17 +241,18 @@ export default function ClientFile({
   const [noteReason, setNoteReason] = useState("");
   const [noteBody, setNoteBody] = useState("");
   const [savingNote, setSavingNote] = useState(false);
-  const [callType, setCallType] = useState("checkin");
-  const [calledAt, setCalledAt] = useState(defaultCalledAtLocal);
-  const [recordingUrl, setRecordingUrl] = useState("");
-  const [transcript, setTranscript] = useState("");
-  const [callNotes, setCallNotes] = useState("");
-  const [attendees, setAttendees] = useState("");
-  const [checkinForm, setCheckinForm] = useState<CheckinFormData>({ ...EMPTY_CHECKIN_FORM });
+  const [callDraft, setCallDraft] = useState<ClientCallDraft>(() => defaultCallDraft(clientId, "checkin"));
   const [savingCall, setSavingCall] = useState(false);
   const [callDuration, setCallDuration] = useState("");
   const [callDisposition, setCallDisposition] = useState("");
   const [callFollowUp, setCallFollowUp] = useState("");
+  // Deep links from the roster (logged via a remount key) decide the initial
+  // tab + open composer, so no post-mount effect is needed.
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    () => (scrollToCalls || openCheckinForm || scrollToNotes ? "activity" : "overview"),
+  );
+  const [showCallComposer, setShowCallComposer] = useState(() => scrollToCalls || openCheckinForm);
+  const [showNoteComposer, setShowNoteComposer] = useState(() => scrollToNotes);
   const [editingCallId, setEditingCallId] = useState<string | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editNoteType, setEditNoteType] = useState("general");
@@ -252,9 +266,8 @@ export default function ClientFile({
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [statusChange, setStatusChange] = useState<{ targetStatus: string; pendingBody: Record<string, unknown> } | null>(null);
   const [showKickoff, setShowKickoff] = useState(false);
-  const navigateChurnOffboard = useNavigateChurnOffboard();
-  const notesRef = useRef<HTMLElement>(null);
-  const callsRef = useRef<HTMLElement>(null);
+  const [showLaunch, setShowLaunch] = useState(false);
+  const [showOffboard, setShowOffboard] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -300,24 +313,6 @@ export default function ClientFile({
     return () => window.removeEventListener("keydown", onKey);
   }, [editing, onClose]);
 
-  useEffect(() => {
-    if (!loading && scrollToNotes && notesRef.current) {
-      notesRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [loading, scrollToNotes]);
-
-  useEffect(() => {
-    if (!loading && (scrollToCalls || openCheckinForm) && callsRef.current) {
-      callsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [loading, scrollToCalls, openCheckinForm]);
-
-  useEffect(() => {
-    if (openCheckinForm) {
-      setCallType("checkin");
-    }
-  }, [openCheckinForm]);
-
   const summary = useMemo(() => {
     let collected = 0, retainer = 0, performance = 0, passthrough = 0;
     let lastPaidOn: string | null = null;
@@ -332,27 +327,18 @@ export default function ClientFile({
   }, [billings]);
 
   async function submitCall() {
-    const storedCheckin = callType === "checkin" ? draftToStored(checkinForm) : null;
-    if (callType === "checkin" && !storedCheckin?.client_sentiment) {
-      alert("Client sentiment is required for check-in calls");
+    const validationError = validateCallDraft(callDraft, false);
+    if (validationError) {
+      alert(validationError);
       return;
     }
-    const notes =
-      callNotes.trim()
-      || (storedCheckin ? buildCheckinSummary(storedCheckin) : "");
 
     setSavingCall(true);
     const res = await fetch(`/api/clients/${clientId}/calls`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        call_type: callType,
-        called_at: new Date(calledAt).toISOString(),
-        recording_url: recordingUrl || undefined,
-        transcript: transcript || undefined,
-        notes: notes || undefined,
-        attendees: attendees || undefined,
-        checkin_form: storedCheckin ?? undefined,
+        ...callDraftToApiBody(callDraft),
         duration_seconds: callDuration.trim() ? Number(callDuration) : undefined,
         disposition: callDisposition || undefined,
         follow_up_due_at: callFollowUp ? new Date(callFollowUp).toISOString() : undefined,
@@ -364,16 +350,11 @@ export default function ClientFile({
       setSavingCall(false);
       return;
     }
-    setCallType("checkin");
-    setCalledAt(defaultCalledAtLocal());
-    setRecordingUrl("");
-    setTranscript("");
-    setCallNotes("");
-    setAttendees("");
+    setCallDraft(defaultCallDraft(clientId, "checkin"));
     setCallDuration("");
     setCallDisposition("");
     setCallFollowUp("");
-    setCheckinForm({ ...EMPTY_CHECKIN_FORM });
+    setShowCallComposer(false);
     await load();
     onUpdated?.();
     setSavingCall(false);
@@ -514,6 +495,7 @@ export default function ClientFile({
     setNoteBody("");
     setNoteReason("");
     setNoteType("general");
+    setShowNoteComposer(false);
     await load();
     onUpdated?.();
     setSavingNote(false);
@@ -548,8 +530,8 @@ export default function ClientFile({
     const newLifecycle = typeof body.lifecycle_status === "string" ? body.lifecycle_status : null;
     const currentLifecycle = client?.lifecycle_status ?? null;
     if (newLifecycle === "churned" && newLifecycle !== currentLifecycle) {
-      navigateChurnOffboard(clientId);
-      onClose();
+      setEditing(false);
+      setShowOffboard(true);
       return;
     }
     if (
@@ -593,6 +575,28 @@ export default function ClientFile({
         }}
       />
     )}
+    {showLaunch && (
+      <LaunchChecklistWizard
+        clientId={clientId}
+        fallbackName={name}
+        onClose={() => setShowLaunch(false)}
+        onCompleted={() => {
+          load();
+          onUpdated?.();
+        }}
+      />
+    )}
+    {showOffboard && (
+      <ChurnOffboardingWizard
+        clientId={clientId}
+        fallbackName={name}
+        onClose={() => setShowOffboard(false)}
+        onCompleted={() => {
+          load();
+          onUpdated?.();
+        }}
+      />
+    )}
     <StatusChangeModal
       open={!!statusChange}
       clientName={name}
@@ -611,7 +615,15 @@ export default function ClientFile({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>{name}</h2>
-              <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ color: "#cbd5e1", background: "rgba(148,163,184,0.12)" }}>{lifecycle}</span>
+              {client && !editing ? (
+                <LifecycleStatusSelect
+                  value={client.lifecycle_status}
+                  disabled={savingProfile}
+                  onRequestChange={target => saveProfile({ name: client.name, lifecycle_status: target })}
+                />
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ color: "#cbd5e1", background: "rgba(148,163,184,0.12)" }}>{lifecycle}</span>
+              )}
               {client && (
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={client.is_live ? { color: "#22c55e", background: "rgba(34,197,94,0.12)" } : { color: "#ef4444", background: "rgba(239,68,68,0.12)" }}>
                   {client.is_live ? "Live" : "Offline"}
@@ -630,13 +642,21 @@ export default function ClientFile({
           <div className="flex items-center gap-2 flex-shrink-0">
             {!loading && !error && client && !editing && (
               <>
+                {(client.lifecycle_status === "onboarding" || client.lifecycle_status === "new_account") && (
+                  <button
+                    type="button"
+                    onClick={() => setShowLaunch(true)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                    style={{ color: "#34d399", background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.25)" }}
+                    title="Launch checklist — mark client live"
+                  >
+                    Launch
+                  </button>
+                )}
                 {client.lifecycle_status !== "churned" && (
                   <button
                     type="button"
-                    onClick={() => {
-                      navigateChurnOffboard(clientId);
-                      onClose();
-                    }}
+                    onClick={() => setShowOffboard(true)}
                     className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
                     style={{ color: "#ef4444", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)" }}
                   >
@@ -682,8 +702,8 @@ export default function ClientFile({
               saveError={saveError}
               onSave={saveProfile}
               onRequestOffboard={() => {
-                navigateChurnOffboard(clientId);
-                onClose();
+                setEditing(false);
+                setShowOffboard(true);
               }}
             />
           </div>
@@ -722,6 +742,25 @@ export default function ClientFile({
               </div>
             )}
 
+            <div className="flex items-center gap-1 border-b border-white/[0.08]">
+              {TABS.map(t => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setActiveTab(t.key)}
+                  className="px-3 py-2 text-sm font-semibold -mb-px transition-colors"
+                  style={{
+                    color: activeTab === t.key ? "#e2e8f0" : "#64748b",
+                    borderBottom: `2px solid ${activeTab === t.key ? "#38bdf8" : "transparent"}`,
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === "overview" && (
+            <div className="space-y-7">
             <Section title="Overview">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
                 <Detail label="Sub-account name" value={client?.name} />
@@ -807,7 +846,11 @@ export default function ClientFile({
                 </div>
               )}
             </Section>
+            </div>
+            )}
 
+            {activeTab === "records" && (
+            <div className="space-y-7">
             <Section title={`Onboarding forms (${formSubmissions.length})`}>
               <ClientFormsSection submissions={formSubmissions} />
             </Section>
@@ -845,79 +888,37 @@ export default function ClientFile({
                 </div>
               )}
             </Section>
+            </div>
+            )}
 
-            <section ref={callsRef}>
-              <h3 className="text-sm font-semibold uppercase tracking-wider mb-3" style={{ color: "#cbd5e1" }}>
-                Account calls ({calls.length})
-              </h3>
+            {activeTab === "activity" && (
+            <div className="space-y-7">
+            <section>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#cbd5e1" }}>
+                  Account calls ({calls.length})
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowCallComposer(s => !s)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                  style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.25)" }}
+                >
+                  {showCallComposer ? "Cancel" : "+ Log call"}
+                </button>
+              </div>
 
+              {showCallComposer && (
               <div className="rounded-lg p-4 mb-4 space-y-3" style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Call type</span>
-                    <select value={callType} disabled={savingCall} onChange={e => setCallType(e.target.value)} className="mt-1 cursor-pointer" style={fieldStyle}>
-                      {CALL_TYPE_OPTIONS.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Call date</span>
-                    <input
-                      type="datetime-local"
-                      value={calledAt}
-                      disabled={savingCall}
-                      onChange={e => setCalledAt(e.target.value)}
-                      className="mt-1"
-                      style={fieldStyle}
-                    />
-                  </label>
-                </div>
-                <label className="block">
-                  <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Recording URL</span>
-                  <input
-                    type="url"
-                    value={recordingUrl}
-                    disabled={savingCall}
-                    onChange={e => setRecordingUrl(e.target.value)}
-                    placeholder="https://…"
-                    className="mt-1"
-                    style={fieldStyle}
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Attendees (optional)</span>
-                  <input
-                    value={attendees}
-                    disabled={savingCall}
-                    onChange={e => setAttendees(e.target.value)}
-                    placeholder="Sarah (CS), John (client)"
-                    className="mt-1"
-                    style={fieldStyle}
-                  />
-                </label>
+                <ClientCallFormFields draft={callDraft} onChange={setCallDraft} disabled={savingCall} />
                 <div className="grid grid-cols-3 gap-3">
                   <label className="block">
                     <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Duration (sec)</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={callDuration}
-                      disabled={savingCall}
-                      onChange={e => setCallDuration(e.target.value)}
-                      className="mt-1"
-                      style={fieldStyle}
-                    />
+                    <input type="number" min={0} value={callDuration} disabled={savingCall} onChange={e => setCallDuration(e.target.value)} className="mt-1" style={fieldStyle} />
                   </label>
                   <label className="block">
                     <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Disposition</span>
-                    <select
-                      value={callDisposition}
-                      disabled={savingCall}
-                      onChange={e => setCallDisposition(e.target.value)}
-                      className="mt-1 cursor-pointer"
-                      style={fieldStyle}
-                    >
+                    <select value={callDisposition} disabled={savingCall} onChange={e => setCallDisposition(e.target.value)} className="mt-1 cursor-pointer" style={fieldStyle}>
                       <option value="">None</option>
                       {CALL_DISPOSITION_OPTIONS.map(o => (
                         <option key={o.value} value={o.value}>{o.label}</option>
@@ -926,64 +927,25 @@ export default function ClientFile({
                   </label>
                   <label className="block">
                     <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Follow-up due</span>
-                    <input
-                      type="datetime-local"
-                      value={callFollowUp}
-                      disabled={savingCall}
-                      onChange={e => setCallFollowUp(e.target.value)}
-                      className="mt-1"
-                      style={fieldStyle}
-                    />
+                    <input type="datetime-local" value={callFollowUp} disabled={savingCall} onChange={e => setCallFollowUp(e.target.value)} className="mt-1" style={fieldStyle} />
                   </label>
                 </div>
-
-                {callType === "checkin" && (
-                  <CheckinCallFormFields
-                    value={checkinForm}
-                    disabled={savingCall}
-                    onChange={setCheckinForm}
-                  />
-                )}
-
-                <label className="block">
-                  <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Transcript</span>
-                  <textarea
-                    value={transcript}
-                    disabled={savingCall}
-                    onChange={e => setTranscript(e.target.value)}
-                    rows={5}
-                    placeholder="Paste call transcript…"
-                    className="mt-1 resize-y"
-                    style={fieldStyle}
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Notes</span>
-                  <textarea
-                    value={callNotes}
-                    disabled={savingCall}
-                    onChange={e => setCallNotes(e.target.value)}
-                    rows={3}
-                    placeholder={callType === "checkin" ? "Optional — auto-filled from check-in form if left blank" : "Summary, action items, follow-ups…"}
-                    className="mt-1 resize-y"
-                    style={fieldStyle}
-                  />
-                </label>
                 <button
                   type="button"
                   onClick={submitCall}
                   disabled={savingCall}
                   className="text-xs font-semibold px-3 py-2 rounded-lg"
                   style={{
-                    color: callType === "checkin" ? "#38bdf8" : "#f59e0b",
-                    background: callType === "checkin" ? "rgba(56,189,248,0.12)" : "rgba(245,158,11,0.12)",
-                    border: callType === "checkin" ? "1px solid rgba(56,189,248,0.25)" : "1px solid rgba(245,158,11,0.25)",
+                    color: callDraft.call_type === "checkin" ? "#38bdf8" : "#f59e0b",
+                    background: callDraft.call_type === "checkin" ? "rgba(56,189,248,0.12)" : "rgba(245,158,11,0.12)",
+                    border: callDraft.call_type === "checkin" ? "1px solid rgba(56,189,248,0.25)" : "1px solid rgba(245,158,11,0.25)",
                     opacity: savingCall ? 0.5 : 1,
                   }}
                 >
-                  {savingCall ? "Saving…" : callType === "checkin" ? "Save check-in" : "Add call"}
+                  {savingCall ? "Saving…" : callDraft.call_type === "checkin" ? "Save check-in" : "Add call"}
                 </button>
               </div>
+              )}
 
               {calls.length === 0 ? (
                 <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>No account calls logged yet.</p>
@@ -1006,11 +968,22 @@ export default function ClientFile({
               )}
             </section>
 
-            <section ref={notesRef}>
-              <h3 className="text-sm font-semibold uppercase tracking-wider mb-3" style={{ color: "#cbd5e1" }}>
-                Client notes ({notes.length})
-              </h3>
+            <section>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#cbd5e1" }}>
+                  Client notes ({notes.length})
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowNoteComposer(s => !s)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                  style={{ color: "#a78bfa", background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.25)" }}
+                >
+                  {showNoteComposer ? "Cancel" : "+ Add note"}
+                </button>
+              </div>
 
+              {showNoteComposer && (
               <div className="rounded-lg p-4 mb-4 space-y-3" style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
@@ -1058,6 +1031,7 @@ export default function ClientFile({
                   {savingNote ? "Saving…" : "Add note"}
                 </button>
               </div>
+              )}
 
               {notes.length === 0 ? (
                 <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>No notes yet.</p>
@@ -1123,7 +1097,11 @@ export default function ClientFile({
                 </div>
               )}
             </section>
+            </div>
+            )}
 
+            {activeTab === "billing" && (
+            <div className="space-y-7">
             <Section title={`Billing history (${summary.count})`}>
               {canViewRevenue && (
                 <div className="flex gap-3 flex-wrap mb-4">
@@ -1187,6 +1165,8 @@ export default function ClientFile({
                 <p className="text-xs mt-3" style={{ color: "#475569" }}>Dollar amounts are hidden. Ask the account owner to grant &ldquo;View client revenue &amp; billing totals&rdquo; if you need them.</p>
               )}
             </Section>
+            </div>
+            )}
           </div>
         )}
       </div>

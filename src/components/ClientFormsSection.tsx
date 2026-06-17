@@ -157,23 +157,35 @@ export default function ClientFormsSection({ submissions }: { submissions: FormS
   );
 }
 
+const PROGRESS_STEPS: { key: FormType; label: string; full: string }[] = [
+  { key: "new_client", label: "Sign", full: "Signed" },
+  { key: "onboarding", label: "OB", full: "Onboarding" },
+  { key: "kickoff", label: "KO", full: "Kick-off" },
+  { key: "launch", label: "Live", full: "Launched" },
+];
+
+/**
+ * Process-stage cards (Sign → OB → KO → Live). Each step reads as a discrete
+ * card that fills green once the matching form exists, giving an at-a-glance
+ * read of where a client sits in the onboarding process.
+ */
 export function FormProgressStrip({ progress }: { progress?: Partial<Record<FormType, boolean>> }) {
-  const steps: FormType[] = ["new_client", "onboarding", "kickoff", "launch"];
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-medium" title="Onboarding form progress">
-      {steps.map(step => {
-        const done = progress?.[step];
+    <span className="inline-flex items-center gap-1">
+      {PROGRESS_STEPS.map(({ key, label, full }) => {
+        const done = !!progress?.[key];
         return (
           <span
-            key={step}
-            className="px-1.5 py-0.5 rounded"
+            key={key}
+            title={`${full} ${done ? "complete" : "pending"}`}
+            className="inline-flex items-center justify-center min-w-[2.1rem] px-1.5 py-1 rounded-md text-[10px] font-semibold tracking-wide"
             style={{
               color: done ? "#86efac" : "#475569",
-              background: done ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.04)",
+              background: done ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.03)",
+              border: done ? "1px solid rgba(34,197,94,0.3)" : "1px solid rgba(255,255,255,0.06)",
             }}
           >
-            {step === "new_client" ? "Sign" : step === "onboarding" ? "OB" : step === "kickoff" ? "KO" : "Live"}
-            {done ? " ✓" : ""}
+            {label}
           </span>
         );
       })}
