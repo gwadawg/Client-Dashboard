@@ -1,8 +1,27 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import TeamFormsSection from "@/components/TeamFormsSection";
-import SetterPlaybooksSection from "@/components/SetterPlaybooksSection";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import LibraryDocCard from "@/components/library/LibraryDocCard";
+import {
+  buildUnifiedIndex,
+  filterPlaybooks,
+  getAllFormItems,
+  getAllPlaybookItems,
+  getSetterPlaybookItems,
+  groupByKind,
+  LIB_SECTION_META,
+  linkToItem,
+  PLAYBOOK_ARTIFACT_FILTERS,
+  PLAYBOOK_OWNER_FILTERS,
+  searchItems,
+  type FormItem,
+  type LibSection,
+  type LinkItem,
+  type PlaybookItem,
+} from "@/lib/resource-index";
+import type { LibraryArtifactType, LibraryOwner } from "@/lib/library-manifest";
 
 type Category = "form" | "sop" | "document" | "template" | "other";
 
@@ -18,16 +37,16 @@ type Resource = {
 };
 
 const CATEGORY_META: Record<Category, { label: string; color: string; tint: string }> = {
-  form:     { label: "Form",     color: "#60a5fa", tint: "rgba(96,165,250,0.12)" },
-  sop:      { label: "SOP",      color: "#34d399", tint: "rgba(52,211,153,0.12)" },
+  form: { label: "Form", color: "#60a5fa", tint: "rgba(96,165,250,0.12)" },
+  sop: { label: "SOP", color: "#34d399", tint: "rgba(52,211,153,0.12)" },
   document: { label: "Document", color: "#f59e0b", tint: "rgba(245,158,11,0.12)" },
   template: { label: "Template", color: "#c084fc", tint: "rgba(192,132,252,0.12)" },
-  other:    { label: "Other",    color: "#94a3b8", tint: "rgba(148,163,184,0.12)" },
+  other: { label: "Other", color: "#94a3b8", tint: "rgba(148,163,184,0.12)" },
 };
 
 const CATEGORY_ORDER: Category[] = ["form", "sop", "document", "template", "other"];
-
 const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
+const VALID_SECTIONS: LibSection[] = ["all", "playbooks", "forms", "links"];
 
 type FormState = {
   id: string | null;
@@ -67,12 +86,23 @@ function hostFromUrl(url: string): string {
   }
 }
 
+function parseSection(raw: string | null): LibSection {
+  if (raw && VALID_SECTIONS.includes(raw as LibSection)) return raw as LibSection;
+  return "all";
+}
+
 export default function ResourcesLibrary({ canManage = false }: { canManage?: boolean }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState<Category | "all">("all");
-  const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [playbookOwner, setPlaybookOwner] = useState<LibraryOwner | "all">("all");
+  const [playbookArtifact, setPlaybookArtifact] = useState<LibraryArtifactType | "all">("all");
+  const [linkCategory, setLinkCategory] = useState<Category | "all">("all");
+  const [linkTags, setLinkTags] = useState<string[]>([]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -81,6 +111,60 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLInputElement>(null);
+  const section = parseSection(searchParams.get("lib"));
+
+  const playbookItems = useMemo(() => getAllPlaybookItems(), []);
+  const formItems = useMemo(() => getAllFormItems(), []);
+  const linkItems = useMemo(() => resources.map((r) => linkToItem(r)), [resources]);
+  const unifiedIndex = useMemo(
+    () => buildUnifiedIndex(resources),
+    [resources, playbookItems, formItems],
+  );
+
+  const counts = useMemo(
+    () => ({
+      all: unifiedIndex.length,
+      playbooks: playbookItems.length,
+      forms: formItems.length,
+      links: linkItems.length,
+    }),
+    [unifiedIndex.length, playbookItems.length, formItems.length, linkItems.length],
+  );
+
+  const isSearching = query.trim().length > 0;
+  const searchResults = useMemo(
+    () => (isSearching ? groupByKind(searchItems(unifiedIndex, query)) : null),
+    [isSearching, query, unifiedIndex],
+  );
+
+  const filteredPlaybooks = useMemo(
+    () => filterPlaybooks(playbookItems, { owner: playbookOwner, artifact: playbookArtifact }),
+    [playbookItems, playbookOwner, playbookArtifact],
+  );
+
+  const filteredLinks = useMemo(() => {
+    return linkItems.filter((item) => {
+      if (linkCategory !== "all" && item.category !== linkCategory) return false;
+      if (linkTags.length && !linkTags.every((t) => item.tags.includes(t))) return false;
+      return true;
+    });
+  }, [linkItems, linkCategory, linkTags]);
+
+  const linkTagsAll = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of linkItems) {
+      for (const t of item.resource.tags ?? []) counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([tag]) => tag);
+  }, [linkItems]);
+
+  const linkCategoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: linkItems.length };
+    for (const item of linkItems) counts[item.category] = (counts[item.category] ?? 0) + 1;
+    return counts;
+  }, [linkItems]);
 
   async function load() {
     setLoading(true);
@@ -99,42 +183,13 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
     load();
   }, []);
 
-  const allTags = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const r of resources) {
-      for (const t of r.tags ?? []) counts.set(t, (counts.get(t) ?? 0) + 1);
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([tag]) => tag);
-  }, [resources]);
-
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: resources.length };
-    for (const r of resources) counts[r.category] = (counts[r.category] ?? 0) + 1;
-    return counts;
-  }, [resources]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return resources.filter((r) => {
-      if (activeCategory !== "all" && r.category !== activeCategory) return false;
-      if (activeTags.length && !activeTags.every((t) => r.tags?.includes(t))) return false;
-      if (!q) return true;
-      const haystack = [
-        r.title,
-        r.description ?? "",
-        CATEGORY_META[r.category].label,
-        ...(r.tags ?? []),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [resources, query, activeCategory, activeTags]);
-
-  function toggleTag(tag: string) {
-    setActiveTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+  function setSection(next: LibSection) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "resources");
+    if (next === "all") params.delete("lib");
+    else params.set("lib", next);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
   function openAdd() {
@@ -187,6 +242,7 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
       }
       setModalOpen(false);
       await load();
+      if (section !== "links") setSection("links");
     } catch {
       setFormError("Couldn't save the resource. Try again.");
     } finally {
@@ -204,11 +260,9 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
     }
   }
 
-  const hasFilters = query.trim() || activeCategory !== "all" || activeTags.length > 0;
-
   return (
-    <div className="max-w-6xl space-y-8">
-      {/* Heading */}
+    <div className="max-w-6xl space-y-6">
+      {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <span
@@ -220,23 +274,20 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
           <h2 className="text-2xl font-semibold tracking-tight" style={{ color: "#f1f5f9" }}>
             Resources
           </h2>
-          <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-            Forms, SOPs, templates, and key documents — everything the team needs, in one place.
+          <p className="text-sm mt-1 max-w-xl" style={{ color: "#64748b" }}>
+            Playbooks, forms, and links — organized so your team can find what they need fast.
           </p>
         </div>
-        {canManage && (
+        {canManage && section === "links" && (
           <button
             type="button"
             onClick={openAdd}
             className="group flex items-center gap-2 rounded-full pl-5 pr-2 py-2 text-sm font-semibold active:scale-[0.98]"
             style={{ background: "#f59e0b", color: "#1a1206", transition: `transform 300ms ${EASE}` }}
           >
-            Add Resource
-            <span
-              className="flex items-center justify-center w-7 h-7 rounded-full"
-              style={{ background: "rgba(0,0,0,0.16)", transition: `transform 400ms ${EASE}` }}
-            >
-              <svg className="w-3.5 h-3.5 group-hover:translate-x-[1px] group-hover:-translate-y-[1px]" style={{ transition: `transform 400ms ${EASE}` }} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            Add Link
+            <span className="flex items-center justify-center w-7 h-7 rounded-full" style={{ background: "rgba(0,0,0,0.16)" }}>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
             </span>
@@ -244,11 +295,7 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
         )}
       </div>
 
-      <TeamFormsSection />
-
-      <SetterPlaybooksSection />
-
-      {/* Search */}
+      {/* Global search */}
       <div
         className="rounded-2xl p-1.5"
         style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
@@ -264,7 +311,7 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by title, description, or tag…"
+            placeholder="Search playbooks, forms, and links…"
             className="flex-1 bg-transparent text-sm outline-none"
             style={{ color: "#e2e8f0" }}
           />
@@ -281,80 +328,71 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
         </div>
       </div>
 
-      {/* Category chips */}
-      <div className="flex flex-wrap items-center gap-2">
-        <CategoryChip
-          label="All"
-          count={categoryCounts.all ?? 0}
-          active={activeCategory === "all"}
-          color="#f59e0b"
-          onClick={() => setActiveCategory("all")}
-        />
-        {CATEGORY_ORDER.map((cat) => (
-          <CategoryChip
-            key={cat}
-            label={CATEGORY_META[cat].label}
-            count={categoryCounts[cat] ?? 0}
-            active={activeCategory === cat}
-            color={CATEGORY_META[cat].color}
-            onClick={() => setActiveCategory((c) => (c === cat ? "all" : cat))}
-          />
-        ))}
-      </div>
-
-      {/* Tag filters */}
-      {allTags.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest mr-1" style={{ color: "#334155" }}>
-            Tags
-          </span>
-          {allTags.map((tag) => {
-            const active = activeTags.includes(tag);
-            return (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => toggleTag(tag)}
-                className="rounded-full px-3 py-1 text-xs font-medium"
-                style={{
-                  background: active ? "rgba(245,158,11,0.14)" : "rgba(255,255,255,0.03)",
-                  color: active ? "#f59e0b" : "#64748b",
-                  border: `1px solid ${active ? "rgba(245,158,11,0.4)" : "rgba(255,255,255,0.06)"}`,
-                  transition: `all 300ms ${EASE}`,
-                }}
-              >
-                #{tag}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Results */}
-      {loading ? (
-        <div className="flex items-center justify-center py-24" style={{ color: "#334155" }}>
-          <svg className="w-5 h-5 animate-spin mr-3" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          <span className="text-sm font-medium">Loading resources…</span>
-        </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState hasFilters={!!hasFilters} canManage={canManage} onAdd={openAdd} onClear={() => { setQuery(""); setActiveCategory("all"); setActiveTags([]); }} />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((r, i) => (
-            <ResourceCard
-              key={r.id}
-              resource={r}
-              index={i}
-              canManage={canManage}
-              deleting={deletingId === r.id}
-              onEdit={() => openEdit(r)}
-              onDelete={() => handleDelete(r.id)}
+      {/* Section tabs — hidden during active search */}
+      {!isSearching && (
+        <div
+          className="flex flex-wrap gap-2 p-1.5 rounded-2xl"
+          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
+        >
+          {VALID_SECTIONS.map((key) => (
+            <SectionTab
+              key={key}
+              label={LIB_SECTION_META[key].label}
+              count={counts[key]}
+              active={section === key}
+              color={LIB_SECTION_META[key].color}
+              onClick={() => setSection(key)}
             />
           ))}
         </div>
+      )}
+
+      {/* Content */}
+      {isSearching ? (
+        <SearchResults
+          results={searchResults!}
+          query={query}
+          loading={loading}
+          canManage={canManage}
+          deletingId={deletingId}
+          onEdit={(r) => openEdit(r)}
+          onDelete={handleDelete}
+        />
+      ) : section === "all" ? (
+        <BrowseHub
+          counts={counts}
+          featured={playbookItems.find((p) => p.featured) ?? getSetterPlaybookItems()[0]}
+          onNavigate={setSection}
+        />
+      ) : section === "playbooks" ? (
+        <PlaybooksPanel
+          items={filteredPlaybooks}
+          owner={playbookOwner}
+          artifact={playbookArtifact}
+          onOwnerChange={setPlaybookOwner}
+          onArtifactChange={setPlaybookArtifact}
+        />
+      ) : section === "forms" ? (
+        <FormsPanel items={formItems} />
+      ) : (
+        <LinksPanel
+          items={filteredLinks}
+          loading={loading}
+          canManage={canManage}
+          deletingId={deletingId}
+          linkCategory={linkCategory}
+          linkCategoryCounts={linkCategoryCounts}
+          linkTags={linkTags}
+          linkTagsAll={linkTagsAll}
+          onCategoryChange={setLinkCategory}
+          onToggleTag={(tag) =>
+            setLinkTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
+          }
+          onClearTags={() => setLinkTags([])}
+          onEdit={(r) => openEdit(r)}
+          onDelete={handleDelete}
+          onAdd={openAdd}
+        />
       )}
 
       {modalOpen && (
@@ -377,6 +415,466 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
           .res-rise { animation: none !important; }
         }
       `}</style>
+    </div>
+  );
+}
+
+function SectionTab({
+  label, count, active, color, onClick,
+}: { label: string; count: number; active: boolean; color: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium active:scale-[0.98]"
+      style={{
+        background: active ? color : "transparent",
+        color: active ? "#0a1628" : "#94a3b8",
+        border: `1px solid ${active ? color : "transparent"}`,
+        transition: `all 300ms ${EASE}`,
+      }}
+    >
+      {label}
+      <span
+        className="text-[11px] font-semibold tabular-nums rounded-full px-1.5"
+        style={{ background: active ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.05)", color: active ? "#0a1628" : "#475569" }}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function BrowseHub({
+  counts,
+  featured,
+  onNavigate,
+}: {
+  counts: Record<LibSection, number>;
+  featured?: PlaybookItem;
+  onNavigate: (s: LibSection) => void;
+}) {
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-3 sm:grid-cols-3">
+        {(["playbooks", "forms", "links"] as const).map((key) => {
+          const meta = LIB_SECTION_META[key];
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onNavigate(key)}
+              className="res-rise text-left rounded-[1.4rem] p-1.5 active:scale-[0.99]"
+              style={{ background: meta.tint, border: `1px solid ${meta.color}33` }}
+            >
+              <div className="rounded-[1.05rem] p-5 h-full" style={{ background: "#0a1628" }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: meta.color }}>
+                  {meta.label}
+                </p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums" style={{ color: "#f1f5f9" }}>
+                  {counts[key]}
+                </p>
+                <p className="mt-2 text-sm leading-relaxed" style={{ color: "#64748b" }}>
+                  {meta.description}
+                </p>
+                <span className="mt-4 inline-block text-sm font-semibold" style={{ color: meta.color }}>
+                  Browse →
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {featured && (
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#cbd5e1" }}>
+            Featured
+          </h3>
+          <LibraryDocCard item={featured} featured />
+        </section>
+      )}
+    </div>
+  );
+}
+
+function PlaybooksPanel({
+  items,
+  owner,
+  artifact,
+  onOwnerChange,
+  onArtifactChange,
+}: {
+  items: PlaybookItem[];
+  owner: LibraryOwner | "all";
+  artifact: LibraryArtifactType | "all";
+  onOwnerChange: (v: LibraryOwner | "all") => void;
+  onArtifactChange: (v: LibraryArtifactType | "all") => void;
+}) {
+  const featured = items.find((i) => i.featured);
+  const rest = items.filter((i) => !i.featured);
+
+  return (
+    <div className="space-y-5">
+      <SectionIntro
+        title={LIB_SECTION_META.playbooks.label}
+        description={LIB_SECTION_META.playbooks.description}
+      />
+
+      <div className="flex flex-wrap gap-2">
+        {PLAYBOOK_OWNER_FILTERS.map((f) => (
+          <FilterChip
+            key={f.value}
+            label={f.label}
+            active={owner === f.value}
+            onClick={() => onOwnerChange(f.value)}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {PLAYBOOK_ARTIFACT_FILTERS.map((f) => (
+          <FilterChip
+            key={f.value}
+            label={f.label}
+            active={artifact === f.value}
+            onClick={() => onArtifactChange(f.value)}
+            subtle
+          />
+        ))}
+      </div>
+
+      {items.length === 0 ? (
+        <EmptyPanel message="No playbooks match those filters." />
+      ) : (
+        <div className="space-y-6">
+          {featured && owner === "all" && artifact === "all" && (
+            <LibraryDocCard item={featured} featured />
+          )}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {(featured && owner === "all" && artifact === "all" ? rest : items).map((item, i) => (
+              <LibraryDocCard key={item.id} item={item} index={i} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FormsPanel({ items }: { items: FormItem[] }) {
+  return (
+    <div className="space-y-5">
+      <SectionIntro
+        title={LIB_SECTION_META.forms.label}
+        description={LIB_SECTION_META.forms.description}
+      />
+      <div className="grid gap-4 sm:grid-cols-2">
+        {items.map((item, i) => (
+          <FormCard key={item.id} item={item} index={i} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FormCard({ item, index }: { item: FormItem; index: number }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <Link
+      href={item.href}
+      className="res-rise block h-full rounded-[1.4rem] p-1.5"
+      style={{
+        background: "rgba(255,255,255,0.03)",
+        border: `1px solid ${hover ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)"}`,
+        transform: hover ? "translateY(-3px)" : "translateY(0)",
+        transition: `transform 400ms ${EASE}, border-color 400ms ${EASE}`,
+        animation: `res-rise 600ms ${EASE} both`,
+        animationDelay: `${Math.min(index * 45, 180)}ms`,
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div className="flex h-full flex-col rounded-[1.05rem] p-5" style={{ background: "#0a1628" }}>
+        <span
+          className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider w-fit"
+          style={{ background: "rgba(96,165,250,0.12)", color: "#60a5fa" }}
+        >
+          Form
+        </span>
+        <p className="mt-1 text-[11px] font-medium" style={{ color: "#64748b" }}>
+          {item.audience}
+        </p>
+        <h3 className="mt-3 text-base font-semibold leading-snug" style={{ color: "#e2e8f0" }}>
+          {item.title}
+        </h3>
+        <p className="mt-1.5 text-sm leading-relaxed line-clamp-3" style={{ color: "#64748b" }}>
+          {item.description}
+        </p>
+        {item.tags.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {item.tags.slice(0, 4).map((t) => (
+              <span key={t} className="rounded-md px-2 py-0.5 text-[11px] font-medium" style={{ background: "rgba(255,255,255,0.04)", color: "#475569" }}>
+                #{t}
+              </span>
+            ))}
+          </div>
+        )}
+        <span className="mt-auto pt-4 text-sm font-semibold" style={{ color: "#60a5fa" }}>
+          Open form →
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function LinksPanel({
+  items,
+  loading,
+  canManage,
+  deletingId,
+  linkCategory,
+  linkCategoryCounts,
+  linkTags,
+  linkTagsAll,
+  onCategoryChange,
+  onToggleTag,
+  onClearTags,
+  onEdit,
+  onDelete,
+  onAdd,
+}: {
+  items: LinkItem[];
+  loading: boolean;
+  canManage: boolean;
+  deletingId: string | null;
+  linkCategory: Category | "all";
+  linkCategoryCounts: Record<string, number>;
+  linkTags: string[];
+  linkTagsAll: string[];
+  onCategoryChange: (c: Category | "all") => void;
+  onToggleTag: (tag: string) => void;
+  onClearTags: () => void;
+  onEdit: (r: Resource) => void;
+  onDelete: (id: string) => void;
+  onAdd: () => void;
+}) {
+  const hasFilters = linkCategory !== "all" || linkTags.length > 0;
+
+  return (
+    <div className="space-y-5">
+      <SectionIntro
+        title={LIB_SECTION_META.links.label}
+        description={LIB_SECTION_META.links.description}
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <CategoryChip label="All" count={linkCategoryCounts.all ?? 0} active={linkCategory === "all"} color="#c084fc" onClick={() => onCategoryChange("all")} />
+        {CATEGORY_ORDER.map((cat) => (
+          <CategoryChip
+            key={cat}
+            label={CATEGORY_META[cat].label}
+            count={linkCategoryCounts[cat] ?? 0}
+            active={linkCategory === cat}
+            color={CATEGORY_META[cat].color}
+            onClick={() => onCategoryChange(linkCategory === cat ? "all" : cat)}
+          />
+        ))}
+      </div>
+
+      {linkTagsAll.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-widest mr-1" style={{ color: "#334155" }}>
+            Tags
+          </span>
+          {linkTagsAll.map((tag) => {
+            const active = linkTags.includes(tag);
+            return (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => onToggleTag(tag)}
+                className="rounded-full px-3 py-1 text-xs font-medium"
+                style={{
+                  background: active ? "rgba(192,132,252,0.14)" : "rgba(255,255,255,0.03)",
+                  color: active ? "#c084fc" : "#64748b",
+                  border: `1px solid ${active ? "rgba(192,132,252,0.4)" : "rgba(255,255,255,0.06)"}`,
+                }}
+              >
+                #{tag}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {loading ? (
+        <LoadingState />
+      ) : items.length === 0 ? (
+        <EmptyState
+          hasFilters={hasFilters}
+          canManage={canManage}
+          onAdd={onAdd}
+          onClear={() => { onCategoryChange("all"); onClearTags(); }}
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((item, i) => (
+            <ResourceCard
+              key={item.id}
+              resource={item.resource}
+              index={i}
+              canManage={canManage}
+              deleting={deletingId === item.resource.id}
+              onEdit={() => onEdit(item.resource)}
+              onDelete={() => onDelete(item.resource.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchResults({
+  results,
+  query,
+  loading,
+  canManage,
+  deletingId,
+  onEdit,
+  onDelete,
+}: {
+  results: ReturnType<typeof groupByKind>;
+  query: string;
+  loading: boolean;
+  canManage: boolean;
+  deletingId: string | null;
+  onEdit: (r: Resource) => void;
+  onDelete: (id: string) => void;
+}) {
+  const total = results.playbook.length + results.form.length + results.link.length;
+
+  if (loading) return <LoadingState />;
+
+  if (total === 0) {
+    return (
+      <EmptyPanel message={`No results for "${query}"`} hint="Try a different keyword — script names, roles, tags, or form titles." />
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <p className="text-sm" style={{ color: "#64748b" }}>
+        {total} result{total === 1 ? "" : "s"} for <span style={{ color: "#e2e8f0" }}>&ldquo;{query}&rdquo;</span>
+      </p>
+
+      {results.playbook.length > 0 && (
+        <SearchGroup title="Playbooks" count={results.playbook.length} color="#34d399">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {results.playbook.map((item, i) => (
+              <LibraryDocCard key={item.id} item={item} index={i} />
+            ))}
+          </div>
+        </SearchGroup>
+      )}
+
+      {results.form.length > 0 && (
+        <SearchGroup title="Forms" count={results.form.length} color="#60a5fa">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {results.form.map((item, i) => (
+              <FormCard key={item.id} item={item} index={i} />
+            ))}
+          </div>
+        </SearchGroup>
+      )}
+
+      {results.link.length > 0 && (
+        <SearchGroup title="Links" count={results.link.length} color="#c084fc">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {results.link.map((item, i) => (
+              <ResourceCard
+                key={item.id}
+                resource={item.resource}
+                index={i}
+                canManage={canManage}
+                deleting={deletingId === item.resource.id}
+                onEdit={() => onEdit(item.resource)}
+                onDelete={() => onDelete(item.resource.id)}
+              />
+            ))}
+          </div>
+        </SearchGroup>
+      )}
+    </div>
+  );
+}
+
+function SearchGroup({
+  title, count, color, children,
+}: { title: string; count: number; color: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#cbd5e1" }}>
+          {title}
+        </h3>
+        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums" style={{ background: `${color}22`, color }}>
+          {count}
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SectionIntro({ title, description }: { title: string; description: string }) {
+  return (
+    <div>
+      <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>{title}</h3>
+      <p className="text-sm mt-1" style={{ color: "#64748b" }}>{description}</p>
+    </div>
+  );
+}
+
+function FilterChip({
+  label, active, onClick, subtle = false,
+}: { label: string; active: boolean; onClick: () => void; subtle?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-full px-3 py-1.5 text-xs font-medium"
+      style={{
+        background: active ? (subtle ? "rgba(255,255,255,0.08)" : "rgba(52,211,153,0.14)") : "rgba(255,255,255,0.03)",
+        color: active ? (subtle ? "#e2e8f0" : "#34d399") : "#64748b",
+        border: `1px solid ${active ? (subtle ? "rgba(255,255,255,0.12)" : "rgba(52,211,153,0.35)") : "rgba(255,255,255,0.06)"}`,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="flex items-center justify-center py-24" style={{ color: "#334155" }}>
+      <svg className="w-5 h-5 animate-spin mr-3" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+      <span className="text-sm font-medium">Loading…</span>
+    </div>
+  );
+}
+
+function EmptyPanel({ message, hint }: { message: string; hint?: string }) {
+  return (
+    <div
+      className="rounded-2xl flex flex-col items-center justify-center text-center py-16 px-6"
+      style={{ background: "#0a1628", border: "1px dashed rgba(255,255,255,0.08)" }}
+    >
+      <p className="text-sm font-semibold" style={{ color: "#94a3b8" }}>{message}</p>
+      {hint && <p className="text-xs mt-1 max-w-sm" style={{ color: "#475569" }}>{hint}</p>}
     </div>
   );
 }
@@ -434,38 +932,19 @@ function ResourceCard({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div
-        className="flex h-full flex-col rounded-[1.05rem] p-5"
-        style={{ background: "#0a1628", boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)" }}
-      >
+      <div className="flex h-full flex-col rounded-[1.05rem] p-5" style={{ background: "#0a1628", boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)" }}>
         <div className="flex items-start justify-between gap-3">
-          <span
-            className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
-            style={{ background: meta.tint, color: meta.color }}
-          >
+          <span className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider" style={{ background: meta.tint, color: meta.color }}>
             {meta.label}
           </span>
           {canManage && (
             <div className="flex items-center gap-1" style={{ opacity: hover ? 1 : 0.35, transition: `opacity 300ms ${EASE}` }}>
-              <button
-                type="button"
-                onClick={onEdit}
-                title="Edit"
-                className="flex items-center justify-center w-7 h-7 rounded-lg"
-                style={{ color: "#64748b", background: "rgba(255,255,255,0.04)" }}
-              >
+              <button type="button" onClick={onEdit} title="Edit" className="flex items-center justify-center w-7 h-7 rounded-lg" style={{ color: "#64748b", background: "rgba(255,255,255,0.04)" }}>
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
               </button>
-              <button
-                type="button"
-                onClick={onDelete}
-                disabled={deleting}
-                title="Delete"
-                className="flex items-center justify-center w-7 h-7 rounded-lg"
-                style={{ color: "#9f6464", background: "rgba(248,113,113,0.08)" }}
-              >
+              <button type="button" onClick={onDelete} disabled={deleting} title="Delete" className="flex items-center justify-center w-7 h-7 rounded-lg" style={{ color: "#9f6464", background: "rgba(248,113,113,0.08)" }}>
                 {deleting ? (
                   <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -480,41 +959,29 @@ function ResourceCard({
             </div>
           )}
         </div>
-
-        <h3 className="mt-4 text-base font-semibold leading-snug" style={{ color: "#e2e8f0" }}>
-          {resource.title}
-        </h3>
+        <h3 className="mt-4 text-base font-semibold leading-snug" style={{ color: "#e2e8f0" }}>{resource.title}</h3>
         {resource.description && (
-          <p className="mt-1.5 text-sm leading-relaxed line-clamp-3" style={{ color: "#64748b" }}>
-            {resource.description}
-          </p>
+          <p className="mt-1.5 text-sm leading-relaxed line-clamp-3" style={{ color: "#64748b" }}>{resource.description}</p>
         )}
-
         {resource.tags?.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {resource.tags.map((t) => (
-              <span key={t} className="rounded-md px-2 py-0.5 text-[11px] font-medium" style={{ background: "rgba(255,255,255,0.04)", color: "#475569" }}>
-                #{t}
-              </span>
+              <span key={t} className="rounded-md px-2 py-0.5 text-[11px] font-medium" style={{ background: "rgba(255,255,255,0.04)", color: "#475569" }}>#{t}</span>
             ))}
           </div>
         )}
-
         <a
           href={normalizeUrl(resource.url)}
           target={isInternalPath(resource.url) ? undefined : "_blank"}
           rel={isInternalPath(resource.url) ? undefined : "noopener noreferrer"}
           className="group mt-auto pt-5 flex items-center gap-2 text-sm font-semibold"
-          style={{ color: "#f59e0b" }}
+          style={{ color: "#c084fc" }}
         >
           <span className="truncate" style={{ maxWidth: "10rem" }}>
             {isInternalPath(resource.url) ? "Open in Mr. Waiz" : hostFromUrl(resource.url)}
           </span>
-          <span
-            className="flex items-center justify-center w-6 h-6 rounded-full ml-auto"
-            style={{ background: "rgba(245,158,11,0.12)", transition: `transform 400ms ${EASE}` }}
-          >
-            <svg className="w-3 h-3 group-hover:translate-x-[1px] group-hover:-translate-y-[1px]" style={{ transition: `transform 400ms ${EASE}` }} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+          <span className="flex items-center justify-center w-6 h-6 rounded-full ml-auto" style={{ background: "rgba(192,132,252,0.12)" }}>
+            <svg className="w-3 h-3 group-hover:translate-x-[1px] group-hover:-translate-y-[1px]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M7 17L17 7M17 7H8m9 0v9" />
             </svg>
           </span>
@@ -528,33 +995,17 @@ function EmptyState({
   hasFilters, canManage, onAdd, onClear,
 }: { hasFilters: boolean; canManage: boolean; onAdd: () => void; onClear: () => void }) {
   return (
-    <div
-      className="rounded-2xl flex flex-col items-center justify-center text-center py-20 px-6"
-      style={{ background: "#0a1628", border: "1px dashed rgba(255,255,255,0.08)" }}
-    >
-      <div className="flex items-center justify-center w-12 h-12 rounded-xl mb-4" style={{ background: "rgba(245,158,11,0.10)" }}>
-        <svg className="w-6 h-6" fill="none" stroke="#f59e0b" strokeWidth={1.75} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-        </svg>
-      </div>
+    <div className="rounded-2xl flex flex-col items-center justify-center text-center py-20 px-6" style={{ background: "#0a1628", border: "1px dashed rgba(255,255,255,0.08)" }}>
       <p className="text-sm font-semibold" style={{ color: "#94a3b8" }}>
-        {hasFilters ? "No resources match those filters" : "No resources yet"}
+        {hasFilters ? "No links match those filters" : "No external links yet"}
       </p>
       <p className="text-xs mt-1 max-w-xs" style={{ color: "#475569" }}>
-        {hasFilters
-          ? "Try a different search term or clear the filters."
-          : canManage
-            ? "Add your first form, SOP, or document link to get the library started."
-            : "Once an admin adds resources, they'll appear here."}
+        {hasFilters ? "Try clearing filters or a different category." : canManage ? "Add Google Docs, templates, or other bookmarks here." : "Admins can add external links for the team."}
       </p>
       {hasFilters ? (
-        <button type="button" onClick={onClear} className="mt-5 rounded-full px-4 py-2 text-xs font-semibold" style={{ background: "rgba(255,255,255,0.05)", color: "#94a3b8" }}>
-          Clear filters
-        </button>
+        <button type="button" onClick={onClear} className="mt-5 rounded-full px-4 py-2 text-xs font-semibold" style={{ background: "rgba(255,255,255,0.05)", color: "#94a3b8" }}>Clear filters</button>
       ) : canManage ? (
-        <button type="button" onClick={onAdd} className="mt-5 rounded-full px-4 py-2 text-xs font-semibold" style={{ background: "#f59e0b", color: "#1a1206" }}>
-          Add Resource
-        </button>
+        <button type="button" onClick={onAdd} className="mt-5 rounded-full px-4 py-2 text-xs font-semibold" style={{ background: "#c084fc", color: "#1a1206" }}>Add Link</button>
       ) : null}
     </div>
   );
@@ -571,110 +1022,40 @@ function ResourceModal({
   onSave: () => void;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(3,7,15,0.7)", backdropFilter: "blur(8px)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg rounded-[1.6rem] p-1.5"
-        style={{
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.10)",
-          boxShadow: "0 30px 70px rgba(0,0,0,0.6)",
-          animation: `res-rise 400ms ${EASE} both`,
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(3,7,15,0.7)", backdropFilter: "blur(8px)" }} onClick={onClose}>
+      <div className="w-full max-w-lg rounded-[1.6rem] p-1.5" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 30px 70px rgba(0,0,0,0.6)", animation: `res-rise 400ms ${EASE} both` }} onClick={(e) => e.stopPropagation()}>
         <div className="rounded-[1.15rem] p-6" style={{ background: "#0a1628", boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)" }}>
           <div className="flex items-center justify-between mb-5">
-            <h3 className="text-lg font-semibold" style={{ color: "#f1f5f9" }}>
-              {form.id ? "Edit Resource" : "Add Resource"}
-            </h3>
+            <h3 className="text-lg font-semibold" style={{ color: "#f1f5f9" }}>{form.id ? "Edit Link" : "Add Link"}</h3>
             <button type="button" onClick={onClose} className="flex items-center justify-center w-8 h-8 rounded-lg" style={{ color: "#475569", background: "rgba(255,255,255,0.04)" }}>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
-
           <div className="space-y-4">
             <Field label="Title">
-              <input
-                value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder="e.g. New Client Onboarding Form"
-                className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none"
-                style={inputStyle}
-                autoFocus
-              />
+              <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="e.g. Q2 Sales Playbook (Google Doc)" className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none" style={inputStyle} autoFocus />
             </Field>
-
             <div className="grid grid-cols-2 gap-3">
               <Field label="Category">
-                <select
-                  value={form.category}
-                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as Category }))}
-                  className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none cursor-pointer"
-                  style={inputStyle}
-                >
-                  {CATEGORY_ORDER.map((c) => (
-                    <option key={c} value={c}>{CATEGORY_META[c].label}</option>
-                  ))}
+                <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as Category }))} className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none cursor-pointer" style={inputStyle}>
+                  {CATEGORY_ORDER.map((c) => (<option key={c} value={c}>{CATEGORY_META[c].label}</option>))}
                 </select>
               </Field>
               <Field label="Tags" hint="comma-separated">
-                <input
-                  value={form.tags}
-                  onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
-                  placeholder="onboarding, sales"
-                  className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none"
-                  style={inputStyle}
-                />
+                <input value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} placeholder="sales, template" className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none" style={inputStyle} />
               </Field>
             </div>
-
             <Field label="Link">
-              <input
-                value={form.url}
-                onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
-                placeholder="https://docs.google.com/…"
-                className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none"
-                style={inputStyle}
-              />
+              <input value={form.url} onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))} placeholder="https://docs.google.com/…" className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none" style={inputStyle} />
             </Field>
-
             <Field label="Description" hint="optional">
-              <textarea
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="What is this for and when should it be used?"
-                rows={3}
-                className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none resize-none"
-                style={inputStyle}
-              />
+              <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="What is this for and when should it be used?" rows={3} className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none resize-none" style={inputStyle} />
             </Field>
-
-            {error && (
-              <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#f87171", background: "rgba(248,113,113,0.08)" }}>
-                {error}
-              </p>
-            )}
+            {error && <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#f87171", background: "rgba(248,113,113,0.08)" }}>{error}</p>}
           </div>
-
           <div className="flex items-center justify-end gap-2 mt-6">
-            <button type="button" onClick={onClose} className="rounded-full px-4 py-2 text-sm font-medium" style={{ color: "#94a3b8", background: "rgba(255,255,255,0.04)" }}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={saving}
-              className="rounded-full px-5 py-2 text-sm font-semibold active:scale-[0.98]"
-              style={{ background: "#f59e0b", color: "#1a1206", opacity: saving ? 0.7 : 1, transition: `transform 300ms ${EASE}` }}
-            >
-              {saving ? "Saving…" : form.id ? "Save Changes" : "Add Resource"}
-            </button>
+            <button type="button" onClick={onClose} className="rounded-full px-4 py-2 text-sm font-medium" style={{ color: "#94a3b8", background: "rgba(255,255,255,0.04)" }}>Cancel</button>
+            <button type="button" onClick={onSave} disabled={saving} className="rounded-full px-5 py-2 text-sm font-semibold active:scale-[0.98]" style={{ background: "#f59e0b", color: "#1a1206", opacity: saving ? 0.7 : 1 }}>{saving ? "Saving…" : form.id ? "Save Changes" : "Add Link"}</button>
           </div>
         </div>
       </div>
@@ -682,11 +1063,7 @@ function ResourceModal({
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  background: "#0f2040",
-  border: "1px solid rgba(255,255,255,0.10)",
-  color: "#e2e8f0",
-};
+const inputStyle: React.CSSProperties = { background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", color: "#e2e8f0" };
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (

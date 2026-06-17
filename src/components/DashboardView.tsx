@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RawDataTable from "./RawDataTable";
@@ -891,7 +891,11 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
 
           {view === "ceo" && <CeoDashboard canViewRevenue={canViewRevenue} />}
 
-          {view === "resources" && <ResourcesLibrary canManage={isOwner || isAdmin} />}
+          {view === "resources" && (
+            <Suspense fallback={<p className="text-sm text-slate-500 py-12">Loading library…</p>}>
+              <ResourcesLibrary canManage={isOwner || isAdmin} />
+            </Suspense>
+          )}
 
           {view === "client_health" && <ClientHealthDashboard />}
 

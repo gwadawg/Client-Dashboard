@@ -212,7 +212,7 @@ export default function LibraryDocViewer({ meta, body }: Props) {
       >
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
           <Link
-            href="/dashboard?view=resources"
+            href="/dashboard?view=resources&lib=playbooks"
             className="text-sm font-medium"
             style={{ color: "#64748b" }}
           >
