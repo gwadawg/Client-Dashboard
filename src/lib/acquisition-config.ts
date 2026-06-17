@@ -120,3 +120,28 @@ export function assertAcquisitionLocation(locationId: string | null | undefined)
   if (!locationId) return false;
   return locationId === GHL_ACQUISITION_LOCATION_ID;
 }
+
+/** GHL custom field IDs — acquisition location (see docs/ACQUISITION_KPIS.md). */
+export const GHL_CF = {
+  agent: 'zBBKOu7IF0GyPKd92teI',
+  leadSource: 'TbCY8dTtzXF0fSzyNB0R',
+  bookingSource: 'YdG174ImpiTJQA45fecU',
+  qualified: 'bKwAbfivInRpYqD9jZzx',
+  appointmentId: 'wrkTN7hE0YHF5ZEUfTpy',
+  dateApptBookedFor: 'gVy6ccjcRrRoYHi2ZNcy',
+} as const;
+
+/** WM PIPE pipeline + Demo Booked stage (from GHL discovery). */
+export const GHL_WM_PIPELINE_ID = 'veiMi1Ql2sQGJWgfdLcy';
+export const GHL_STAGE_DEMO_BOOKED = 'Demo Booked';
+
+export const DEMO_CALENDAR_ID = '71fF0PpCgY8Qv1PqeMFa';
+
+export const BOOKING_SOURCE_OPTIONS = [
+  'Fresh lead',
+  'Follow-Up',
+  'No-Show',
+  'Cold Call Lead',
+  'Aged Lead',
+  'Linkedin',
+] as const;

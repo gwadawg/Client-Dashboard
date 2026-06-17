@@ -66,6 +66,23 @@ KPI views support include/exclude for downsells: **Skool**, **Mid Offer**, **Boo
 | Booking Source | `YdG174ImpiTJQA45fecU` |
 | Qualified | `bKwAbfivInRpYqD9jZzx` |
 | Appointment ID | `wrkTN7hE0YHF5ZEUfTpy` |
+| Date Appt Booked For | `gVy6ccjcRrRoYHi2ZNcy` |
+
+## Mr. Waiz forms → GHL sync (demo booking credit)
+
+| Form field | Supabase | GHL write-back |
+|------------|----------|----------------|
+| Setter name | `acquisition_appointments.setter_name`, `acquisition_form_submissions` | Agent `zBBKOu7IF0GyPKd92teI` |
+| Booking source | `booking_source` | Booking Source `YdG174ImpiTJQA45fecU` |
+| Demo booked / scheduled | `booked_at`, `scheduled_at` | Date Appt Booked For `gVy6ccjcRrRoYHi2ZNcy` |
+| Qualified | `qualified` | Qualified `bKwAbfivInRpYqD9jZzx` |
+| GHL appointment id | `ghl_appointment_id` | Appointment ID `wrkTN7hE0YHF5ZEUfTpy` |
+| Notes | `responses.notes` | Contact note |
+| — | pipeline via API | WM PIPE stage **Demo Booked** |
+
+Magic link: `/forms/acquisition/demo-booked?contact_id=…&appointment_id=…&token=…`
+
+See [`docs/ACQUISITION_FORMS_GHL.md`](ACQUISITION_FORMS_GHL.md) for GHL workflow setup.
 
 ## Code references
 

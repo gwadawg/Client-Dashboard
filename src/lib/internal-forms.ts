@@ -11,6 +11,15 @@ export type InternalFormDef = {
 
 export const INTERNAL_FORMS: InternalFormDef[] = [
   {
+    slug: "acquisition-demo-booked",
+    title: "Demo Booking Credit",
+    description:
+      "Setter magic link after booking a demo — logs credit in Mr. Waiz and syncs Agent, booking source, and pipeline stage to GHL.",
+    href: "/forms/acquisition/demo-booked",
+    audience: "Acquisition setters",
+    tags: ["acquisition", "setter", "demo"],
+  },
+  {
     slug: "churn",
     title: "Churn Offboarding",
     description:
