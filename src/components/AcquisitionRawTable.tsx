@@ -27,7 +27,7 @@ const COLUMNS: Record<Props["type"], { key: string; label: string }[]> = {
     { key: "call_taken_by", label: "Taken By" },
     { key: "lead_name", label: "Lead" },
     { key: "qualified", label: "Qualified" },
-    { key: "demo_audit", label: "Demo audit" },
+    { key: "closer_form", label: "Closer form" },
   ],
   offers: [
     { key: "offered_at", label: "Date" },
@@ -68,14 +68,14 @@ function fmt(key: string, v: unknown): string {
   return String(v);
 }
 
-function DemoAuditCell({ row }: { row: Record<string, unknown> }) {
-  if (row.appointment_type !== "demo" || row.status !== "showed") {
+function CloserFormCell({ row }: { row: Record<string, unknown> }) {
+  if (row.status !== "showed") {
     return <span style={{ color: "#334155" }}>—</span>;
   }
-  if (row.demo_audit_done === true) {
+  if (row.closer_form_done === true) {
     return <span className="text-xs font-medium" style={{ color: "#22c55e" }}>Done</span>;
   }
-  const url = row.demo_audit_form_url;
+  const url = row.closer_form_url;
   if (typeof url === "string" && url) {
     return (
       <a
@@ -137,8 +137,8 @@ export default function AcquisitionRawTable({ type, startDate, endDate }: Props)
                 <tr key={i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                   {cols.map((c) => (
                     <td key={c.key} className="px-3 py-2 whitespace-nowrap tabular-nums" style={{ color: "#cbd5e1" }}>
-                      {c.key === "demo_audit" ? (
-                        <DemoAuditCell row={row} />
+                      {c.key === "closer_form" ? (
+                        <CloserFormCell row={row} />
                       ) : (
                         fmt(c.key, row[c.key])
                       )}

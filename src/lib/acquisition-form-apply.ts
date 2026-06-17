@@ -30,9 +30,12 @@ export async function applyDemoBookingCredit(
 
 export {
   applySetterIntroReflection,
+  applyCloserForm,
   applyDemoAudit,
   type SetterIntroReflectionInput,
   type SetterIntroReflectionResult,
+  type CloserFormInput,
+  type CloserFormResult,
   type DemoAuditInput,
   type DemoAuditResult,
 } from './acquisition-form-apply-reflection';

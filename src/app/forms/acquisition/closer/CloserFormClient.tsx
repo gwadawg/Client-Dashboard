@@ -13,13 +13,22 @@ const inputStyle: CSSProperties = {
 
 const OFFER_TYPES = ["Core Offer", "Bootcamp", "Mid Offer", "Skool"];
 
-export default function DemoAuditFormClient() {
+const APPT_LABELS: Record<string, string> = {
+  demo: "demo",
+  bamfam: "BAMFAM",
+  followup: "follow-up",
+  intro: "intro",
+  organic: "organic",
+};
+
+export default function CloserFormClient() {
   const searchParams = useSearchParams();
   const contactId = searchParams.get("contact_id") ?? "";
   const appointmentId = searchParams.get("appointment_id") ?? "";
   const token = searchParams.get("token") ?? "";
 
   const [leadName, setLeadName] = useState<string | null>(null);
+  const [appointmentType, setAppointmentType] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [closerName, setCloserName] = useState("");
   const [setterName, setSetterName] = useState("");
@@ -46,13 +55,14 @@ export default function DemoAuditFormClient() {
     const qs = new URLSearchParams({ contact_id: contactId, token });
     if (appointmentId) qs.set("appointment_id", appointmentId);
 
-    fetch(`/api/acquisition/forms/demo-audit?${qs}`)
+    fetch(`/api/acquisition/forms/closer?${qs}`)
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load");
         return r.json();
       })
       .then((d) => {
         setLeadName(d.lead_name);
+        setAppointmentType(d.appointment_type ?? null);
         if (d.closer_name_default) setCloserName(d.closer_name_default);
         if (d.setter_name_default) setSetterName(d.setter_name_default);
       })
@@ -64,7 +74,7 @@ export default function DemoAuditFormClient() {
     setSubmitting(true);
     setResult(null);
     try {
-      const res = await fetch("/api/acquisition/forms/demo-audit", {
+      const res = await fetch("/api/acquisition/forms/closer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -97,6 +107,10 @@ export default function DemoAuditFormClient() {
     }
   }
 
+  const apptLabel = appointmentType
+    ? APPT_LABELS[appointmentType] ?? appointmentType
+    : "sales";
+
   if (loadError) {
     return <div className="max-w-lg mx-auto text-center py-12"><p className="text-red-400">{loadError}</p></div>;
   }
@@ -104,7 +118,7 @@ export default function DemoAuditFormClient() {
   if (result?.ok) {
     return (
       <div className="max-w-lg mx-auto py-8">
-        <h1 className="text-xl font-semibold text-emerald-400">Demo audit saved</h1>
+        <h1 className="text-xl font-semibold text-emerald-400">Closer form saved</h1>
         <p className="text-sm text-slate-400 mt-2">Recorded for {leadName ?? contactId}</p>
       </div>
     );
@@ -114,8 +128,10 @@ export default function DemoAuditFormClient() {
     <div className="max-w-lg mx-auto">
       <div className="mb-8">
         <p className="text-xs uppercase tracking-wider text-slate-500 mb-1">Acquisition</p>
-        <h1 className="text-2xl font-bold text-slate-100">Demo audit</h1>
-        <p className="text-sm text-slate-400 mt-2">Post-demo closer disposition, offer, and close.</p>
+        <h1 className="text-2xl font-bold text-slate-100">Closer form</h1>
+        <p className="text-sm text-slate-400 mt-2">
+          Log call outcome, offer, and close for this {apptLabel} appointment.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -220,7 +236,7 @@ export default function DemoAuditFormClient() {
         {result?.error && <p className="text-sm text-red-400">{result.error}</p>}
 
         <button type="submit" disabled={submitting} className="w-full py-3 rounded-lg text-sm font-semibold disabled:opacity-50" style={{ background: "#38bdf8", color: "#0f172a" }}>
-          {submitting ? "Saving…" : "Submit demo audit"}
+          {submitting ? "Saving…" : "Submit closer form"}
         </button>
       </form>
     </div>

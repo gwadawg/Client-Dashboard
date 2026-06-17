@@ -102,7 +102,7 @@ export function buildIntroReflectionFormUrl(
   return `${base}/forms/acquisition/intro-reflection?${params.toString()}`;
 }
 
-export function buildDemoAuditFormUrl(
+export function buildCloserFormUrl(
   baseUrl: string,
   contactId: string,
   appointmentId?: string | null,
@@ -111,5 +111,14 @@ export function buildDemoAuditFormUrl(
   const params = new URLSearchParams({ contact_id: contactId, token });
   if (appointmentId?.trim()) params.set('appointment_id', appointmentId.trim());
   const base = baseUrl.replace(/\/$/, '');
-  return `${base}/forms/acquisition/demo-audit?${params.toString()}`;
+  return `${base}/forms/acquisition/closer?${params.toString()}`;
+}
+
+/** @deprecated Use buildCloserFormUrl */
+export function buildDemoAuditFormUrl(
+  baseUrl: string,
+  contactId: string,
+  appointmentId?: string | null,
+): string {
+  return buildCloserFormUrl(baseUrl, contactId, appointmentId);
 }

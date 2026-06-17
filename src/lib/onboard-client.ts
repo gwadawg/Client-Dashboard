@@ -12,6 +12,7 @@ import {
   getClickUpToken,
 } from '@/lib/clickup';
 import { insertFormSubmission } from '@/lib/form-submissions';
+import { linkAcquisitionCloseFromClient } from '@/lib/acquisition-ingest';
 
 const ONBOARD_FIELDS =
   'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, ghl_contact_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, created_at';
@@ -413,8 +414,9 @@ export async function onboardClient(
   const billing_id = await upsertSigningBilling(service, String(client.id), parsed);
   const sales_call_id = await upsertSalesCall(service, String(client.id), parsed);
 
+  let formSubmissionId: string | null = null;
   try {
-    await insertFormSubmission(service, {
+    const submission = await insertFormSubmission(service, {
       client_id: String(client.id),
       form_type: 'new_client',
       status: 'applied',
@@ -424,8 +426,18 @@ export async function onboardClient(
       responses: body,
       applied_patch: record,
     });
+    formSubmissionId = submission.id;
   } catch (e) {
     console.error('[onboard] form submission log failed', e);
+  }
+
+  try {
+    await linkAcquisitionCloseFromClient(service, String(client.id), {
+      formSubmissionId: formSubmissionId ?? undefined,
+      closedAt: parsed.date_signed ? `${parsed.date_signed}T12:00:00.000Z` : undefined,
+    });
+  } catch (e) {
+    console.error('[onboard] acquisition link failed', e);
   }
 
   return { client, clickup_task_id: clickupTaskId, created, billing_id, sales_call_id };

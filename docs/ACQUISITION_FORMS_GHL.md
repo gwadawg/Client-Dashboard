@@ -78,4 +78,4 @@ Do **not** relay full GHL form payloads through Make — use Mr. Waiz forms for 
 |------|-------------|--------|
 | Demo booking credit | `demo_booking_credit` | Live |
 | Intro disposition | `intro_disposition` | Planned |
-| Closer demo audit | `demo_audit` | Planned |
+| Closer form | `closer_form` | Live (`/forms/acquisition/closer`; legacy `/demo-audit`) |

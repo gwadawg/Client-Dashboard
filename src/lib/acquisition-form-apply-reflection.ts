@@ -58,7 +58,7 @@ export type SetterIntroReflectionResult = {
   is_resubmit: boolean;
 };
 
-export type DemoAuditInput = {
+export type CloserFormInput = {
   ghl_contact_id: string;
   ghl_appointment_id?: string | null;
   closer_name: string;
@@ -78,13 +78,34 @@ export type DemoAuditInput = {
   closed_at?: string | null;
 };
 
-export type DemoAuditResult = {
+export type CloserFormResult = {
   submission_id: string;
   lead_id: string;
   call_id: string;
   offer_id: string | null;
   pending_close_id: string | null;
 };
+
+/** @deprecated Use CloserFormInput */
+export type DemoAuditInput = CloserFormInput;
+
+/** @deprecated Use CloserFormResult */
+export type DemoAuditResult = CloserFormResult;
+
+const CLOSER_APPT_CALL_TYPES = new Set([
+  'intro',
+  'demo',
+  'followup',
+  'bamfam',
+  'organic',
+  'other',
+]);
+
+function resolveCloserCallType(appointmentType: string | null | undefined): string {
+  const t = appointmentType?.trim();
+  if (t && CLOSER_APPT_CALL_TYPES.has(t)) return t;
+  return 'demo';
+}
 
 async function ensureLeadId(service: SupabaseClient, contactId: string): Promise<string> {
   const { data: existing } = await service
@@ -465,15 +486,16 @@ export async function applyDemoBookingCreditAsReflection(
   };
 }
 
-export async function applyDemoAudit(
+export async function applyCloserForm(
   service: SupabaseClient,
-  input: DemoAuditInput,
-): Promise<DemoAuditResult> {
+  input: CloserFormInput,
+): Promise<CloserFormResult> {
   const contactId = input.ghl_contact_id.trim();
   const leadId = await ensureLeadId(service, contactId);
 
-  const demoAppt = await apptByGhlId(service, input.ghl_appointment_id);
-  const calledAt = demoAppt?.scheduled_at ?? demoAppt?.booked_at ?? new Date().toISOString();
+  const appt = await apptByGhlId(service, input.ghl_appointment_id);
+  const calledAt = appt?.scheduled_at ?? appt?.booked_at ?? new Date().toISOString();
+  const callType = resolveCloserCallType(appt?.appointment_type);
 
   const details: Record<string, unknown> = {
     offer_presented: input.offer_presented,
@@ -485,8 +507,8 @@ export async function applyDemoAudit(
 
   const callRow = {
     lead_id: leadId,
-    appointment_id: demoAppt?.id ?? null,
-    call_type: 'demo' as const,
+    appointment_id: appt?.id ?? null,
+    call_type: callType,
     called_at: calledAt,
     status: 'showed' as const,
     handled_by: input.closer_name,
@@ -501,12 +523,12 @@ export async function applyDemoAudit(
   };
 
   let callId: string;
-  if (demoAppt?.id) {
+  if (appt?.id) {
     const { data: existing } = await service
       .from('acquisition_calls')
       .select('id')
-      .eq('appointment_id', demoAppt.id)
-      .eq('call_type', 'demo')
+      .eq('appointment_id', appt.id)
+      .eq('call_type', callType)
       .maybeSingle();
     if (existing?.id) {
       const { data, error } = await service
@@ -546,7 +568,7 @@ export async function applyDemoAudit(
 
     const offerRow = {
       lead_id: leadId,
-      appointment_id: demoAppt?.id ?? null,
+      appointment_id: appt?.id ?? null,
       offered_at: offeredAt,
       offer_type: offerType,
       is_closed: isClosed,
@@ -556,11 +578,11 @@ export async function applyDemoAudit(
       updated_at: new Date().toISOString(),
     };
 
-    if (demoAppt?.id) {
+    if (appt?.id) {
       const { data: existingOffer } = await service
         .from('acquisition_offers')
         .select('id')
-        .eq('appointment_id', demoAppt.id)
+        .eq('appointment_id', appt.id)
         .eq('offer_type', offerType)
         .maybeSingle();
       if (existingOffer?.id) {
@@ -622,9 +644,9 @@ export async function applyDemoAudit(
   const { data: submission, error: subErr } = await service
     .from('acquisition_form_submissions')
     .insert({
-      form_type: 'demo_audit',
+      form_type: 'closer_form',
       lead_id: leadId,
-      appointment_id: demoAppt?.id ?? null,
+      appointment_id: appt?.id ?? null,
       ghl_contact_id: contactId,
       ghl_appointment_id: input.ghl_appointment_id ?? null,
       submitted_by: input.closer_name,
@@ -647,3 +669,6 @@ export async function applyDemoAudit(
     pending_close_id: pendingCloseId,
   };
 }
+
+/** @deprecated Use applyCloserForm */
+export const applyDemoAudit = applyCloserForm;

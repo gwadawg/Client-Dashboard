@@ -1,8 +1,7 @@
 import { Suspense } from "react";
-import CloserFormClient from "../closer/CloserFormClient";
+import CloserFormClient from "./CloserFormClient";
 
-/** Legacy route — same Closer form as /forms/acquisition/closer */
-export default function DemoAuditFormPage() {
+export default function CloserFormPage() {
   return (
     <Suspense fallback={<p className="text-sm text-slate-500 text-center py-12">Loading form…</p>}>
       <CloserFormClient />

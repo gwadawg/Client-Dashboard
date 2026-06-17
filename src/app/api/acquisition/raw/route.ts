@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
-import { enrichAppointmentsWithDemoAuditLinks } from '@/lib/acquisition-demo-audit';
+import { enrichAppointmentsWithCloserFormLinks } from '@/lib/acquisition-closer-form';
 
 const TABLE_MAP = {
   leads: 'acquisition_leads',
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
 
   let rows = data ?? [];
   if (type === 'appointments' && rows.length > 0) {
-    rows = await enrichAppointmentsWithDemoAuditLinks(ctx.service, rows);
+    rows = await enrichAppointmentsWithCloserFormLinks(ctx.service, rows);
   }
 
   return NextResponse.json({ type, rows, total: count ?? 0 });

@@ -214,10 +214,29 @@ export async function linkAcquisitionCloseFromClient(
 ): Promise<void> {
   const { data: client } = await service
     .from('clients')
-    .select('id, name, email, phone, date_signed, source')
+    .select('id, name, email, phone, date_signed, source, ghl_contact_id')
     .eq('id', clientId)
     .maybeSingle();
   if (!client) return;
+
+  const closedAtDefault =
+    opts?.closedAt ?? (client.date_signed ? `${client.date_signed}T12:00:00.000Z` : undefined);
+
+  if (client.ghl_contact_id?.trim()) {
+    const { data: byGhl } = await service
+      .from('acquisition_leads')
+      .select('id')
+      .eq('ghl_contact_id', client.ghl_contact_id.trim())
+      .limit(1)
+      .maybeSingle();
+    if (byGhl) {
+      await finalizeClose(service, byGhl.id, clientId, {
+        ...opts,
+        closedAt: closedAtDefault,
+      });
+      return;
+    }
+  }
 
   const phone = normalizePhone(client.phone);
   if (client.email) {
