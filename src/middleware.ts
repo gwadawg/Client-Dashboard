@@ -18,6 +18,10 @@ const BYPASS_ROUTES = [
   '/onboard',
   '/auth',
   '/report',
+  '/forms/acquisition',
+  '/api/acquisition/forms',
+  '/api/acquisition/webhooks',
+  '/api/acquisition/ad-insights',
 ];
 
 export async function middleware(request: NextRequest) {

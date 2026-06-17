@@ -5,7 +5,8 @@
  *   node scripts/sign-acquisition-demo-link.mjs CONTACT_ID [APPOINTMENT_ID]
  */
 
-import { createHmac, readFileSync, existsSync } from 'crypto';
+import { createHmac } from 'crypto';
+import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
