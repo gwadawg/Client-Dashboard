@@ -341,6 +341,20 @@ date-time **with a timezone offset**, not a bare date.
   day), so their speed-to-lead is unrecoverable and excluded. The metric only becomes
   meaningful for leads received after the Make `dateAdded` mapping is in place.
 
+### Speed-to-lead time filters & hour breakdown
+
+All speed-to-lead views (Dial Analytics, Raw Data → Speed to Lead) use the same computed
+metric in `src/lib/speed-to-lead.ts` — not the stored `events.speed_to_lead_seconds` column alone.
+
+| Feature | Behavior |
+|---------|----------|
+| **Setter schedule filter** | On by default. Leads must arrive inside a live row in `setter_availability` (Admin → Schedule → Setter Availability). Toggle off to include all precise-timestamp leads. |
+| **Lead arrived after / before** | Optional `HH:MM` cutoffs in call-center timezone. Excludes overnight backlog or other stale leads without affecting the dial timestamp. API params: `lead_after`, `lead_before`. |
+| **Hour breakdown** | Dial Analytics shows median minutes by lead-arrival hour (0–23) in `CALL_CENTER_TIMEZONE`. |
+| **Raw Data tab** | One row per lead→first-dial pair with **Lead Arrived**, **First Dial**, **Response (min)**, and **Counted** (yes/no with exclusion reason on hover). |
+
+Exclusion reasons: off-hours (outside setter schedule), missing precise timestamp, before/after manual cutoff.
+
 ---
 
 ## Heat maps (lead-local time)

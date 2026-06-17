@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getAuthContext, isAuthError, requirePermission } from "@/lib/api-auth";
 import { getLiveClientIds, liveClientFilter } from "@/lib/db-helpers";
 import { computeDialAnalytics } from "@/lib/dial-analytics";
+import { parseSpeedToLeadParams } from "@/lib/speed-to-lead";
+
+const EVENT_SELECT =
+  "agent_name, client_id, event_type, is_pickup, is_conversation, is_qualified, speed_to_lead_seconds, occurred_at, occurred_at_has_time, lead_created_at, dial_source, ghl_contact_id, lead_phone, lead_name, phone_number_used";
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -14,17 +18,14 @@ export async function GET(req: Request) {
   const live_only = searchParams.get("live_only") === "true";
   const startDate = searchParams.get("startDate");
   const endDate = searchParams.get("endDate");
+  const speedToLeadOptions = parseSpeedToLeadParams(searchParams);
 
   let liveClientIds: string[] | null = null;
   if (live_only && !client_id) {
     liveClientIds = await getLiveClientIds(ctx.service);
   }
 
-  let eventsQuery = ctx.service
-    .from("events")
-    .select(
-      "agent_name, client_id, event_type, is_pickup, is_conversation, is_qualified, speed_to_lead_seconds, occurred_at, occurred_at_has_time, lead_created_at, dial_source, ghl_contact_id, lead_phone, phone_number_used",
-    );
+  let eventsQuery = ctx.service.from("events").select(EVENT_SELECT);
 
   if (client_id) eventsQuery = eventsQuery.eq("client_id", client_id);
   else if (liveClientIds) eventsQuery = eventsQuery.in("client_id", liveClientFilter(liveClientIds));
@@ -56,6 +57,8 @@ export async function GET(req: Request) {
     startDate,
     endDate,
     availability ?? [],
+    undefined,
+    speedToLeadOptions,
   );
   return NextResponse.json(result);
 }

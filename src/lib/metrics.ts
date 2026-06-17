@@ -121,6 +121,10 @@ export type MetricsResult = {
   speed_to_lead_excluded_out_of_window: number;
   /** Leads/dials excluded from speed-to-lead due to a missing precise timestamp. */
   speed_to_lead_excluded_no_time: number;
+  /** Leads excluded because lead arrival was before the manual cutoff. */
+  speed_to_lead_excluded_before_cutoff: number;
+  /** Leads excluded because lead arrival was after the manual cutoff. */
+  speed_to_lead_excluded_after_cutoff: number;
 };
 
 const PROPOSAL_EVENT_TYPES = new Set(['proposal_made', 'proposal_sent']);
@@ -280,6 +284,8 @@ export function calculateMetrics(
     speed_to_lead_sample_size: speed.sample_size,
     speed_to_lead_excluded_out_of_window: speed.excluded_out_of_window,
     speed_to_lead_excluded_no_time: speed.excluded_no_time,
+    speed_to_lead_excluded_before_cutoff: speed.excluded_before_cutoff,
+    speed_to_lead_excluded_after_cutoff: speed.excluded_after_cutoff,
   };
 }
 

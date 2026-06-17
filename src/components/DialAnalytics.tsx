@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
   Legend,
   Line,
@@ -19,6 +21,7 @@ import type {
   DialAnalyticsResult,
   DialSourceRow,
 } from "@/lib/dial-analytics";
+import type { SpeedToLeadResult } from "@/lib/speed-to-lead";
 
 type Props = {
   startDate: string;
@@ -276,6 +279,171 @@ function ClientTable({ clients }: { clients: DialAnalyticsClientRow[] }) {
   );
 }
 
+function fmtHourLabel(hour: number): string {
+  if (hour === 0) return "12 am";
+  if (hour < 12) return `${hour} am`;
+  if (hour === 12) return "12 pm";
+  return `${hour - 12} pm`;
+}
+
+function SpeedToLeadSection({
+  stl,
+  useSetterSchedule,
+  setUseSetterSchedule,
+  leadAfter,
+  setLeadAfter,
+  leadBefore,
+  setLeadBefore,
+}: {
+  stl: SpeedToLeadResult;
+  useSetterSchedule: boolean;
+  setUseSetterSchedule: (v: boolean) => void;
+  leadAfter: string;
+  setLeadAfter: (v: string) => void;
+  leadBefore: string;
+  setLeadBefore: (v: string) => void;
+}) {
+  const hourChart = useMemo(
+    () =>
+      Array.from({ length: 24 }, (_, hour) => ({
+        hour,
+        label: fmtHourLabel(hour),
+        median_min: stl.by_hour[hour]?.median_min ?? null,
+        sample_size: stl.by_hour[hour]?.sample_size ?? 0,
+      })),
+    [stl.by_hour],
+  );
+
+  const hasHourData = hourChart.some(h => h.sample_size > 0);
+
+  return (
+    <section>
+      <h3 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "#334155" }}>
+        Speed to Lead
+      </h3>
+      <p className="text-[11px] mb-4 max-w-3xl" style={{ color: "#475569" }}>
+        Median minutes from lead arrival to first dial. Leads are bucketed by arrival hour in{" "}
+        <span className="font-medium" style={{ color: "#64748b" }}>{stl.time_zone}</span>.
+        {stl.live_window_count === 0 ? (
+          <span style={{ color: "#fbbf24" }}> No setter schedule configured — all precise leads count.</span>
+        ) : null}
+      </p>
+
+      <div
+        className="rounded-xl p-4 mb-4 flex flex-wrap items-end gap-4"
+        style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}
+      >
+        <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: "#94a3b8" }}>
+          <input
+            type="checkbox"
+            checked={useSetterSchedule}
+            onChange={e => setUseSetterSchedule(e.target.checked)}
+            className="rounded"
+          />
+          Use setter schedule ({stl.live_window_count} live window{stl.live_window_count === 1 ? "" : "s"})
+        </label>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] uppercase tracking-wide" style={{ color: "#475569" }}>
+            Lead arrived after
+          </label>
+          <input
+            type="time"
+            value={leadAfter}
+            onChange={e => setLeadAfter(e.target.value)}
+            className="px-2 py-1.5 rounded-lg text-sm outline-none"
+            style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] uppercase tracking-wide" style={{ color: "#475569" }}>
+            Lead arrived before
+          </label>
+          <input
+            type="time"
+            value={leadBefore}
+            onChange={e => setLeadBefore(e.target.value)}
+            className="px-2 py-1.5 rounded-lg text-sm outline-none"
+            style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+          />
+        </div>
+        {(leadAfter || leadBefore) && (
+          <button
+            type="button"
+            onClick={() => {
+              setLeadAfter("");
+              setLeadBefore("");
+            }}
+            className="text-xs px-2 py-1.5 rounded-lg"
+            style={{ color: "#64748b", border: "1px solid rgba(255,255,255,0.08)" }}
+          >
+            Clear time filters
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        {[
+          { label: `${stl.sample_size} counted`, color: "#34d399" },
+          { label: `${stl.excluded_out_of_window} off-hours`, color: "#64748b" },
+          { label: `${stl.excluded_no_time} missing timestamp`, color: "#64748b" },
+          ...(stl.excluded_before_cutoff > 0
+            ? [{ label: `${stl.excluded_before_cutoff} before cutoff`, color: "#fbbf24" }]
+            : []),
+          ...(stl.excluded_after_cutoff > 0
+            ? [{ label: `${stl.excluded_after_cutoff} after cutoff`, color: "#fbbf24" }]
+            : []),
+        ].map(chip => (
+          <span
+            key={chip.label}
+            className="text-[10px] font-semibold px-2.5 py-1 rounded-full"
+            style={{ background: "rgba(255,255,255,0.04)", color: chip.color, border: "1px solid rgba(255,255,255,0.06)" }}
+          >
+            {chip.label}
+          </span>
+        ))}
+      </div>
+
+      {hasHourData ? (
+        <div
+          className="rounded-xl p-4"
+          style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}
+        >
+          <p className="text-[10px] mb-3" style={{ color: "#475569" }}>
+            Median response time by lead-arrival hour ({stl.time_zone})
+          </p>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={hourChart} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: "#475569", fontSize: 10 }} axisLine={false} tickLine={false} interval={1} />
+              <YAxis tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} unit="m" />
+              <Tooltip
+                contentStyle={{
+                  background: "#0f2040",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+                labelStyle={{ color: "#94a3b8" }}
+                formatter={(value, _name, item) => {
+                  const num = typeof value === "number" ? value : null;
+                  const payload = item?.payload as { sample_size?: number } | undefined;
+                  if (num == null) return ["No data", "Median"];
+                  return [`${num} min (${payload?.sample_size ?? 0} leads)`, "Median"];
+                }}
+              />
+              <Bar dataKey="median_min" name="Median min" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <p className="text-xs py-8 text-center rounded-xl" style={{ color: "#475569", background: "#0a1628" }}>
+          No in-window speed-to-lead readings in this period with the current filters.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function DialSourceTable({ sources }: { sources: DialSourceRow[] }) {
   if (sources.length === 0) return null;
   return (
@@ -323,6 +491,9 @@ function DialSourceTable({ sources }: { sources: DialSourceRow[] }) {
 export default function DialAnalytics({ startDate, endDate, clientId, liveOnly }: Props) {
   const [data, setData] = useState<DialAnalyticsResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [useSetterSchedule, setUseSetterSchedule] = useState(true);
+  const [leadAfter, setLeadAfter] = useState("");
+  const [leadBefore, setLeadBefore] = useState("");
 
   useEffect(() => {
     if (!startDate || !endDate) return;
@@ -330,6 +501,9 @@ export default function DialAnalytics({ startDate, endDate, clientId, liveOnly }
     const params = new URLSearchParams({ startDate, endDate });
     if (clientId) params.set("client_id", clientId);
     else if (liveOnly) params.set("live_only", "true");
+    params.set("use_setter_schedule", useSetterSchedule ? "true" : "false");
+    if (leadAfter) params.set("lead_after", leadAfter);
+    if (leadBefore) params.set("lead_before", leadBefore);
 
     fetch(`/api/dial-analytics?${params}`)
       .then(r => r.json())
@@ -338,7 +512,7 @@ export default function DialAnalytics({ startDate, endDate, clientId, liveOnly }
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [startDate, endDate, clientId, liveOnly]);
+  }, [startDate, endDate, clientId, liveOnly, useSetterSchedule, leadAfter, leadBefore]);
 
   const trendChart = useMemo(() => {
     if (!data?.trend?.length) return [];
@@ -399,13 +573,26 @@ export default function DialAnalytics({ startDate, endDate, clientId, liveOnly }
             value={s.avg_speed_to_lead_min != null ? String(s.avg_speed_to_lead_min) : "—"}
             hint={
               `Median minutes from lead to first dial across ${s.speed_to_lead.sample_size} in-window lead${s.speed_to_lead.sample_size === 1 ? "" : "s"}. ` +
-              `Excluded: ${s.speed_to_lead.excluded_out_of_window} off-hours, ${s.speed_to_lead.excluded_no_time} missing precise timestamp.`
+              `Excluded: ${s.speed_to_lead.excluded_out_of_window} off-hours, ${s.speed_to_lead.excluded_no_time} missing timestamp` +
+              (s.speed_to_lead.excluded_before_cutoff > 0 ? `, ${s.speed_to_lead.excluded_before_cutoff} before cutoff` : "") +
+              (s.speed_to_lead.excluded_after_cutoff > 0 ? `, ${s.speed_to_lead.excluded_after_cutoff} after cutoff` : "") +
+              "."
             }
           />
           <KpiCard label="Appointments" value={s.appointments.toLocaleString()} />
           <KpiCard label="Booking Rate" value={`${s.booking_rate}%`} />
         </div>
       </section>
+
+      <SpeedToLeadSection
+        stl={data.speed_to_lead}
+        useSetterSchedule={useSetterSchedule}
+        setUseSetterSchedule={setUseSetterSchedule}
+        leadAfter={leadAfter}
+        setLeadAfter={setLeadAfter}
+        leadBefore={leadBefore}
+        setLeadBefore={setLeadBefore}
+      />
 
       {trendChart.length > 1 && (
         <section>

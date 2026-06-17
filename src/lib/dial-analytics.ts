@@ -2,6 +2,7 @@ import { buildRosterMatcher, type RosterAgent } from "@/lib/agent-roster";
 import {
   computeSpeedToLead,
   type AvailabilityWindow,
+  type SpeedToLeadOptions,
   type SpeedToLeadResult,
 } from "@/lib/speed-to-lead";
 import { CALL_CENTER_TIMEZONE } from "@/lib/time";
@@ -18,6 +19,7 @@ export type DialEventRow = {
   dial_source: string | null;
   ghl_contact_id: string | null;
   lead_phone: string | null;
+  lead_name: string | null;
   phone_number_used: string | null;
   occurred_at_has_time: boolean | null;
   lead_created_at: string | null;
@@ -103,6 +105,8 @@ export type DialAnalyticsResult = {
   clients: DialAnalyticsClientRow[];
   trend: DialAnalyticsTrendPoint[];
   dial_sources: DialSourceRow[];
+  /** Speed-to-lead hour breakdown and filter metadata (same as summary.speed_to_lead). */
+  speed_to_lead: SpeedToLeadResult;
 };
 
 type AgentAcc = {
@@ -144,6 +148,7 @@ export function computeDialAnalytics(
   endDate: string | null,
   availability: AvailabilityWindow[] = [],
   timeZone: string = CALL_CENTER_TIMEZONE,
+  speedToLeadOptions: SpeedToLeadOptions = {},
 ): DialAnalyticsResult {
   const resolveAgent = buildRosterMatcher(roster);
   const clientById = new Map(clients.map(c => [c.id, c]));
@@ -152,7 +157,7 @@ export function computeDialAnalytics(
 
   // Speed-to-lead is computed honestly via lead↔first-dial pairing: precise timestamps
   // only, in-window only, summarized as a median (see src/lib/speed-to-lead.ts).
-  const speed = computeSpeedToLead(events, availability, timeZone, resolveAgent);
+  const speed = computeSpeedToLead(events, availability, timeZone, resolveAgent, speedToLeadOptions);
 
   const agentMap = new Map<string, AgentAcc>();
   const clientMap = new Map<string, ClientAcc>();
@@ -338,6 +343,7 @@ export function computeDialAnalytics(
     clients: clientRows,
     trend,
     dial_sources,
+    speed_to_lead: speed,
   };
 }
 

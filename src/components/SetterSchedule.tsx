@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CALL_CENTER_TIMEZONE } from "@/lib/time";
 
 type Agent = { id: string; name: string; phone: string };
 type Client = { id: string; name: string; is_live?: boolean };
@@ -490,6 +491,11 @@ function AvailabilityTab({ agents }: { agents: Agent[] }) {
 
   return (
     <div className="space-y-6">
+      <p className="text-xs max-w-3xl" style={{ color: "#64748b" }}>
+        Live windows here control which leads count toward Speed to Lead (evaluated in{" "}
+        <span className="font-medium" style={{ color: "#94a3b8" }}>{CALL_CENTER_TIMEZONE}</span>).
+        Off-hours leads are excluded from the median, not penalized.
+      </p>
       <div className="rounded-xl p-5 space-y-4" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
         <p className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Add Availability</p>
         <div className="flex flex-wrap gap-3 items-end">
