@@ -1,0 +1,2428 @@
+{
+  "version": 1,
+  "updated_at": "2026-06-17",
+  "docs": [
+    {
+      "slug": "financial-qualification",
+      "title": "Disqualifying And Financial Qualification",
+      "description": "Rules for disqualifying prospects and verifying financial fit before demo.",
+      "domain": "acquisition",
+      "owner": "setter",
+      "status": "active",
+      "artifact_type": "sop",
+      "last_updated": "2026-05-20T00:00:00.000Z",
+      "review_cycle": "monthly",
+      "script_version": null,
+      "path": "acquisition/sales/financial-qualification.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "Owner",
+          "id": "owner"
+        },
+        {
+          "level": 2,
+          "title": "When To Use",
+          "id": "when-to-use"
+        },
+        {
+          "level": 2,
+          "title": "Quality Bar",
+          "id": "quality-bar"
+        },
+        {
+          "level": 2,
+          "title": "Metrics",
+          "id": "metrics"
+        },
+        {
+          "level": 2,
+          "title": "Operating Content",
+          "id": "operating-content"
+        },
+        {
+          "level": 3,
+          "title": "Disqualifying & Financial Qualification",
+          "id": "disqualifying-financial-qualification"
+        },
+        {
+          "level": 2,
+          "title": "Introduction",
+          "id": "introduction"
+        },
+        {
+          "level": 3,
+          "title": "What We're Going To Cover",
+          "id": "what-were-going-to-cover"
+        },
+        {
+          "level": 2,
+          "title": "Time Thieves",
+          "id": "time-thieves"
+        },
+        {
+          "level": 2,
+          "title": "Green Flags vs Red Flags",
+          "id": "green-flags-vs-red-flags"
+        },
+        {
+          "level": 2,
+          "title": "The Financial Qualification Process",
+          "id": "the-financial-qualification-process"
+        },
+        {
+          "level": 2,
+          "title": "Graceful Disqualification Strategies",
+          "id": "graceful-disqualification-strategies"
+        },
+        {
+          "level": 2,
+          "title": "Advanced Qualification Techniques",
+          "id": "advanced-qualification-techniques"
+        },
+        {
+          "level": 3,
+          "title": "Systems & Documentation",
+          "id": "systems-documentation"
+        },
+        {
+          "level": 2,
+          "title": "Time Thieves",
+          "id": "time-thieves"
+        },
+        {
+          "level": 3,
+          "title": "Tough Prospect:",
+          "id": "tough-prospect"
+        },
+        {
+          "level": 2,
+          "title": "Has money but is skeptical due to past experiences",
+          "id": "has-money-but-is-skeptical-due-to-past-experiences"
+        },
+        {
+          "level": 2,
+          "title": "Asks hard questions but engages in the process",
+          "id": "asks-hard-questions-but-engages-in-the-process"
+        },
+        {
+          "level": 2,
+          "title": "Shows genuine interest but needs convincing",
+          "id": "shows-genuine-interest-but-needs-convincing"
+        },
+        {
+          "level": 3,
+          "title": "May say \"I need to think about it\" but provides logical reasons",
+          "id": "may-say-i-need-to-think-about-it-but-provides-logical-reasons"
+        },
+        {
+          "level": 3,
+          "title": "Unqualified Prospect:",
+          "id": "unqualified-prospect"
+        },
+        {
+          "level": 2,
+          "title": "Genuinely lacks financial resources",
+          "id": "genuinely-lacks-financial-resources"
+        },
+        {
+          "level": 2,
+          "title": "Gives signals of financial distress",
+          "id": "gives-signals-of-financial-distress"
+        },
+        {
+          "level": 2,
+          "title": "Wants results without investment",
+          "id": "wants-results-without-investment"
+        },
+        {
+          "level": 2,
+          "title": "Green Flags vs Red Flags",
+          "id": "green-flags-vs-red-flags"
+        },
+        {
+          "level": 3,
+          "title": "To give you an example inside of our agency, a qualified prospect must have:",
+          "id": "to-give-you-an-example-inside-of-our-agency-a-qualified-prospect-must-have"
+        },
+        {
+          "level": 2,
+          "title": "Qualified Green Flags",
+          "id": "qualified-green-flags"
+        },
+        {
+          "level": 3,
+          "title": "Business Structure Requirements:",
+          "id": "business-structure-requirements"
+        },
+        {
+          "level": 3,
+          "title": "Brick and mortar location (not home-based or only virtual)",
+          "id": "brick-and-mortar-location-not-home-based-or-only-virtual"
+        },
+        {
+          "level": 3,
+          "title": "Only anomaly is if they are home-based and do more than $10k+/mo",
+          "id": "only-anomaly-is-if-they-are-home-based-and-do-more-than-10kmo"
+        },
+        {
+          "level": 3,
+          "title": "Full medical spa with multiple treatment options (more than 3+ treatments)",
+          "id": "full-medical-spa-with-multiple-treatment-options-more-than-3-treatments"
+        },
+        {
+          "level": 3,
+          "title": "High-end devices (not just basic equipment)",
+          "id": "high-end-devices-not-just-basic-equipment"
+        },
+        {
+          "level": 3,
+          "title": "Financial Requirements:",
+          "id": "financial-requirements"
+        },
+        {
+          "level": 2,
+          "title": "Growth mindset - willing to invest for results",
+          "id": "growth-mindset-willing-to-invest-for-results"
+        },
+        {
+          "level": 2,
+          "title": "Disqualification Red Flags",
+          "id": "disqualification-red-flags"
+        },
+        {
+          "level": 3,
+          "title": "Immediate Disqualifiers:",
+          "id": "immediate-disqualifiers"
+        },
+        {
+          "level": 2,
+          "title": "Telemedicine only - no physical location",
+          "id": "telemedicine-only-no-physical-location"
+        },
+        {
+          "level": 3,
+          "title": "Single treatment focus - only Botox, weight loss, or laser hair removal",
+          "id": "single-treatment-focus-only-botox-weight-loss-or-laser-hair-removal"
+        },
+        {
+          "level": 3,
+          "title": "Out-of-scope requests - testosterone therapy, general medical",
+          "id": "out-of-scope-requests-testosterone-therapy-general-medical"
+        },
+        {
+          "level": 3,
+          "title": "Signals They’re Unqualified:",
+          "id": "signals-theyre-unqualified"
+        },
+        {
+          "level": 2,
+          "title": "Financial",
+          "id": "financial"
+        },
+        {
+          "level": 3,
+          "title": "Desperation signals: \"I just sold my car to fund this business\"",
+          "id": "desperation-signals-i-just-sold-my-car-to-fund-this-business"
+        },
+        {
+          "level": 3,
+          "title": "Debt implications: \"I'm drowning in debt and need this to work\"",
+          "id": "debt-implications-im-drowning-in-debt-and-need-this-to-work"
+        },
+        {
+          "level": 3,
+          "title": "Resource limitations: \"I only have one cheap device and it cost $3,000\"",
+          "id": "resource-limitations-i-only-have-one-cheap-device-and-it-cost-3000"
+        },
+        {
+          "level": 3,
+          "title": "Survival mode: \"If this doesn't work, I'll have to close\"",
+          "id": "survival-mode-if-this-doesnt-work-ill-have-to-close"
+        },
+        {
+          "level": 3,
+          "title": "Behavioral Red Flags:",
+          "id": "behavioral-red-flags"
+        },
+        {
+          "level": 2,
+          "title": "Unrealistic expectations - wants guaranteed results with no risk",
+          "id": "unrealistic-expectations-wants-guaranteed-results-with-no-risk"
+        },
+        {
+          "level": 3,
+          "title": "Blame mentality - everything is someone else's fault",
+          "id": "blame-mentality-everything-is-someone-elses-fault"
+        },
+        {
+          "level": 2,
+          "title": "The Financial Qualification Process",
+          "id": "the-financial-qualification-process"
+        },
+        {
+          "level": 3,
+          "title": "There are two types of disqualification signals:",
+          "id": "there-are-two-types-of-disqualification-signals"
+        },
+        {
+          "level": 3,
+          "title": "ICP Signals - they're not in your ideal customer profile",
+          "id": "icp-signals-theyre-not-in-your-ideal-customer-profile"
+        },
+        {
+          "level": 3,
+          "title": "Financial Signals - they can't afford your services",
+          "id": "financial-signals-they-cant-afford-your-services"
+        },
+        {
+          "level": 2,
+          "title": "The Soft Financial Qualifier",
+          "id": "the-soft-financial-qualifier"
+        },
+        {
+          "level": 3,
+          "title": "The Script:",
+          "id": "the-script"
+        },
+        {
+          "level": 3,
+          "title": "It all boils down to the perceived value of said thing they’re buying…",
+          "id": "it-all-boils-down-to-the-perceived-value-of-said-thing-theyre-buying"
+        },
+        {
+          "level": 2,
+          "title": "The Hard Price Drop",
+          "id": "the-hard-price-drop"
+        },
+        {
+          "level": 3,
+          "title": "The Script:",
+          "id": "the-script"
+        },
+        {
+          "level": 2,
+          "title": "The Financing Bridge",
+          "id": "the-financing-bridge"
+        },
+        {
+          "level": 3,
+          "title": "When They Say They Don't Have Money:",
+          "id": "when-they-say-they-dont-have-money"
+        },
+        {
+          "level": 3,
+          "title": "Then Present Options:",
+          "id": "then-present-options"
+        },
+        {
+          "level": 2,
+          "title": "Business credit lines",
+          "id": "business-credit-lines"
+        },
+        {
+          "level": 2,
+          "title": "Equipment financing",
+          "id": "equipment-financing"
+        },
+        {
+          "level": 2,
+          "title": "SBA loans",
+          "id": "sba-loans"
+        },
+        {
+          "level": 2,
+          "title": "Revenue-based financing",
+          "id": "revenue-based-financing"
+        },
+        {
+          "level": 3,
+          "title": "Payment plans (if available)",
+          "id": "payment-plans-if-available"
+        },
+        {
+          "level": 2,
+          "title": "Graceful Disqualification Strategies",
+          "id": "graceful-disqualification-strategies"
+        },
+        {
+          "level": 2,
+          "title": "ICP Disqualification Script",
+          "id": "icp-disqualification-script"
+        },
+        {
+          "level": 2,
+          "title": "Financial Disqualification Script",
+          "id": "financial-disqualification-script"
+        },
+        {
+          "level": 3,
+          "title": "Does that sound fair?\"",
+          "id": "does-that-sound-fair"
+        },
+        {
+          "level": 3,
+          "title": "Follow-up Actions:",
+          "id": "follow-up-actions"
+        },
+        {
+          "level": 2,
+          "title": "Send valuable free resources",
+          "id": "send-valuable-free-resources"
+        },
+        {
+          "level": 2,
+          "title": "Add to nurture sequence",
+          "id": "add-to-nurture-sequence"
+        },
+        {
+          "level": 2,
+          "title": "Set calendar reminder for 6-month follow-up",
+          "id": "set-calendar-reminder-for-6-month-follow-up"
+        },
+        {
+          "level": 2,
+          "title": "Note their situation in CRM for future reference",
+          "id": "note-their-situation-in-crm-for-future-reference"
+        },
+        {
+          "level": 2,
+          "title": "The Referral Opportunity",
+          "id": "the-referral-opportunity"
+        },
+        {
+          "level": 2,
+          "title": "The Re-Qualification Process",
+          "id": "the-re-qualification-process"
+        },
+        {
+          "level": 3,
+          "title": "Mid-Call Red Flags:",
+          "id": "mid-call-red-flags"
+        },
+        {
+          "level": 2,
+          "title": "New financial concerns emerge",
+          "id": "new-financial-concerns-emerge"
+        },
+        {
+          "level": 2,
+          "title": "Business situation is worse than indicated",
+          "id": "business-situation-is-worse-than-indicated"
+        },
+        {
+          "level": 2,
+          "title": "Decision-making authority is unclear",
+          "id": "decision-making-authority-is-unclear"
+        },
+        {
+          "level": 2,
+          "title": "Unrealistic expectations surface",
+          "id": "unrealistic-expectations-surface"
+        },
+        {
+          "level": 3,
+          "title": "The Re-Qualification Script:",
+          "id": "the-re-qualification-script"
+        },
+        {
+          "level": 3,
+          "title": "Advanced Scenarios & Edge Cases",
+          "id": "advanced-scenarios-edge-cases"
+        },
+        {
+          "level": 2,
+          "title": "The Wealthy Wrong-ICP Prospect",
+          "id": "the-wealthy-wrong-icp-prospect"
+        },
+        {
+          "level": 3,
+          "title": "Decision Framework:",
+          "id": "decision-framework"
+        },
+        {
+          "level": 3,
+          "title": "Can we help them? Do they offer any aesthetic treatments?",
+          "id": "can-we-help-them-do-they-offer-any-aesthetic-treatments"
+        },
+        {
+          "level": 3,
+          "title": "Will they expand? Are they open to adding aesthetic services?",
+          "id": "will-they-expand-are-they-open-to-adding-aesthetic-services"
+        },
+        {
+          "level": 3,
+          "title": "Referral potential? Do they know medical spa owners?",
+          "id": "referral-potential-do-they-know-medical-spa-owners"
+        },
+        {
+          "level": 3,
+          "title": "Opportunity cost? Is this time better spent with qualified prospects?",
+          "id": "opportunity-cost-is-this-time-better-spent-with-qualified-prospects"
+        },
+        {
+          "level": 3,
+          "title": "The Script:",
+          "id": "the-script"
+        },
+        {
+          "level": 2,
+          "title": "The Broke ICP Prospect",
+          "id": "the-broke-icp-prospect"
+        },
+        {
+          "level": 3,
+          "title": "The Long-Term Play:",
+          "id": "the-long-term-play"
+        },
+        {
+          "level": 3,
+          "title": "Provide immediate value - free resources, advice, connections",
+          "id": "provide-immediate-value-free-resources-advice-connections"
+        },
+        {
+          "level": 2,
+          "title": "Stay connected - regular check-ins and market updates",
+          "id": "stay-connected-regular-check-ins-and-market-updates"
+        },
+        {
+          "level": 3,
+          "title": "Help them grow - refer them to funding sources, business coaches",
+          "id": "help-them-grow-refer-them-to-funding-sources-business-coaches"
+        },
+        {
+          "level": 2,
+          "title": "Be patient - many successful clients started broke",
+          "id": "be-patient-many-successful-clients-started-broke"
+        },
+        {
+          "level": 3,
+          "title": "The Script:",
+          "id": "the-script"
+        },
+        {
+          "level": 2,
+          "title": "The Borderline Prospect",
+          "id": "the-borderline-prospect"
+        },
+        {
+          "level": 3,
+          "title": "The Evaluation Process:",
+          "id": "the-evaluation-process"
+        },
+        {
+          "level": 3,
+          "title": "Identify the specific concern - financial, ICP, urgency, or authority",
+          "id": "identify-the-specific-concern-financial-icp-urgency-or-authority"
+        },
+        {
+          "level": 3,
+          "title": "Determine if it's fixable - can the concern be addressed?",
+          "id": "determine-if-its-fixable-can-the-concern-be-addressed"
+        },
+        {
+          "level": 3,
+          "title": "Assess probability - what are the odds they'll close?",
+          "id": "assess-probability-what-are-the-odds-theyll-close"
+        },
+        {
+          "level": 3,
+          "title": "Consider opportunity cost - what else could you be doing with this time?",
+          "id": "consider-opportunity-cost-what-else-could-you-be-doing-with-this-time"
+        },
+        {
+          "level": 3,
+          "title": "Decision Matrix:",
+          "id": "decision-matrix"
+        },
+        {
+          "level": 3,
+          "title": "High probability + fixable concern = Continue",
+          "id": "high-probability-fixable-concern-continue"
+        },
+        {
+          "level": 3,
+          "title": "Low probability + major concern = Disqualify",
+          "id": "low-probability-major-concern-disqualify"
+        },
+        {
+          "level": 3,
+          "title": "Medium probability + minor concern = Continue with adjusted approach",
+          "id": "medium-probability-minor-concern-continue-with-adjusted-approach"
+        },
+        {
+          "level": 3,
+          "title": "High value + any concern = Continue (worth the risk)",
+          "id": "high-value-any-concern-continue-worth-the-risk"
+        },
+        {
+          "level": 2,
+          "title": "Key Takeaways",
+          "id": "key-takeaways"
+        },
+        {
+          "level": 2,
+          "title": "Financial qualification requires finesse - use soft qualifiers before hard price drops",
+          "id": "financial-qualification-requires-finesse-use-soft-qualifiers-before-hard-price-drops"
+        },
+        {
+          "level": 2,
+          "title": "Related Docs",
+          "id": "related-docs"
+        },
+        {
+          "level": 2,
+          "title": "Open Questions",
+          "id": "open-questions"
+        }
+      ],
+      "stage_nav": [],
+      "opening_pills": [],
+      "icp_pills": [
+        {
+          "id": "the-referral-opportunity",
+          "label": "Referral LO"
+        }
+      ],
+      "related_docs": [],
+      "featured": false,
+      "bundle": "setter-playbooks"
+    },
+    {
+      "slug": "flip-the-frame",
+      "title": "Flip the Frame — Company Description Framework",
+      "description": "Give setters and closers a repeatable way to answer **“What do you do?”** / **“Just give me the rundown”** without pitching on command — so reverse mortgage LOs **qualify themselves** instead of evalu",
+      "domain": "acquisition",
+      "owner": "sales-leadership",
+      "status": "active",
+      "artifact_type": "framework",
+      "last_updated": "2026-05-30T00:00:00.000Z",
+      "review_cycle": "quarterly",
+      "script_version": null,
+      "path": "acquisition/sales/flip-the-frame.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "Owner",
+          "id": "owner"
+        },
+        {
+          "level": 2,
+          "title": "The context (why they ask)",
+          "id": "the-context-why-they-ask"
+        },
+        {
+          "level": 2,
+          "title": "Core principle",
+          "id": "core-principle"
+        },
+        {
+          "level": 2,
+          "title": "Framework 1 — Reclaim the frame (don’t pitch on command)",
+          "id": "framework-1-reclaim-the-frame-dont-pitch-on-command"
+        },
+        {
+          "level": 2,
+          "title": "Framework 2 — Answer it, but speak to their pain first",
+          "id": "framework-2-answer-it-but-speak-to-their-pain-first"
+        },
+        {
+          "level": 2,
+          "title": "Transition into discovery",
+          "id": "transition-into-discovery"
+        },
+        {
+          "level": 2,
+          "title": "Quick reference cheat sheet",
+          "id": "quick-reference-cheat-sheet"
+        },
+        {
+          "level": 2,
+          "title": "Stage usage",
+          "id": "stage-usage"
+        },
+        {
+          "level": 2,
+          "title": "Script factory checklist (when adapting)",
+          "id": "script-factory-checklist-when-adapting"
+        },
+        {
+          "level": 2,
+          "title": "Related docs",
+          "id": "related-docs"
+        }
+      ],
+      "stage_nav": [],
+      "opening_pills": [],
+      "icp_pills": [],
+      "related_docs": [],
+      "featured": false,
+      "bundle": "setter-playbooks"
+    },
+    {
+      "slug": "intro-qualification-framework",
+      "title": "Intro Call Qualification Framework",
+      "description": "Framework for Pedro (setter) intro calls: qualify, book demo, or route to Boot Camp.",
+      "domain": "acquisition",
+      "owner": "setter",
+      "status": "active",
+      "artifact_type": "sop",
+      "last_updated": "2026-05-29T00:00:00.000Z",
+      "review_cycle": "weekly",
+      "script_version": null,
+      "path": "acquisition/sales/intro-qualification-framework.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "Owner",
+          "id": "owner"
+        },
+        {
+          "level": 2,
+          "title": "When To Use",
+          "id": "when-to-use"
+        },
+        {
+          "level": 2,
+          "title": "Quality Bar",
+          "id": "quality-bar"
+        },
+        {
+          "level": 2,
+          "title": "Metrics",
+          "id": "metrics"
+        },
+        {
+          "level": 2,
+          "title": "Operating Content",
+          "id": "operating-content"
+        },
+        {
+          "level": 2,
+          "title": "WAIZ MEDIA",
+          "id": "waiz-media"
+        },
+        {
+          "level": 2,
+          "title": "Prospect Qualification Framework",
+          "id": "prospect-qualification-framework"
+        },
+        {
+          "level": 3,
+          "title": "Internal Use Only  |  Sales & Setting Team  |  Last Updated: March 2026",
+          "id": "internal-use-only-sales-setting-team-last-updated-march-2026"
+        },
+        {
+          "level": 2,
+          "title": "What This Document Is",
+          "id": "what-this-document-is"
+        },
+        {
+          "level": 3,
+          "title": "By the end of this document, you will understand:",
+          "id": "by-the-end-of-this-document-you-will-understand"
+        },
+        {
+          "level": 2,
+          "title": "The three non-negotiable qualification objectives",
+          "id": "the-three-non-negotiable-qualification-objectives"
+        },
+        {
+          "level": 2,
+          "title": "How to apply FUN criteria — softly and only hard-qualifying when necessary",
+          "id": "how-to-apply-fun-criteria-softly-and-only-hard-qualifying-when-necessary"
+        },
+        {
+          "level": 2,
+          "title": "How to identify and capture buying motivators",
+          "id": "how-to-identify-and-capture-buying-motivators"
+        },
+        {
+          "level": 3,
+          "title": "How to frame the Demo Call so prospects show up instead of no-showing",
+          "id": "how-to-frame-the-demo-call-so-prospects-show-up-instead-of-no-showing"
+        },
+        {
+          "level": 3,
+          "title": "📌  The North Star",
+          "id": "-the-north-star"
+        },
+        {
+          "level": 2,
+          "title": "The Three Non-Negotiable Objectives",
+          "id": "the-three-non-negotiable-objectives"
+        },
+        {
+          "level": 3,
+          "title": "Every Intro Call must accomplish exactly three things — in this order:",
+          "id": "every-intro-call-must-accomplish-exactly-three-things-in-this-order"
+        },
+        {
+          "level": 3,
+          "title": "#",
+          "id": ""
+        },
+        {
+          "level": 2,
+          "title": "Objective",
+          "id": "objective"
+        },
+        {
+          "level": 2,
+          "title": "What It Means",
+          "id": "what-it-means"
+        },
+        {
+          "level": 2,
+          "title": "1",
+          "id": "1"
+        },
+        {
+          "level": 2,
+          "title": "Qualify the Prospect",
+          "id": "qualify-the-prospect"
+        },
+        {
+          "level": 2,
+          "title": "Confirm they meet FUN criteria before investing a Demo slot on them",
+          "id": "confirm-they-meet-fun-criteria-before-investing-a-demo-slot-on-them"
+        },
+        {
+          "level": 2,
+          "title": "2",
+          "id": "2"
+        },
+        {
+          "level": 2,
+          "title": "Identify What Motivates Them to Buy",
+          "id": "identify-what-motivates-them-to-buy"
+        },
+        {
+          "level": 2,
+          "title": "Capture the specific emotional and personal drivers behind their buying decision",
+          "id": "capture-the-specific-emotional-and-personal-drivers-behind-their-buying-decision"
+        },
+        {
+          "level": 2,
+          "title": "3",
+          "id": "3"
+        },
+        {
+          "level": 2,
+          "title": "Sell the Next Call",
+          "id": "sell-the-next-call"
+        },
+        {
+          "level": 3,
+          "title": "Objective 1 — Qualify the Prospect (FUN)",
+          "id": "objective-1-qualify-the-prospect-fun"
+        },
+        {
+          "level": 2,
+          "title": "F",
+          "id": "f"
+        },
+        {
+          "level": 2,
+          "title": "Financially Qualified",
+          "id": "financially-qualified"
+        },
+        {
+          "level": 3,
+          "title": "Can they invest?",
+          "id": "can-they-invest"
+        },
+        {
+          "level": 2,
+          "title": "U",
+          "id": "u"
+        },
+        {
+          "level": 2,
+          "title": "Urgency",
+          "id": "urgency"
+        },
+        {
+          "level": 3,
+          "title": "Do they need this now?",
+          "id": "do-they-need-this-now"
+        },
+        {
+          "level": 2,
+          "title": "N",
+          "id": "n"
+        },
+        {
+          "level": 2,
+          "title": "Need",
+          "id": "need"
+        },
+        {
+          "level": 3,
+          "title": "Is their problem one you solve?",
+          "id": "is-their-problem-one-you-solve"
+        },
+        {
+          "level": 2,
+          "title": "F — Financially Qualified",
+          "id": "f-financially-qualified"
+        },
+        {
+          "level": 3,
+          "title": "Soft Qualification (Always Try This First)",
+          "id": "soft-qualification-always-try-this-first"
+        },
+        {
+          "level": 3,
+          "title": "Red flag: Keeps asking \"How much does it cost?\" before understanding the value",
+          "id": "red-flag-keeps-asking-how-much-does-it-cost-before-understanding-the-value"
+        },
+        {
+          "level": 3,
+          "title": "Red flag: Asks \"Do I have to put money up front?\"",
+          "id": "red-flag-asks-do-i-have-to-put-money-up-front"
+        },
+        {
+          "level": 3,
+          "title": "Hard Qualification (Only When Soft Cues Fail)",
+          "id": "hard-qualification-only-when-soft-cues-fail"
+        },
+        {
+          "level": 3,
+          "title": "⚠️  Warning — Hard Qualifying Lowers Show Rates",
+          "id": "-warning-hard-qualifying-lowers-show-rates"
+        },
+        {
+          "level": 3,
+          "title": "🚨  What NOT to Do",
+          "id": "-what-not-to-do"
+        },
+        {
+          "level": 2,
+          "title": "U — Urgency",
+          "id": "u-urgency"
+        },
+        {
+          "level": 2,
+          "title": "Urgency Signal",
+          "id": "urgency-signal"
+        },
+        {
+          "level": 2,
+          "title": "What to Do",
+          "id": "what-to-do"
+        },
+        {
+          "level": 2,
+          "title": "Ready to solve this within weeks",
+          "id": "ready-to-solve-this-within-weeks"
+        },
+        {
+          "level": 2,
+          "title": "Proceed — book the Demo",
+          "id": "proceed-book-the-demo"
+        },
+        {
+          "level": 2,
+          "title": "Vague or non-committal on timeline",
+          "id": "vague-or-non-committal-on-timeline"
+        },
+        {
+          "level": 2,
+          "title": "Clearly not ready to act soon",
+          "id": "clearly-not-ready-to-act-soon"
+        },
+        {
+          "level": 3,
+          "title": "💡  Pro Tip",
+          "id": "-pro-tip"
+        },
+        {
+          "level": 2,
+          "title": "N — Need",
+          "id": "n-need"
+        },
+        {
+          "level": 3,
+          "title": "📌  Rule",
+          "id": "-rule"
+        },
+        {
+          "level": 2,
+          "title": "Objective 2 — Identify What Motivates Them to Buy",
+          "id": "objective-2-identify-what-motivates-them-to-buy"
+        },
+        {
+          "level": 2,
+          "title": "What to Listen For",
+          "id": "what-to-listen-for"
+        },
+        {
+          "level": 2,
+          "title": "What They Say",
+          "id": "what-they-say"
+        },
+        {
+          "level": 2,
+          "title": "What It Signals",
+          "id": "what-it-signals"
+        },
+        {
+          "level": 2,
+          "title": "How to Use It on the Demo",
+          "id": "how-to-use-it-on-the-demo"
+        },
+        {
+          "level": 3,
+          "title": "\"I need consistency\"",
+          "id": "i-need-consistency"
+        },
+        {
+          "level": 3,
+          "title": "Wants predictable, reliable results",
+          "id": "wants-predictable-reliable-results"
+        },
+        {
+          "level": 2,
+          "title": "Frame the entire pitch around consistency and system reliability",
+          "id": "frame-the-entire-pitch-around-consistency-and-system-reliability"
+        },
+        {
+          "level": 3,
+          "title": "\"Lead quality is the problem\"",
+          "id": "lead-quality-is-the-problem"
+        },
+        {
+          "level": 3,
+          "title": "Cares about caliber, not just volume",
+          "id": "cares-about-caliber-not-just-volume"
+        },
+        {
+          "level": 3,
+          "title": "Emphasize pre-qualification, education-first ads, and pre-seasoned leads",
+          "id": "emphasize-pre-qualification-education-first-ads-and-pre-seasoned-leads"
+        },
+        {
+          "level": 3,
+          "title": "\"I'm drowning in work\"",
+          "id": "im-drowning-in-work"
+        },
+        {
+          "level": 2,
+          "title": "Wants relief — time and mental load back",
+          "id": "wants-relief-time-and-mental-load-back"
+        },
+        {
+          "level": 3,
+          "title": "Lead with done-for-you, no manual oversight required",
+          "id": "lead-with-done-for-you-no-manual-oversight-required"
+        },
+        {
+          "level": 3,
+          "title": "\"Daughter going to college\"",
+          "id": "daughter-going-to-college"
+        },
+        {
+          "level": 2,
+          "title": "Personal financial motivator",
+          "id": "personal-financial-motivator"
+        },
+        {
+          "level": 3,
+          "title": "\"10 agencies and they all sucked\"",
+          "id": "10-agencies-and-they-all-sucked"
+        },
+        {
+          "level": 2,
+          "title": "Trust is broken — skepticism is high",
+          "id": "trust-is-broken-skepticism-is-high"
+        },
+        {
+          "level": 2,
+          "title": "Flag for closer: objection prevention around proof and credibility is essential",
+          "id": "flag-for-closer-objection-prevention-around-proof-and-credibility-is-essential"
+        },
+        {
+          "level": 2,
+          "title": "How to Capture It",
+          "id": "how-to-capture-it"
+        },
+        {
+          "level": 3,
+          "title": "Take notes during the call — write down exact words and phrases they use",
+          "id": "take-notes-during-the-call-write-down-exact-words-and-phrases-they-use"
+        },
+        {
+          "level": 3,
+          "title": "Note personal details (daughter, retirement timeline, specific financial goals)",
+          "id": "note-personal-details-daughter-retirement-timeline-specific-financial-goals"
+        },
+        {
+          "level": 3,
+          "title": "Note emotional emphasis — what do they say with the most energy?",
+          "id": "note-emotional-emphasis-what-do-they-say-with-the-most-energy"
+        },
+        {
+          "level": 3,
+          "title": "Log it in your notes template and pass it to the Demo closer before the call",
+          "id": "log-it-in-your-notes-template-and-pass-it-to-the-demo-closer-before-the-call"
+        },
+        {
+          "level": 3,
+          "title": "⭐  Why This Matters",
+          "id": "-why-this-matters"
+        },
+        {
+          "level": 2,
+          "title": "Objective 3 — Sell the Next Call",
+          "id": "objective-3-sell-the-next-call"
+        },
+        {
+          "level": 2,
+          "title": "The Framing Script",
+          "id": "the-framing-script"
+        },
+        {
+          "level": 3,
+          "title": "💡  Use This Frame",
+          "id": "-use-this-frame"
+        },
+        {
+          "level": 2,
+          "title": "What This Frame Does",
+          "id": "what-this-frame-does"
+        },
+        {
+          "level": 3,
+          "title": "⚠️  What Happens If You Skip This",
+          "id": "-what-happens-if-you-skip-this"
+        },
+        {
+          "level": 2,
+          "title": "What NOT to Do on the Intro Call",
+          "id": "what-not-to-do-on-the-intro-call"
+        },
+        {
+          "level": 2,
+          "title": "Mistake",
+          "id": "mistake"
+        },
+        {
+          "level": 2,
+          "title": "Why It Kills You",
+          "id": "why-it-kills-you"
+        },
+        {
+          "level": 2,
+          "title": "Trying to close or pitch the solution",
+          "id": "trying-to-close-or-pitch-the-solution"
+        },
+        {
+          "level": 3,
+          "title": "Going too deep on past attempts or objections",
+          "id": "going-too-deep-on-past-attempts-or-objections"
+        },
+        {
+          "level": 2,
+          "title": "Over-explaining ROI or pricing",
+          "id": "over-explaining-roi-or-pricing"
+        },
+        {
+          "level": 2,
+          "title": "Pitching on command when they ask \"what do you do?\"",
+          "id": "pitching-on-command-when-they-ask-what-do-you-do"
+        },
+        {
+          "level": 2,
+          "title": "Not framing the next call properly",
+          "id": "not-framing-the-next-call-properly"
+        },
+        {
+          "level": 2,
+          "title": "Not taking notes on motivators",
+          "id": "not-taking-notes-on-motivators"
+        },
+        {
+          "level": 2,
+          "title": "The Right Mindset for the Intro Call",
+          "id": "the-right-mindset-for-the-intro-call"
+        },
+        {
+          "level": 2,
+          "title": "Wrong Mindset",
+          "id": "wrong-mindset"
+        },
+        {
+          "level": 2,
+          "title": "Right Mindset",
+          "id": "right-mindset"
+        },
+        {
+          "level": 3,
+          "title": "\"I need to close this person\"",
+          "id": "i-need-to-close-this-person"
+        },
+        {
+          "level": 3,
+          "title": "\"I need to figure out if I can actually help them\"",
+          "id": "i-need-to-figure-out-if-i-can-actually-help-them"
+        },
+        {
+          "level": 3,
+          "title": "\"Let me handle every objection now\"",
+          "id": "let-me-handle-every-objection-now"
+        },
+        {
+          "level": 3,
+          "title": "\"I'll note this and let the Demo closer address it properly\"",
+          "id": "ill-note-this-and-let-the-demo-closer-address-it-properly"
+        },
+        {
+          "level": 3,
+          "title": "\"More questions = more control\"",
+          "id": "more-questions-more-control"
+        },
+        {
+          "level": 3,
+          "title": "\"Listen more than you talk — what they say matters more than what I say\"",
+          "id": "listen-more-than-you-talk-what-they-say-matters-more-than-what-i-say"
+        },
+        {
+          "level": 3,
+          "title": "\"I have to justify our price\"",
+          "id": "i-have-to-justify-our-price"
+        },
+        {
+          "level": 3,
+          "title": "\"I'll give a confident number and move on — no rabbit holes\"",
+          "id": "ill-give-a-confident-number-and-move-on-no-rabbit-holes"
+        },
+        {
+          "level": 3,
+          "title": "\"Get them to the Demo no matter what\"",
+          "id": "get-them-to-the-demo-no-matter-what"
+        },
+        {
+          "level": 3,
+          "title": "\"Only book the Demo if they genuinely qualify\"",
+          "id": "only-book-the-demo-if-they-genuinely-qualify"
+        },
+        {
+          "level": 3,
+          "title": "⭐  Energy Over Words",
+          "id": "-energy-over-words"
+        },
+        {
+          "level": 2,
+          "title": "Framework at a Glance",
+          "id": "framework-at-a-glance"
+        },
+        {
+          "level": 2,
+          "title": "Phase",
+          "id": "phase"
+        },
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Key Rule",
+          "id": "key-rule"
+        },
+        {
+          "level": 2,
+          "title": "FUN Qualification",
+          "id": "fun-qualification"
+        },
+        {
+          "level": 3,
+          "title": "Confirm Financial fit, Urgency, and Need",
+          "id": "confirm-financial-fit-urgency-and-need"
+        },
+        {
+          "level": 2,
+          "title": "Motivator Identification",
+          "id": "motivator-identification"
+        },
+        {
+          "level": 2,
+          "title": "Surface what will actually drive their yes",
+          "id": "surface-what-will-actually-drive-their-yes"
+        },
+        {
+          "level": 2,
+          "title": "Frame the Next Call",
+          "id": "frame-the-next-call"
+        },
+        {
+          "level": 2,
+          "title": "Make them want to show up to the Demo",
+          "id": "make-them-want-to-show-up-to-the-demo"
+        },
+        {
+          "level": 3,
+          "title": "📌  What You're Handing Off",
+          "id": "-what-youre-handing-off"
+        },
+        {
+          "level": 3,
+          "title": "1. Confirmation the prospect passed FUN criteria",
+          "id": "1-confirmation-the-prospect-passed-fun-criteria"
+        },
+        {
+          "level": 3,
+          "title": "2. Notes on their key motivators and personal drivers",
+          "id": "2-notes-on-their-key-motivators-and-personal-drivers"
+        },
+        {
+          "level": 3,
+          "title": "3. A booked Demo slot on their calendar",
+          "id": "3-a-booked-demo-slot-on-their-calendar"
+        },
+        {
+          "level": 3,
+          "title": "Waiz Media  |  Internal Document  |  Confidential",
+          "id": "waiz-media-internal-document-confidential"
+        },
+        {
+          "level": 2,
+          "title": "Related Docs",
+          "id": "related-docs"
+        },
+        {
+          "level": 2,
+          "title": "Open Questions",
+          "id": "open-questions"
+        }
+      ],
+      "stage_nav": [],
+      "opening_pills": [],
+      "icp_pills": [],
+      "related_docs": [],
+      "featured": false,
+      "bundle": "setter-playbooks"
+    },
+    {
+      "slug": "intro-call-script",
+      "title": "Intro Call Script",
+      "description": "Word-for-word guide for setter intro calls: low-pressure discovery, operational qualification, demo booking, and pre-call nurture — without pitching programs or pricing on this call.",
+      "domain": "acquisition",
+      "owner": "setter",
+      "status": "active",
+      "artifact_type": "script",
+      "last_updated": "2026-05-30T00:00:00.000Z",
+      "review_cycle": "monthly",
+      "script_version": "v2.4",
+      "path": "acquisition/sales/intro-call-script.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "Owner",
+          "id": "owner"
+        },
+        {
+          "level": 2,
+          "title": "When To Use",
+          "id": "when-to-use"
+        },
+        {
+          "level": 2,
+          "title": "Quality Bar",
+          "id": "quality-bar"
+        },
+        {
+          "level": 2,
+          "title": "Metrics",
+          "id": "metrics"
+        },
+        {
+          "level": 2,
+          "title": "North star",
+          "id": "north-star"
+        },
+        {
+          "level": 2,
+          "title": "Call checklist (5 things)",
+          "id": "call-checklist-5-things"
+        },
+        {
+          "level": 2,
+          "title": "Setter boundaries (pricing, programs, depth)",
+          "id": "setter-boundaries-pricing-programs-depth"
+        },
+        {
+          "level": 3,
+          "title": "If they ask “What do you do?” / want a rundown",
+          "id": "if-they-ask-what-do-you-do-want-a-rundown"
+        },
+        {
+          "level": 3,
+          "title": "If they push “how does it work?” (programs / implementation)",
+          "id": "if-they-push-how-does-it-work-programs-implementation"
+        },
+        {
+          "level": 3,
+          "title": "If they push price / “what does it cost?”",
+          "id": "if-they-push-price-what-does-it-cost"
+        },
+        {
+          "level": 3,
+          "title": "If they raise a deep objection",
+          "id": "if-they-raise-a-deep-objection"
+        },
+        {
+          "level": 2,
+          "title": "Stage 1 — Introduction (pick one opening)",
+          "id": "stage-1-introduction-pick-one-opening"
+        },
+        {
+          "level": 3,
+          "title": "Opening 1 — Booked call",
+          "id": "opening-1-booked-call"
+        },
+        {
+          "level": 3,
+          "title": "Opening 2 — Appointment confirmation (early intro)",
+          "id": "opening-2-appointment-confirmation-early-intro"
+        },
+        {
+          "level": 3,
+          "title": "Opening 3 — Dialer / impromptu",
+          "id": "opening-3-dialer-impromptu"
+        },
+        {
+          "level": 3,
+          "title": "Opening 4 — Intro no-show recovery",
+          "id": "opening-4-intro-no-show-recovery"
+        },
+        {
+          "level": 2,
+          "title": "Stages 2–7 (shared)",
+          "id": "stages-27-shared"
+        },
+        {
+          "level": 3,
+          "title": "Stage 2 — Expectations while building trust",
+          "id": "stage-2-expectations-while-building-trust"
+        },
+        {
+          "level": 3,
+          "title": "Stage 3 — Qualifying questions",
+          "id": "stage-3-qualifying-questions"
+        },
+        {
+          "level": 4,
+          "title": "Discovery transition (then full qualifiers)",
+          "id": "discovery-transition-then-full-qualifiers"
+        },
+        {
+          "level": 4,
+          "title": "1 — Licensed states",
+          "id": "1-licensed-states"
+        },
+        {
+          "level": 4,
+          "title": "2 — Role",
+          "id": "2-role"
+        },
+        {
+          "level": 4,
+          "title": "3 — Product focus (forward / reverse / both)",
+          "id": "3-product-focus-forward-reverse-both"
+        },
+        {
+          "level": 4,
+          "title": "4 — Lead generation today",
+          "id": "4-lead-generation-today"
+        },
+        {
+          "level": 4,
+          "title": "5 — Production",
+          "id": "5-production"
+        },
+        {
+          "level": 4,
+          "title": "6 — Timeline and blockers",
+          "id": "6-timeline-and-blockers"
+        },
+        {
+          "level": 4,
+          "title": "After qualifying — routing",
+          "id": "after-qualifying-routing"
+        },
+        {
+          "level": 2,
+          "title": "ICP tracks (pick one before “who we are” + demo pitch)",
+          "id": "icp-tracks-pick-one-before-who-we-are-demo-pitch"
+        },
+        {
+          "level": 3,
+          "title": "Track 1 — Referral LO",
+          "id": "track-1-referral-lo"
+        },
+        {
+          "level": 3,
+          "title": "Track 2 — Marketing / system LO",
+          "id": "track-2-marketing-system-lo"
+        },
+        {
+          "level": 3,
+          "title": "Track 3 — Forward → reverse",
+          "id": "track-3-forward-reverse"
+        },
+        {
+          "level": 3,
+          "title": "Stage 4 — Show fit + sell the demo",
+          "id": "stage-4-show-fit-sell-the-demo"
+        },
+        {
+          "level": 4,
+          "title": "Label — confirm understanding",
+          "id": "label-confirm-understanding"
+        },
+        {
+          "level": 4,
+          "title": "Lean out (all tracks)",
+          "id": "lean-out-all-tracks"
+        },
+        {
+          "level": 4,
+          "title": "Permission (all tracks)",
+          "id": "permission-all-tracks"
+        },
+        {
+          "level": 3,
+          "title": "Stage 5 — Book the demo",
+          "id": "stage-5-book-the-demo"
+        },
+        {
+          "level": 3,
+          "title": "Stage 6 — Pre-call content tie-down",
+          "id": "stage-6-pre-call-content-tie-down"
+        },
+        {
+          "level": 3,
+          "title": "Stage 7 — Contact and message verification",
+          "id": "stage-7-contact-and-message-verification"
+        },
+        {
+          "level": 2,
+          "title": "Post-call notes for closer",
+          "id": "post-call-notes-for-closer"
+        },
+        {
+          "level": 2,
+          "title": "Related docs",
+          "id": "related-docs"
+        },
+        {
+          "level": 2,
+          "title": "Open questions",
+          "id": "open-questions"
+        }
+      ],
+      "stage_nav": [
+        {
+          "level": 2,
+          "title": "North star",
+          "id": "north-star"
+        },
+        {
+          "level": 2,
+          "title": "Call checklist (5 things)",
+          "id": "call-checklist-5-things"
+        },
+        {
+          "level": 2,
+          "title": "Setter boundaries (pricing, programs, depth)",
+          "id": "setter-boundaries-pricing-programs-depth"
+        },
+        {
+          "level": 2,
+          "title": "Stage 1 — Introduction (pick one opening)",
+          "id": "stage-1-introduction-pick-one-opening"
+        },
+        {
+          "level": 2,
+          "title": "Stages 2–7 (shared)",
+          "id": "stages-27-shared"
+        },
+        {
+          "level": 2,
+          "title": "ICP tracks (pick one before “who we are” + demo pitch)",
+          "id": "icp-tracks-pick-one-before-who-we-are-demo-pitch"
+        },
+        {
+          "level": 3,
+          "title": "Stage 2 — Expectations while building trust",
+          "id": "stage-2-expectations-while-building-trust"
+        },
+        {
+          "level": 3,
+          "title": "Stage 3 — Qualifying questions",
+          "id": "stage-3-qualifying-questions"
+        },
+        {
+          "level": 3,
+          "title": "Stage 4 — Show fit + sell the demo",
+          "id": "stage-4-show-fit-sell-the-demo"
+        },
+        {
+          "level": 3,
+          "title": "Stage 5 — Book the demo",
+          "id": "stage-5-book-the-demo"
+        },
+        {
+          "level": 3,
+          "title": "Stage 6 — Pre-call content tie-down",
+          "id": "stage-6-pre-call-content-tie-down"
+        },
+        {
+          "level": 3,
+          "title": "Stage 7 — Contact and message verification",
+          "id": "stage-7-contact-and-message-verification"
+        }
+      ],
+      "opening_pills": [
+        {
+          "id": "opening-1-booked-call",
+          "label": "Booked"
+        },
+        {
+          "id": "opening-2-appointment-confirmation-early-intro",
+          "label": "Confirm"
+        },
+        {
+          "id": "opening-3-dialer-impromptu",
+          "label": "Dialer"
+        },
+        {
+          "id": "opening-4-intro-no-show-recovery",
+          "label": "No-show"
+        }
+      ],
+      "icp_pills": [
+        {
+          "id": "track-1-referral-lo",
+          "label": "Referral LO"
+        },
+        {
+          "id": "track-2-marketing-system-lo",
+          "label": "Marketing"
+        },
+        {
+          "id": "3-product-focus-forward-reverse-both",
+          "label": "Forward→Reverse"
+        }
+      ],
+      "related_docs": [
+        {
+          "slug": "intro-qualification-framework",
+          "label": "FUN Qualification",
+          "relation": "implements"
+        },
+        {
+          "slug": "flip-the-frame",
+          "label": "Flip the Frame",
+          "relation": "reference"
+        },
+        {
+          "slug": "intro-icp-tracks",
+          "label": "ICP Tracks",
+          "relation": "reference"
+        },
+        {
+          "slug": "financial-qualification",
+          "label": "Financial Qualification",
+          "relation": "reference"
+        },
+        {
+          "slug": "watchshift",
+          "label": "Watchshift SOP",
+          "relation": "reference"
+        },
+        {
+          "slug": "show-rate-levers",
+          "label": "Show Rate Levers",
+          "relation": "reference"
+        },
+        {
+          "slug": "objection-handling-hub",
+          "label": "Objection Handling",
+          "relation": "reference"
+        },
+        {
+          "slug": "setter-daily-checklist",
+          "label": "Daily Checklist",
+          "relation": "reference"
+        }
+      ],
+      "featured": true,
+      "bundle": "setter-playbooks"
+    },
+    {
+      "slug": "intro-icp-tracks",
+      "title": "Intro ICP Tracks — Referral, Marketing, Forward-to-Reverse",
+      "description": "Three ICP-specific talk tracks for setter intros: **“who we are”** (Framework 2) and **demo pre-pitch** (Stage 4). Same call flow everywhere — pick the track that matches how they actually get busines",
+      "domain": "acquisition",
+      "owner": "sales-leadership",
+      "status": "active",
+      "artifact_type": "framework",
+      "last_updated": "2026-05-30T00:00:00.000Z",
+      "review_cycle": "quarterly",
+      "script_version": null,
+      "path": "acquisition/sales/intro-icp-tracks.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "Pick a track (routing)",
+          "id": "pick-a-track-routing"
+        },
+        {
+          "level": 2,
+          "title": "Track 1 — Referral LO",
+          "id": "track-1-referral-lo"
+        },
+        {
+          "level": 3,
+          "title": "Who we are (Framework 2)",
+          "id": "who-we-are-framework-2"
+        },
+        {
+          "level": 3,
+          "title": "Demo pre-pitch (after label + lean out)",
+          "id": "demo-pre-pitch-after-label-lean-out"
+        },
+        {
+          "level": 2,
+          "title": "Track 2 — Marketing / system LO",
+          "id": "track-2-marketing-system-lo"
+        },
+        {
+          "level": 3,
+          "title": "Who we are (Framework 2)",
+          "id": "who-we-are-framework-2"
+        },
+        {
+          "level": 3,
+          "title": "Demo pre-pitch (after label + lean out)",
+          "id": "demo-pre-pitch-after-label-lean-out"
+        },
+        {
+          "level": 2,
+          "title": "Track 3 — Forward → reverse",
+          "id": "track-3-forward-reverse"
+        },
+        {
+          "level": 3,
+          "title": "Who we are (Framework 2)",
+          "id": "who-we-are-framework-2"
+        },
+        {
+          "level": 3,
+          "title": "Demo pre-pitch (after label + lean out)",
+          "id": "demo-pre-pitch-after-label-lean-out"
+        },
+        {
+          "level": 2,
+          "title": "Shared (all tracks)",
+          "id": "shared-all-tracks"
+        },
+        {
+          "level": 2,
+          "title": "Related docs",
+          "id": "related-docs"
+        }
+      ],
+      "stage_nav": [],
+      "opening_pills": [],
+      "icp_pills": [
+        {
+          "id": "track-1-referral-lo",
+          "label": "Referral LO"
+        },
+        {
+          "id": "track-2-marketing-system-lo",
+          "label": "Marketing"
+        },
+        {
+          "id": "track-3-forward-reverse",
+          "label": "Forward→Reverse"
+        }
+      ],
+      "related_docs": [],
+      "featured": false,
+      "bundle": "setter-playbooks"
+    },
+    {
+      "slug": "show-rate-levers",
+      "title": "No Shows And Maximizing Show Rates",
+      "description": "Setter levers to reduce no-shows and increase demo attendance.",
+      "domain": "acquisition",
+      "owner": "setter",
+      "status": "active",
+      "artifact_type": "sop",
+      "last_updated": "2026-05-20T00:00:00.000Z",
+      "review_cycle": "weekly",
+      "script_version": null,
+      "path": "acquisition/sales/show-rate-levers.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "Owner",
+          "id": "owner"
+        },
+        {
+          "level": 2,
+          "title": "When To Use",
+          "id": "when-to-use"
+        },
+        {
+          "level": 2,
+          "title": "Quality Bar",
+          "id": "quality-bar"
+        },
+        {
+          "level": 2,
+          "title": "Metrics",
+          "id": "metrics"
+        },
+        {
+          "level": 2,
+          "title": "Operating Content",
+          "id": "operating-content"
+        },
+        {
+          "level": 3,
+          "title": "No Shows & Maximizing Show Rates (Setter Levers)",
+          "id": "no-shows-maximizing-show-rates-setter-levers"
+        },
+        {
+          "level": 3,
+          "title": "What We're Going To Cover:",
+          "id": "what-were-going-to-cover"
+        },
+        {
+          "level": 2,
+          "title": "Why Show Rate Matters For Setters",
+          "id": "why-show-rate-matters-for-setters"
+        },
+        {
+          "level": 2,
+          "title": "The Intro Call Reality",
+          "id": "the-intro-call-reality"
+        },
+        {
+          "level": 2,
+          "title": "Manual Confirmation Protocol",
+          "id": "manual-confirmation-protocol"
+        },
+        {
+          "level": 2,
+          "title": "No Show Protocol",
+          "id": "no-show-protocol"
+        },
+        {
+          "level": 2,
+          "title": "Why Show Rate Matters For Setters",
+          "id": "why-show-rate-matters-for-setters"
+        },
+        {
+          "level": 3,
+          "title": "More shows = more offers = more closes = more commission",
+          "id": "more-shows-more-offers-more-closes-more-commission"
+        },
+        {
+          "level": 2,
+          "title": "The Intro Call Reality",
+          "id": "the-intro-call-reality"
+        },
+        {
+          "level": 3,
+          "title": "Success loves speed, and speed-to-lead is KEY here",
+          "id": "success-loves-speed-and-speed-to-lead-is-key-here"
+        },
+        {
+          "level": 2,
+          "title": "The Framing Script",
+          "id": "the-framing-script"
+        },
+        {
+          "level": 2,
+          "title": "Qualify the lead",
+          "id": "qualify-the-lead"
+        },
+        {
+          "level": 2,
+          "title": "Increase show rate",
+          "id": "increase-show-rate"
+        },
+        {
+          "level": 2,
+          "title": "Manual Confirmation Protocol",
+          "id": "manual-confirmation-protocol"
+        },
+        {
+          "level": 3,
+          "title": "When Connecting With Them Over The Phone:",
+          "id": "when-connecting-with-them-over-the-phone"
+        },
+        {
+          "level": 2,
+          "title": "Always double tie down on their time",
+          "id": "always-double-tie-down-on-their-time"
+        },
+        {
+          "level": 3,
+          "title": "\"So you're confirmed for Tuesday at 2pm, you'll be there right?\"",
+          "id": "so-youre-confirmed-for-tuesday-at-2pm-youll-be-there-right"
+        },
+        {
+          "level": 3,
+          "title": "\"Perfect, and you'll have your calendar open and be ready to dive in?\"",
+          "id": "perfect-and-youll-have-your-calendar-open-and-be-ready-to-dive-in"
+        },
+        {
+          "level": 3,
+          "title": "Attempt to push the demo call time forward (within next 24hrs is ideal)",
+          "id": "attempt-to-push-the-demo-call-time-forward-within-next-24hrs-is-ideal"
+        },
+        {
+          "level": 2,
+          "title": "Send sales assets to build trust pre-call",
+          "id": "send-sales-assets-to-build-trust-pre-call"
+        },
+        {
+          "level": 3,
+          "title": "Pre-call video assets (canonical URLs + objection map): Pre-Call Objection Video Assets — use **prospect_page_url** from the index; default sequence 1→2→3 or jump-send per quick-send table; tie-down language in demo confirmation script",
+          "id": "pre-call-video-assets-canonical-urls-objection-map-pre-call-objection-video-assets-use-prospect_page_url-from-the-index-default-sequence-123-or-jump-send-per-quick-send-table-tie-down-language-in-demo-confirmation-script"
+        },
+        {
+          "level": 3,
+          "title": "Case studies, testimonials, anything that builds credibility",
+          "id": "case-studies-testimonials-anything-that-builds-credibility"
+        },
+        {
+          "level": 3,
+          "title": "Conduct mini pre-pitch (covered in \"Transitioning to Demo\" video)",
+          "id": "conduct-mini-pre-pitch-covered-in-transitioning-to-demo-video"
+        },
+        {
+          "level": 2,
+          "title": "24-Hour Unresponsive Protocol",
+          "id": "24-hour-unresponsive-protocol"
+        },
+        {
+          "level": 3,
+          "title": "WhatsApp: Text, voice note, video outreach (personalized)",
+          "id": "whatsapp-text-voice-note-video-outreach-personalized"
+        },
+        {
+          "level": 2,
+          "title": "Instagram: Follow them and DM them there",
+          "id": "instagram-follow-them-and-dm-them-there"
+        },
+        {
+          "level": 2,
+          "title": "Make sure your IG has case studies and social proof on it",
+          "id": "make-sure-your-ig-has-case-studies-and-social-proof-on-it"
+        },
+        {
+          "level": 2,
+          "title": "Follow everything covered in Lead Nurture Best Practices",
+          "id": "follow-everything-covered-in-lead-nurture-best-practices"
+        },
+        {
+          "level": 3,
+          "title": "Daily Calendar Audit:",
+          "id": "daily-calendar-audit"
+        },
+        {
+          "level": 3,
+          "title": "At the end of each day, audit both your and the closer's calendar",
+          "id": "at-the-end-of-each-day-audit-both-your-and-the-closers-calendar"
+        },
+        {
+          "level": 2,
+          "title": "Clear out any unqualified appointments or mark them as free",
+          "id": "clear-out-any-unqualified-appointments-or-mark-them-as-free"
+        },
+        {
+          "level": 3,
+          "title": "Grade 1-2 apps always marked as free to make space for more qualified prospects",
+          "id": "grade-1-2-apps-always-marked-as-free-to-make-space-for-more-qualified-prospects"
+        },
+        {
+          "level": 2,
+          "title": "No Show Protocol",
+          "id": "no-show-protocol"
+        },
+        {
+          "level": 3,
+          "title": "When someone doesn't show up, here's exactly what you do:",
+          "id": "when-someone-doesnt-show-up-heres-exactly-what-you-do"
+        },
+        {
+          "level": 2,
+          "title": "Call the number attached to the lead",
+          "id": "call-the-number-attached-to-the-lead"
+        },
+        {
+          "level": 2,
+          "title": "If no answer: double dial immediately",
+          "id": "if-no-answer-double-dial-immediately"
+        },
+        {
+          "level": 2,
+          "title": "If no answer to both double dials: send first text",
+          "id": "if-no-answer-to-both-double-dials-send-first-text"
+        },
+        {
+          "level": 3,
+          "title": "7 Minutes Past Call Time:",
+          "id": "7-minutes-past-call-time"
+        },
+        {
+          "level": 2,
+          "title": "3rd call from GHL number",
+          "id": "3rd-call-from-ghl-number"
+        },
+        {
+          "level": 2,
+          "title": "Call from personal phone number",
+          "id": "call-from-personal-phone-number"
+        },
+        {
+          "level": 3,
+          "title": "Send the Jeremy Miner text:",
+          "id": "send-the-jeremy-miner-text"
+        },
+        {
+          "level": 2,
+          "title": "Move them to the no-show pipeline stage",
+          "id": "move-them-to-the-no-show-pipeline-stage"
+        },
+        {
+          "level": 3,
+          "title": "10 Minutes Past Call Time:",
+          "id": "10-minutes-past-call-time"
+        },
+        {
+          "level": 3,
+          "title": "Send final text:",
+          "id": "send-final-text"
+        },
+        {
+          "level": 3,
+          "title": "\"Hey [NAME], called a few times. Are you interested in rescheduling?\"",
+          "id": "hey-name-called-a-few-times-are-you-interested-in-rescheduling"
+        },
+        {
+          "level": 3,
+          "title": "If Still No Response:",
+          "id": "if-still-no-response"
+        },
+        {
+          "level": 2,
+          "title": "Pipeline Management",
+          "id": "pipeline-management"
+        },
+        {
+          "level": 3,
+          "title": "Once someone no-shows, they automatically move into:",
+          "id": "once-someone-no-shows-they-automatically-move-into"
+        },
+        {
+          "level": 2,
+          "title": "Email and text sequence",
+          "id": "email-and-text-sequence"
+        },
+        {
+          "level": 2,
+          "title": "You only move the lead out of no-show if they rebook",
+          "id": "you-only-move-the-lead-out-of-no-show-if-they-rebook"
+        },
+        {
+          "level": 2,
+          "title": "Related Docs",
+          "id": "related-docs"
+        },
+        {
+          "level": 2,
+          "title": "Open Questions",
+          "id": "open-questions"
+        }
+      ],
+      "stage_nav": [],
+      "opening_pills": [],
+      "icp_pills": [
+        {
+          "id": "attempt-to-push-the-demo-call-time-forward-within-next-24hrs-is-ideal",
+          "label": "Forward→Reverse"
+        }
+      ],
+      "related_docs": [],
+      "featured": false,
+      "bundle": "setter-playbooks"
+    },
+    {
+      "slug": "objection-handling-hub",
+      "title": "Objection Handling Hub",
+      "description": "Single entry point for Waiz Media sales objection handling. Use the linked docs for depth; do not duplicate their content here.",
+      "domain": "acquisition",
+      "owner": "closer",
+      "status": "active",
+      "artifact_type": "document",
+      "last_updated": "2026-05-27T00:00:00.000Z",
+      "review_cycle": "monthly",
+      "script_version": null,
+      "path": "acquisition/sales/objection-handling-hub.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "When To Use",
+          "id": "when-to-use"
+        },
+        {
+          "level": 2,
+          "title": "Document Map",
+          "id": "document-map"
+        },
+        {
+          "level": 2,
+          "title": "Quality Bar",
+          "id": "quality-bar"
+        },
+        {
+          "level": 2,
+          "title": "Related Docs",
+          "id": "related-docs"
+        }
+      ],
+      "stage_nav": [],
+      "opening_pills": [],
+      "icp_pills": [],
+      "related_docs": [],
+      "featured": false,
+      "bundle": "setter-playbooks"
+    },
+    {
+      "slug": "setter-daily-checklist",
+      "title": "Setter Daily Checklist",
+      "description": "Maximize qualified opportunities and demo bookings through a single daily priority list.",
+      "domain": "acquisition",
+      "owner": "setter",
+      "status": "draft",
+      "artifact_type": "checklist",
+      "last_updated": "2026-06-10T00:00:00.000Z",
+      "review_cycle": "weekly",
+      "script_version": null,
+      "path": "acquisition/sales/setter-daily-checklist.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "Quality bar",
+          "id": "quality-bar"
+        },
+        {
+          "level": 2,
+          "title": "How to use this doc",
+          "id": "how-to-use-this-doc"
+        },
+        {
+          "level": 2,
+          "title": "Start of Shift",
+          "id": "start-of-shift"
+        },
+        {
+          "level": 2,
+          "title": "Always First (Drop Everything)",
+          "id": "always-first-drop-everything"
+        },
+        {
+          "level": 2,
+          "title": "Texting Rules (All Priorities)",
+          "id": "texting-rules-all-priorities"
+        },
+        {
+          "level": 2,
+          "title": "Priority 1 — Intro Calls",
+          "id": "priority-1-intro-calls"
+        },
+        {
+          "level": 2,
+          "title": "Priority 2 — Watchshift",
+          "id": "priority-2-watchshift"
+        },
+        {
+          "level": 2,
+          "title": "Priority 3 — Confirm Demo Appointments (Closer Calls)",
+          "id": "priority-3-confirm-demo-appointments-closer-calls"
+        },
+        {
+          "level": 2,
+          "title": "Priority 4 — LinkedIn (Outreach Only)",
+          "id": "priority-4-linkedin-outreach-only"
+        },
+        {
+          "level": 2,
+          "title": "Priority 5 — Power Dialer: Clear DQ-1",
+          "id": "priority-5-power-dialer-clear-dq-1"
+        },
+        {
+          "level": 2,
+          "title": "Priority 6 — No-Shows",
+          "id": "priority-6-no-shows"
+        },
+        {
+          "level": 2,
+          "title": "Priority 7 — Call Center Work (B2C Leads)",
+          "id": "priority-7-call-center-work-b2c-leads"
+        },
+        {
+          "level": 2,
+          "title": "Training Block",
+          "id": "training-block"
+        },
+        {
+          "level": 2,
+          "title": "End of Day (When You Wrap)",
+          "id": "end-of-day-when-you-wrap"
+        },
+        {
+          "level": 2,
+          "title": "Related Docs",
+          "id": "related-docs"
+        }
+      ],
+      "stage_nav": [],
+      "opening_pills": [],
+      "icp_pills": [],
+      "related_docs": [],
+      "featured": false,
+      "bundle": "setter-playbooks"
+    },
+    {
+      "slug": "watchshift",
+      "title": "Watchshift SOP",
+      "description": "Define how the setter handles **live watchshift** and **watchshift alerts** — speed-to-lead, Slack/GHL notifications, and consistent handoff back to the channel.",
+      "domain": "acquisition",
+      "owner": "setter",
+      "status": "draft",
+      "artifact_type": "sop",
+      "last_updated": "2026-05-29T00:00:00.000Z",
+      "review_cycle": "weekly",
+      "script_version": null,
+      "path": "acquisition/sales/watchshift.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "Owner",
+          "id": "owner"
+        },
+        {
+          "level": 2,
+          "title": "Trigger",
+          "id": "trigger"
+        },
+        {
+          "level": 2,
+          "title": "Inputs",
+          "id": "inputs"
+        },
+        {
+          "level": 2,
+          "title": "Outputs",
+          "id": "outputs"
+        },
+        {
+          "level": 2,
+          "title": "Watchshift alert types",
+          "id": "watchshift-alert-types"
+        },
+        {
+          "level": 3,
+          "title": "Which intro opening to use",
+          "id": "which-intro-opening-to-use"
+        },
+        {
+          "level": 2,
+          "title": "SMS responses (pre-demo)",
+          "id": "sms-responses-pre-demo"
+        },
+        {
+          "level": 3,
+          "title": "Default — setter owns it",
+          "id": "default-setter-owns-it"
+        },
+        {
+          "level": 3,
+          "title": "Tag Gabriel (Slack + context)",
+          "id": "tag-gabriel-slack-context"
+        },
+        {
+          "level": 3,
+          "title": "Disposition — quality lead pre-booking",
+          "id": "disposition-quality-lead-pre-booking"
+        },
+        {
+          "level": 3,
+          "title": "When handled (no Gabriel needed)",
+          "id": "when-handled-no-gabriel-needed"
+        },
+        {
+          "level": 2,
+          "title": "Cadence (required)",
+          "id": "cadence-required"
+        },
+        {
+          "level": 2,
+          "title": "During a watchshift block",
+          "id": "during-a-watchshift-block"
+        },
+        {
+          "level": 2,
+          "title": "Setting an intro on the setter calendar",
+          "id": "setting-an-intro-on-the-setter-calendar"
+        },
+        {
+          "level": 2,
+          "title": "Escalation",
+          "id": "escalation"
+        },
+        {
+          "level": 2,
+          "title": "Quality bar",
+          "id": "quality-bar"
+        },
+        {
+          "level": 2,
+          "title": "Metrics",
+          "id": "metrics"
+        },
+        {
+          "level": 2,
+          "title": "Related Docs",
+          "id": "related-docs"
+        },
+        {
+          "level": 2,
+          "title": "Open Questions",
+          "id": "open-questions"
+        }
+      ],
+      "stage_nav": [],
+      "opening_pills": [],
+      "icp_pills": [],
+      "related_docs": [],
+      "featured": false,
+      "bundle": "setter-playbooks"
+    }
+  ],
+  "bundles": {
+    "setter-playbooks": [
+      "intro-call-script",
+      "intro-qualification-framework",
+      "flip-the-frame",
+      "intro-icp-tracks",
+      "financial-qualification",
+      "watchshift",
+      "show-rate-levers",
+      "objection-handling-hub",
+      "setter-daily-checklist"
+    ]
+  }
+}

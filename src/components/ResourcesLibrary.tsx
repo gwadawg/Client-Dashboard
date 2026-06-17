@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import TeamFormsSection from "@/components/TeamFormsSection";
+import SetterPlaybooksSection from "@/components/SetterPlaybooksSection";
 
 type Category = "form" | "sop" | "document" | "template" | "other";
 
@@ -243,7 +244,9 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
         )}
       </div>
 
-      {(activeCategory === "all" || activeCategory === "form") && <TeamFormsSection />}
+      <TeamFormsSection />
+
+      <SetterPlaybooksSection />
 
       {/* Search */}
       <div
