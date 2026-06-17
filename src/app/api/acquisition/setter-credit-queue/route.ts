@@ -17,6 +17,7 @@ type AppointmentRow = {
   booking_source: string | null;
   status: string;
   demo_credit_claimed_at: string | null;
+  intro_call_id: string | null;
   acquisition_leads?:
     | { ghl_contact_id: string | null }
     | { ghl_contact_id: string | null }[]
@@ -69,15 +70,15 @@ export async function GET(req: Request) {
   let query = ctx.service
     .from('acquisition_appointments')
     .select(
-      'id, ghl_appointment_id, lead_id, lead_name, phone, booked_at, scheduled_at, setter_name, call_taken_by, booking_source, status, demo_credit_claimed_at, acquisition_leads(ghl_contact_id)',
+      'id, ghl_appointment_id, lead_id, lead_name, phone, booked_at, scheduled_at, setter_name, call_taken_by, booking_source, status, demo_credit_claimed_at, intro_call_id, acquisition_leads(ghl_contact_id)',
       { count: 'exact' },
     )
     .eq('appointment_type', 'demo')
     .order('booked_at', { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1);
 
-  if (status === 'pending') query = query.is('demo_credit_claimed_at', null);
-  if (status === 'credited') query = query.not('demo_credit_claimed_at', 'is', null);
+  if (status === 'pending') query = query.is('intro_call_id', null);
+  if (status === 'credited') query = query.not('intro_call_id', 'is', null);
 
   if (search) {
     const term = `*${search.replace(/[%,()]/g, ' ')}*`;
@@ -97,10 +98,11 @@ export async function GET(req: Request) {
 
   let mapped = await Promise.all(
     ((rows ?? []) as AppointmentRow[]).map(async row => {
-      const credited = !!row.demo_credit_claimed_at;
-      const formUrl = credited
-        ? null
-        : await buildDemoCreditFormUrlForAppointment(ctx.service, row.id);
+      const credited = !!row.intro_call_id && !!row.demo_credit_claimed_at;
+      const formUrl =
+        row.intro_call_id && row.demo_credit_claimed_at
+          ? null
+          : await buildDemoCreditFormUrlForAppointment(ctx.service, row.id);
 
       return {
         id: row.id,

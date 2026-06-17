@@ -5,10 +5,10 @@
  *   node scripts/sign-acquisition-demo-link.mjs CONTACT_ID [APPOINTMENT_ID]
  */
 
-import { createHmac } from 'crypto';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { createHmac } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -50,9 +50,13 @@ function signToken(contactId, appointmentId) {
 
 function buildUrl(baseUrl, contactId, appointmentId) {
   const token = signToken(contactId, appointmentId);
-  const params = new URLSearchParams({ contact_id: contactId, token });
+  const params = new URLSearchParams({
+    contact_id: contactId,
+    token,
+    form_context: 'demo_booked',
+  });
   if (appointmentId?.trim()) params.set('appointment_id', appointmentId.trim());
-  return `${baseUrl.replace(/\/$/, '')}/forms/acquisition/demo-booked?${params.toString()}`;
+  return `${baseUrl.replace(/\/$/, '')}/forms/acquisition/intro-reflection?${params.toString()}`;
 }
 
 const contactId = process.argv[2];

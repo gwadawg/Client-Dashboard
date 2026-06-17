@@ -3,7 +3,7 @@
 
 export type HeatmapTab = "show_rate" | "pickup_rate" | "new_leads";
 export type DataExplorerTab = "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
-export type AcquisitionTab = "overview" | "team" | "credit_queue";
+export type AcquisitionTab = "overview" | "team" | "credit_queue" | "sales_calls" | "pending_closes";
 export type AcquisitionDataExplorerTab = "leads" | "appointments" | "offers" | "dials" | "closes" | "ads";
 export type AgentsTab = "stats" | "scorecards" | "goals" | "credit_queue" | "recordings";
 
@@ -75,7 +75,9 @@ export const DATA_EXPLORER_TABS: HubTabDef<DataExplorerTab>[] = [
 export const ACQUISITION_TABS: HubTabDef<AcquisitionTab>[] = [
   { key: "overview", label: "Overview" },
   { key: "team", label: "Team" },
+  { key: "sales_calls", label: "Sales Calls" },
   { key: "credit_queue", label: "Credit Queue" },
+  { key: "pending_closes", label: "Pending Closes" },
 ];
 
 export const ACQUISITION_DATA_EXPLORER_TABS: HubTabDef<AcquisitionDataExplorerTab>[] = [

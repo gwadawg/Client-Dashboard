@@ -65,9 +65,51 @@ export function buildDemoBookedFormUrl(
   contactId: string,
   appointmentId?: string | null,
 ): string {
+  return buildIntroReflectionFormUrl(baseUrl, contactId, {
+    formContext: 'demo_booked',
+    demoAppointmentId: appointmentId,
+  });
+}
+
+export function buildIntroReflectionFormUrl(
+  baseUrl: string,
+  contactId: string,
+  opts?: {
+    formContext?: 'intro_showed' | 'demo_booked';
+    introAppointmentId?: string | null;
+    demoAppointmentId?: string | null;
+  },
+): string {
+  const formContext = opts?.formContext ?? 'demo_booked';
+  const primaryAppt =
+    formContext === 'intro_showed'
+      ? opts?.introAppointmentId?.trim()
+      : opts?.demoAppointmentId?.trim() ?? opts?.introAppointmentId?.trim();
+
+  const token = signAcquisitionFormToken(contactId, primaryAppt);
+  const params = new URLSearchParams({
+    contact_id: contactId,
+    token,
+    form_context: formContext,
+  });
+  if (opts?.introAppointmentId?.trim()) {
+    params.set('intro_appointment_id', opts.introAppointmentId.trim());
+  }
+  if (opts?.demoAppointmentId?.trim()) {
+    params.set('demo_appointment_id', opts.demoAppointmentId.trim());
+  }
+  const base = baseUrl.replace(/\/$/, '');
+  return `${base}/forms/acquisition/intro-reflection?${params.toString()}`;
+}
+
+export function buildDemoAuditFormUrl(
+  baseUrl: string,
+  contactId: string,
+  appointmentId?: string | null,
+): string {
   const token = signAcquisitionFormToken(contactId, appointmentId);
   const params = new URLSearchParams({ contact_id: contactId, token });
   if (appointmentId?.trim()) params.set('appointment_id', appointmentId.trim());
   const base = baseUrl.replace(/\/$/, '');
-  return `${base}/forms/acquisition/demo-booked?${params.toString()}`;
+  return `${base}/forms/acquisition/demo-audit?${params.toString()}`;
 }

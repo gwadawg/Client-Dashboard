@@ -26,9 +26,17 @@ const EVENT_LABELS: Record<string, string> = {
   demo_no_show: "Demo No-Show",
   demo_cancelled: "Demo Cancelled",
   demo_team_no_show: "Demo Team No-Show",
+  followup_showed: "Follow-up Showed",
+  bamfam_showed: "BAMFAM Showed",
+  organic_showed: "Organic Call",
   offer_made: "Offer Made",
   offer_closed: "Offer Closed",
   client_closed: "Client Closed",
+  client_onboarding: "Client Onboarding",
+  client_launch: "Client Launch",
+  client_checkin: "Client Check-in",
+  client_kickoff: "Client Kickoff",
+  client_churn: "Client Churn",
 };
 
 const STAGE_LABELS: Record<string, string> = {
@@ -98,6 +106,10 @@ function TimelineRow({ item }: { item: AcquisitionTimelineItem }) {
         {item.recording_url ? (
           <a href={item.recording_url} target="_blank" rel="noopener noreferrer" style={{ color: "#f59e0b" }}>
             ▶ Listen
+          </a>
+        ) : item.transcript_url ? (
+          <a href={item.transcript_url} target="_blank" rel="noopener noreferrer" style={{ color: "#38bdf8" }}>
+            Transcript
           </a>
         ) : (
           <span style={{ color: "#334155" }}>—</span>
@@ -346,6 +358,11 @@ export default function AcquisitionLeadProfilesTable({ startDate, endDate }: Pro
                               {row.offer_interest ? (
                                 <span className="normal-case font-normal ml-2" style={{ color: "#64748b" }}>
                                   · Offer interest: {row.offer_interest}
+                                </span>
+                              ) : null}
+                              {row.converted_client_id ? (
+                                <span className="normal-case font-normal ml-2" style={{ color: "#64748b" }}>
+                                  · Includes post-close client calls
                                 </span>
                               ) : null}
                             </p>

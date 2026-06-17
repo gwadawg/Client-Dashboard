@@ -268,10 +268,12 @@ async function finalizeClose(
     })
     .eq('id', leadId);
 
-  const { data: existing } = await service
+  const { data: pending } = await service
     .from('acquisition_closes')
     .select('id')
-    .eq('client_id', clientId)
+    .eq('lead_id', leadId)
+    .eq('mapping_status', 'pending_client')
+    .is('client_id', null)
     .maybeSingle();
 
   const row = {
@@ -280,7 +282,19 @@ async function finalizeClose(
     form_submission_id: opts?.formSubmissionId ?? null,
     closed_at: closedAt,
     close_source: opts?.formSubmissionId ? 'new_client_form' : 'roster',
+    mapping_status: 'mapped' as const,
   };
+
+  if (pending?.id) {
+    await service.from('acquisition_closes').update(row).eq('id', pending.id);
+    return;
+  }
+
+  const { data: existing } = await service
+    .from('acquisition_closes')
+    .select('id')
+    .eq('client_id', clientId)
+    .maybeSingle();
 
   if (existing) {
     await service.from('acquisition_closes').update(row).eq('id', existing.id);

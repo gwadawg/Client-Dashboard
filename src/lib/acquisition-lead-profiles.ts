@@ -27,6 +27,7 @@ export type AcquisitionTimelineItem = {
   occurred_at: string;
   details: string | null;
   recording_url: string | null;
+  transcript_url: string | null;
 };
 
 export type AcquisitionLeadProfile = {
@@ -103,6 +104,34 @@ type DialRow = {
   outcome: string | null;
 };
 
+type CallRow = {
+  id: string;
+  lead_id: string | null;
+  call_type: string;
+  called_at: string;
+  status: string;
+  handled_by: string | null;
+  co_handler: string | null;
+  recording_url: string | null;
+  transcript_url: string | null;
+  disposition: string | null;
+  notes: string | null;
+  duration_seconds: number | null;
+};
+
+type ClientJourneyRow = {
+  id: string;
+  lead_id: string;
+  domain: string;
+  subtype: string;
+  occurred_at: string;
+  handled_by: string | null;
+  recording_url: string | null;
+  transcript_url: string | null;
+  disposition: string | null;
+  notes: string | null;
+};
+
 const STAGE_RANK: Record<AcquisitionFunnelStage, number> = {
   lead: 0,
   intro_booked: 1,
@@ -140,6 +169,18 @@ function apptOutcomeType(type: string, status: string): string | null {
   if (status === 'cancelled') return `${prefix}_cancelled`;
   if (status === 'team_no_show') return `${prefix}_team_no_show`;
   return `${prefix}_${status}`;
+}
+
+function callEventType(callType: string, status: string): string {
+  if (callType === 'dial') return 'dial';
+  if (status === 'showed') return `${callType}_showed`;
+  if (status === 'no_show') return `${callType}_no_show`;
+  if (status === 'cancelled') return `${callType}_cancelled`;
+  if (status === 'team_no_show') return `${callType}_team_no_show`;
+  if (status === 'connected' || status === 'voicemail' || status === 'no_answer') {
+    return callType === 'dial' ? 'dial' : `${callType}_${status}`;
+  }
+  return `${callType}_${status}`;
 }
 
 function bumpStage(current: AcquisitionFunnelStage, next: AcquisitionFunnelStage): AcquisitionFunnelStage {
@@ -189,6 +230,8 @@ export function buildAcquisitionLeadProfile(
   offers: OfferRow[],
   closes: CloseRow[],
   dials: DialRow[],
+  calls: CallRow[] = [],
+  clientJourney: ClientJourneyRow[] = [],
 ): AcquisitionLeadProfile {
   const timeline: AcquisitionTimelineItem[] = [];
   const counts = emptyCounts();
@@ -200,45 +243,43 @@ export function buildAcquisitionLeadProfile(
     occurred_at: lead.created_at,
     details: joinDetails([lead.source, lead.offer_interest]),
     recording_url: null,
+    transcript_url: null,
   });
 
+  // Funnel counts still derive from appointment shells (booking vs outcome).
   for (const appt of appointments) {
     const type = appt.appointment_type || 'other';
     if (appt.booked_at) {
       const eventType = `${type}_booked`;
-      const details = joinDetails([
-        appt.setter_name ? `setter ${appt.setter_name}` : null,
-        appt.how_booked,
-        appt.qualified ? 'qualified' : null,
-      ]);
-      timeline.push({
-        id: `appt-book-${appt.id}`,
-        event_type: eventType,
-        occurred_at: appt.booked_at,
-        details,
-        recording_url: null,
-      });
       bumpCountsFromEvent(counts, eventType);
       funnelStage = stageFromEvent(eventType, funnelStage);
     }
     if (appt.scheduled_at) {
       const outcome = apptOutcomeType(type, appt.status);
       if (outcome) {
-        const details = joinDetails([
-          appt.call_taken_by ? `taken by ${appt.call_taken_by}` : null,
-          appt.setter_name ? `setter ${appt.setter_name}` : null,
-        ]);
-        timeline.push({
-          id: `appt-out-${appt.id}`,
-          event_type: outcome,
-          occurred_at: appt.scheduled_at,
-          details,
-          recording_url: null,
-        });
         bumpCountsFromEvent(counts, outcome);
         funnelStage = stageFromEvent(outcome, funnelStage);
       }
     }
+  }
+
+  for (const call of calls) {
+    const eventType = callEventType(call.call_type, call.status);
+    timeline.push({
+      id: `call-${call.id}`,
+      event_type: eventType,
+      occurred_at: call.called_at,
+      details: joinDetails([
+        call.handled_by ? `handled by ${call.handled_by}` : null,
+        call.co_handler ? `co ${call.co_handler}` : null,
+        call.disposition,
+        call.duration_seconds != null ? `${call.duration_seconds}s` : null,
+        call.notes,
+      ]),
+      recording_url: call.recording_url,
+      transcript_url: call.transcript_url,
+    });
+    if (eventType === 'dial') bumpCountsFromEvent(counts, 'dial');
   }
 
   for (const offer of offers) {
@@ -253,6 +294,7 @@ export function buildAcquisitionLeadProfile(
         offer.cash_collected != null ? `$${offer.cash_collected}` : null,
       ]),
       recording_url: offer.recording_link,
+      transcript_url: null,
     });
     bumpCountsFromEvent(counts, 'offer_made');
     funnelStage = stageFromEvent('offer_made', funnelStage);
@@ -264,6 +306,7 @@ export function buildAcquisitionLeadProfile(
         occurred_at: offer.offered_at,
         details: joinDetails([offer.offer_type, 'marked closed on offer sheet']),
         recording_url: offer.recording_link,
+        transcript_url: null,
       });
     }
   }
@@ -280,24 +323,30 @@ export function buildAcquisitionLeadProfile(
         close.client_id ? `client ${close.client_id.slice(0, 8)}…` : null,
       ]),
       recording_url: null,
+      transcript_url: null,
     });
     bumpCountsFromEvent(counts, 'client_closed');
     funnelStage = stageFromEvent('client_closed', funnelStage);
   }
 
-  for (const dial of dials) {
+  // Dial counts from raw dials when not yet mirrored into acquisition_calls.
+  const dialCallCount = calls.filter(c => c.call_type === 'dial').length;
+  if (dialCallCount === 0) {
+    for (const dial of dials) {
+      bumpCountsFromEvent(counts, 'dial');
+    }
+  }
+
+  for (const row of clientJourney) {
+    if (row.domain !== 'client') continue;
     timeline.push({
-      id: `dial-${dial.id}`,
-      event_type: 'dial',
-      occurred_at: dial.occurred_at,
-      details: joinDetails([
-        dial.agent_name,
-        dial.duration_seconds != null ? `${dial.duration_seconds}s` : null,
-        dial.outcome,
-      ]),
-      recording_url: null,
+      id: `journey-${row.id}`,
+      event_type: `client_${row.subtype}`,
+      occurred_at: row.occurred_at,
+      details: joinDetails([row.handled_by, row.disposition, row.notes]),
+      recording_url: row.recording_url,
+      transcript_url: row.transcript_url,
     });
-    bumpCountsFromEvent(counts, 'dial');
   }
 
   timeline.sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());

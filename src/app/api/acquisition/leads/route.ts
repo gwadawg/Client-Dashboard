@@ -55,22 +55,36 @@ export async function GET(req: Request) {
 
   const leadIds = leads.map(l => l.id);
 
-  const [apptsRes, offersRes, closesRes, dialsRes] = await Promise.all([
+  const convertedLeadIds = leads.filter(l => l.converted_client_id).map(l => l.id);
+
+  const [apptsRes, offersRes, closesRes, dialsRes, callsRes, journeyRes] = await Promise.all([
     ctx.service.from('acquisition_appointments').select('*').in('lead_id', leadIds),
     ctx.service.from('acquisition_offers').select('*').in('lead_id', leadIds),
     ctx.service.from('acquisition_closes').select('*').in('lead_id', leadIds),
     ctx.service.from('acquisition_dials').select('*').in('lead_id', leadIds),
+    ctx.service.from('acquisition_calls').select('*').in('lead_id', leadIds),
+    convertedLeadIds.length > 0
+      ? ctx.service
+          .from('v_lead_journey')
+          .select('*')
+          .in('lead_id', convertedLeadIds)
+          .eq('domain', 'client')
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (apptsRes.error) return NextResponse.json({ error: apptsRes.error.message }, { status: 500 });
   if (offersRes.error) return NextResponse.json({ error: offersRes.error.message }, { status: 500 });
   if (closesRes.error) return NextResponse.json({ error: closesRes.error.message }, { status: 500 });
   if (dialsRes.error) return NextResponse.json({ error: dialsRes.error.message }, { status: 500 });
+  if (callsRes.error) return NextResponse.json({ error: callsRes.error.message }, { status: 500 });
+  if (journeyRes.error) return NextResponse.json({ error: journeyRes.error.message }, { status: 500 });
 
   const apptsByLead = groupBy(leadIds, apptsRes.data ?? [], 'lead_id');
   const offersByLead = groupBy(leadIds, offersRes.data ?? [], 'lead_id');
   const closesByLead = groupBy(leadIds, closesRes.data ?? [], 'lead_id');
   const dialsByLead = groupBy(leadIds, dialsRes.data ?? [], 'lead_id');
+  const callsByLead = groupBy(leadIds, callsRes.data ?? [], 'lead_id');
+  const journeyByLead = groupBy(leadIds, journeyRes.data ?? [], 'lead_id');
 
   let profiles: AcquisitionLeadProfile[] = leads.map(lead =>
     buildAcquisitionLeadProfile(
@@ -79,6 +93,8 @@ export async function GET(req: Request) {
       offersByLead.get(lead.id) ?? [],
       closesByLead.get(lead.id) ?? [],
       dialsByLead.get(lead.id) ?? [],
+      callsByLead.get(lead.id) ?? [],
+      journeyByLead.get(lead.id) ?? [],
     ),
   );
 

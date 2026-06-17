@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getAppBaseUrl } from '@/lib/app-url';
-import { buildDemoBookedFormUrl } from '@/lib/acquisition-form-token';
+import { buildIntroReflectionFormUrl } from '@/lib/acquisition-form-token';
 import { isSlackConfigured, postToTeamChannel } from '@/lib/slack-notify';
 
 export const SETTER_PENDING_ACTIONS_SLUG = 'setter_pending_actions';
@@ -53,30 +53,30 @@ export async function hasDemoBookingCreditSubmission(
 ): Promise<boolean> {
   const { data: appt } = await service
     .from('acquisition_appointments')
-    .select('demo_credit_claimed_at')
+    .select('demo_credit_claimed_at, intro_call_id')
     .eq('id', appointmentId)
     .maybeSingle();
 
-  if (appt?.demo_credit_claimed_at) return true;
+  if (appt?.demo_credit_claimed_at || appt?.intro_call_id) return true;
 
   if (ghlAppointmentId) {
-    const { data } = await service
+    const { data: byGhl } = await service
       .from('acquisition_form_submissions')
       .select('id')
-      .eq('form_type', 'demo_booking_credit')
+      .in('form_type', ['demo_booking_credit', 'setter_intro_reflection'])
       .eq('ghl_appointment_id', ghlAppointmentId)
       .maybeSingle();
-    if (data?.id) return true;
+    if (byGhl?.id) return true;
   }
 
-  const { data } = await service
+  const { data: byAppt } = await service
     .from('acquisition_form_submissions')
     .select('id')
-    .eq('form_type', 'demo_booking_credit')
+    .in('form_type', ['demo_booking_credit', 'setter_intro_reflection'])
     .eq('appointment_id', appointmentId)
     .maybeSingle();
 
-  return !!data?.id;
+  return !!byAppt?.id;
 }
 
 export async function buildDemoCreditFormUrlForAppointment(
@@ -100,10 +100,10 @@ export async function buildDemoCreditFormUrlForAppointment(
   const contactId = lead?.ghl_contact_id?.trim();
   if (!contactId) return null;
 
-  return buildDemoBookedFormUrl(
+  return buildIntroReflectionFormUrl(
     getAppBaseUrl(),
     contactId,
-    appt.ghl_appointment_id,
+    { formContext: 'demo_booked', demoAppointmentId: appt.ghl_appointment_id },
   );
 }
 
