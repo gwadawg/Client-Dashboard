@@ -361,6 +361,8 @@ export async function GET(req: Request) {
   const start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
   const conversion_event = searchParams.get('conversion_event');
+  const search = searchParams.get('search')?.trim();
+  const safeSearch = search ? search.replace(/[,()*]/g, ' ').trim() : '';
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
 
   let liveClientIds: string[] | null = null;
@@ -378,8 +380,15 @@ export async function GET(req: Request) {
 
   if (client_id) q = q.eq('client_id', client_id);
   else if (liveClientIds) q = q.in('client_id', liveClientFilter(liveClientIds));
-  if (start_date) q = q.gte('occurred_at', `${start_date}T00:00:00.000Z`);
-  if (end_date) q = q.lte('occurred_at', `${end_date}T23:59:59.999Z`);
+  // When searching, span all dates so a lookup finds the person regardless of range.
+  if (!safeSearch) {
+    if (start_date) q = q.gte('occurred_at', `${start_date}T00:00:00.000Z`);
+    if (end_date) q = q.lte('occurred_at', `${end_date}T23:59:59.999Z`);
+  } else {
+    q = q.or(
+      `lead_name.ilike.%${safeSearch}%,lead_phone.ilike.%${safeSearch}%,lead_email.ilike.%${safeSearch}%`,
+    );
+  }
 
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

@@ -277,11 +277,18 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [capped, setCapped] = useState(false);
   const [conversionFilter, setConversionFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
     setPage(1);
     setExpanded(new Set());
-  }, [clientFilter, startDate, endDate, conversionFilter]);
+  }, [clientFilter, startDate, endDate, conversionFilter, debouncedSearch]);
 
   useEffect(() => {
     setLoading(true);
@@ -291,6 +298,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
     if (conversionFilter) params.set("conversion_event", conversionFilter);
+    if (debouncedSearch) params.set("search", debouncedSearch);
 
     fetch(`/api/raw/leads?${params}`)
       .then((r) => r.json())
@@ -301,7 +309,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [clientFilter, page, startDate, endDate, conversionFilter]);
+  }, [clientFilter, page, startDate, endDate, conversionFilter, debouncedSearch]);
 
   const totalPages = Math.ceil(total / 50);
 
@@ -336,6 +344,37 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
             </option>
           ))}
         </select>
+
+        <div className="relative">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name, phone or email…"
+            className="pl-9 pr-8 py-2 rounded-lg text-sm outline-none"
+            style={{
+              background: "#0f2040",
+              border: "1px solid rgba(255,255,255,0.12)",
+              color: "#e2e8f0",
+              minWidth: "16rem",
+            }}
+          />
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: "#475569" }}>
+            ⌕
+          </span>
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-sm leading-none"
+              style={{ color: "#64748b" }}
+              aria-label="Clear search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
         <select
           value={conversionFilter}
           onChange={(e) => setConversionFilter(e.target.value)}
@@ -354,6 +393,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         </select>
         <span className="text-sm" style={{ color: "#334155" }}>
           {total.toLocaleString()} leads
+          {debouncedSearch && <span style={{ color: "#475569" }}> · searching all dates</span>}
         </span>
         <button
           type="button"
@@ -375,7 +415,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         )}
       </div>
       <p className="text-xs leading-relaxed max-w-3xl" style={{ color: "#475569" }}>
-        One row per lead (contact). Columns show identity, loan/property and borrower ages from your webhook payload, flags, and activity counts. Use date and client filters, then page through the full list. Scroll sideways on smaller screens. Expand a row for the full event timeline.
+        One row per lead (contact). Columns show identity, loan/property and borrower ages from your webhook payload, flags, and activity counts. Search by name, phone, or email to jump to a lead (ignores the date range). Use date and client filters to browse, then page through the list. Scroll sideways on smaller screens. Expand a row for the full event timeline.
       </p>
 
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
