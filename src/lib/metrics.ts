@@ -95,9 +95,9 @@ export type MetricsResult = {
   cp_proposal_made: number;
   cp_submission_made: number;
   cp_loan_funded: number;
-  /** Sum of all spend (Meta from meta_ad_insights + Google / Local Services from ad_spend). */
+  /** Sum of Meta ad spend (meta_ad_insights). */
   ad_spend: number;
-  /** Meta / Facebook spend only (sum of meta_ad_insights). */
+  /** Meta / Facebook spend only (same as ad_spend). */
   ad_spend_meta: number;
   cpl: number;
   cp_qualified: number;

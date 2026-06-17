@@ -72,7 +72,7 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **Callback Rate** | Callbacks per lead | `Callbacks ÷ Total Leads × 100` |
 | **Appts To Take Place** | Still scheduled (pending outcomes) | `Appointments Booked − Shows − No Shows − Cancellations − LO bailed` |
 | **Dials Per Lead** | Dial effort per lead | `Outbound Dials ÷ Total Leads` |
-| **Ad Spend** | Meta + Google + Local Services | `SUM(meta_ad_insights.spend)` + `SUM(ad_spend.amount)` where platform ≠ meta |
+| **Ad Spend** | Meta (Facebook) | `SUM(meta_ad_insights.spend)` via `daily_meta_spend` view |
 | **Meta spend** | Facebook / Meta only | `SUM(meta_ad_insights.spend)` (daily rollup via `daily_meta_spend` view) |
 | **CPL** | Cost per lead | `Ad Spend ÷ Total Leads` |
 | **CP Qualified Lead (CPQL)** | Cost per qualified lead | `Ad Spend ÷ Qualified Leads` |
@@ -230,20 +230,11 @@ Use when the client manually spoke with or messaged a lead outside the setter bo
 
 All Meta spend KPIs sum `spend` from this table (grouped by client and day). Make
 posts ad-level rows daily; historical sheet totals may exist as synthetic daily rows
-after migration from `ad_spend`.
+from one-time migration scripts.
 
 For setup, see [`docs/META_ADS_SPEND_IMPORT.md`](META_ADS_SPEND_IMPORT.md).
 
-### Ad spend (`ad_spend` table) — Google / Local Services only
-
-| Field | Webhook (`POST /api/ad-spend`) |
-|-------|----------------------------------|
-| Date | `date` → `spend_date` |
-| Client | `client_name` or `client_id` |
-| Platform | `google` \| `local_services` only (`meta` rejected) |
-| Amount | `amount` |
-
-| Field | Webhook (`POST /api/meta-ad-insights`) |
+### Meta ad insights webhook (`POST /api/meta-ad-insights`)
 |-------|----------------------------------------|
 | Date | `date`, `insight_date`, or Meta `date_start` |
 | Client | `client_name` or `client_id` |

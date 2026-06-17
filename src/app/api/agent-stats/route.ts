@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
   // Powers both the Agent Stats table and the Scorecards view.
-  const denied = requireAnyPermission(ctx, ['agent_stats', 'agent_scorecards']);
+  const denied = requireAnyPermission(ctx, ['agents', 'agent_scorecards']);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);

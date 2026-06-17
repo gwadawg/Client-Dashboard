@@ -111,7 +111,7 @@ create table if not exists clients (
   -- Sync key for a future ClickUp → Supabase import
   clickup_task_id text,
 
-  constraint clients_reporting_type_check check (reporting_type in ('RM', 'HE'))
+  constraint clients_reporting_type_check check (reporting_type in ('RM', 'HE', 'DSCR'))
 );
 
 -- Additive columns (so re-running on an older clients table backfills them)
@@ -327,21 +327,7 @@ alter table events add column if not exists utm_content  text;
 alter table events add column if not exists lead_source text;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 5. Ad Spend (daily Meta / Google / Local Services spend by client)
--- ─────────────────────────────────────────────────────────────────────────────
-create table if not exists ad_spend (
-  id          uuid    primary key default gen_random_uuid(),
-  client_id   uuid    not null references clients(id) on delete cascade,
-  spend_date  date    not null,
-  platform    text    not null,
-  amount      numeric not null default 0,
-  created_at  timestamptz default now(),
-  constraint ad_spend_platform_check check (platform in ('meta', 'google', 'local_services')),
-  unique(client_id, spend_date, platform)
-);
-
--- ─────────────────────────────────────────────────────────────────────────────
--- 6. Meta Ad Insights (daily ad-level reporting from Meta Ads)
+-- 5. Meta Ad Insights (daily ad-level reporting from Meta Ads — sole spend source)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists meta_ad_insights (
   id                   uuid    primary key default gen_random_uuid(),
@@ -831,7 +817,6 @@ create unique index if not exists events_conversion_unique
   on events (client_id, event_type, ghl_contact_id)
   where event_type in ('proposal_made','submission_made','loan_funded')
     and ghl_contact_id is not null;
-create index if not exists ad_spend_client_date    on ad_spend(client_id, spend_date desc);
 create index if not exists meta_ad_insights_client_date on meta_ad_insights(client_id, insight_date desc);
 create index if not exists meta_ad_insights_campaign    on meta_ad_insights(client_id, campaign_id);
 create index if not exists meta_ad_insights_ad          on meta_ad_insights(client_id, ad_id);

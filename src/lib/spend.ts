@@ -59,7 +59,6 @@ export async function fetchDailyMetaSpend(
 
   const { data, error } = await q;
   if (error) {
-    // View missing or not exposed — aggregate from table instead
     return fetchDailyMetaSpendFromTable(service, filters);
   }
 
@@ -69,71 +68,19 @@ export async function fetchDailyMetaSpend(
   }));
 }
 
-/** Google / Local Services rows only (Meta uses meta_ad_insights). */
-export async function fetchNonMetaAdSpend(
-  service: SupabaseClient,
-  filters: SpendQueryFilters,
-): Promise<SpendRow[]> {
-  let q = service.from('ad_spend').select('amount, platform').neq('platform', 'meta');
-
-  if (filters.client_id) q = q.eq('client_id', filters.client_id);
-  else if (filters.client_ids?.length) q = q.in('client_id', filters.client_ids);
-  if (filters.start_date) q = q.gte('spend_date', filters.start_date);
-  if (filters.end_date) q = q.lte('spend_date', filters.end_date);
-
-  const { data, error } = await q;
-  if (error) throw error;
-
-  return (data ?? []).map((r) => ({
-    amount: Number(r.amount),
-    platform: r.platform as string,
-  }));
-}
-
-/** Merge Meta daily totals + non-Meta ad_spend for calculateMetrics. */
+/** Meta spend rows for calculateMetrics (source of truth for ad spend KPIs). */
 export async function fetchCombinedSpendForMetrics(
   service: SupabaseClient,
   filters: SpendQueryFilters,
 ): Promise<SpendRow[]> {
-  const [metaDaily, nonMeta] = await Promise.all([
-    fetchDailyMetaSpend(service, filters),
-    fetchNonMetaAdSpend(service, filters),
-  ]);
-
-  const rows: SpendRow[] = nonMeta;
-  for (const day of metaDaily) {
-    rows.push({ amount: day.amount, platform: 'meta' });
-  }
-  return rows;
+  const metaDaily = await fetchDailyMetaSpend(service, filters);
+  return metaDaily.map(day => ({ amount: day.amount, platform: 'meta' }));
 }
 
-/** Daily spend series for cost trends (Meta + non-Meta by date). */
+/** Daily Meta spend series for cost trends. */
 export async function fetchCombinedTrendSpend(
   service: SupabaseClient,
   filters: SpendQueryFilters,
 ): Promise<TrendSpendRow[]> {
-  const metaDaily = await fetchDailyMetaSpend(service, filters);
-
-  const byDate = new Map<string, number>();
-  for (const row of metaDaily) {
-    byDate.set(row.spend_date, (byDate.get(row.spend_date) ?? 0) + Number(row.amount));
-  }
-
-  let q = service.from('ad_spend').select('spend_date, amount').neq('platform', 'meta');
-  if (filters.client_id) q = q.eq('client_id', filters.client_id);
-  else if (filters.client_ids?.length) q = q.in('client_id', filters.client_ids);
-  if (filters.start_date) q = q.gte('spend_date', filters.start_date);
-  if (filters.end_date) q = q.lte('spend_date', filters.end_date);
-
-  const { data: nonMetaByDate, error } = await q;
-  if (error) throw error;
-
-  for (const row of nonMetaByDate ?? []) {
-    const date = String(row.spend_date);
-    byDate.set(date, (byDate.get(date) ?? 0) + Number(row.amount));
-  }
-
-  return [...byDate.entries()]
-    .map(([spend_date, amount]) => ({ spend_date, amount }))
-    .sort((a, b) => a.spend_date.localeCompare(b.spend_date));
+  return fetchDailyMetaSpend(service, filters);
 }

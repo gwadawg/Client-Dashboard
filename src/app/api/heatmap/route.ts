@@ -3,22 +3,7 @@ import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import { DEFAULT_DISPLAY_TIMEZONE, getZonedHourDay, normalizeTimeZone } from '@/lib/time';
 
-// Each heat map type is its own tab/permission.
-const HEATMAP_TYPE_VIEW: Record<string, string> = {
-  new_leads: 'heatmap_leads',
-  pickup_rate: 'heatmap_pickup',
-  show_rate: 'heatmap_show',
-};
-
-// Returns a 24×7 grid (hour-of-day × day-of-week) for heat map display.
-// type: new_leads | pickup_rate | show_rate
-// grid[hour][day] = value  (day 0=Sun … 6=Sat, hour 0=midnight … 23=11pm)
-// -1 = no data for that slot
-//
-// Every slot is bucketed in the LEAD's local time of day: each event is placed using the
-// contact's own zone (events.lead_timezone), so "best hour to call" reflects the prospect's
-// clock, not UTC. When a lead's zone is unknown (legacy rows / payloads missing GHL's
-// `timezone`), it falls back to a contact-level lookup, then DEFAULT_DISPLAY_TIMEZONE.
+// Heat map data is gated by the Heat Maps hub permission (legacy per-type keys still honored).
 
 /** Resolve the IANA zone to bucket an event in: its own lead zone → contact's zone → default. */
 function resolveZone(
@@ -34,6 +19,7 @@ function resolveZone(
   }
   return DEFAULT_DISPLAY_TIMEZONE;
 }
+
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -46,10 +32,11 @@ export async function GET(req: Request) {
   const end_date = searchParams.get('end_date');
 
   if (!type) return NextResponse.json({ error: 'type is required' }, { status: 400 });
+  if (!['new_leads', 'pickup_rate', 'show_rate'].includes(type)) {
+    return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
+  }
 
-  const view = HEATMAP_TYPE_VIEW[type];
-  if (!view) return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
-  const denied = requirePermission(ctx, view);
+  const denied = requirePermission(ctx, 'heatmaps');
   if (denied) return denied;
 
   // Capture after narrowing so nested closures (buildContactZones) keep the typed client.

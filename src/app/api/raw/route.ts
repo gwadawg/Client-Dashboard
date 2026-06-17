@@ -11,22 +11,14 @@ import {
   type OutcomeRecord,
 } from '@/lib/appointments';
 
-// Each raw data type is its own tab/permission.
-const RAW_TYPE_VIEW: Record<string, string> = {
-  leads: 'leads',
-  dials: 'dials',
-  appointments: 'appointments',
-  speed_to_lead: 'speed_to_lead',
-  ad_spend: 'ad_spend',
-  meta_ad_insights: 'meta_ad_insights',
-};
+// Raw data is gated by the Data Explorer hub permission (legacy per-type keys still honored).
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
 
   const { searchParams } = new URL(req.url);
-  const type = searchParams.get('type'); // leads | dials | appointments | speed_to_lead | ad_spend | meta_ad_insights
+  const type = searchParams.get('type');
   const client_id = searchParams.get('client_id');
   const live_only = searchParams.get('live_only') === 'true';
   const start_date = searchParams.get('start_date');
@@ -38,9 +30,12 @@ export async function GET(req: Request) {
 
   if (!type) return NextResponse.json({ error: 'type is required' }, { status: 400 });
 
-  const view = RAW_TYPE_VIEW[type];
-  if (!view) return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
-  const denied = requirePermission(ctx, view);
+  const allowedTypes = ['leads', 'dials', 'appointments', 'speed_to_lead', 'meta_ad_insights'];
+  if (!allowedTypes.includes(type)) {
+    return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
+  }
+
+  const denied = requirePermission(ctx, 'data_explorer');
   if (denied) return denied;
 
   let liveClientIds: string[] | null = null;
@@ -62,24 +57,6 @@ export async function GET(req: Request) {
     else if (liveClientIds) q = q.in('client_id', liveClientFilter(liveClientIds));
     if (start_date) q = q.gte('insight_date', start_date);
     if (end_date) q = q.lte('insight_date', end_date);
-
-    const { data, error, count } = await q;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ rows: data, total: count });
-  }
-
-  if (type === 'ad_spend') {
-    let q = ctx.service
-      .from('ad_spend')
-      .select('id, spend_date, platform, amount, clients(name)', { count: 'exact' })
-      .neq('platform', 'meta')
-      .order('spend_date', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (client_id) q = q.eq('client_id', client_id);
-    else if (liveClientIds) q = q.in('client_id', liveClientFilter(liveClientIds));
-    if (start_date) q = q.gte('spend_date', start_date);
-    if (end_date) q = q.lte('spend_date', end_date);
 
     const { data, error, count } = await q;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -286,7 +263,7 @@ export async function PATCH(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
 
-  const denied = requirePermission(ctx, 'appointments');
+  const denied = requirePermission(ctx, 'data_explorer');
   if (denied) return denied;
 
   let payload: { appointment_event_id?: string; status?: string };

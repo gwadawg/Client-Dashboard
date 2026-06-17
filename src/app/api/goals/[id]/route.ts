@@ -4,7 +4,7 @@ import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, 'goals');
+  const denied = requirePermission(ctx, 'agents');
   if (denied) return denied;
 
   const { id } = await params;

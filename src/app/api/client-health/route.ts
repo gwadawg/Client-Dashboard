@@ -138,13 +138,11 @@ export async function GET(req: Request) {
     { data: events, error: eventsError },
     { data: actionRows, error: actionsError },
     metaSpend,
-    nonMetaSpend,
   ] = await Promise.all([
     clientQuery,
     eventsQuery,
     actionsQuery,
     fetchMetaSpendByClient(ctx, spendFilters),
-    fetchNonMetaSpendByClient(ctx, spendFilters),
   ]);
 
   if (clientsError || eventsError) {
@@ -170,7 +168,7 @@ export async function GET(req: Request) {
     ? allEvents.filter(e => inRange(e, recentPrior.start, recentPrior.end))
     : [];
 
-  const spendRows = [...metaSpend, ...nonMetaSpend];
+  const spendRows = [...metaSpend];
   const verdictSpend = spendInRange(spendRows, start_date, end_date);
   const priorSpend = verdictPrior
     ? spendInRange(spendRows, verdictPrior.start, verdictPrior.end)
@@ -311,26 +309,5 @@ async function fetchMetaSpendByClient(
     spend_date: String(r.spend_date),
     amount: Number(r.amount),
     platform: 'meta',
-  }));
-}
-
-async function fetchNonMetaSpendByClient(
-  ctx: { service: ReturnType<typeof import('@/lib/supabase').createServiceClient> },
-  filters: { start_date: string; end_date: string; client_ids: string[] | null },
-): Promise<SpendByClientRow[]> {
-  let q = ctx.service
-    .from('ad_spend')
-    .select('client_id, spend_date, amount, platform')
-    .neq('platform', 'meta');
-  if (filters.client_ids?.length) q = q.in('client_id', liveClientFilter(filters.client_ids));
-  q = q.gte('spend_date', filters.start_date);
-  q = q.lte('spend_date', filters.end_date);
-  const { data, error } = await q;
-  if (error) throw error;
-  return (data ?? []).map(r => ({
-    client_id: String(r.client_id),
-    spend_date: String(r.spend_date),
-    amount: Number(r.amount),
-    platform: r.platform as string,
   }));
 }

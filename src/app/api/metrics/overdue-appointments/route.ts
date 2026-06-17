@@ -9,7 +9,7 @@ import { countOverdueUndispositioned } from '@/lib/appointments';
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requireAnyPermission(ctx, ['dashboard', 'goals']);
+  const denied = requireAnyPermission(ctx, ['dashboard', 'agents']);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);

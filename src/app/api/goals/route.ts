@@ -5,7 +5,7 @@ export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
   // Read by both the Goal Tracker and the Scorecards view.
-  const denied = requireAnyPermission(ctx, ['goals', 'agent_scorecards']);
+  const denied = requireAnyPermission(ctx, ['agents', 'agent_scorecards', 'goals']);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, 'goals');
+  const denied = requirePermission(ctx, 'agents');
   if (denied) return denied;
 
   const { client_id, agent_name, metric, target, period = 'monthly' } = await req.json();

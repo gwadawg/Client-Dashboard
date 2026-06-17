@@ -8,7 +8,7 @@ export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
   // Shared by the Dashboard and the Goal Tracker (progress vs. targets).
-  const denied = requireAnyPermission(ctx, ['dashboard', 'goals']);
+  const denied = requireAnyPermission(ctx, ['dashboard', 'agents']);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);

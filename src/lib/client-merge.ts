@@ -5,7 +5,6 @@ const MERGE_TABLES = [
   'client_billings',
   'client_calls',
   'client_notes',
-  'ad_spend',
   'meta_ad_insights',
   'client_action_logs',
   'client_status_history',
@@ -21,23 +20,6 @@ const MERGE_TABLES = [
 ] as const;
 
 async function dedupeConflicts(service: SupabaseClient, sourceId: string, targetId: string) {
-  const { data: targetAdSpend } = await service
-    .from('ad_spend')
-    .select('spend_date, platform')
-    .eq('client_id', targetId);
-  const { data: sourceAdSpend } = await service
-    .from('ad_spend')
-    .select('id, spend_date, platform')
-    .eq('client_id', sourceId);
-  const adKeys = new Set((targetAdSpend ?? []).map(r => `${r.spend_date}\0${r.platform}`));
-  const adDupIds = (sourceAdSpend ?? [])
-    .filter(r => adKeys.has(`${r.spend_date}\0${r.platform}`))
-    .map(r => r.id);
-  if (adDupIds.length) {
-    const { error } = await service.from('ad_spend').delete().in('id', adDupIds);
-    if (error) throw new Error(`ad_spend dedupe: ${error.message}`);
-  }
-
   const { data: targetInsights } = await service
     .from('meta_ad_insights')
     .select('insight_date, account_id, campaign_id, adset_id, ad_id')

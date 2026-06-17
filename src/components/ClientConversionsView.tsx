@@ -198,7 +198,7 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
           <KpiCard label="Proposals Made" value={formatKpiValue(metrics.proposals_made, "int")} hint="Unique leads at proposal stage or beyond." />
           <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} hint="Unique leads submitted or funded." />
           <KpiCard label="Funded Loans" value={formatKpiValue(metrics.funded_loans, "int")} accent hint="Deals that closed and funded." />
-          <KpiCard label="Total Spend" value={formatKpiValue(metrics.ad_spend, "money")} hint="All ad spend in this range." />
+          <KpiCard label="Total Spend" value={formatKpiValue(metrics.ad_spend, "money")} hint="Meta ad spend in this range." />
           <KpiCard label="Cost per Funded" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Funded Loans." />
           <KpiCard
             label="Est. Commission Rev."

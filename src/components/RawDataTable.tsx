@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 type Client = { id: string; name: string };
 
 type Props = {
-  type: "leads" | "dials" | "appointments" | "speed_to_lead" | "ad_spend" | "meta_ad_insights";
+  type: "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ad_insights";
   clients: Client[];
   preset: string;
   startDate: string;
@@ -58,12 +58,6 @@ const COLUMNS: Record<string, { key: string; label: string }[]> = {
     { key: "counted", label: "Counted" },
     { key: "is_pickup", label: "Pickup" },
     { key: "is_conversation", label: "Conversation" },
-  ],
-  ad_spend: [
-    { key: "client", label: "Client" },
-    { key: "spend_date", label: "Date" },
-    { key: "platform", label: "Platform" },
-    { key: "amount", label: "Amount" },
   ],
   meta_ad_insights: [
     { key: "client", label: "Client" },
