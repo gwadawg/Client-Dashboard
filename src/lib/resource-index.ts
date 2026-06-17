@@ -11,13 +11,17 @@ import {
 
 export type LibSection = "all" | "playbooks" | "forms" | "links";
 
+export type LinkCategory = "form" | "sop" | "document" | "template" | "other";
+
 export type LinkResource = {
   id: string;
   title: string;
   description: string | null;
-  category: string;
+  category: LinkCategory;
   tags: string[];
   url: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type PlaybookItem = {
@@ -165,7 +169,11 @@ export function searchItems(items: UnifiedItem[], query: string): UnifiedItem[] 
   });
 }
 
-export function groupByKind(items: UnifiedItem[]): Record<"playbook" | "form" | "link", UnifiedItem[]> {
+export function groupByKind(items: UnifiedItem[]): {
+  playbook: PlaybookItem[];
+  form: FormItem[];
+  link: LinkItem[];
+} {
   return {
     playbook: items.filter((i): i is PlaybookItem => i.kind === "playbook"),
     form: items.filter((i): i is FormItem => i.kind === "form"),

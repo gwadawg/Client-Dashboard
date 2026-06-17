@@ -18,23 +18,16 @@ import {
   searchItems,
   type FormItem,
   type LibSection,
+  type LinkCategory,
   type LinkItem,
+  type LinkResource,
   type PlaybookItem,
 } from "@/lib/resource-index";
 import type { LibraryArtifactType, LibraryOwner } from "@/lib/library-manifest";
 
-type Category = "form" | "sop" | "document" | "template" | "other";
+type Category = LinkCategory;
 
-type Resource = {
-  id: string;
-  title: string;
-  description: string | null;
-  category: Category;
-  tags: string[];
-  url: string;
-  created_at: string;
-  updated_at: string;
-};
+type Resource = LinkResource;
 
 const CATEGORY_META: Record<Category, { label: string; color: string; tint: string }> = {
   form: { label: "Form", color: "#60a5fa", tint: "rgba(96,165,250,0.12)" },
