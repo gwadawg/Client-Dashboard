@@ -17,8 +17,18 @@ type AppointmentRow = {
   booking_source: string | null;
   status: string;
   demo_credit_claimed_at: string | null;
-  acquisition_leads: { ghl_contact_id: string | null } | null;
+  acquisition_leads?:
+    | { ghl_contact_id: string | null }
+    | { ghl_contact_id: string | null }[]
+    | null;
 };
+
+function leadGhlContactId(row: AppointmentRow): string | null {
+  const lead = row.acquisition_leads;
+  if (!lead) return null;
+  if (Array.isArray(lead)) return lead[0]?.ghl_contact_id ?? null;
+  return lead.ghl_contact_id ?? null;
+}
 
 function normalize(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -95,7 +105,7 @@ export async function GET(req: Request) {
       return {
         id: row.id,
         ghl_appointment_id: row.ghl_appointment_id,
-        ghl_contact_id: row.acquisition_leads?.ghl_contact_id ?? null,
+        ghl_contact_id: leadGhlContactId(row),
         lead_name: row.lead_name,
         phone: row.phone,
         booked_at: row.booked_at,
