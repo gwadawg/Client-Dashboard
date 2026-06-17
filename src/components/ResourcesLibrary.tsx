@@ -11,9 +11,12 @@ import {
   getAllPlaybookItems,
   getSetterPlaybookItems,
   groupByKind,
+  groupPlaybooksByDepartment,
+  countPlaybooksByDepartment,
   LIB_SECTION_META,
   linkToItem,
   PLAYBOOK_ARTIFACT_FILTERS,
+  PLAYBOOK_DEPARTMENT_FILTERS,
   PLAYBOOK_OWNER_FILTERS,
   searchItems,
   type FormItem,
@@ -23,7 +26,8 @@ import {
   type LinkResource,
   type PlaybookItem,
 } from "@/lib/resource-index";
-import type { LibraryArtifactType, LibraryOwner } from "@/lib/library-manifest";
+import type { LibraryArtifactType, LibraryDepartment, LibraryOwner } from "@/lib/library-manifest";
+import { DEPARTMENT_META } from "@/lib/library-manifest";
 
 type Category = LinkCategory;
 
@@ -92,6 +96,7 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [playbookDepartment, setPlaybookDepartment] = useState<LibraryDepartment | "all">("all");
   const [playbookOwner, setPlaybookOwner] = useState<LibraryOwner | "all">("all");
   const [playbookArtifact, setPlaybookArtifact] = useState<LibraryArtifactType | "all">("all");
   const [linkCategory, setLinkCategory] = useState<Category | "all">("all");
@@ -131,9 +136,22 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
   );
 
   const filteredPlaybooks = useMemo(
-    () => filterPlaybooks(playbookItems, { owner: playbookOwner, artifact: playbookArtifact }),
-    [playbookItems, playbookOwner, playbookArtifact],
+    () =>
+      filterPlaybooks(playbookItems, {
+        department: playbookDepartment,
+        owner: playbookOwner,
+        artifact: playbookArtifact,
+      }),
+    [playbookItems, playbookDepartment, playbookOwner, playbookArtifact],
   );
+
+  const playbookDeptCounts = useMemo(() => {
+    const roleTypeFiltered = filterPlaybooks(playbookItems, {
+      owner: playbookOwner,
+      artifact: playbookArtifact,
+    });
+    return countPlaybooksByDepartment(roleTypeFiltered);
+  }, [playbookItems, playbookOwner, playbookArtifact]);
 
   const filteredLinks = useMemo(() => {
     return linkItems.filter((item) => {
@@ -360,8 +378,12 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
       ) : section === "playbooks" ? (
         <PlaybooksPanel
           items={filteredPlaybooks}
+          allItems={playbookItems}
+          department={playbookDepartment}
           owner={playbookOwner}
           artifact={playbookArtifact}
+          deptCounts={playbookDeptCounts}
+          onDepartmentChange={setPlaybookDepartment}
           onOwnerChange={setPlaybookOwner}
           onArtifactChange={setPlaybookArtifact}
         />
@@ -493,19 +515,30 @@ function BrowseHub({
 
 function PlaybooksPanel({
   items,
+  allItems,
+  department,
   owner,
   artifact,
+  deptCounts,
+  onDepartmentChange,
   onOwnerChange,
   onArtifactChange,
 }: {
   items: PlaybookItem[];
+  allItems: PlaybookItem[];
+  department: LibraryDepartment | "all";
   owner: LibraryOwner | "all";
   artifact: LibraryArtifactType | "all";
+  deptCounts: Record<LibraryDepartment, number>;
+  onDepartmentChange: (v: LibraryDepartment | "all") => void;
   onOwnerChange: (v: LibraryOwner | "all") => void;
   onArtifactChange: (v: LibraryArtifactType | "all") => void;
 }) {
+  const showGrouped =
+    department === "all" && owner === "all" && artifact === "all";
   const featured = items.find((i) => i.featured);
-  const rest = items.filter((i) => !i.featured);
+  const groups = showGrouped ? groupPlaybooksByDepartment(items) : [];
+  const flatItems = featured ? items.filter((i) => !i.featured) : items;
 
   return (
     <div className="space-y-5">
@@ -513,6 +546,42 @@ function PlaybooksPanel({
         title={LIB_SECTION_META.playbooks.label}
         description={LIB_SECTION_META.playbooks.description}
       />
+
+      {/* Departments — primary organizer */}
+      <div className="space-y-2">
+        <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#475569" }}>
+          Department
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <DepartmentChip
+            label="All departments"
+            count={allItems.length}
+            active={department === "all"}
+            color="#34d399"
+            onClick={() => onDepartmentChange("all")}
+          />
+          {PLAYBOOK_DEPARTMENT_FILTERS.filter((f) => f.value !== "all").map((f) => {
+            const dept = f.value as LibraryDepartment;
+            const meta = DEPARTMENT_META[dept];
+            return (
+              <DepartmentChip
+                key={f.value}
+                label={f.label}
+                count={deptCounts[dept]}
+                active={department === f.value}
+                color={meta.color}
+                onClick={() => onDepartmentChange(f.value)}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {department !== "all" && (
+        <p className="text-sm leading-relaxed -mt-1" style={{ color: "#64748b" }}>
+          {DEPARTMENT_META[department].description}
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {PLAYBOOK_OWNER_FILTERS.map((f) => (
@@ -537,20 +606,109 @@ function PlaybooksPanel({
       </div>
 
       {items.length === 0 ? (
-        <EmptyPanel message="No playbooks match those filters." />
+        <EmptyPanel
+          message="No playbooks match those filters."
+          hint={
+            department !== "all"
+              ? `${DEPARTMENT_META[department].label} playbooks will appear here as they are imported.`
+              : undefined
+          }
+        />
+      ) : showGrouped ? (
+        <div className="space-y-10">
+          {featured && <LibraryDocCard item={featured} featured />}
+          {groups.map((group) => (
+            <DepartmentPlaybookSection key={group.department} department={group.department} items={group.items} />
+          ))}
+        </div>
       ) : (
         <div className="space-y-6">
-          {featured && owner === "all" && artifact === "all" && (
+          {featured && department !== "all" && owner === "all" && artifact === "all" && (
             <LibraryDocCard item={featured} featured />
           )}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {(featured && owner === "all" && artifact === "all" ? rest : items).map((item, i) => (
-              <LibraryDocCard key={item.id} item={item} index={i} />
-            ))}
+            {(featured && department !== "all" && owner === "all" && artifact === "all" ? flatItems : items).map(
+              (item, i) => (
+                <LibraryDocCard key={item.id} item={item} index={i} />
+              ),
+            )}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function DepartmentChip({
+  label,
+  count,
+  active,
+  color,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium active:scale-[0.98]"
+      style={{
+        background: active ? color : "rgba(255,255,255,0.03)",
+        color: active ? "#0a1628" : count === 0 ? "#475569" : "#94a3b8",
+        border: `1px solid ${active ? color : "rgba(255,255,255,0.07)"}`,
+        opacity: !active && count === 0 ? 0.55 : 1,
+      }}
+    >
+      {label}
+      <span
+        className="text-[11px] font-semibold tabular-nums rounded-full px-1.5"
+        style={{
+          background: active ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.05)",
+          color: active ? "#0a1628" : "#475569",
+        }}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function DepartmentPlaybookSection({
+  department,
+  items,
+}: {
+  department: LibraryDepartment;
+  items: PlaybookItem[];
+}) {
+  const meta = DEPARTMENT_META[department];
+  const visible = items.filter((i) => !i.featured);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-2 border-b pb-3" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: meta.color }}>
+            {meta.label}
+          </h3>
+          <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
+            {meta.description}
+          </p>
+        </div>
+        <span className="text-xs tabular-nums" style={{ color: "#475569" }}>
+          {items.length} doc{items.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {visible.map((item, i) => (
+          <LibraryDocCard key={item.id} item={item} index={i} />
+        ))}
+      </div>
+    </section>
   );
 }
 

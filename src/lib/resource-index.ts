@@ -2,9 +2,13 @@ import { INTERNAL_FORMS, type InternalFormDef } from "@/lib/internal-forms";
 import {
   LIBRARY_DOCS,
   artifactMeta,
+  departmentMeta,
   getBundleDocs,
   libraryHref,
+  resolveDepartment,
+  DEPARTMENT_ORDER,
   type LibraryArtifactType,
+  type LibraryDepartment,
   type LibraryDocMeta,
   type LibraryOwner,
 } from "@/lib/library-manifest";
@@ -36,6 +40,7 @@ export type PlaybookItem = {
   script_version: string | null;
   featured?: boolean;
   bundle?: string;
+  department: LibraryDepartment;
   tags: string[];
   doc: LibraryDocMeta;
 };
@@ -76,6 +81,7 @@ export function ownerLabel(owner: LibraryOwner): string {
 }
 
 export function playbookToItem(doc: LibraryDocMeta): PlaybookItem {
+  const department = resolveDepartment(doc);
   return {
     kind: "playbook",
     id: `playbook:${doc.slug}`,
@@ -88,7 +94,8 @@ export function playbookToItem(doc: LibraryDocMeta): PlaybookItem {
     script_version: doc.script_version,
     featured: doc.featured,
     bundle: doc.bundle,
-    tags: [doc.owner, doc.artifact_type, doc.domain, ...(doc.bundle ? [doc.bundle] : [])],
+    department,
+    tags: [doc.owner, doc.artifact_type, doc.domain, department, ...(doc.bundle ? [doc.bundle] : [])],
     doc,
   };
 }
@@ -137,14 +144,35 @@ export function buildUnifiedIndex(links: LinkResource[]): UnifiedItem[] {
 
 export function filterPlaybooks(
   items: PlaybookItem[],
-  opts: { owner?: LibraryOwner | "all"; artifact?: LibraryArtifactType | "all"; bundle?: string },
+  opts: {
+    owner?: LibraryOwner | "all";
+    artifact?: LibraryArtifactType | "all";
+    bundle?: string;
+    department?: LibraryDepartment | "all";
+  },
 ): PlaybookItem[] {
   return items.filter((item) => {
+    if (opts.department && opts.department !== "all" && item.department !== opts.department) return false;
     if (opts.owner && opts.owner !== "all" && item.owner !== opts.owner) return false;
     if (opts.artifact && opts.artifact !== "all" && item.artifact_type !== opts.artifact) return false;
     if (opts.bundle && item.bundle !== opts.bundle) return false;
     return true;
   });
+}
+
+export function countPlaybooksByDepartment(items: PlaybookItem[]): Record<LibraryDepartment, number> {
+  const counts = Object.fromEntries(DEPARTMENT_ORDER.map((d) => [d, 0])) as Record<LibraryDepartment, number>;
+  for (const item of items) counts[item.department] += 1;
+  return counts;
+}
+
+export function groupPlaybooksByDepartment(
+  items: PlaybookItem[],
+): { department: LibraryDepartment; items: PlaybookItem[] }[] {
+  return DEPARTMENT_ORDER.map((department) => ({
+    department,
+    items: items.filter((i) => i.department === department),
+  })).filter((g) => g.items.length > 0);
 }
 
 export function searchItems(items: UnifiedItem[], query: string): UnifiedItem[] {
@@ -162,6 +190,7 @@ export function searchItems(items: UnifiedItem[], query: string): UnifiedItem[] 
       item.kind === "form" ? item.audience : "",
       item.kind === "link" ? item.category : "",
       item.kind === "playbook" ? ownerLabel(item.owner) : "",
+      item.kind === "playbook" ? departmentMeta(item.department).label : "",
     ]
       .join(" ")
       .toLowerCase();
@@ -210,6 +239,11 @@ export const LIB_SECTION_META: Record<
     tint: "rgba(192,132,252,0.10)",
   },
 };
+
+export const PLAYBOOK_DEPARTMENT_FILTERS: { value: LibraryDepartment | "all"; label: string }[] = [
+  { value: "all", label: "All departments" },
+  ...DEPARTMENT_ORDER.map((d) => ({ value: d, label: departmentMeta(d).label })),
+];
 
 export const PLAYBOOK_ARTIFACT_FILTERS: { value: LibraryArtifactType | "all"; label: string }[] = [
   { value: "all", label: "All types" },

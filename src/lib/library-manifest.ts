@@ -13,6 +13,8 @@ export type LibraryArtifactType =
 
 export type LibraryOwner = "setter" | "closer" | "sales-leadership" | "operations";
 
+export type LibraryDepartment = "sales" | "call-center" | "media-buying" | "client-success";
+
 export type LibraryStatus = "active" | "draft";
 
 export type RelatedDoc = {
@@ -51,6 +53,7 @@ export type LibraryDocMeta = {
   related_docs: RelatedDoc[];
   featured?: boolean;
   bundle?: string;
+  department?: LibraryDepartment;
 };
 
 export type LibraryManifest = {
@@ -116,4 +119,49 @@ export function statusMeta(status: LibraryStatus) {
   return status === "active"
     ? { label: "Active", color: "#34d399", tint: "rgba(52,211,153,0.12)" }
     : { label: "Draft", color: "#fbbf24", tint: "rgba(251,191,36,0.12)" };
+}
+
+export const DEPARTMENT_ORDER: LibraryDepartment[] = [
+  "sales",
+  "call-center",
+  "media-buying",
+  "client-success",
+];
+
+export const DEPARTMENT_META: Record<
+  LibraryDepartment,
+  { label: string; description: string; color: string; tint: string }
+> = {
+  sales: {
+    label: "Sales",
+    description: "Acquisition — setter, closer & outbound playbooks",
+    color: "#34d399",
+    tint: "rgba(52,211,153,0.10)",
+  },
+  "call-center": {
+    label: "Call Center",
+    description: "Client fulfillment — dialer ops, scripts & QA",
+    color: "#38bdf8",
+    tint: "rgba(56,189,248,0.10)",
+  },
+  "media-buying": {
+    label: "Media Buying",
+    description: "Ad ops, creative workflows & performance",
+    color: "#c084fc",
+    tint: "rgba(192,132,252,0.10)",
+  },
+  "client-success": {
+    label: "Client Success",
+    description: "Onboarding, client comms & operations SOPs",
+    color: "#60a5fa",
+    tint: "rgba(96,165,250,0.10)",
+  },
+};
+
+export function departmentMeta(dept: LibraryDepartment) {
+  return DEPARTMENT_META[dept];
+}
+
+export function resolveDepartment(doc: LibraryDocMeta): LibraryDepartment {
+  return doc.department ?? "sales";
 }

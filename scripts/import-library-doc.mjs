@@ -29,6 +29,10 @@ const SETTER_PLAYBOOKS_BUNDLE = [
   { rel: "setter-daily-checklist.md", slug: "setter-daily-checklist" },
 ];
 
+const BUNDLE_DEPARTMENTS = {
+  "setter-playbooks": "sales",
+};
+
 const RELATED_DOCS_OVERRIDES = {
   "intro-call-script": [
     { slug: "intro-qualification-framework", label: "FUN Qualification", relation: "implements" },
@@ -170,7 +174,7 @@ function extractIcpPills(headings) {
     .slice(0, 3);
 }
 
-function importDoc(sourcePath, relPath, slug, pathToSlug, dryRun) {
+function importDoc(sourcePath, relPath, slug, pathToSlug, dryRun, bundleName, department) {
   const raw = fs.readFileSync(sourcePath, "utf8");
   const { data: frontmatter, content: body } = matter(raw);
 
@@ -215,7 +219,8 @@ function importDoc(sourcePath, relPath, slug, pathToSlug, dryRun) {
       frontmatter.related_docs ??
       [],
     featured: finalSlug === "intro-call-script",
-    bundle: "setter-playbooks",
+    bundle: bundleName ?? "setter-playbooks",
+    department: frontmatter.department ?? department ?? "sales",
   };
 }
 
@@ -243,6 +248,7 @@ function mergeManifest(existing, imported, bundleName) {
 function importBundle(bundleName, dryRun) {
   const entries = SETTER_PLAYBOOKS_BUNDLE;
   const pathToSlug = buildPathToSlugMap(entries);
+  const department = BUNDLE_DEPARTMENTS[bundleName] ?? "sales";
   const imported = [];
 
   for (const { rel, slug } of entries) {
@@ -251,7 +257,7 @@ function importBundle(bundleName, dryRun) {
       console.error(`Missing source: ${sourcePath}`);
       process.exit(1);
     }
-    const doc = importDoc(sourcePath, rel, slug, pathToSlug, dryRun);
+    const doc = importDoc(sourcePath, rel, slug, pathToSlug, dryRun, bundleName, department);
     imported.push(doc);
     console.log(`${dryRun ? "[dry-run] " : ""}Imported: ${doc.slug} ← ${rel}`);
   }
@@ -281,7 +287,7 @@ function importSingle(sourcePath, dryRun) {
   const rel = path.basename(resolved);
   const slug = deriveSlug(rel);
   const pathToSlug = new Map([[rel, slug]]);
-  const doc = importDoc(resolved, rel, slug, pathToSlug, dryRun);
+  const doc = importDoc(resolved, rel, slug, pathToSlug, dryRun, "custom", undefined);
   const existing = loadExistingManifest();
   const manifest = mergeManifest(existing, [doc], "custom");
   if (!dryRun) {
