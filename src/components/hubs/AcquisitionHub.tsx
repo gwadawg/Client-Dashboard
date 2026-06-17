@@ -1,7 +1,6 @@
 "use client";
 
 import AcquisitionDashboard from "../AcquisitionDashboard";
-import AcquisitionRawTable from "../AcquisitionRawTable";
 import AcquisitionTeamBoard from "../AcquisitionTeamBoard";
 import ViewHub from "../nav/ViewHub";
 import { ACQUISITION_TABS, type AcquisitionTab } from "@/lib/nav";
@@ -22,12 +21,6 @@ export default function AcquisitionHub({ tab, onTabChange, startDate, endDate }:
     >
       {tab === "overview" && <AcquisitionDashboard startDate={startDate} endDate={endDate} />}
       {tab === "team" && <AcquisitionTeamBoard startDate={startDate} endDate={endDate} />}
-      {tab === "leads" && <AcquisitionRawTable type="leads" startDate={startDate} endDate={endDate} />}
-      {tab === "appointments" && (
-        <AcquisitionRawTable type="appointments" startDate={startDate} endDate={endDate} />
-      )}
-      {tab === "offers" && <AcquisitionRawTable type="offers" startDate={startDate} endDate={endDate} />}
-      {tab === "ads" && <AcquisitionRawTable type="ads" startDate={startDate} endDate={endDate} />}
     </ViewHub>
   );
 }

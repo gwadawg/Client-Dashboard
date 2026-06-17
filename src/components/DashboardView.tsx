@@ -11,6 +11,7 @@ import SetterSchedule from "./SetterSchedule";
 import HeatMapsHub from "./hubs/HeatMapsHub";
 import DataExplorerHub from "./hubs/DataExplorerHub";
 import AcquisitionHub from "./hubs/AcquisitionHub";
+import AcquisitionDataExplorerHub from "./hubs/AcquisitionDataExplorerHub";
 import AgentsHub from "./hubs/AgentsHub";
 import ClientRoster from "./ClientRoster";
 import BillingManager from "./BillingManager";
@@ -51,6 +52,7 @@ import {
   type HeatmapTab,
   type DataExplorerTab,
   type AcquisitionTab,
+  type AcquisitionDataExplorerTab,
   type AgentsTab,
   resolveViewFromParams,
 } from "@/lib/nav";
@@ -114,6 +116,7 @@ const NAV_ICONS: Record<View, string> = {
   heatmaps:      "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   data_explorer: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
   acquisition:   "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6",
+  acquisition_data_explorer: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
   agents:        "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
   resources:        "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253",
   admin_agents:     "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
@@ -524,11 +527,13 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
   const isHeatmap = view === "heatmaps";
   const isDataExplorer = view === "data_explorer";
   const isAcquisition = view === "acquisition";
+  const isAcquisitionDataExplorer = view === "acquisition_data_explorer";
   const isAgents = view === "agents";
   const showDateFilters =
     view === "dashboard"
     || isDataExplorer
     || isAcquisition
+    || isAcquisitionDataExplorer
     || isAgents
     || view === "dial_analytics"
     || view === "media_buyer"
@@ -921,6 +926,15 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
           {view === "acquisition" && hubTab && (
             <AcquisitionHub
               tab={hubTab as AcquisitionTab}
+              onTabChange={setHubTabAndUrl}
+              startDate={dateStart}
+              endDate={dateEnd}
+            />
+          )}
+
+          {view === "acquisition_data_explorer" && hubTab && (
+            <AcquisitionDataExplorerHub
+              tab={hubTab as AcquisitionDataExplorerTab}
               onTabChange={setHubTabAndUrl}
               startDate={dateStart}
               endDate={dateEnd}

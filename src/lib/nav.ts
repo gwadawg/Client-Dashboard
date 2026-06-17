@@ -3,10 +3,11 @@
 
 export type HeatmapTab = "show_rate" | "pickup_rate" | "new_leads";
 export type DataExplorerTab = "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
-export type AcquisitionTab = "overview" | "team" | "leads" | "appointments" | "offers" | "ads";
+export type AcquisitionTab = "overview" | "team";
+export type AcquisitionDataExplorerTab = "leads" | "appointments" | "offers" | "dials" | "closes" | "ads";
 export type AgentsTab = "stats" | "scorecards" | "goals" | "credit_queue" | "recordings";
 
-export type HubView = "heatmaps" | "data_explorer" | "acquisition" | "agents";
+export type HubView = "heatmaps" | "data_explorer" | "acquisition" | "acquisition_data_explorer" | "agents";
 
 export type View =
   | "dashboard"
@@ -73,9 +74,14 @@ export const DATA_EXPLORER_TABS: HubTabDef<DataExplorerTab>[] = [
 export const ACQUISITION_TABS: HubTabDef<AcquisitionTab>[] = [
   { key: "overview", label: "Overview" },
   { key: "team", label: "Team" },
+];
+
+export const ACQUISITION_DATA_EXPLORER_TABS: HubTabDef<AcquisitionDataExplorerTab>[] = [
   { key: "leads", label: "Leads" },
   { key: "appointments", label: "Appointments" },
   { key: "offers", label: "Offers" },
+  { key: "dials", label: "Dials" },
+  { key: "closes", label: "Closes" },
   { key: "ads", label: "Ad Spend" },
 ];
 
@@ -95,6 +101,13 @@ export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
     "acquisition",
     "acquisition_funnel",
     "acquisition_team",
+    "acquisition_leads",
+    "acquisition_appointments",
+    "acquisition_offers",
+    "acquisition_ads",
+  ],
+  acquisition_data_explorer: [
+    "acquisition",
     "acquisition_leads",
     "acquisition_appointments",
     "acquisition_offers",
@@ -129,18 +142,25 @@ export const LEGACY_VIEW_REDIRECTS: Record<LegacyView, { view: View; tab: string
   goals: { view: "agents", tab: "goals" },
   acquisition_funnel: { view: "acquisition", tab: "overview" },
   acquisition_team: { view: "acquisition", tab: "team" },
-  acquisition_leads: { view: "acquisition", tab: "leads" },
-  acquisition_appointments: { view: "acquisition", tab: "appointments" },
-  acquisition_offers: { view: "acquisition", tab: "offers" },
-  acquisition_ads: { view: "acquisition", tab: "ads" },
+  acquisition_leads: { view: "acquisition_data_explorer", tab: "leads" },
+  acquisition_appointments: { view: "acquisition_data_explorer", tab: "appointments" },
+  acquisition_offers: { view: "acquisition_data_explorer", tab: "offers" },
+  acquisition_ads: { view: "acquisition_data_explorer", tab: "ads" },
 };
 
-export const HUB_VIEWS: HubView[] = ["heatmaps", "data_explorer", "acquisition", "agents"];
+export const HUB_VIEWS: HubView[] = [
+  "heatmaps",
+  "data_explorer",
+  "acquisition",
+  "acquisition_data_explorer",
+  "agents",
+];
 
 export const HUB_TAB_LABELS: Record<HubView, HubTabDef<string>[]> = {
   heatmaps: HEATMAP_TABS,
   data_explorer: DATA_EXPLORER_TABS,
   acquisition: ACQUISITION_TABS,
+  acquisition_data_explorer: ACQUISITION_DATA_EXPLORER_TABS,
   agents: AGENTS_TABS,
 };
 
@@ -173,7 +193,8 @@ export const NAV: NavItem[] = [
   { view: "heatmaps",           label: "Heat Maps",             group: "Clients"      },
   { view: "data_explorer",      label: "Data Explorer",         group: "Clients"      },
   { view: "ceo",                label: "Business",              group: "Executive"    },
-  { view: "acquisition",        label: "Acquisition",           group: "Acquisition"  },
+  { view: "acquisition",               label: "Acquisition",           group: "Acquisition"  },
+  { view: "acquisition_data_explorer", label: "Acquisition Data",      group: "Acquisition"  },
   { view: "agents",             label: "Call Center Hub",       group: "Team"         },
   { view: "resources",          label: "Resource Library",      group: "Team"         },
   { view: "schedule",           label: "Power Dialer Schedule", group: "Team"         },

@@ -1,0 +1,118 @@
+import { NextResponse } from 'next/server';
+import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import {
+  buildAcquisitionLeadProfile,
+  matchesFunnelStageFilter,
+  type AcquisitionLeadProfile,
+} from '@/lib/acquisition-lead-profiles';
+
+const PAGE_SIZE = 50;
+const MAX_LEADS = 5_000;
+
+export async function GET(req: Request) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'acquisition');
+  if (denied) return denied;
+
+  const { searchParams } = new URL(req.url);
+  const start_date = searchParams.get('start_date');
+  const end_date = searchParams.get('end_date');
+  const funnel_stage = searchParams.get('funnel_stage')?.trim() ?? '';
+  const search = searchParams.get('search')?.trim();
+  const safeSearch = search ? search.replace(/[,()*]/g, ' ').trim() : '';
+  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
+
+  let q = ctx.service
+    .from('acquisition_leads')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(MAX_LEADS);
+
+  if (!safeSearch) {
+    if (start_date) q = q.gte('created_at', `${start_date}T00:00:00.000Z`);
+    if (end_date) q = q.lte('created_at', `${end_date}T23:59:59.999Z`);
+  } else {
+    q = q.or(
+      `lead_name.ilike.%${safeSearch}%,email.ilike.%${safeSearch}%,phone.ilike.%${safeSearch}%`,
+    );
+  }
+
+  const { data: leadRows, error } = await q;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const leads = leadRows ?? [];
+  if (leads.length === 0) {
+    return NextResponse.json({
+      rows: [],
+      total: 0,
+      page,
+      page_size: PAGE_SIZE,
+      leads_loaded: 0,
+      capped: false,
+    });
+  }
+
+  const leadIds = leads.map(l => l.id);
+
+  const [apptsRes, offersRes, closesRes, dialsRes] = await Promise.all([
+    ctx.service.from('acquisition_appointments').select('*').in('lead_id', leadIds),
+    ctx.service.from('acquisition_offers').select('*').in('lead_id', leadIds),
+    ctx.service.from('acquisition_closes').select('*').in('lead_id', leadIds),
+    ctx.service.from('acquisition_dials').select('*').in('lead_id', leadIds),
+  ]);
+
+  if (apptsRes.error) return NextResponse.json({ error: apptsRes.error.message }, { status: 500 });
+  if (offersRes.error) return NextResponse.json({ error: offersRes.error.message }, { status: 500 });
+  if (closesRes.error) return NextResponse.json({ error: closesRes.error.message }, { status: 500 });
+  if (dialsRes.error) return NextResponse.json({ error: dialsRes.error.message }, { status: 500 });
+
+  const apptsByLead = groupBy(leadIds, apptsRes.data ?? [], 'lead_id');
+  const offersByLead = groupBy(leadIds, offersRes.data ?? [], 'lead_id');
+  const closesByLead = groupBy(leadIds, closesRes.data ?? [], 'lead_id');
+  const dialsByLead = groupBy(leadIds, dialsRes.data ?? [], 'lead_id');
+
+  let profiles: AcquisitionLeadProfile[] = leads.map(lead =>
+    buildAcquisitionLeadProfile(
+      lead,
+      apptsByLead.get(lead.id) ?? [],
+      offersByLead.get(lead.id) ?? [],
+      closesByLead.get(lead.id) ?? [],
+      dialsByLead.get(lead.id) ?? [],
+    ),
+  );
+
+  if (funnel_stage) {
+    profiles = profiles.filter(p => matchesFunnelStageFilter(p, funnel_stage));
+  }
+
+  const total = profiles.length;
+  const offset = (page - 1) * PAGE_SIZE;
+  const pageRows = profiles.slice(offset, offset + PAGE_SIZE);
+
+  return NextResponse.json({
+    rows: pageRows,
+    total,
+    page,
+    page_size: PAGE_SIZE,
+    leads_loaded: leads.length,
+    capped: leads.length >= MAX_LEADS,
+  });
+}
+
+function groupBy<T extends { lead_id: string | null }>(
+  leadIds: string[],
+  rows: T[],
+  key: keyof T,
+): Map<string, T[]> {
+  const allowed = new Set(leadIds);
+  const map = new Map<string, T[]>();
+  for (const row of rows) {
+    const id = row[key] as string | null;
+    if (!id || !allowed.has(id)) continue;
+    const list = map.get(id) ?? [];
+    list.push(row);
+    map.set(id, list);
+  }
+  return map;
+}
