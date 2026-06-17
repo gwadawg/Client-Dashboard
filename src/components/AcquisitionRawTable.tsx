@@ -27,6 +27,7 @@ const COLUMNS: Record<Props["type"], { key: string; label: string }[]> = {
     { key: "call_taken_by", label: "Taken By" },
     { key: "lead_name", label: "Lead" },
     { key: "qualified", label: "Qualified" },
+    { key: "demo_audit", label: "Demo audit" },
   ],
   offers: [
     { key: "offered_at", label: "Date" },
@@ -65,6 +66,30 @@ function fmt(key: string, v: unknown): string {
   if (typeof v === "number" && key.includes("spent")) return `$${v.toLocaleString()}`;
   if (typeof v === "string" && v.includes("T")) return v.slice(0, 16).replace("T", " ");
   return String(v);
+}
+
+function DemoAuditCell({ row }: { row: Record<string, unknown> }) {
+  if (row.appointment_type !== "demo" || row.status !== "showed") {
+    return <span style={{ color: "#334155" }}>—</span>;
+  }
+  if (row.demo_audit_done === true) {
+    return <span className="text-xs font-medium" style={{ color: "#22c55e" }}>Done</span>;
+  }
+  const url = row.demo_audit_form_url;
+  if (typeof url === "string" && url) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-xs font-semibold whitespace-nowrap"
+        style={{ color: "#38bdf8" }}
+      >
+        Fill out form
+      </a>
+    );
+  }
+  return <span className="text-xs" style={{ color: "#f87171" }}>No GHL contact</span>;
 }
 
 export default function AcquisitionRawTable({ type, startDate, endDate }: Props) {
@@ -112,7 +137,11 @@ export default function AcquisitionRawTable({ type, startDate, endDate }: Props)
                 <tr key={i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                   {cols.map((c) => (
                     <td key={c.key} className="px-3 py-2 whitespace-nowrap tabular-nums" style={{ color: "#cbd5e1" }}>
-                      {fmt(c.key, row[c.key])}
+                      {c.key === "demo_audit" ? (
+                        <DemoAuditCell row={row} />
+                      ) : (
+                        fmt(c.key, row[c.key])
+                      )}
                     </td>
                   ))}
                 </tr>
