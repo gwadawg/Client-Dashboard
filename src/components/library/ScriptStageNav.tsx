@@ -9,6 +9,8 @@ type Props = {
   icpPills: LibraryNavPill[];
   onJump: (id: string) => void;
   activeId: string | null;
+  /** Distance from viewport top when pinned (below doc header). */
+  stickyTop?: string;
 };
 
 function NavButton({
@@ -80,6 +82,7 @@ export default function ScriptStageNav({
   icpPills,
   onJump,
   activeId,
+  stickyTop = "5.5rem",
 }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -152,8 +155,16 @@ export default function ScriptStageNav({
         </div>
       )}
 
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:block sticky top-6">{content}</aside>
+      {/* Desktop sidebar — sticky below doc header, scrollable when long */}
+      <aside
+        className="hidden lg:block sticky self-start overflow-y-auto overscroll-contain pr-1"
+        style={{
+          top: stickyTop,
+          maxHeight: `calc(100vh - ${stickyTop} - 1rem)`,
+        }}
+      >
+        {content}
+      </aside>
     </>
   );
 }

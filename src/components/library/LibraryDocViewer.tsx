@@ -255,7 +255,7 @@ export default function LibraryDocViewer({ meta, body }: Props) {
         </div>
       )}
 
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 lg:grid-cols-[220px_1fr_200px] sm:px-6">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 lg:grid-cols-[220px_1fr_200px] sm:px-6 lg:items-start">
         {/* Left: stage nav */}
         <ScriptStageNav
           stageNav={meta.stage_nav}
@@ -263,6 +263,7 @@ export default function LibraryDocViewer({ meta, body }: Props) {
           icpPills={meta.icp_pills}
           onJump={jumpTo}
           activeId={activeId}
+          stickyTop={meta.status === "draft" ? "7.25rem" : "5.5rem"}
         />
 
         {/* Main content */}
@@ -294,7 +295,13 @@ export default function LibraryDocViewer({ meta, body }: Props) {
         </main>
 
         {/* Right: related docs (desktop) */}
-        <aside className="hidden lg:block sticky top-24 self-start">
+        <aside
+          className="hidden lg:block sticky self-start overflow-y-auto overscroll-contain"
+          style={{
+            top: meta.status === "draft" ? "7.25rem" : "5.5rem",
+            maxHeight: `calc(100vh - ${meta.status === "draft" ? "7.25rem" : "5.5rem"} - 1rem)`,
+          }}
+        >
           <RelatedDocsPanel docs={related} currentSlug={meta.slug} />
         </aside>
       </div>
