@@ -5,6 +5,7 @@ import AcquisitionTeamBoard from "../AcquisitionTeamBoard";
 import AcquisitionSetterCreditQueue from "../AcquisitionSetterCreditQueue";
 import AcquisitionSalesCalls from "../AcquisitionSalesCalls";
 import AcquisitionPendingCloses from "../AcquisitionPendingCloses";
+import AcquisitionLogClose from "../AcquisitionLogClose";
 import ViewHub from "../nav/ViewHub";
 import { ACQUISITION_TABS, type AcquisitionTab } from "@/lib/nav";
 
@@ -31,6 +32,7 @@ export default function AcquisitionHub({ tab, onTabChange, startDate, endDate }:
         <AcquisitionSalesCalls startDate={startDate} endDate={endDate} />
       )}
       {tab === "pending_closes" && <AcquisitionPendingCloses />}
+      {tab === "log_close" && <AcquisitionLogClose />}
     </ViewHub>
   );
 }

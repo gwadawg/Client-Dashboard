@@ -79,3 +79,19 @@ Do **not** relay full GHL form payloads through Make — use Mr. Waiz forms for 
 | Demo booking credit | `demo_booking_credit` | Live |
 | Intro disposition | `intro_disposition` | Planned |
 | Closer form | `closer_form` | Live (`/forms/acquisition/closer`; legacy `/demo-audit`) |
+
+### Log Close (in-app, no magic link)
+
+Dashboard → **Acquisition** → **Log Close**:
+
+1. Search lead by name, phone, or email (requires `ghl_contact_id`).
+2. Pick **which call** — showed appointments for that lead, or **No appointment / closed off-calendar**.
+3. **Open Closer form** — server issues a signed URL (same form as appointment-tab links).
+
+CLI (optional):
+
+```bash
+node scripts/sign-acquisition-closer-link.mjs CONTACT_ID [GHL_APPOINTMENT_ID]
+```
+
+Omit `GHL_APPOINTMENT_ID` when there is no calendar event.

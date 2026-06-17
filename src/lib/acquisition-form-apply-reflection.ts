@@ -103,8 +103,9 @@ const CLOSER_APPT_CALL_TYPES = new Set([
 
 function resolveCloserCallType(appointmentType: string | null | undefined): string {
   const t = appointmentType?.trim();
-  if (t && CLOSER_APPT_CALL_TYPES.has(t)) return t;
-  return 'demo';
+  if (!t) return 'organic';
+  if (CLOSER_APPT_CALL_TYPES.has(t)) return t;
+  return 'other';
 }
 
 async function ensureLeadId(service: SupabaseClient, contactId: string): Promise<string> {

@@ -44,6 +44,23 @@ export async function hasCloserFormSubmission(
   return !!call?.form_submission_id;
 }
 
+export async function buildCloserFormUrlForLead(
+  service: SupabaseClient,
+  leadId: string,
+  ghlAppointmentId?: string | null,
+): Promise<string | null> {
+  const { data: lead } = await service
+    .from('acquisition_leads')
+    .select('ghl_contact_id')
+    .eq('id', leadId)
+    .maybeSingle();
+
+  const contactId = lead?.ghl_contact_id?.trim();
+  if (!contactId) return null;
+
+  return buildCloserFormUrl(getAppBaseUrl(), contactId, ghlAppointmentId ?? null);
+}
+
 export async function buildCloserFormUrlForAppointment(
   service: SupabaseClient,
   appointmentId: string,
