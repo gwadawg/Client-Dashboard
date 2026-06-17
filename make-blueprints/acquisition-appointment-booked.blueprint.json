@@ -1,0 +1,26 @@
+{
+  "name": "WM Acquisition - Appointment → Mr. Waiz",
+  "flow": [
+    {
+      "id": 1,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": { "handleErrors": false },
+      "mapper": {
+        "url": "https://wm-os-production.up.railway.app/api/acquisition/webhooks/appointment",
+        "method": "POST",
+        "headers": [
+          { "name": "Authorization", "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET" },
+          { "name": "Content-Type", "value": "application/json" }
+        ],
+        "bodyType": "raw",
+        "contentType": "application/json",
+        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_appointment_id\": \"{{appointment.id}}\", \"ghl_contact_id\": \"{{contact.id}}\", \"calendar_id\": \"{{appointment.calendarId}}\", \"booked_at\": \"{{appointment.dateAdded}}\", \"scheduled_at\": \"{{appointment.startTime}}\", \"status\": \"{{appointment.appointmentStatus}}\", \"setter_name\": \"{{custom_field.agent}}\", \"lead_name\": \"{{contact.name}}\", \"phone\": \"{{contact.phone}}\"}"
+      },
+      "metadata": { "designer": { "x": 0, "y": 0, "name": "POST acquisition appointment" } }
+    }
+  ],
+  "metadata": {
+    "notes": "Trigger: GHL Appointment Booked/Updated in acquisition location. Map custom_field.agent to setter."
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "WM Acquisition - Meta Spend Daily → Mr. Waiz",
+  "flow": [
+    {
+      "id": 1,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": { "handleErrors": false },
+      "mapper": {
+        "url": "https://wm-os-production.up.railway.app/api/acquisition/ad-insights",
+        "method": "POST",
+        "headers": [
+          { "name": "Authorization", "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET" },
+          { "name": "Content-Type", "value": "application/json" }
+        ],
+        "bodyType": "raw",
+        "contentType": "application/json",
+        "data": "{\"date\": \"{{date}}\", \"platform\": \"facebook\", \"adset_name\": \"{{adset_name}}\", \"ad_name\": \"{{ad_name}}\", \"amount_spent\": \"{{spend}}\", \"impressions\": \"{{impressions}}\", \"reach\": \"{{reach}}\", \"cpm\": \"{{cpm}}\"}"
+      },
+      "metadata": { "designer": { "x": 0, "y": 0, "name": "POST Waiz Meta spend" } }
+    }
+  ],
+  "metadata": {
+    "notes": "Schedule: daily. Source: Facebook Ads → Waiz acquisition ad account (not client accounts)."
+  }
+}

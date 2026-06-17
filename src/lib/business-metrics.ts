@@ -211,6 +211,9 @@ export type UnitEconomics = {
   is_profitable: boolean;
   rule_of_40: number | null;
   revenue_per_head: number | null; // annualized MRR per head
+  /** From acquisition pipeline when business_metrics.marketing_spend is unset */
+  acquisition_pipeline_cac?: number | null;
+  acquisition_ad_spend?: number | null;
 };
 
 export type BusinessMetrics = {

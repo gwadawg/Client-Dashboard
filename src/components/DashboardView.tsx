@@ -4,18 +4,14 @@ import Image from "next/image";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import RawDataTable from "./RawDataTable";
 import ClientSelect from "./ClientSelect";
-import AppointmentsTable from "./AppointmentsTable";
-import LeadProfilesTable from "./LeadProfilesTable";
-import HeatMap from "./HeatMap";
-import AgentStats from "./AgentStats";
 import AgentAdmin from "./AgentAdmin";
-import RecordingBrowser from "./RecordingBrowser";
 import ClientCallsBrowser from "./ClientCallsBrowser";
-import GoalTracker from "./GoalTracker";
-import AgentScorecards from "./AgentScorecards";
 import SetterSchedule from "./SetterSchedule";
+import HeatMapsHub from "./hubs/HeatMapsHub";
+import DataExplorerHub from "./hubs/DataExplorerHub";
+import AcquisitionHub from "./hubs/AcquisitionHub";
+import AgentsHub from "./hubs/AgentsHub";
 import ClientRoster from "./ClientRoster";
 import BillingManager from "./BillingManager";
 import AgentPayrollReport from "./AgentPayrollReport";
@@ -30,6 +26,7 @@ import ClientHealthDashboard from "./ClientHealthDashboard";
 import DialAnalytics from "./DialAnalytics";
 import MediaBuyer from "./MediaBuyer";
 import CeoDashboard from "./CeoDashboard";
+import AcquisitionSalesReps from "./AcquisitionSalesReps";
 import ResourcesLibrary from "./ResourcesLibrary";
 import AutomationsManager from "./AutomationsManager";
 import KpiSections, { type SparkMap } from "./kpi/KpiSections";
@@ -42,7 +39,21 @@ import {
   normalizeReportingType,
   type ReportingType,
 } from "@/lib/kpi-layouts";
-import { NAV, NAV_GROUPS, type View } from "@/lib/nav";
+import {
+  NAV,
+  NAV_GROUPS,
+  LEGACY_VIEW_REDIRECTS,
+  defaultTabForHub,
+  isHubView,
+  tabLabelForHub,
+  type View,
+  type HubView,
+  type HeatmapTab,
+  type DataExplorerTab,
+  type AcquisitionTab,
+  type AgentsTab,
+  resolveViewFromParams,
+} from "@/lib/nav";
 import { hasPermission, canViewClientRevenue, canAccessAutomations, type AllowedPermissions } from "@/lib/permissions";
 
 type Client = { id: string; name: string; is_live?: boolean; reporting_type?: ReportingType };
@@ -80,26 +91,31 @@ const PRESET_LABELS: Record<Preset, string> = {
   custom: "Custom Range",
 };
 
-const VALID_VIEWS = new Set<View>(NAV.map(item => item.view));
 
-function viewFromParam(param: string | null): View {
-  return param && VALID_VIEWS.has(param as View) ? (param as View) : "dashboard";
+const LEGACY_VIEW_KEYS = new Set(Object.keys(LEGACY_VIEW_REDIRECTS));
+
+function parseUrlView(searchParams: URLSearchParams): { view: View; tab: string | null } {
+  const viewParam = searchParams.get("view");
+  const tabParam = searchParams.get("tab");
+
+  if (viewParam && LEGACY_VIEW_KEYS.has(viewParam)) {
+    return resolveViewFromParams(viewParam, tabParam);
+  }
+
+  return resolveViewFromParams(viewParam, tabParam);
 }
 
 const NAV_ICONS: Record<View, string> = {
   dashboard:     "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
   ceo:           "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6",
-  leads:         "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z",
-  dials:         "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
-  appointments:  "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
-  speed_to_lead: "M13 10V3L4 14h7v7l9-11h-7z",
-  ad_spend:         "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
-  meta_ad_insights: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
-  heatmap_show:  "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
-  heatmap_pickup:"M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
-  heatmap_leads: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
-  agent_stats:   "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
-  agent_credit_queue: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+  dial_analytics:   "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
+  media_buyer:      "M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z",
+  client_health:    "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
+  heatmaps:      "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+  data_explorer: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
+  acquisition:   "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6",
+  agents:        "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
+  resources:        "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253",
   admin_agents:     "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
   admin_clients:    "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
   admin_billing:    "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",
@@ -108,15 +124,11 @@ const NAV_ICONS: Record<View, string> = {
   admin_automations: "M13 10V3L4 14h7v7l9-11h-7z",
   admin_users:      "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
   schedule:         "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
-  agent_scorecards: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
-  recordings:       "M15.536 8.464a5 5 0 010 7.072M12 18.364a9 9 0 010-12.728M8.464 15.536a5 5 0 010-7.072",
   client_calls:     "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
-  goals:            "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
-  dial_analytics:   "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
-  media_buyer:      "M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z",
-  client_health:    "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
-  resources:        "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253",
+  acquisition_sales_reps:"M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
 };
+
+const DEFAULT_COLLAPSED_GROUPS = new Set<string>(["Admin"]);
 
 function ymd(d: Date): string {
   return d.toISOString().split("T")[0];
@@ -337,7 +349,11 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
     return firstVisibleView ?? requested;
   };
 
-  const [view, setView] = useState<View>(() => resolveAllowedView(viewFromParam(searchParams.get("view"))));
+  const [view, setView] = useState<View>(() => {
+    const parsed = parseUrlView(searchParams);
+    return resolveAllowedView(parsed.view);
+  });
+  const [hubTab, setHubTab] = useState<string | null>(() => parseUrlView(searchParams).tab);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [preset, setPreset] = useState<Preset>("this_month");
@@ -353,24 +369,57 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
   const [heatmapDays, setHeatmapDays] = useState(0);
   const [heatmapClientId, setHeatmapClientId] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set(DEFAULT_COLLAPSED_GROUPS));
   const [dashboardSubView, setDashboardSubView] = useState<"main" | "conversions">("main");
   const [renderDate] = useState(() => new Date());
   const presetRef = useRef<HTMLDivElement>(null);
 
-  const goToView = (next: View) => {
+  const goToView = (next: View, tab?: string | null) => {
     const target = resolveAllowedView(next);
     setView(target);
     setSidebarOpen(false);
     const params = new URLSearchParams(searchParams.toString());
-    if (target === "dashboard") params.delete("view");
-    else params.set("view", target);
+    if (target === "dashboard") {
+      params.delete("view");
+      params.delete("tab");
+      setHubTab(null);
+    } else {
+      params.set("view", target);
+      if (isHubView(target)) {
+        const nextTab = tab ?? hubTab ?? defaultTabForHub(target);
+        setHubTab(nextTab);
+        params.set("tab", nextTab);
+      } else {
+        setHubTab(null);
+        params.delete("tab");
+      }
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
+  const setHubTabAndUrl = (tab: string) => {
+    setHubTab(tab);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tab);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
 
   useEffect(() => {
-    const fromUrl = resolveAllowedView(viewFromParam(searchParams.get("view")));
+    const viewParam = searchParams.get("view");
+    if (viewParam && LEGACY_VIEW_KEYS.has(viewParam)) {
+      const redirect = LEGACY_VIEW_REDIRECTS[viewParam as keyof typeof LEGACY_VIEW_REDIRECTS];
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("view", redirect.view);
+      params.set("tab", redirect.tab);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      return;
+    }
+    const parsed = parseUrlView(searchParams);
+    const fromUrl = resolveAllowedView(parsed.view);
     setView(current => (current === fromUrl ? current : fromUrl));
+    setHubTab(parsed.tab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -472,9 +521,31 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
     : undefined;
   const heatmapEnd = heatmapDays > 0 ? today : undefined;
 
-  const isHeatmap = view.startsWith("heatmap_");
-  const isRaw = ["leads", "dials", "appointments", "speed_to_lead", "ad_spend", "meta_ad_insights"].includes(view);
-  const isAgentView = ["agent_stats", "agent_credit_queue", "agent_scorecards", "recordings"].includes(view);
+  const isHeatmap = view === "heatmaps";
+  const isDataExplorer = view === "data_explorer";
+  const isAcquisition = view === "acquisition";
+  const isAgents = view === "agents";
+  const showDateFilters =
+    view === "dashboard"
+    || isDataExplorer
+    || isAcquisition
+    || isAgents
+    || view === "dial_analytics"
+    || view === "media_buyer"
+    || view === "client_calls"
+    || view === "admin_agent_payroll";
+
+  const navItem = NAV.find(n => n.view === view);
+  const hubTabLabel = isHubView(view) && hubTab ? tabLabelForHub(view, hubTab) : null;
+
+  const toggleGroup = (group: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  };
   const groups = NAV_GROUPS.filter(group => visibleNav.some(n => n.group === group));
   const dashboardScopeClients = getDashboardScopeClients(clients, selectedClientId);
   const dashboardReportingType = resolveDashboardReportingType(clients, selectedClientId);
@@ -519,34 +590,53 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-5 px-3 space-y-6">
-          {groups.map(group => (
-            <div key={group}>
-              <p className="text-[10px] font-bold uppercase tracking-widest px-3 mb-2" style={{ color: "#334155" }}>
-                {group}
-              </p>
-              {visibleNav.filter(n => n.group === group).map(item => {
-                const active = view === item.view;
-                return (
-                  <button
-                    key={item.view}
-                    onClick={() => goToView(item.view)}
-                    className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-3 transition-all duration-150 mb-0.5"
-                    style={active
-                      ? { background: "rgba(245,158,11,0.12)", color: "#f59e0b", borderLeft: "2px solid #f59e0b" }
-                      : { color: "#475569", borderLeft: "2px solid transparent" }}
-                    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
-                    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+        <nav className="flex-1 overflow-y-auto py-5 px-3 space-y-4">
+          {groups.map(group => {
+            const items = visibleNav.filter(n => n.group === group);
+            const collapsed = collapsedGroups.has(group);
+            return (
+              <div key={group}>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group)}
+                  className="w-full flex items-center justify-between px-3 mb-2 group"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#334155" }}>
+                    {group}
+                  </p>
+                  <span
+                    className="text-[10px] transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                    style={{
+                      color: "#334155",
+                      transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                    }}
                   >
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d={NAV_ICONS[item.view]} />
-                    </svg>
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+                    ▾
+                  </span>
+                </button>
+                {!collapsed && items.map(item => {
+                  const active = view === item.view;
+                  return (
+                    <button
+                      key={item.view}
+                      onClick={() => goToView(item.view)}
+                      className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-3 mb-0.5 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]"
+                      style={active
+                        ? { background: "rgba(245,158,11,0.12)", color: "#f59e0b", borderLeft: "2px solid #f59e0b" }
+                        : { color: "#475569", borderLeft: "2px solid transparent" }}
+                      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
+                      onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+                    >
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d={NAV_ICONS[item.view]} />
+                      </svg>
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
         </nav>
 
         {/* Sign out */}
@@ -581,16 +671,14 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
           </button>
 
           <h1 className="text-base font-semibold mr-auto" style={{ color: "#e2e8f0" }}>
-            {NAV.find(n => n.view === view)?.group
-              ? <span style={{ color: "#334155" }}>{NAV.find(n => n.view === view)?.group} / </span>
+            {navItem?.group
+              ? <span style={{ color: "#334155" }}>{navItem.group} / </span>
               : null}
-            {NAV.find(n => n.view === view)?.label ?? "Dashboard"}
+            {navItem?.label ?? "Dashboard"}
+            {hubTabLabel ? <span style={{ color: "#334155" }}> / {hubTabLabel}</span> : null}
           </h1>
 
-          {/* Dashboard, raw data, and agent/recording views filters */}
-          {/* Client Success owns its own standardized grading window, so the global
-              date picker is intentionally omitted for that view. */}
-          {(view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "dial_analytics" || view === "media_buyer" || view === "recordings" || view === "client_calls" || view === "admin_agent_payroll") && (view === "admin_agent_payroll" || !view.startsWith("admin_")) && (
+          {showDateFilters && (view === "admin_agent_payroll" || !view.startsWith("admin_")) && (
             <>
               {(view === "dashboard" || view === "dial_analytics" || view === "media_buyer") && (
                 <ClientSelect value={selectedClientId} onChange={setSelectedClientId} clients={clients} />
@@ -695,7 +783,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
             {overduePending != null && overduePending > 0 && (
               <button
                 type="button"
-                onClick={() => goToView("appointments")}
+                onClick={() => goToView("data_explorer", "appointments")}
                 className="w-full flex items-center gap-4 text-left rounded-xl px-5 py-4 transition-colors"
                 style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.45)" }}
               >
@@ -750,7 +838,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
 
                 {dashboardHasMixedReportingTypes && (
                   <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#64748b", background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    Mixed RM/HE selection detected. Showing the full RM dashboard for this combined view.
+                    Mixed offer types (RM / HE / DSCR) in this selection. Showing the full RM dashboard for this combined view.
                   </p>
                 )}
 
@@ -806,24 +894,22 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
             </div>
           )}
 
-          {/* ── Raw Data Tables ── */}
-          {isRaw && view === "leads" && (
-            <LeadProfilesTable
-              clients={clients}
-              startDate={dateStart}
-              endDate={dateEnd}
+          {/* ── Heat Maps hub ── */}
+          {view === "heatmaps" && hubTab && (
+            <HeatMapsHub
+              tab={hubTab as HeatmapTab}
+              onTabChange={setHubTabAndUrl}
+              heatmapClientId={heatmapClientId}
+              heatmapStart={heatmapStart}
+              heatmapEnd={heatmapEnd}
             />
           )}
-          {isRaw && view === "appointments" && (
-            <AppointmentsTable
-              clients={clients}
-              startDate={dateStart}
-              endDate={dateEnd}
-            />
-          )}
-          {isRaw && view !== "leads" && view !== "appointments" && (
-            <RawDataTable
-              type={view as "dials" | "speed_to_lead" | "ad_spend" | "meta_ad_insights"}
+
+          {/* ── Data Explorer hub ── */}
+          {view === "data_explorer" && hubTab && (
+            <DataExplorerHub
+              tab={hubTab as DataExplorerTab}
+              onTabChange={setHubTabAndUrl}
               clients={clients}
               preset={preset}
               startDate={dateStart}
@@ -831,45 +917,26 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
             />
           )}
 
-          {/* ── Heat Maps ── */}
-          {view === "heatmap_show"   && <HeatMap type="show_rate"    startDate={heatmapStart} endDate={heatmapEnd} clientId={heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined} liveOnly={heatmapClientId === "__live__"} />}
-          {view === "heatmap_pickup" && <HeatMap type="pickup_rate"  startDate={heatmapStart} endDate={heatmapEnd} clientId={heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined} liveOnly={heatmapClientId === "__live__"} />}
-          {view === "heatmap_leads"  && <HeatMap type="new_leads"    startDate={heatmapStart} endDate={heatmapEnd} clientId={heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined} liveOnly={heatmapClientId === "__live__"} />}
+          {/* ── Acquisition hub ── */}
+          {view === "acquisition" && hubTab && (
+            <AcquisitionHub
+              tab={hubTab as AcquisitionTab}
+              onTabChange={setHubTabAndUrl}
+              startDate={dateStart}
+              endDate={dateEnd}
+            />
+          )}
 
-          {/* ── Agent Stats ── */}
-          {view === "agent_stats" && (
-            <AgentStats
+          {/* ── Agents hub ── */}
+          {view === "agents" && hubTab && (
+            <AgentsHub
+              tab={hubTab as AgentsTab}
+              onTabChange={setHubTabAndUrl}
+              clients={clients}
               preset={preset}
               startDate={dateStart}
               endDate={dateEnd}
             />
-          )}
-
-          {view === "agent_credit_queue" && (
-            <AgentCreditQueue
-              clients={clients}
-              startDate={dateStart}
-              endDate={dateEnd}
-            />
-          )}
-
-          {/* ── Agent Scorecards ── */}
-          {view === "agent_scorecards" && (
-            <AgentScorecards startDate={dateStart} endDate={dateEnd} />
-          )}
-
-          {/* ── Call Recordings ── */}
-          {view === "recordings" && (
-            <RecordingBrowser clients={clients} startDate={dateStart} endDate={dateEnd} />
-          )}
-
-          {view === "client_calls" && (
-            <ClientCallsBrowser clients={clients} startDate={dateStart} endDate={dateEnd} />
-          )}
-
-          {/* ── Goal Tracker ── */}
-          {view === "goals" && (
-            <GoalTracker clients={clients} startDate={dateStart} endDate={dateEnd} />
           )}
 
           {view === "dial_analytics" && (
@@ -890,6 +957,12 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
           )}
 
           {view === "ceo" && <CeoDashboard canViewRevenue={canViewRevenue} />}
+
+          {view === "client_calls" && (
+            <ClientCallsBrowser clients={clients} startDate={dateStart} endDate={dateEnd} />
+          )}
+
+          {view === "acquisition_sales_reps" && <AcquisitionSalesReps />}
 
           {view === "resources" && (
             <Suspense fallback={<p className="text-sm text-slate-500 py-12">Loading library…</p>}>
@@ -916,7 +989,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
               preset={preset}
               startDate={dateStart}
               endDate={dateEnd}
-              onGoToCreditQueue={() => goToView("agent_credit_queue")}
+              onGoToCreditQueue={() => goToView("agents", "credit_queue")}
             />
           )}
           {view === "schedule"      && <SetterSchedule clients={clients} />}

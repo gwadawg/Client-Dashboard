@@ -1,0 +1,26 @@
+{
+  "name": "WM Acquisition - Appointment Status → Mr. Waiz",
+  "flow": [
+    {
+      "id": 1,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": { "handleErrors": false },
+      "mapper": {
+        "url": "https://wm-os-production.up.railway.app/api/acquisition/webhooks/appointment",
+        "method": "POST",
+        "headers": [
+          { "name": "Authorization", "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET" },
+          { "name": "Content-Type", "value": "application/json" }
+        ],
+        "bodyType": "raw",
+        "contentType": "application/json",
+        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_appointment_id\": \"{{appointment.id}}\", \"event_type\": \"{{status}}\", \"appt_status\": \"{{mapped_status}}\"}"
+      },
+      "metadata": { "designer": { "x": 0, "y": 0, "name": "POST show/no-show update" } }
+    }
+  ],
+  "metadata": {
+    "notes": "Trigger: appointment show / no-show / cancelled. Map status to Y/N/C/X before POST or send appt_status directly."
+  }
+}

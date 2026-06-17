@@ -73,12 +73,14 @@ function StatCard({
   sub,
   hint,
   accent,
+  badge,
 }: {
   label: string;
   value: string;
   sub?: string;
   hint?: string;
   accent?: boolean;
+  badge?: string;
 }) {
   return (
     <div
@@ -101,6 +103,11 @@ function StatCard({
       <p className="text-xl font-bold mt-1 tabular-nums" style={{ color: accent ? AMBER : "#e2e8f0" }}>
         {value}
       </p>
+      {badge && (
+        <p className="text-[10px] mt-1 font-medium" style={{ color: BLUE }}>
+          {badge}
+        </p>
+      )}
       {sub && (
         <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
           {sub}
@@ -641,12 +648,21 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
 // ── Unit economics grid (live values, else "needs data") ──────────────────────
 
 function UnitEconomicsGrid({ u }: { u: BusinessMetrics["unitEconomics"] }) {
-  const cards: { label: string; value: string | null; hint: string; need: string; accent?: boolean }[] = [
+  const cacFromAcquisition =
+    u.acquisition_pipeline_cac != null &&
+    u.marketing_spend != null &&
+    u.acquisition_ad_spend != null &&
+    u.marketing_spend === u.acquisition_ad_spend;
+
+  const cards: { label: string; value: string | null; hint: string; need: string; accent?: boolean; badge?: string }[] = [
     {
       label: "CAC",
       value: u.cac == null ? null : money(u.cac, { round: true }),
-      hint: "Agency marketing spend ÷ new clients signed this month.",
+      hint: cacFromAcquisition
+        ? "Meta ad spend ÷ acquisition closes this month (from acquisition pipeline — no manual marketing spend entered)."
+        : "Agency marketing spend ÷ new clients signed this month.",
       need: "Needs marketing spend.",
+      badge: cacFromAcquisition ? "Acquisition pipeline" : undefined,
     },
     {
       label: "LTV",
@@ -722,7 +738,7 @@ function UnitEconomicsGrid({ u }: { u: BusinessMetrics["unitEconomics"] }) {
         c.value == null ? (
           <PlaceholderCard key={c.label} label={c.label} need={c.need} />
         ) : (
-          <StatCard key={c.label} label={c.label} value={c.value} hint={c.hint} accent={c.accent} />
+          <StatCard key={c.label} label={c.label} value={c.value} hint={c.hint} accent={c.accent} badge={c.badge} />
         ),
       )}
     </div>

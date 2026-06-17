@@ -70,5 +70,37 @@ export async function GET(req: Request) {
     trendMonths,
   });
 
+  const monthStart = `${month}-01`;
+  const monthEndDate = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0));
+  const monthEnd = monthEndDate.toISOString().slice(0, 10);
+
+  const [acqClosesRes, acqSpendRes] = await Promise.all([
+    ctx.service
+      .from('acquisition_closes')
+      .select('id', { count: 'exact', head: true })
+      .gte('closed_at', `${monthStart}T00:00:00.000Z`)
+      .lte('closed_at', `${monthEnd}T23:59:59.999Z`),
+    ctx.service
+      .from('acquisition_ad_insights')
+      .select('amount_spent')
+      .gte('insight_date', monthStart)
+      .lte('insight_date', monthEnd),
+  ]);
+
+  const acqCloseCount = acqClosesRes.count ?? 0;
+  const acqSpend = (acqSpendRes.data ?? []).reduce(
+    (s, r) => s + Number((r as { amount_spent: number }).amount_spent ?? 0),
+    0,
+  );
+  if (acqCloseCount > 0 && acqSpend > 0) {
+    const pipelineCac = acqSpend / acqCloseCount;
+    metrics.unitEconomics.acquisition_pipeline_cac = pipelineCac;
+    metrics.unitEconomics.acquisition_ad_spend = acqSpend;
+    if (metrics.unitEconomics.marketing_spend == null) {
+      metrics.unitEconomics.marketing_spend = acqSpend;
+      metrics.unitEconomics.cac = pipelineCac;
+    }
+  }
+
   return NextResponse.json(metrics);
 }

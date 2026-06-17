@@ -1,0 +1,24 @@
+{
+  "name": "WM Acquisition - Offer Recorded → Mr. Waiz",
+  "flow": [
+    {
+      "id": 1,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": { "handleErrors": false },
+      "mapper": {
+        "url": "https://wm-os-production.up.railway.app/api/acquisition/webhooks/offer",
+        "method": "POST",
+        "headers": [
+          { "name": "Authorization", "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET" },
+          { "name": "Content-Type", "value": "application/json" }
+        ],
+        "bodyType": "raw",
+        "contentType": "application/json",
+        "data": "{\"ghl_contact_id\": \"{{contact.id}}\", \"offer_type\": \"{{custom_field.what_was_offered}}\", \"is_closed\": \"{{custom_field.closed_deal}}\", \"offered_at\": \"{{now}}\", \"offered_by\": \"{{user.name}}\", \"setter_name\": \"{{custom_field.agent}}\"}"
+      },
+      "metadata": { "designer": { "x": 0, "y": 0, "name": "POST acquisition offer" } }
+    }
+  ],
+  "metadata": { "notes": "Trigger: pipeline stage or form when offer is made. Map GHL custom fields." }
+}

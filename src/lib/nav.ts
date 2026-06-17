@@ -1,9 +1,34 @@
 // Shared navigation/tab definitions used by the dashboard and the per-user
-// permission editor. Each NAV item is one "tab" a user can be granted access to.
+// permission editor. Hub views appear in the sidebar; sub-tabs live in-page.
+
+export type HeatmapTab = "show_rate" | "pickup_rate" | "new_leads";
+export type DataExplorerTab = "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
+export type AcquisitionTab = "overview" | "team" | "leads" | "appointments" | "offers" | "ads";
+export type AgentsTab = "stats" | "scorecards" | "goals" | "credit_queue" | "recordings";
+
+export type HubView = "heatmaps" | "data_explorer" | "acquisition" | "agents";
 
 export type View =
   | "dashboard"
   | "ceo"
+  | "dial_analytics"
+  | "media_buyer"
+  | "client_health"
+  | HubView
+  | "resources"
+  | "admin_agents"
+  | "admin_clients"
+  | "admin_billing"
+  | "admin_agent_payroll"
+  | "admin_share"
+  | "admin_users"
+  | "admin_automations"
+  | "schedule"
+  | "client_calls"
+  | "acquisition_sales_reps";
+
+/** @deprecated Legacy view keys — URL redirects map these to hub + tab. */
+export type LegacyView =
   | "leads"
   | "dials"
   | "appointments"
@@ -18,30 +43,127 @@ export type View =
   | "agent_scorecards"
   | "recordings"
   | "goals"
-  | "dial_analytics"
-  | "media_buyer"
-  | "client_health"
-  | "admin_agents"
-  | "admin_clients"
-  | "admin_billing"
-  | "admin_agent_payroll"
-  | "admin_share"
-  | "admin_users"
-  | "admin_automations"
-  | "schedule"
-  | "client_calls"
-  | "resources";
+  | "acquisition_funnel"
+  | "acquisition_team"
+  | "acquisition_leads"
+  | "acquisition_appointments"
+  | "acquisition_offers"
+  | "acquisition_ads";
+
+export type AnyView = View | LegacyView;
 
 export type NavItem = { view: View; label: string; group: string };
+
+export type HubTabDef<T extends string> = { key: T; label: string };
+
+export const HEATMAP_TABS: HubTabDef<HeatmapTab>[] = [
+  { key: "show_rate", label: "Show Rate" },
+  { key: "pickup_rate", label: "Pick Up Rate" },
+  { key: "new_leads", label: "New Leads" },
+];
+
+export const DATA_EXPLORER_TABS: HubTabDef<DataExplorerTab>[] = [
+  { key: "leads", label: "Leads" },
+  { key: "dials", label: "Dials" },
+  { key: "appointments", label: "Appointments" },
+  { key: "speed_to_lead", label: "Speed to Lead" },
+  { key: "meta_ads", label: "Meta Ads" },
+];
+
+export const ACQUISITION_TABS: HubTabDef<AcquisitionTab>[] = [
+  { key: "overview", label: "Overview" },
+  { key: "team", label: "Team" },
+  { key: "leads", label: "Leads" },
+  { key: "appointments", label: "Appointments" },
+  { key: "offers", label: "Offers" },
+  { key: "ads", label: "Ad Spend" },
+];
+
+export const AGENTS_TABS: HubTabDef<AgentsTab>[] = [
+  { key: "stats", label: "Stats" },
+  { key: "scorecards", label: "Scorecards" },
+  { key: "goals", label: "Goals" },
+  { key: "credit_queue", label: "Credit Queue" },
+  { key: "recordings", label: "Recordings" },
+];
+
+/** Hub view → legacy permission keys that grant access. */
+export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
+  heatmaps: ["heatmap_show", "heatmap_pickup", "heatmap_leads"],
+  data_explorer: ["leads", "dials", "appointments", "speed_to_lead", "meta_ad_insights"],
+  acquisition: [
+    "acquisition",
+    "acquisition_funnel",
+    "acquisition_team",
+    "acquisition_leads",
+    "acquisition_appointments",
+    "acquisition_offers",
+    "acquisition_ads",
+  ],
+  agents: ["agent_stats", "agent_scorecards", "agent_credit_queue", "recordings", "goals"],
+};
+
+/** All legacy keys still honored in stored permissions (soft deprecation). */
+export const LEGACY_PERMISSION_KEYS: string[] = [
+  ...HUB_LEGACY_CHILDREN.heatmaps,
+  ...HUB_LEGACY_CHILDREN.data_explorer,
+  "ad_spend",
+  ...HUB_LEGACY_CHILDREN.acquisition.filter(k => k !== "acquisition"),
+  ...HUB_LEGACY_CHILDREN.agents,
+];
+
+export const LEGACY_VIEW_REDIRECTS: Record<LegacyView, { view: View; tab: string }> = {
+  leads: { view: "data_explorer", tab: "leads" },
+  dials: { view: "data_explorer", tab: "dials" },
+  appointments: { view: "data_explorer", tab: "appointments" },
+  speed_to_lead: { view: "data_explorer", tab: "speed_to_lead" },
+  ad_spend: { view: "data_explorer", tab: "meta_ads" },
+  meta_ad_insights: { view: "data_explorer", tab: "meta_ads" },
+  heatmap_show: { view: "heatmaps", tab: "show_rate" },
+  heatmap_pickup: { view: "heatmaps", tab: "pickup_rate" },
+  heatmap_leads: { view: "heatmaps", tab: "new_leads" },
+  agent_stats: { view: "agents", tab: "stats" },
+  agent_credit_queue: { view: "agents", tab: "credit_queue" },
+  agent_scorecards: { view: "agents", tab: "scorecards" },
+  recordings: { view: "agents", tab: "recordings" },
+  goals: { view: "agents", tab: "goals" },
+  acquisition_funnel: { view: "acquisition", tab: "overview" },
+  acquisition_team: { view: "acquisition", tab: "team" },
+  acquisition_leads: { view: "acquisition", tab: "leads" },
+  acquisition_appointments: { view: "acquisition", tab: "appointments" },
+  acquisition_offers: { view: "acquisition", tab: "offers" },
+  acquisition_ads: { view: "acquisition", tab: "ads" },
+};
+
+export const HUB_VIEWS: HubView[] = ["heatmaps", "data_explorer", "acquisition", "agents"];
+
+export const HUB_TAB_LABELS: Record<HubView, HubTabDef<string>[]> = {
+  heatmaps: HEATMAP_TABS,
+  data_explorer: DATA_EXPLORER_TABS,
+  acquisition: ACQUISITION_TABS,
+  agents: AGENTS_TABS,
+};
+
+export function isHubView(view: string): view is HubView {
+  return (HUB_VIEWS as string[]).includes(view);
+}
+
+export function defaultTabForHub(hub: HubView): string {
+  return HUB_TAB_LABELS[hub][0].key;
+}
+
+export function tabLabelForHub(hub: HubView, tab: string): string | undefined {
+  return HUB_TAB_LABELS[hub].find(t => t.key === tab)?.label;
+}
 
 // Sidebar group ordering.
 export const NAV_GROUPS = [
   "Overview",
+  "Analytics",
+  "Data",
+  "Acquisition",
+  "Agents",
   "Resources",
-  "Raw Data",
-  "Heat Maps",
-  "Agent Credit",
-  "Agent Stats",
   "Admin",
 ] as const;
 
@@ -50,21 +172,11 @@ export const NAV: NavItem[] = [
   { view: "ceo",                label: "Business",              group: "Overview"     },
   { view: "dial_analytics",     label: "Dial Analytics",        group: "Overview"     },
   { view: "media_buyer",        label: "Media Buyer",           group: "Overview"     },
-  { view: "leads",              label: "New Leads",             group: "Raw Data"     },
-  { view: "dials",              label: "All Dials",             group: "Raw Data"     },
-  { view: "appointments",       label: "Appointments",          group: "Raw Data"     },
-  { view: "speed_to_lead",      label: "Speed to Lead",         group: "Raw Data"     },
-  { view: "meta_ad_insights",   label: "Meta Ads",              group: "Raw Data"     },
-  { view: "ad_spend",           label: "Other Ad Spend",        group: "Raw Data"     },
-  { view: "heatmap_show",       label: "Show Rate",             group: "Heat Maps"    },
-  { view: "heatmap_pickup",     label: "Pick Up Rate",          group: "Heat Maps"    },
-  { view: "heatmap_leads",      label: "New Leads",             group: "Heat Maps"    },
-  { view: "agent_stats",        label: "Agent Stats",           group: "Agent Stats"  },
-  { view: "agent_credit_queue", label: "Credit Queue",          group: "Agent Credit" },
-  { view: "agent_scorecards",   label: "Scorecards",            group: "Agent Stats"  },
-  { view: "recordings",         label: "Call Recordings",       group: "Agent Stats"  },
-  { view: "goals",              label: "Goal Tracker",          group: "Overview"     },
   { view: "client_health",      label: "Client Success",        group: "Overview"     },
+  { view: "heatmaps",           label: "Heat Maps",             group: "Analytics"    },
+  { view: "data_explorer",      label: "Data Explorer",         group: "Data"         },
+  { view: "acquisition",        label: "Acquisition",           group: "Acquisition"  },
+  { view: "agents",             label: "Agents",                group: "Agents"       },
   { view: "resources",          label: "Resource Library",      group: "Resources"    },
   { view: "admin_agents",       label: "Agent Roster",          group: "Admin"        },
   { view: "admin_clients",      label: "Client Roster",         group: "Admin"        },
@@ -75,10 +187,33 @@ export const NAV: NavItem[] = [
   { view: "admin_share",        label: "Share Reports",         group: "Admin"        },
   { view: "admin_automations",  label: "Automations",           group: "Admin"        },
   { view: "admin_users",        label: "Users",                 group: "Admin"        },
+  { view: "acquisition_sales_reps", label: "Sales Reps",        group: "Admin"        },
 ];
 
 export const ALL_VIEWS: View[] = NAV.map(item => item.view);
 
-// Permission resolution lives in src/lib/permissions.ts, which builds on this
-// structural registry. nav.ts intentionally stays free of permission logic to
-// avoid a circular dependency.
+export function resolveViewFromParams(
+  viewParam: string | null,
+  tabParam: string | null,
+): { view: View; tab: string | null } {
+  if (!viewParam || viewParam === "dashboard") {
+    return { view: "dashboard", tab: null };
+  }
+
+  if (viewParam in LEGACY_VIEW_REDIRECTS) {
+    const redirect = LEGACY_VIEW_REDIRECTS[viewParam as LegacyView];
+    return { view: redirect.view, tab: redirect.tab };
+  }
+
+  if (ALL_VIEWS.includes(viewParam as View)) {
+    const view = viewParam as View;
+    if (isHubView(view)) {
+      const tabs = HUB_TAB_LABELS[view];
+      const valid = tabs.some(t => t.key === tabParam);
+      return { view, tab: valid ? tabParam : defaultTabForHub(view) };
+    }
+    return { view, tab: null };
+  }
+
+  return { view: "dashboard", tab: null };
+}

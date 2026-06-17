@@ -1,0 +1,24 @@
+{
+  "name": "WM Acquisition - Dial Completed → Mr. Waiz",
+  "flow": [
+    {
+      "id": 1,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": { "handleErrors": false },
+      "mapper": {
+        "url": "https://wm-os-production.up.railway.app/api/acquisition/webhooks/dial",
+        "method": "POST",
+        "headers": [
+          { "name": "Authorization", "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET" },
+          { "name": "Content-Type", "value": "application/json" }
+        ],
+        "bodyType": "raw",
+        "contentType": "application/json",
+        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_contact_id\": \"{{contact.id}}\", \"occurred_at\": \"{{call.dateAdded}}\", \"phone\": \"{{contact.phone}}\", \"duration_seconds\": \"{{call.duration}}\", \"agent_name\": \"{{user.name}}\", \"outcome\": \"{{call.status}}\"}"
+      },
+      "metadata": { "designer": { "x": 0, "y": 0, "name": "POST acquisition dial" } }
+    }
+  ],
+  "metadata": { "notes": "Trigger: GHL outbound call completed in acquisition location." }
+}
