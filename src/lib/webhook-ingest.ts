@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { normalizeStoredAgentName } from '@/lib/agent-name-aliases';
+import { isAiBookedFromPayload } from '@/lib/credit-queue-eligibility';
 import { parseYnFlag } from '@/lib/metrics';
 import { resolveClientId } from '@/lib/resolve-client';
 import {
@@ -109,6 +111,9 @@ export async function ingestWebhookEvent(
   }
 
   const normalizedEventType = normalizeEventType(eventType);
+  const agentName = normalizeStoredAgentName(jsonStringField(payload.agent_name));
+  if (agentName) payload.agent_name = agentName;
+
   let client_id = opts?.client_id;
 
   if (!client_id) {
@@ -288,6 +293,10 @@ export async function ingestWebhookEvent(
     payload.lead_source ?? payload.leadSource ?? payload.list_source ?? payload.listSource,
   );
 
+  const isCreditableBooking =
+    normalizedEventType === 'appointment_booked' || normalizedEventType === 'callback_booked';
+  const is_ai_booked = isCreditableBooking ? isAiBookedFromPayload(payload) : null;
+
   const { data: inserted, error } = await service
     .from('events')
     .insert({
@@ -312,7 +321,7 @@ export async function ingestWebhookEvent(
       lead_name: jsonStringField(payload.lead_name),
       lead_phone: jsonStringField(payload.lead_phone),
       lead_email: jsonStringField(payload.lead_email),
-      agent_name: jsonStringField(payload.agent_name),
+      agent_name: agentName,
       direction: jsonStringField(payload.direction),
       call_status: jsonStringField(payload.call_status),
       recording_url: jsonStringField(payload.recording_url),
@@ -327,6 +336,7 @@ export async function ingestWebhookEvent(
       utm_campaign,
       utm_content,
       lead_source: isLead ? lead_source : null,
+      is_ai_booked,
       raw: payload,
     })
     .select('id')

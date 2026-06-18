@@ -180,6 +180,9 @@ HE accounts have **no ad-cost grading** (CPL / CPQL / CPConv are omitted). **Out
 | Stage Booked | `stage_booked` | `stage_booked` |
 | Showed? Y/N/X | `show` / `no_show` / `lo_bailed` or status webhook | `event_type` |
 | Agent | `agent_name` | `agent_name` |
+| AI booking flag | `contact_tags` includes `ai-booked`, or `is_ai_booked: true` | `is_ai_booked` (excludes from agent credit queue; still counts in KPIs) |
+
+**Credit queue:** Appointments/callbacks with the GHL tag `ai-booked` (or explicit `is_ai_booked: true` in the webhook) are stored with `is_ai_booked = true` and hidden from the agent credit queue. Live transfers are always credit-eligible.
 
 **Lifecycle:** Send the **same** `external_id` (GHL appointment id) on `appointment_booked` and when calling **`POST /api/webhooks/appointment-status`** (show / no_show / cancelled). For separate outcome **inserts** (`show`, `no_show`, `lo_bailed`, `appointment_cancelled` via main webhook), include **`external_id`** on each row so joins and exports stay aligned. Include **`calendar_id`** on booking (and on any follow-up inserts if you want it denormalized).
 

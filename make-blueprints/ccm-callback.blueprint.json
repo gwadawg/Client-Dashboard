@@ -61,7 +61,7 @@
                 "ca": "",
                 "useMtls": false,
                 "contentType": "application/json",
-                "data": "{\"event_type\": \"callback_booked\", \"client_name\": \"{{trim(1.location.name)}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"occurred_at\": \"{{formatDate(now; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\"}"
+                "data": "{\"event_type\": \"callback_booked\", \"client_name\": \"{{trim(1.location.name)}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"occurred_at\": \"{{formatDate(now; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"contact_tags\": \"{{join(1.contact.tags; \\\",\\\")}}\"}"
             },
             "metadata": {
                 "designer": { "x": 300, "y": 0, "name": "Send to Supabase" }

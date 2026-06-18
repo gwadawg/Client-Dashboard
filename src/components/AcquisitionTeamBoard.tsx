@@ -6,6 +6,7 @@ type SetterRow = {
   setter: string;
   demos_booked: number;
   demos_showed: number;
+  demos_taken_place: number;
   demo_show_rate: number | null;
 };
 
@@ -15,39 +16,9 @@ export default function AcquisitionTeamBoard({ startDate, endDate }: { startDate
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/acquisition/raw?type=appointments&from=${startDate}&to=${endDate}&limit=2000`)
-      .then((r) => r.json())
-      .then((d) => {
-        const appts = (d.rows ?? []) as {
-          appointment_type: string;
-          status: string;
-          setter_name: string | null;
-          how_booked: string | null;
-        }[];
-        const bySetter = new Map<string, { booked: number; showed: number; taken: number }>();
-
-        for (const a of appts) {
-          if (a.appointment_type !== "demo") continue;
-          const setter = a.setter_name?.trim();
-          if (!setter || setter === "2") continue;
-          const selfBooked = (a.how_booked ?? "").toLowerCase().includes("customer");
-          if (selfBooked) continue;
-
-          const bucket = bySetter.get(setter) ?? { booked: 0, showed: 0, taken: 0 };
-          bucket.booked++;
-          if (a.status === "showed") bucket.showed++;
-          bySetter.set(setter, bucket);
-        }
-
-        const out: SetterRow[] = [...bySetter.entries()].map(([setter, v]) => ({
-          setter,
-          demos_booked: v.booked,
-          demos_showed: v.showed,
-          demo_show_rate: v.booked > 0 ? (v.showed / v.booked) * 100 : null,
-        }));
-        out.sort((a, b) => b.demos_showed - a.demos_showed);
-        setRows(out);
-      })
+    fetch(`/api/acquisition/team-stats?from=${startDate}&to=${endDate}`)
+      .then(r => r.json())
+      .then(d => setRows(d.setters ?? []))
       .finally(() => setLoading(false));
   }, [startDate, endDate]);
 
@@ -63,20 +34,20 @@ export default function AcquisitionTeamBoard({ startDate, endDate }: { startDate
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
       <table className="w-full text-sm">
         <thead>
-          <tr style={{ background: "#070f1d" }}>
-            {["Setter", "Demos Booked", "Demos Showed", "Demo Show Rate"].map((h) => (
-              <th key={h} className="text-left px-4 py-3 font-medium" style={{ color: "#64748b" }}>{h}</th>
+          <tr style={{ background: "#0f1a2e", color: "#64748b" }}>
+            {["Setter", "Demos Booked", "Demos Showed", "Show Rate"].map(h => (
+              <th key={h} className="text-left px-4 py-3 font-medium">{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={r.setter} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-              <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{r.setter}</td>
-              <td className="px-4 py-3 tabular-nums" style={{ color: "#cbd5e1" }}>{r.demos_booked}</td>
-              <td className="px-4 py-3 tabular-nums" style={{ color: "#cbd5e1" }}>{r.demos_showed}</td>
-              <td className="px-4 py-3 tabular-nums" style={{ color: "#fbbf24" }}>
-                {r.demo_show_rate != null ? `${r.demo_show_rate.toFixed(1)}%` : "—"}
+          {rows.map(row => (
+            <tr key={row.setter} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+              <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{row.setter}</td>
+              <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{row.demos_booked}</td>
+              <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{row.demos_showed}</td>
+              <td className="px-4 py-3" style={{ color: "#f59e0b" }}>
+                {row.demo_show_rate != null ? `${row.demo_show_rate.toFixed(1)}%` : "—"}
               </td>
             </tr>
           ))}

@@ -39,6 +39,7 @@ export async function GET(req: Request) {
       { count: 'exact' }
     )
     .in('event_type', CREDITABLE_EVENT_TYPES)
+    .not('is_ai_booked', 'eq', true)
     .order('occurred_at', { ascending: false })
     .range(offset, offset + limit - 1);
 

@@ -158,7 +158,7 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Agent Credit Queue</h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            Assign agent credit for appointments, callback bookings, and live transfers. Client-side claimed conversations stay separate.
+            Assign agent credit for appointments, callback bookings, and live transfers. AI-booked appointments (tagged in GHL) are excluded. Client-side claimed conversations stay separate.
           </p>
         </div>
 
