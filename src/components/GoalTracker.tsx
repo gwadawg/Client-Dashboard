@@ -119,7 +119,7 @@ export default function GoalTracker({ clients, startDate, endDate, mode = "agent
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Agent Goals</h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            Set daily KPI targets — shown on Scorecards as progress rings
+            Set daily KPI targets — shown on Performance scorecards as progress rings
           </p>
         </div>
         <div className="flex items-center gap-3">

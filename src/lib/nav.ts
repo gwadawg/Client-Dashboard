@@ -5,7 +5,7 @@ export type HeatmapTab = "show_rate" | "pickup_rate" | "new_leads";
 export type DataExplorerTab = "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
 export type AcquisitionTab = "overview" | "team" | "credit_queue" | "sales_calls" | "pending_closes" | "log_close";
 export type AcquisitionDataExplorerTab = "leads" | "appointments" | "offers" | "dials" | "closes" | "ads";
-export type AgentsTab = "stats" | "scorecards" | "goals" | "credit_queue" | "recordings";
+export type AgentsTab = "performance" | "goals" | "credit_queue" | "recordings";
 
 export type HubView = "heatmaps" | "data_explorer" | "acquisition" | "acquisition_data_explorer" | "agents";
 
@@ -91,8 +91,7 @@ export const ACQUISITION_DATA_EXPLORER_TABS: HubTabDef<AcquisitionDataExplorerTa
 ];
 
 export const AGENTS_TABS: HubTabDef<AgentsTab>[] = [
-  { key: "stats", label: "Stats" },
-  { key: "scorecards", label: "Scorecards" },
+  { key: "performance", label: "Performance" },
   { key: "goals", label: "Goals" },
   { key: "credit_queue", label: "Credit Queue" },
   { key: "recordings", label: "Recordings" },
@@ -141,9 +140,9 @@ export const LEGACY_VIEW_REDIRECTS: Record<LegacyView, { view: View; tab: string
   heatmap_show: { view: "heatmaps", tab: "show_rate" },
   heatmap_pickup: { view: "heatmaps", tab: "pickup_rate" },
   heatmap_leads: { view: "heatmaps", tab: "new_leads" },
-  agent_stats: { view: "agents", tab: "stats" },
+  agent_stats: { view: "agents", tab: "performance" },
   agent_credit_queue: { view: "agents", tab: "credit_queue" },
-  agent_scorecards: { view: "agents", tab: "scorecards" },
+  agent_scorecards: { view: "agents", tab: "performance" },
   recordings: { view: "agents", tab: "recordings" },
   goals: { view: "agents", tab: "goals" },
   acquisition_funnel: { view: "acquisition", tab: "overview" },

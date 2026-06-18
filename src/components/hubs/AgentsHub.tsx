@@ -1,7 +1,6 @@
 "use client";
 
-import AgentStats from "../AgentStats";
-import AgentScorecards from "../AgentScorecards";
+import AgentPerformance from "../AgentPerformance";
 import AgentCreditQueue from "../AgentCreditQueue";
 import RecordingBrowser from "../RecordingBrowser";
 import GoalTracker from "../GoalTracker";
@@ -34,11 +33,8 @@ export default function AgentsHub({
       activeTab={tab}
       onTabChange={key => onTabChange(key as AgentsTab)}
     >
-      {tab === "stats" && (
-        <AgentStats preset={preset} startDate={startDate} endDate={endDate} />
-      )}
-      {tab === "scorecards" && (
-        <AgentScorecards startDate={startDate} endDate={endDate} />
+      {tab === "performance" && (
+        <AgentPerformance preset={preset} startDate={startDate} endDate={endDate} />
       )}
       {tab === "goals" && (
         <GoalTracker clients={clients} startDate={startDate} endDate={endDate} mode="agents" />

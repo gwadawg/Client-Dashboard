@@ -10,8 +10,16 @@ type AgentAccumulator = {
   conversations: number;
   appointments: number;
   callbacks: number;
+  live_transfers: number;
   shows: number;
   no_shows: number;
+};
+
+type TodayStats = {
+  dials: number;
+  pickups: number;
+  appointments: number;
+  live_transfers: number;
 };
 
 function emptyAccumulator(name: string): AgentAccumulator {
@@ -22,15 +30,19 @@ function emptyAccumulator(name: string): AgentAccumulator {
     conversations: 0,
     appointments: 0,
     callbacks: 0,
+    live_transfers: 0,
     shows: 0,
     no_shows: 0,
   };
 }
 
+function emptyToday(): TodayStats {
+  return { dials: 0, pickups: 0, appointments: 0, live_transfers: 0 };
+}
+
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  // Powers both the Agent Stats table and the Scorecards view.
   const denied = requireAnyPermission(ctx, ['agents', 'agent_scorecards']);
   if (denied) return denied;
 
@@ -61,7 +73,6 @@ export async function GET(req: Request) {
 
   const resolveAgent = buildRosterMatcher(roster ?? []);
 
-  // Per-agent speed-to-lead via the shared honest metric (in-window, precise, median).
   const speed = computeSpeedToLead(
     (data ?? []) as SpeedToLeadEventRow[],
     availability ?? [],
@@ -74,9 +85,9 @@ export async function GET(req: Request) {
   }
 
   const todayStr = new Date().toISOString().split('T')[0];
-  const todayMap = new Map<string, { dials: number; pickups: number; appointments: number }>();
+  const todayMap = new Map<string, TodayStats>();
   for (const agent of roster ?? []) {
-    todayMap.set(agent.name, { dials: 0, pickups: 0, appointments: 0 });
+    todayMap.set(agent.name, emptyToday());
   }
 
   for (const row of data ?? []) {
@@ -100,6 +111,9 @@ export async function GET(req: Request) {
       if (isToday) t.appointments++;
     } else if (row.event_type === 'callback_booked') {
       a.callbacks++;
+    } else if (row.event_type === 'live_transfer') {
+      a.live_transfers++;
+      if (isToday) t.live_transfers++;
     } else if (row.event_type === 'show') {
       a.shows++;
     } else if (row.event_type === 'no_show') {
@@ -107,40 +121,70 @@ export async function GET(req: Request) {
     }
   }
 
-  function hasActivity(a: AgentAccumulator, today: { dials: number; pickups: number; appointments: number }) {
+  function hasActivity(a: AgentAccumulator, today: TodayStats) {
     return (
       a.dials > 0 ||
       a.appointments > 0 ||
       a.callbacks > 0 ||
+      a.live_transfers > 0 ||
       a.shows > 0 ||
       a.no_shows > 0 ||
       today.dials > 0 ||
-      today.appointments > 0
+      today.appointments > 0 ||
+      today.live_transfers > 0
     );
   }
 
   const agents = Array.from(agentMap.values())
-    .filter(a => hasActivity(a, todayMap.get(a.agent_name) ?? { dials: 0, pickups: 0, appointments: 0 }))
+    .filter(a => hasActivity(a, todayMap.get(a.agent_name) ?? emptyToday()))
     .map(a => {
-    const todayStats = todayMap.get(a.agent_name) ?? { dials: 0, pickups: 0, appointments: 0 };
-    const avg_speed = speed.by_agent[a.agent_name]?.median_min ?? null;
-    return {
-      agent_name: a.agent_name,
-      dials: a.dials,
-      pickups: a.pickups,
-      pickup_rate: a.dials > 0 ? Math.round((a.pickups / a.dials) * 100) : 0,
-      conversations: a.conversations,
-      conversation_rate: a.dials > 0 ? Math.round((a.conversations / a.dials) * 100) : 0,
-      appointments: a.appointments,
-      callbacks: a.callbacks,
-      shows: a.shows,
-      no_shows: a.no_shows,
-      show_rate: (a.shows + a.no_shows) > 0 ? Math.round((a.shows / (a.shows + a.no_shows)) * 100) : 0,
-      avg_speed_to_lead_min: avg_speed,
-      today: todayStats,
-    };
-  });
+      const todayStats = todayMap.get(a.agent_name) ?? emptyToday();
+      const avg_speed = speed.by_agent[a.agent_name]?.median_min ?? null;
+      return {
+        agent_name: a.agent_name,
+        dials: a.dials,
+        pickups: a.pickups,
+        pickup_rate: a.dials > 0 ? Math.round((a.pickups / a.dials) * 100) : 0,
+        conversations: a.conversations,
+        conversation_rate: a.dials > 0 ? Math.round((a.conversations / a.dials) * 100) : 0,
+        appointments: a.appointments,
+        callbacks: a.callbacks,
+        live_transfers: a.live_transfers,
+        shows: a.shows,
+        no_shows: a.no_shows,
+        show_rate: (a.shows + a.no_shows) > 0 ? Math.round((a.shows / (a.shows + a.no_shows)) * 100) : 0,
+        avg_speed_to_lead_min: avg_speed,
+        today: todayStats,
+      };
+    });
 
   agents.sort((a, b) => b.appointments - a.appointments || a.agent_name.localeCompare(b.agent_name));
-  return NextResponse.json({ agents });
+
+  const activeCount = agents.length || 1;
+  const teamTotals = agents.reduce(
+    (acc, a) => ({
+      dials: acc.dials + a.dials,
+      pickups: acc.pickups + a.pickups,
+      appointments: acc.appointments + a.appointments,
+      live_transfers: acc.live_transfers + a.live_transfers,
+      shows: acc.shows + a.shows,
+      no_shows: acc.no_shows + a.no_shows,
+    }),
+    { dials: 0, pickups: 0, appointments: 0, live_transfers: 0, shows: 0, no_shows: 0 },
+  );
+
+  const team_averages = {
+    dials: Math.round(teamTotals.dials / activeCount),
+    pickups: Math.round(teamTotals.pickups / activeCount),
+    appointments: Math.round(teamTotals.appointments / activeCount),
+    live_transfers: Math.round(teamTotals.live_transfers / activeCount),
+    shows: Math.round(teamTotals.shows / activeCount),
+    pickup_rate: teamTotals.dials > 0 ? Math.round((teamTotals.pickups / teamTotals.dials) * 100) : 0,
+    show_rate:
+      teamTotals.shows + teamTotals.no_shows > 0
+        ? Math.round((teamTotals.shows / (teamTotals.shows + teamTotals.no_shows)) * 100)
+        : 0,
+  };
+
+  return NextResponse.json({ agents, team_averages });
 }
