@@ -397,6 +397,8 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
         params.delete("tab");
       }
     }
+    params.delete("appointment_id");
+    params.delete("call_id");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
@@ -405,6 +407,10 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
     setHubTab(tab);
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", tab);
+    // Tab-bar navigation is not a deep link — drop stale highlight targets so
+    // revisiting Appointments / Sales Calls does not re-scroll to an old row.
+    params.delete("appointment_id");
+    params.delete("call_id");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };

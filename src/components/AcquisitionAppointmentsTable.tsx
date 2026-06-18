@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ACQUISITION_STATUS_OPTIONS,
   ACQUISITION_STATUS_STYLES,
@@ -86,9 +86,12 @@ function LinkChip({
 }
 
 export default function AcquisitionAppointmentsTable({ startDate, endDate }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const highlightedAppointmentId = searchParams.get("appointment_id");
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+  const scrolledToHighlightRef = useRef<string | null>(null);
   const [rows, setRows] = useState<EnrichedAcquisitionAppointment[]>([]);
   const [total, setTotal] = useState(0);
   const [pendingDispositionCount, setPendingDispositionCount] = useState(0);
@@ -140,10 +143,20 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
 
   useEffect(() => {
     if (!highlightedAppointmentId || loading) return;
+    if (scrolledToHighlightRef.current === highlightedAppointmentId) return;
     const el = rowRefs.current[highlightedAppointmentId];
     if (!el) return;
+    scrolledToHighlightRef.current = highlightedAppointmentId;
     el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [highlightedAppointmentId, loading, rows]);
+
+    // One-shot deep link: remove param so filters / tab revisits do not re-scroll.
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.get("appointment_id") === highlightedAppointmentId) {
+      params.delete("appointment_id");
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }
+  }, [highlightedAppointmentId, loading, rows, pathname, router, searchParams]);
 
   const pendingCount = pendingOnly
     ? total
