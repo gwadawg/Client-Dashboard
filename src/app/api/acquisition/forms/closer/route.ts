@@ -4,6 +4,11 @@ import { DOWNSELL_OFFER_TYPES } from '@/lib/acquisition-config';
 import { applyCloserForm } from '@/lib/acquisition-form-apply';
 import { verifyAcquisitionFormToken } from '@/lib/acquisition-form-token';
 import {
+  LEAD_QUALITY_SCORES,
+  ROOT_CAUSE_OBJECTIONS,
+  SURFACE_OBJECTIONS,
+} from '@/lib/closer-form-config';
+import {
   getAcquisitionContact,
   ghlContactName,
 } from '@/lib/ghl-acquisition-api';
@@ -14,6 +19,12 @@ function str(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   return s || null;
+}
+
+function parseRating(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(String(v));
+  return Number.isFinite(n) ? n : null;
 }
 
 export async function GET(req: NextRequest) {
@@ -52,6 +63,9 @@ export async function GET(req: NextRequest) {
       reporting_types: REPORTING_TYPES,
       service_programs: SERVICE_PROGRAMS,
       downsell_offer_types: Array.from(DOWNSELL_OFFER_TYPES),
+      lead_quality_scores: LEAD_QUALITY_SCORES,
+      surface_objections: SURFACE_OBJECTIONS,
+      root_cause_objections: ROOT_CAUSE_OBJECTIONS,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -111,6 +125,14 @@ export async function POST(req: NextRequest) {
           ? Number(body.cash_collected)
           : null,
       closed_at: str(body.closed_at),
+      call_rating: parseRating(body.call_rating),
+      improvement_notes: str(body.improvement_notes),
+      lead_quality_score: str(body.lead_quality_score),
+      lead_quality_explanation: str(body.lead_quality_explanation),
+      surface_objection: str(body.surface_objection),
+      surface_objection_other: str(body.surface_objection_other),
+      root_cause_objection: str(body.root_cause_objection),
+      root_cause_objection_other: str(body.root_cause_objection_other),
     });
 
     return NextResponse.json({ ok: true, ...result });

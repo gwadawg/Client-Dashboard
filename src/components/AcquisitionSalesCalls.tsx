@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from "react";
 
+type CallDetails = {
+  call_rating?: number | null;
+  lead_quality_score?: string | null;
+  surface_objection?: string | null;
+  root_cause_objection?: string | null;
+};
+
 type CallRow = {
   id: string;
   call_type: string;
@@ -13,8 +20,17 @@ type CallRow = {
   transcript_url: string | null;
   disposition: string | null;
   notes: string | null;
+  details?: CallDetails | null;
   acquisition_leads?: { lead_name: string | null; phone: string | null } | { lead_name: string | null; phone: string | null }[] | null;
 };
+
+function reflectionSummary(row: CallRow): string | null {
+  const d = row.details;
+  if (!d?.call_rating) return null;
+  const parts = [`${d.call_rating}/10`];
+  if (d.lead_quality_score) parts.push(`Lead ${d.lead_quality_score}`);
+  return parts.join(" · ");
+}
 
 type Props = {
   startDate: string;
@@ -96,7 +112,7 @@ export default function AcquisitionSalesCalls({ startDate, endDate }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: "#0f1a2e", color: "#64748b" }}>
-                  {["When", "Type", "Lead", "Rep", "Status", "Links", "Disposition"].map((h) => (
+                  {["When", "Type", "Lead", "Rep", "Status", "Rating", "Links", "Disposition"].map((h) => (
                     <th key={h} className="text-left px-4 py-2 font-medium">{h}</th>
                   ))}
                 </tr>
@@ -109,6 +125,9 @@ export default function AcquisitionSalesCalls({ startDate, endDate }: Props) {
                     <td className="px-4 py-2">{leadName(row)}</td>
                     <td className="px-4 py-2">{row.handled_by ?? "—"}</td>
                     <td className="px-4 py-2">{row.status}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-slate-400">
+                      {reflectionSummary(row) ?? "—"}
+                    </td>
                     <td className="px-4 py-2 space-x-2">
                       {row.recording_url && (
                         <a href={row.recording_url} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">Recording</a>
@@ -123,7 +142,7 @@ export default function AcquisitionSalesCalls({ startDate, endDate }: Props) {
                 ))}
                 {!rows.length && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">No calls in range</td>
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">No calls in range</td>
                   </tr>
                 )}
               </tbody>

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 const CALL_FIELDS =
-  'id, lead_id, client_id, call_type, called_at, status, handled_by, co_handler, recording_url, transcript_url, disposition, notes, appointment_id, linked_demo_appointment_id, acquisition_leads(lead_name, phone)';
+  'id, lead_id, client_id, call_type, called_at, status, handled_by, co_handler, recording_url, transcript_url, disposition, notes, details, appointment_id, linked_demo_appointment_id, acquisition_leads(lead_name, phone)';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();

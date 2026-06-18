@@ -79,6 +79,36 @@ Do **not** relay full GHL form payloads through Make — use Mr. Waiz forms for 
 | Demo booking credit | `demo_booking_credit` | Live |
 | Intro disposition | `intro_disposition` | Planned |
 | Closer form | `closer_form` | Live (`/forms/acquisition/closer`; legacy `/demo-audit`) |
+| Setter intro reflection | `setter_intro_reflection` | Live (`/forms/acquisition/intro-reflection`) |
+
+### Closer form — outcome + reflection
+
+Magic link (same signing as Log Close):
+
+```
+https://wm-os-production.up.railway.app/forms/acquisition/closer?contact_id={{contact.id}}&appointment_id={{appointment.id}}&token={{signed_token}}
+```
+
+**Outcome (always):** closer/setter names, recording/transcript URLs, notes, whether an offer was presented.
+
+**If offer presented:** did they close on this call?
+
+- **Closed on call** → roster vertical, service tier (RM/DSCR), cash collected. No reflection block.
+- **Offer presented, not closed** → offer type, follow-up notes, plus **call reflection** (required).
+- **No offer presented** → disposition + next step, plus **call reflection** (required).
+
+**Call reflection** (non-closed deals only — not shown when `closed_on_call = yes`):
+
+| Field | Required |
+|-------|----------|
+| Call rating 1–10 | Yes |
+| One improvement for next call | Yes |
+| Lead quality A–D | Yes |
+| Lead quality explanation | Yes when C or D |
+| Surface objection (dropdown + Other) | Yes |
+| Root cause objection (dropdown + Other) | Yes |
+
+Qualified is **not** on the closer form (too subjective). Reflection is stored on `acquisition_calls.details` (`call_rating`, `lead_quality_score`, `surface_objection`, `root_cause_objection`, etc.). Disposition defaults to root cause → surface objection when not set explicitly.
 
 ### Log Close (in-app, no magic link)
 

@@ -17,6 +17,10 @@ import {
   normalizeServiceProgram,
   type ServiceProgram,
 } from './service-program';
+import {
+  resolveObjectionLabel,
+  validateCloserFormReflection,
+} from './closer-form-config';
 
 export type FunOutcome = 'pass' | 'boot_camp' | 'nurture' | 'not_fit';
 
@@ -76,6 +80,14 @@ export type CloserFormInput = {
   service_program?: ServiceProgram | null;
   cash_collected?: number | null;
   closed_at?: string | null;
+  call_rating?: number | null;
+  improvement_notes?: string | null;
+  lead_quality_score?: string | null;
+  lead_quality_explanation?: string | null;
+  surface_objection?: string | null;
+  surface_objection_other?: string | null;
+  root_cause_objection?: string | null;
+  root_cause_objection_other?: string | null;
 };
 
 export type CloserFormResult = {
@@ -498,12 +510,41 @@ export async function applyCloserForm(
   const calledAt = appt?.scheduled_at ?? appt?.booked_at ?? new Date().toISOString();
   const callType = resolveCloserCallType(appt?.appointment_type);
 
+  const reflectionError = validateCloserFormReflection({
+    offer_presented: input.offer_presented,
+    closed_on_call: input.closed_on_call,
+    call_rating: input.call_rating,
+    improvement_notes: input.improvement_notes,
+    lead_quality_score: input.lead_quality_score,
+    lead_quality_explanation: input.lead_quality_explanation,
+    surface_objection: input.surface_objection,
+    surface_objection_other: input.surface_objection_other,
+    root_cause_objection: input.root_cause_objection,
+    root_cause_objection_other: input.root_cause_objection_other,
+  });
+  if (reflectionError) throw new Error(reflectionError);
+
+  const surfaceObjection = resolveObjectionLabel(
+    input.surface_objection,
+    input.surface_objection_other,
+  );
+  const rootCauseObjection = resolveObjectionLabel(
+    input.root_cause_objection,
+    input.root_cause_objection_other,
+  );
+
   const details: Record<string, unknown> = {
     offer_presented: input.offer_presented,
     closed_on_call: input.closed_on_call ?? null,
     follow_up_notes: input.follow_up_notes ?? null,
     disposition: input.disposition ?? null,
     next_step: input.next_step ?? null,
+    call_rating: input.call_rating ?? null,
+    improvement_notes: input.improvement_notes ?? null,
+    lead_quality_score: input.lead_quality_score ?? null,
+    lead_quality_explanation: input.lead_quality_explanation ?? null,
+    surface_objection: surfaceObjection,
+    root_cause_objection: rootCauseObjection,
   };
 
   const callRow = {
@@ -517,7 +558,7 @@ export async function applyCloserForm(
     recording_url: input.recording_url ?? null,
     transcript_url: input.transcript_url ?? null,
     notes: input.notes ?? null,
-    disposition: input.disposition ?? null,
+    disposition: input.disposition ?? rootCauseObjection ?? surfaceObjection ?? null,
     source: 'form' as const,
     details,
     updated_at: new Date().toISOString(),
