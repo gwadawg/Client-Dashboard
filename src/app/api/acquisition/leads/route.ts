@@ -5,6 +5,10 @@ import {
   matchesFunnelStageFilter,
   type AcquisitionLeadProfile,
 } from '@/lib/acquisition-lead-profiles';
+import {
+  isAcquisitionLeadSource,
+  normalizeAcquisitionLeadSource,
+} from '@/lib/acquisition-lead-source';
 
 const PAGE_SIZE = 50;
 const MAX_LEADS = 5_000;
@@ -114,6 +118,74 @@ export async function GET(req: Request) {
     leads_loaded: leads.length,
     capped: leads.length >= MAX_LEADS,
   });
+}
+
+export async function PATCH(req: Request) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'acquisition');
+  if (denied) return denied;
+
+  let payload: { lead_id?: string; source?: string | null };
+  try {
+    payload = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  const leadId = payload.lead_id?.trim();
+  if (!leadId) {
+    return NextResponse.json({ error: 'lead_id is required' }, { status: 400 });
+  }
+
+  const rawSource = payload.source;
+  if (rawSource === undefined) {
+    return NextResponse.json({ error: 'source is required (use null to clear)' }, { status: 400 });
+  }
+
+  const source =
+    rawSource === null || rawSource === ''
+      ? null
+      : isAcquisitionLeadSource(rawSource)
+        ? rawSource
+        : normalizeAcquisitionLeadSource(rawSource);
+
+  if (rawSource !== null && rawSource !== '' && !source) {
+    return NextResponse.json(
+      { error: 'source must be organic, Meta, Referral, Cold, or null' },
+      { status: 400 },
+    );
+  }
+
+  const { data: existing } = await ctx.service
+    .from('acquisition_leads')
+    .select('id, raw')
+    .eq('id', leadId)
+    .maybeSingle();
+
+  if (!existing) {
+    return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+  }
+
+  const raw =
+    existing.raw && typeof existing.raw === 'object' && !Array.isArray(existing.raw)
+      ? { ...(existing.raw as Record<string, unknown>) }
+      : {};
+
+  const { data, error } = await ctx.service
+    .from('acquisition_leads')
+    .update({
+      source,
+      raw: { ...raw, lead_source_manual: source, lead_source_updated_at: new Date().toISOString(), lead_source_updated_via: 'dashboard' },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', leadId)
+    .select('id, source')
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  return NextResponse.json({ ok: true, lead_id: data.id, source: data.source });
 }
 
 function groupBy<T extends { lead_id: string | null }>(

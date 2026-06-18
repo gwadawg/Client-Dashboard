@@ -42,9 +42,14 @@ export type AcquisitionLeadProfile = {
   ghl_contact_id: string | null;
   ghl_location_id: string;
   converted_client_id: string | null;
+  ad_name: string | null;
+  utm_source: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
   funnel_stage: AcquisitionFunnelStage;
   counts: AcquisitionLeadCounts;
   timeline: AcquisitionTimelineItem[];
+  raw: Record<string, unknown> | null;
 };
 
 type LeadRow = {
@@ -58,6 +63,11 @@ type LeadRow = {
   created_at: string;
   ghl_contact_id: string | null;
   converted_client_id: string | null;
+  ad_name: string | null;
+  utm_source: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  raw?: unknown;
 };
 
 type ApptRow = {
@@ -88,11 +98,13 @@ type OfferRow = {
 type CloseRow = {
   id: string;
   lead_id: string | null;
+  offer_id: string | null;
   closed_at: string;
   close_source: string;
   offer_type: string | null;
   client_id: string | null;
   cash_collected: number | null;
+  mapping_status?: string | null;
 };
 
 type DialRow = {
@@ -107,6 +119,7 @@ type DialRow = {
 type CallRow = {
   id: string;
   lead_id: string | null;
+  appointment_id: string | null;
   call_type: string;
   called_at: string;
   status: string;
@@ -246,19 +259,48 @@ export function buildAcquisitionLeadProfile(
     transcript_url: null,
   });
 
-  // Funnel counts still derive from appointment shells (booking vs outcome).
+  const apptIdsWithCalls = new Set(
+    calls.map(c => c.appointment_id).filter((id): id is string => !!id),
+  );
+
+  // Funnel counts + timeline from appointment shells (booking + outcomes when no call logged).
   for (const appt of appointments) {
     const type = appt.appointment_type || 'other';
     if (appt.booked_at) {
       const eventType = `${type}_booked`;
       bumpCountsFromEvent(counts, eventType);
       funnelStage = stageFromEvent(eventType, funnelStage);
+      timeline.push({
+        id: `appt-${appt.id}-booked`,
+        event_type: eventType,
+        occurred_at: appt.booked_at,
+        details: joinDetails([
+          appt.setter_name ? `setter ${appt.setter_name}` : null,
+          appt.how_booked,
+        ]),
+        recording_url: null,
+        transcript_url: null,
+      });
     }
     if (appt.scheduled_at) {
       const outcome = apptOutcomeType(type, appt.status);
       if (outcome) {
-        bumpCountsFromEvent(counts, outcome);
-        funnelStage = stageFromEvent(outcome, funnelStage);
+        if (!apptIdsWithCalls.has(appt.id)) {
+          bumpCountsFromEvent(counts, outcome);
+          funnelStage = stageFromEvent(outcome, funnelStage);
+          timeline.push({
+            id: `appt-${appt.id}-${outcome}`,
+            event_type: outcome,
+            occurred_at: appt.scheduled_at,
+            details: joinDetails([
+              appt.setter_name ? `setter ${appt.setter_name}` : null,
+              appt.call_taken_by ? `taken by ${appt.call_taken_by}` : null,
+              appt.status,
+            ]),
+            recording_url: null,
+            transcript_url: null,
+          });
+        }
       }
     }
   }
@@ -279,8 +321,17 @@ export function buildAcquisitionLeadProfile(
       recording_url: call.recording_url,
       transcript_url: call.transcript_url,
     });
-    if (eventType === 'dial') bumpCountsFromEvent(counts, 'dial');
+    if (eventType === 'dial') {
+      bumpCountsFromEvent(counts, 'dial');
+    } else if (call.appointment_id) {
+      bumpCountsFromEvent(counts, eventType);
+      funnelStage = stageFromEvent(eventType, funnelStage);
+    }
   }
+
+  const offerIdsWithCloseRow = new Set(
+    closes.map(c => c.offer_id).filter((id): id is string => !!id),
+  );
 
   for (const offer of offers) {
     timeline.push({
@@ -299,7 +350,8 @@ export function buildAcquisitionLeadProfile(
     bumpCountsFromEvent(counts, 'offer_made');
     funnelStage = stageFromEvent('offer_made', funnelStage);
 
-    if (offer.is_closed) {
+    // Avoid duplicate "offer closed" when a formal acquisition_closes row exists for this offer.
+    if (offer.is_closed && !offerIdsWithCloseRow.has(offer.id)) {
       timeline.push({
         id: `offer-closed-${offer.id}`,
         event_type: 'offer_closed',
@@ -312,28 +364,51 @@ export function buildAcquisitionLeadProfile(
   }
 
   for (const close of closes) {
+    const dismissed = close.mapping_status === 'dismissed';
+    const pending = close.mapping_status === 'pending_client';
     timeline.push({
       id: `close-${close.id}`,
-      event_type: 'client_closed',
+      event_type: dismissed ? 'close_dismissed' : 'client_closed',
       occurred_at: close.closed_at,
       details: joinDetails([
         close.offer_type,
         close.close_source,
+        dismissed
+          ? 'downsell / not on roster'
+          : pending
+            ? 'pending roster link'
+            : close.client_id
+              ? 'mapped to client'
+              : null,
         close.cash_collected != null ? `$${close.cash_collected}` : null,
-        close.client_id ? `client ${close.client_id.slice(0, 8)}…` : null,
+        close.offer_id ? `offer ${close.offer_id.slice(0, 8)}…` : null,
       ]),
       recording_url: null,
       transcript_url: null,
     });
-    bumpCountsFromEvent(counts, 'client_closed');
-    funnelStage = stageFromEvent('client_closed', funnelStage);
+    if (!dismissed) {
+      bumpCountsFromEvent(counts, 'client_closed');
+      funnelStage = stageFromEvent('client_closed', funnelStage);
+    }
   }
 
-  // Dial counts from raw dials when not yet mirrored into acquisition_calls.
+  // Dial counts + timeline from raw dials when not mirrored into acquisition_calls.
   const dialCallCount = calls.filter(c => c.call_type === 'dial').length;
   if (dialCallCount === 0) {
     for (const dial of dials) {
       bumpCountsFromEvent(counts, 'dial');
+      timeline.push({
+        id: `dial-${dial.id}`,
+        event_type: 'dial',
+        occurred_at: dial.occurred_at,
+        details: joinDetails([
+          dial.agent_name ? `agent ${dial.agent_name}` : null,
+          dial.outcome,
+          dial.duration_seconds != null ? `${dial.duration_seconds}s` : null,
+        ]),
+        recording_url: null,
+        transcript_url: null,
+      });
     }
   }
 
@@ -351,6 +426,11 @@ export function buildAcquisitionLeadProfile(
 
   timeline.sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
 
+  const raw =
+    lead.raw && typeof lead.raw === 'object' && !Array.isArray(lead.raw)
+      ? (lead.raw as Record<string, unknown>)
+      : null;
+
   return {
     lead_id: lead.id,
     lead_name: lead.lead_name,
@@ -363,9 +443,14 @@ export function buildAcquisitionLeadProfile(
     ghl_contact_id: lead.ghl_contact_id,
     ghl_location_id: GHL_ACQUISITION_LOCATION_ID,
     converted_client_id: lead.converted_client_id,
+    ad_name: lead.ad_name,
+    utm_source: lead.utm_source,
+    utm_campaign: lead.utm_campaign,
+    utm_content: lead.utm_content,
     funnel_stage: funnelStage,
     counts,
     timeline,
+    raw,
   };
 }
 

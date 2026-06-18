@@ -328,6 +328,9 @@ alter table events add column if not exists utm_content  text;
 -- Lead origin (HE dial-only lists, partner feeds, etc.). Meaningful on event_type = 'lead'.
 alter table events add column if not exists lead_source text;
 
+-- True when GHL contact had the ai-booked tag at webhook time (excluded from agent credit queue).
+alter table events add column if not exists is_ai_booked boolean;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 5. Meta Ad Insights (daily ad-level reporting from Meta Ads — sole spend source)
 -- ─────────────────────────────────────────────────────────────────────────────

@@ -13,6 +13,11 @@ import {
   type AcquisitionAppointmentStatus,
   type EnrichedAcquisitionAppointment,
 } from "@/lib/acquisition-appointment-enriched";
+import {
+  ACQUISITION_LEAD_SOURCES,
+  acquisitionLeadSourceLabel,
+  type AcquisitionLeadSource,
+} from "@/lib/acquisition-lead-source";
 
 type Props = {
   startDate: string;
@@ -20,6 +25,15 @@ type Props = {
 };
 
 const TYPE_FILTERS = ["all", "intro", "demo", "followup", "bamfam", "organic", "other"] as const;
+
+type SourceFilter = "all" | "__unset__" | AcquisitionLeadSource | "missing_lead";
+
+const SOURCE_FILTERS: { value: SourceFilter; label: string }[] = [
+  { value: "all", label: "All sources" },
+  { value: "__unset__", label: "Unset source" },
+  { value: "missing_lead", label: "No lead linked" },
+  ...ACQUISITION_LEAD_SOURCES,
+];
 
 function formatWhen(iso: string | null) {
   if (!iso) return "—";
@@ -80,10 +94,12 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
   const [pendingDispositionCount, setPendingDispositionCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState<(typeof TYPE_FILTERS)[number]>("all");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [pendingOnly, setPendingOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingSourceId, setSavingSourceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -98,6 +114,8 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
     if (pendingOnly) q.set("queue_action", "needs_disposition");
     if (debouncedSearch) q.set("search", debouncedSearch);
     if (highlightedAppointmentId) q.set("appointment_id", highlightedAppointmentId);
+    if (sourceFilter === "missing_lead") q.set("missing_lead", "true");
+    else if (sourceFilter !== "all") q.set("lead_source", sourceFilter);
 
     fetch(`/api/acquisition/appointments?${q}`)
       .then(async r => {
@@ -118,7 +136,7 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
         setError(e instanceof Error ? e.message : "Failed to load appointments");
       })
       .finally(() => setLoading(false));
-  }, [startDate, endDate, typeFilter, pendingOnly, debouncedSearch, highlightedAppointmentId]);
+  }, [startDate, endDate, typeFilter, sourceFilter, pendingOnly, debouncedSearch, highlightedAppointmentId]);
 
   useEffect(() => {
     if (!highlightedAppointmentId || loading) return;
@@ -174,6 +192,35 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
       setError(e instanceof Error ? e.message : "Failed to update status");
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function updateLeadSource(row: EnrichedAcquisitionAppointment, nextSource: AcquisitionLeadSource) {
+    if (!row.lead_id) return;
+
+    setSavingSourceId(row.id);
+    setError(null);
+    setRows(prev =>
+      prev.map(r => (r.id === row.id ? { ...r, lead_source: nextSource } : r)),
+    );
+
+    try {
+      const res = await fetch("/api/acquisition/leads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead_id: row.lead_id, source: nextSource }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to update lead source");
+      }
+    } catch (e) {
+      setRows(prev =>
+        prev.map(r => (r.id === row.id ? { ...r, lead_source: row.lead_source } : r)),
+      );
+      setError(e instanceof Error ? e.message : "Failed to update lead source");
+    } finally {
+      setSavingSourceId(null);
     }
   }
 
@@ -253,6 +300,22 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
           {pendingOnly ? "● Pending disposition" : "Pending disposition"}
         </button>
 
+        {SOURCE_FILTERS.map(s => (
+          <button
+            key={s.value}
+            type="button"
+            onClick={() => setSourceFilter(s.value)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap"
+            style={{
+              background: sourceFilter === s.value ? "rgba(167,139,250,0.15)" : "rgba(255,255,255,0.04)",
+              color: sourceFilter === s.value ? "#c4b5fd" : "#94a3b8",
+              border: `1px solid ${sourceFilter === s.value ? "rgba(167,139,250,0.35)" : "transparent"}`,
+            }}
+          >
+            {s.label}
+          </button>
+        ))}
+
         <input
           type="search"
           placeholder="Search lead, phone, setter…"
@@ -289,6 +352,7 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
                     "Scheduled",
                     "Type",
                     "Lead",
+                    "Source",
                     "Setter / Rep",
                     "Status",
                     "Lead file",
@@ -346,6 +410,39 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
                       <td className="px-4 py-2.5 text-slate-200">
                         <div>{row.lead_name ?? "—"}</div>
                         {row.phone && <div className="text-xs text-slate-500">{row.phone}</div>}
+                        {!row.lead_id && (
+                          <div className="text-[10px] mt-0.5 font-medium uppercase tracking-wide" style={{ color: "#f87171" }}>
+                            No lead linked
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        {!row.lead_id ? (
+                          <span className="text-xs" style={{ color: "#334155" }}>—</span>
+                        ) : row.lead_source ? (
+                          <span className="text-xs text-slate-300">{acquisitionLeadSourceLabel(row.lead_source)}</span>
+                        ) : (
+                          <select
+                            value=""
+                            disabled={savingSourceId === row.id}
+                            onChange={e => updateLeadSource(row, e.target.value as AcquisitionLeadSource)}
+                            className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer disabled:opacity-50"
+                            style={{
+                              background: "rgba(167,139,250,0.12)",
+                              border: "1px solid rgba(167,139,250,0.35)",
+                              color: "#c4b5fd",
+                            }}
+                          >
+                            <option value="" disabled style={{ background: "#0f2040", color: "#94a3b8" }}>
+                              Set source…
+                            </option>
+                            {ACQUISITION_LEAD_SOURCES.map(s => (
+                              <option key={s.value} value={s.value} style={{ background: "#0f2040", color: "#e2e8f0" }}>
+                                {s.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-slate-400">{appointmentRep(row) ?? "—"}</td>
                       <td className="px-4 py-2.5 whitespace-nowrap">
@@ -420,7 +517,7 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
                 })}
                 {!rows.length && (
                   <tr>
-                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                       {pendingOnly ? "No appointments awaiting disposition." : "No appointments in range."}
                     </td>
                   </tr>

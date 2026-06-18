@@ -17,13 +17,14 @@ import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { supabaseRequest, fetchAll } from './lib/supabase-rest.mjs';
-import { createGhlClient, ghlContactName } from './lib/ghl-api.mjs';
+import { createGhlClient, ghlContactName, ghlCustomField } from './lib/ghl-api.mjs';
 import {
   buildGhlIndexes,
   buildLeadIndexes,
   extractGhlContactId,
   normalizeEmail,
   normalizePhoneE164,
+  phoneDigits10,
   resolveGhlContact,
   resolveLead,
 } from './lib/acquisition-match.mjs';
@@ -58,6 +59,45 @@ async function patch(table, id, body) {
   return supabaseRequest('PATCH', `/rest/v1/${table}?id=eq.${id}`, payload);
 }
 
+async function insert(table, body) {
+  if (DRY_RUN) return { status: 201, data: JSON.stringify([{ id: `dry-run-${Date.now()}` }]) };
+  return supabaseRequest('POST', `/rest/v1/${table}`, body);
+}
+
+function normalizeLeadSource(raw) {
+  if (!raw?.trim()) return null;
+  const s = raw.trim().toLowerCase();
+  if (s === 'meta' || s === 'facebook' || s === 'fb' || s === 'ig' || s.includes('meta')) return 'Meta';
+  if (s === 'referral' || s.includes('refer')) return 'Referral';
+  if (s === 'cold' || s.includes('cold')) return 'Cold';
+  if (s === 'organic' || s === 'funnel' || s.includes('organic') || s.includes('website')) return 'organic';
+  if (['organic', 'Meta', 'Referral', 'Cold'].includes(raw.trim())) return raw.trim();
+  return null;
+}
+
+function ghlLeadSource(contact) {
+  const raw =
+    ghlCustomField(contact, 'where did the lead come from', 'lead source') ?? contact.source;
+  return normalizeLeadSource(raw);
+}
+
+function addLeadToIndex(leadIndex, lead) {
+  leadIndex.byId.set(lead.id, lead);
+  if (lead.ghl_contact_id) leadIndex.byGhl.set(lead.ghl_contact_id, lead);
+  const p = phoneDigits10(lead.phone);
+  if (p) {
+    const list = leadIndex.byPhone.get(p) ?? [];
+    list.push(lead);
+    leadIndex.byPhone.set(p, list);
+  }
+  const e = normalizeEmail(lead.email);
+  if (e) {
+    const list = leadIndex.byEmail.get(e) ?? [];
+    list.push(lead);
+    leadIndex.byEmail.set(e, list);
+  }
+}
+
 async function auditCounts() {
   const counts = {};
   for (const [table, col] of [
@@ -90,6 +130,7 @@ async function main() {
     ghl_contacts_indexed: 0,
     leads_ghl_filled: 0,
     leads_ghl_skipped_conflict: 0,
+    leads_created_from_ghl: 0,
     appointments_linked: 0,
     offers_linked: 0,
     dials_linked: 0,
@@ -144,18 +185,69 @@ async function main() {
 
   leadIndex = buildLeadIndexes(leads);
 
-  async function linkChildren(table, select, getKeys) {
+  async function createLeadFromGhl(ghlContact, childRow) {
+    if (!ghlContact?.id) return null;
+    const existing = leadIndex.byGhl.get(ghlContact.id);
+    if (existing) return existing;
+
+    const sourceRaw =
+      ghlCustomField(ghlContact, 'where did the lead come from', 'lead source') ??
+      ghlContact.source;
+    const source = ghlLeadSource(ghlContact);
+    const row = {
+      ghl_contact_id: ghlContact.id,
+      lead_name: childRow.lead_name ?? ghlContactName(ghlContact),
+      email: normalizeEmail(ghlContact.email),
+      phone: normalizePhoneE164(childRow.phone) ?? normalizePhoneE164(ghlContact.phone),
+      source,
+      created_at: ghlContact.dateAdded ?? childRow.booked_at ?? new Date().toISOString(),
+      raw: {
+        ghl_backfill: true,
+        lead_source_raw: sourceRaw ?? null,
+        backfill_from: 'ghl_linkage_script',
+        appointment_id: childRow.id ?? null,
+      },
+      updated_at: new Date().toISOString(),
+    };
+
+    const res = await insert('acquisition_leads', row);
+    if (res.status >= 300) {
+      report.warnings.push(
+        `lead_create_failed: child ${childRow.id} ghl ${ghlContact.id} status ${res.status}`,
+      );
+      return null;
+    }
+
+    const created = JSON.parse(res.data)[0];
+    const lead = { ...row, id: created.id };
+    leads.push(lead);
+    addLeadToIndex(leadIndex, lead);
+    report.leads_created_from_ghl++;
+    return lead;
+  }
+
+  async function linkChildren(table, select, getKeys, { createMissingLeads = false } = {}) {
     const rows = await fetchAll(`/rest/v1/${table}?select=${select}`);
     let linked = 0;
     for (const row of rows) {
       if (row.lead_id) continue;
       const keys = getKeys(row);
       let lead = resolveLead(leadIndex, keys);
-      if (!lead) {
-        const ghlContact = resolveGhlContact(ghlIndex, keys);
-        if (ghlContact?.id) lead = leadIndex.byGhl.get(ghlContact.id) ?? null;
+      const ghlContact = resolveGhlContact(ghlIndex, keys);
+      if (!lead && ghlContact?.id) {
+        lead = leadIndex.byGhl.get(ghlContact.id) ?? null;
+        if (!lead && createMissingLeads) {
+          lead = await createLeadFromGhl(ghlContact, row);
+        }
       }
-      if (!lead) continue;
+      if (!lead) {
+        if (createMissingLeads && !ghlContact) {
+          report.warnings.push(
+            `${table}_no_match: ${row.id} ${row.lead_name ?? ''} ${row.phone ?? ''}`,
+          );
+        }
+        continue;
+      }
       const res = await patch(table, row.id, { lead_id: lead.id });
       if (res.status < 300) {
         linked++;
@@ -167,7 +259,7 @@ async function main() {
 
   report.appointments_linked = await linkChildren(
     'acquisition_appointments',
-    'id,lead_id,lead_name,phone,raw,ghl_appointment_id',
+    'id,lead_id,lead_name,phone,booked_at,raw,ghl_appointment_id',
     (row) => ({
       phone: row.phone ?? row.raw?.sheet?.['Phone Number'] ?? row.raw?.phone,
       email: row.raw?.sheet?.Email ?? row.raw?.email,
@@ -176,6 +268,7 @@ async function main() {
         row.raw?.contact_id ??
         extractGhlContactId(row.raw?.sheet?.['Link To Contact']),
     }),
+    { createMissingLeads: true },
   );
 
   report.offers_linked = await linkChildren(

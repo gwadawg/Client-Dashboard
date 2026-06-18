@@ -21,6 +21,8 @@ export async function GET(req: Request) {
   const setter = searchParams.get('setter');
   const leadId = searchParams.get('lead_id');
   const appointmentId = searchParams.get('appointment_id');
+  const leadSource = searchParams.get('lead_source');
+  const missingLead = searchParams.get('missing_lead') === 'true';
   const search = searchParams.get('search')?.trim() ?? '';
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
   const limit = Math.min(200, parseInt(searchParams.get('limit') ?? '50', 10));
@@ -39,6 +41,9 @@ export async function GET(req: Request) {
   if (queueAction) query = query.eq('queue_action', queueAction);
   if (setter) query = query.ilike('setter_name', `%${setter}%`);
   if (leadId) query = query.eq('lead_id', leadId);
+  if (missingLead) query = query.is('lead_id', null);
+  if (leadSource === '__unset__') query = query.is('lead_source', null);
+  else if (leadSource) query = query.eq('lead_source', leadSource);
 
   if (search) {
     const term = `*${search.replace(/[%,()]/g, ' ')}*`;

@@ -7,6 +7,11 @@ import {
   type AcquisitionLeadProfile,
   type AcquisitionTimelineItem,
 } from "@/lib/acquisition-lead-profiles";
+import {
+  ACQUISITION_LEAD_SOURCES,
+  acquisitionLeadSourceLabel,
+  type AcquisitionLeadSource,
+} from "@/lib/acquisition-lead-source";
 
 type Props = {
   startDate: string;
@@ -30,8 +35,9 @@ const EVENT_LABELS: Record<string, string> = {
   bamfam_showed: "BAMFAM Showed",
   organic_showed: "Organic Call",
   offer_made: "Offer Made",
-  offer_closed: "Offer Closed",
+  offer_closed: "Offer Closed (sheet)",
   client_closed: "Client Closed",
+  close_dismissed: "Close (downsell / no roster)",
   client_onboarding: "Client Onboarding",
   client_launch: "Client Launch",
   client_checkin: "Client Check-in",
@@ -145,6 +151,8 @@ export default function AcquisitionLeadProfilesTable({ startDate, endDate }: Pro
   const [funnelStage, setFunnelStage] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [savingSourceId, setSavingSourceId] = useState<string | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -184,6 +192,71 @@ export default function AcquisitionLeadProfilesTable({ startDate, endDate }: Pro
       else next.add(leadId);
       return next;
     });
+  }
+
+  async function updateLeadSource(row: AcquisitionLeadProfile, nextSource: AcquisitionLeadSource | "") {
+    const source = nextSource === "" ? null : nextSource;
+    setSavingSourceId(row.lead_id);
+    setSourceError(null);
+    setRows(prev =>
+      prev.map(r => (r.lead_id === row.lead_id ? { ...r, source: nextSource || null } : r)),
+    );
+
+    try {
+      const res = await fetch("/api/acquisition/leads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead_id: row.lead_id, source }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to update lead source");
+      }
+    } catch (e) {
+      setRows(prev =>
+        prev.map(r => (r.lead_id === row.lead_id ? { ...r, source: row.source } : r)),
+      );
+      setSourceError(e instanceof Error ? e.message : "Failed to update lead source");
+    } finally {
+      setSavingSourceId(null);
+    }
+  }
+
+  function LeadSourceSelect({
+    row,
+    compact,
+  }: {
+    row: AcquisitionLeadProfile;
+    compact?: boolean;
+  }) {
+    const value =
+      row.source && ACQUISITION_LEAD_SOURCES.some(s => s.value === row.source)
+        ? (row.source as AcquisitionLeadSource)
+        : "";
+    return (
+      <select
+        value={value}
+        disabled={savingSourceId === row.lead_id}
+        onClick={e => e.stopPropagation()}
+        onChange={e => updateLeadSource(row, e.target.value as AcquisitionLeadSource | "")}
+        className={`rounded-lg text-xs outline-none cursor-pointer disabled:opacity-50 ${compact ? "px-2 py-1" : "px-2 py-1.5"}`}
+        style={{
+          background: value ? "#0f2040" : "rgba(167,139,250,0.12)",
+          border: value ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(167,139,250,0.35)",
+          color: value ? "#94a3b8" : "#c4b5fd",
+          minWidth: compact ? "7rem" : "8rem",
+        }}
+      >
+        <option value="" style={{ background: "#0f2040", color: "#64748b" }}>
+          Unset
+        </option>
+        {ACQUISITION_LEAD_SOURCES.map(s => (
+          <option key={s.value} value={s.value} style={{ background: "#0f2040", color: "#e2e8f0" }}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+    );
   }
 
   return (
@@ -252,8 +325,14 @@ export default function AcquisitionLeadProfilesTable({ startDate, endDate }: Pro
       </div>
 
       <p className="text-xs leading-relaxed max-w-3xl" style={{ color: "#475569" }}>
-        One row per acquisition lead. Expand a row for the full funnel timeline — intro/demo bookings and outcomes, offers, closes, and dials. Search ignores the date range. Use Open in GHL to jump to the contact.
+        One row per acquisition lead. Expand a row for the full funnel timeline — intro/demo bookings and outcomes, offers, closes, and dials. Set lead source from the dropdown for accurate KPI denominators. Search ignores the date range. Use Open in GHL to jump to the contact.
       </p>
+
+      {sourceError && (
+        <p className="text-xs px-3 py-2 rounded-lg" style={{ background: "#450a0a", color: "#fca5a5" }}>
+          {sourceError}
+        </p>
+      )}
 
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
         <table className="w-full text-sm min-w-[960px]">
@@ -314,12 +393,8 @@ export default function AcquisitionLeadProfilesTable({ startDate, endDate }: Pro
                           ) : null}
                         </div>
                       </td>
-                      <td
-                        className="px-4 py-2.5 whitespace-nowrap text-xs max-w-[8rem] truncate"
-                        style={{ color: "#94a3b8" }}
-                        title={row.source ?? undefined}
-                      >
-                        {row.source ?? "—"}
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs" onClick={e => e.stopPropagation()}>
+                        <LeadSourceSelect row={row} compact />
                       </td>
                       <td className="px-4 py-2.5">
                         <ActivityPills c={row.counts} />
@@ -353,11 +428,48 @@ export default function AcquisitionLeadProfilesTable({ startDate, endDate }: Pro
                       <tr style={{ background: "#070f1d" }}>
                         <td colSpan={10} className="px-0 py-0">
                           <div className="px-4 py-3">
+                            <div
+                              className="mb-4 flex flex-wrap items-start justify-between gap-4 rounded-lg px-4 py-3"
+                              style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
+                            >
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#475569" }}>
+                                  Lead source
+                                </p>
+                                <p className="text-xs mb-2" style={{ color: "#64748b" }}>
+                                  Used for Meta CPL / lead KPI denominators. Current:{" "}
+                                  {row.source ? acquisitionLeadSourceLabel(row.source) : "Unset"}
+                                </p>
+                                <LeadSourceSelect row={row} />
+                              </div>
+                              {row.raw && Object.keys(row.raw).length > 0 && (
+                                <div className="min-w-0 flex-1 max-w-xl">
+                                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#475569" }}>
+                                    Raw data
+                                  </p>
+                                  <pre
+                                    className="text-[11px] leading-relaxed overflow-x-auto rounded-lg px-3 py-2 max-h-40"
+                                    style={{
+                                      background: "#050c18",
+                                      border: "1px solid rgba(255,255,255,0.06)",
+                                      color: "#64748b",
+                                    }}
+                                  >
+                                    {JSON.stringify(row.raw, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
                             <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#475569" }}>
                               Funnel history
                               {row.offer_interest ? (
                                 <span className="normal-case font-normal ml-2" style={{ color: "#64748b" }}>
                                   · Offer interest: {row.offer_interest}
+                                </span>
+                              ) : null}
+                              {row.ad_name ? (
+                                <span className="normal-case font-normal ml-2" style={{ color: "#64748b" }}>
+                                  · Ad: {row.ad_name}
                                 </span>
                               ) : null}
                               {row.converted_client_id ? (

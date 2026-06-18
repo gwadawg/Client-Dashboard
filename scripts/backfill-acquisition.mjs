@@ -213,6 +213,11 @@ async function main() {
   const closeClientIds = new Set(
     (await fetchAll('/rest/v1/acquisition_closes?select=client_id')).map((r) => r.client_id).filter(Boolean),
   );
+  const offerKeysSeen = new Set(
+    (await fetchAll('/rest/v1/acquisition_offers?select=lead_id,offered_at,offer_type')).map((r) =>
+      `${r.lead_id ?? ''}|${(r.offered_at ?? '').slice(0, 10)}|${r.offer_type ?? ''}`,
+    ),
+  );
 
   // hydrate lead maps from DB for orphan appointment linking
   for (const [ghl, id] of leadCacheByGhl) leadIdByGhl.set(ghl, id);
@@ -318,12 +323,20 @@ async function main() {
     const phone = normPhone(r[oi('Phone Number')]);
     const leadId = (ghlLeadId && leadIdByGhl.get(ghlLeadId)) || (phone && leadIdByPhone.get(phone)) || null;
     const isClosed = (r[oi('Closed?')] ?? '').trim().toUpperCase() === 'Y';
+    const offeredAt = parseSheetDate(r[oi('Date')]);
+    const offerType = r[oi('Offer')]?.trim() || 'Core Offer';
+    const offerKey = `${leadId ?? ''}|${(offeredAt ?? '').slice(0, 10)}|${offerType}`;
+    if (offerKeysSeen.has(offerKey)) {
+      report.warnings.push(`offer skipped (duplicate): ${r[oi('Name')]?.trim()} ${offerKey}`);
+      continue;
+    }
+    offerKeysSeen.add(offerKey);
 
     await insertRow('acquisition_offers', {
       lead_id: leadId,
       appointment_id: null,
-      offered_at: parseSheetDate(r[oi('Date')]),
-      offer_type: r[oi('Offer')]?.trim() || 'Core Offer',
+      offered_at: offeredAt,
+      offer_type: offerType,
       is_closed: isClosed,
       cash_collected: parseCurrency(r[oi('Cash Collected')]),
       setter_name: r[oi('Setter')]?.trim() || null,
@@ -337,11 +350,15 @@ async function main() {
   }
 
   // ── Closes from clients roster ─────────────────────────────────────────────
-  const clients = await fetchAll('/rest/v1/clients?select=id,name,email,phone,date_signed,source&date_signed=not.is.null');
+  const clients = await fetchAll(
+    '/rest/v1/clients?select=id,name,email,phone,date_signed,source,ghl_contact_id&date_signed=not.is.null',
+  );
   for (const c of clients) {
     const phone = normPhone(c.phone);
     let leadId = null;
-    if (c.email) {
+    const ghlContactId = c.ghl_contact_id?.trim();
+    if (ghlContactId) leadId = leadIdByGhl.get(ghlContactId) ?? null;
+    if (!leadId && c.email) {
       const { data } = await supabaseRequest(
         'GET',
         `/rest/v1/acquisition_leads?email=ilike.${encodeURIComponent(c.email)}&limit=1`,
@@ -369,6 +386,7 @@ async function main() {
             closed_at: closedAt,
             close_source: 'roster',
             offer_type: 'Core Offer',
+            mapping_status: 'mapped',
           });
           closeClientIds.add(c.id);
         }

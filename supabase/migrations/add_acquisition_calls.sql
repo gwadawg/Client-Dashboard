@@ -86,27 +86,34 @@ create index if not exists acquisition_closes_pending_idx
   where mapping_status = 'pending_client' and client_id is null;
 
 -- Backfill client_id on acquisition_calls when lead converts or close links.
-create or replace function sync_acquisition_calls_client_id()
+create or replace function sync_acquisition_calls_client_id_from_lead()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
 begin
-  if tg_table_name = 'acquisition_leads' and new.converted_client_id is not null then
+  if new.converted_client_id is not null then
     update acquisition_calls
     set client_id = new.converted_client_id, updated_at = now()
     where lead_id = new.id and client_id is distinct from new.converted_client_id;
-    return new;
   end if;
+  return new;
+end;
+$$;
 
-  if tg_table_name = 'acquisition_closes' and new.client_id is not null and new.lead_id is not null then
+create or replace function sync_acquisition_calls_client_id_from_close()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.client_id is not null and new.lead_id is not null then
     update acquisition_calls
     set client_id = new.client_id, updated_at = now()
     where lead_id = new.lead_id and client_id is distinct from new.client_id;
-    return new;
   end if;
-
   return new;
 end;
 $$;
@@ -116,14 +123,14 @@ create trigger acquisition_leads_sync_calls_client
   after update of converted_client_id on acquisition_leads
   for each row
   when (new.converted_client_id is not null)
-  execute function sync_acquisition_calls_client_id();
+  execute function sync_acquisition_calls_client_id_from_lead();
 
 drop trigger if exists acquisition_closes_sync_calls_client on acquisition_closes;
 create trigger acquisition_closes_sync_calls_client
   after insert or update of client_id, lead_id on acquisition_closes
   for each row
   when (new.client_id is not null and new.lead_id is not null)
-  execute function sync_acquisition_calls_client_id();
+  execute function sync_acquisition_calls_client_id_from_close();
 
 alter table acquisition_calls enable row level security;
 
