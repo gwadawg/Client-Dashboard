@@ -1,6 +1,7 @@
 "use client";
 
 import AcquisitionLeadProfilesTable from "../AcquisitionLeadProfilesTable";
+import AcquisitionAppointmentsTable from "../AcquisitionAppointmentsTable";
 import AcquisitionRawTable from "../AcquisitionRawTable";
 import ViewHub from "../nav/ViewHub";
 import { ACQUISITION_DATA_EXPLORER_TABS, type AcquisitionDataExplorerTab } from "@/lib/nav";
@@ -23,7 +24,7 @@ export default function AcquisitionDataExplorerHub({ tab, onTabChange, startDate
         <AcquisitionLeadProfilesTable startDate={startDate} endDate={endDate} />
       )}
       {tab === "appointments" && (
-        <AcquisitionRawTable type="appointments" startDate={startDate} endDate={endDate} />
+        <AcquisitionAppointmentsTable startDate={startDate} endDate={endDate} />
       )}
       {tab === "offers" && (
         <AcquisitionRawTable type="offers" startDate={startDate} endDate={endDate} />
