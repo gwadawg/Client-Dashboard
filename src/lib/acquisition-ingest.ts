@@ -63,6 +63,64 @@ export async function upsertAcquisitionLead(
   return { id: data.id };
 }
 
+/** Resolve canonical acquisition_leads.id from GHL contact id, phone, or email. */
+async function resolveAcquisitionLeadId(
+  service: SupabaseClient,
+  keys: {
+    lead_id?: string | null;
+    ghl_contact_id?: string | null;
+    phone?: string | null;
+    email?: string | null;
+  },
+  ensureFromPayload?: JsonObject,
+): Promise<string | null> {
+  const explicitLeadId = str(keys.lead_id);
+  if (explicitLeadId) return explicitLeadId;
+
+  const ghlContactId = str(keys.ghl_contact_id);
+  if (ghlContactId) {
+    const { data: lead } = await service
+      .from('acquisition_leads')
+      .select('id')
+      .eq('ghl_contact_id', ghlContactId)
+      .maybeSingle();
+    if (lead?.id) return lead.id;
+    if (ensureFromPayload) {
+      const ensured = await upsertAcquisitionLead(service, {
+        ...ensureFromPayload,
+        ghl_contact_id: ghlContactId,
+      });
+      if ('error' in ensured) return null;
+      return ensured.id;
+    }
+  }
+
+  const phone = normalizePhone(str(keys.phone));
+  if (phone) {
+    const { data: leads } = await service
+      .from('acquisition_leads')
+      .select('id, ghl_contact_id, created_at')
+      .eq('phone', phone)
+      .order('created_at', { ascending: false });
+    const best = leads?.find((l) => l.ghl_contact_id) ?? leads?.[0];
+    if (best?.id) return best.id;
+  }
+
+  const email = str(keys.email)?.toLowerCase();
+  if (email) {
+    const { data: leads } = await service
+      .from('acquisition_leads')
+      .select('id, ghl_contact_id, created_at')
+      .ilike('email', email)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    const best = leads?.find((l) => l.ghl_contact_id) ?? leads?.[0];
+    if (best?.id) return best.id;
+  }
+
+  return null;
+}
+
 export async function upsertAcquisitionAppointment(
   service: SupabaseClient,
   payload: JsonObject,
@@ -81,13 +139,24 @@ export async function upsertAcquisitionAppointment(
 
   let leadId: string | null = str(payload.lead_id);
   const ghlContactId = str(payload.ghl_contact_id) ?? str(payload.contact_id);
-  if (!leadId && ghlContactId) {
-    const { data: lead } = await service
-      .from('acquisition_leads')
-      .select('id')
-      .eq('ghl_contact_id', ghlContactId)
-      .maybeSingle();
-    leadId = lead?.id ?? null;
+  if (!leadId) {
+    leadId = await resolveAcquisitionLeadId(
+      service,
+      {
+        ghl_contact_id: ghlContactId,
+        phone: str(payload.phone) ?? str(payload.phone_number),
+        email: str(payload.email),
+      },
+      ghlContactId
+        ? {
+            ghl_contact_id: ghlContactId,
+            lead_name: payload.lead_name,
+            phone: payload.phone ?? payload.phone_number,
+            email: payload.email,
+            created_at: payload.booked_at ?? payload.created_at,
+          }
+        : undefined,
+    );
   }
 
   const statusRaw = str(payload.appt_status) ?? str(payload.status) ?? str(payload.event_type);
@@ -137,14 +206,12 @@ export async function upsertAcquisitionOffer(
   const offerType = normalizeOfferType(str(payload.offer) ?? str(payload.offer_type));
 
   let leadId: string | null = str(payload.lead_id);
-  const ghlContactId = str(payload.ghl_contact_id);
-  if (!leadId && ghlContactId) {
-    const { data: lead } = await service
-      .from('acquisition_leads')
-      .select('id')
-      .eq('ghl_contact_id', ghlContactId)
-      .maybeSingle();
-    leadId = lead?.id ?? null;
+  if (!leadId) {
+    leadId = await resolveAcquisitionLeadId(service, {
+      ghl_contact_id: str(payload.ghl_contact_id),
+      phone: str(payload.phone) ?? str(payload.phone_number),
+      email: str(payload.email),
+    });
   }
 
   const closedRaw = str(payload.closed) ?? str(payload.is_closed);
@@ -181,15 +248,21 @@ export async function upsertAcquisitionDial(
   }
 
   const ghlContactId = str(payload.ghl_contact_id) ?? str(payload.contact_id);
-  let leadId: string | null = null;
-  if (ghlContactId) {
-    const { data: lead } = await service
-      .from('acquisition_leads')
-      .select('id')
-      .eq('ghl_contact_id', ghlContactId)
-      .maybeSingle();
-    leadId = lead?.id ?? null;
-  }
+  const leadId = await resolveAcquisitionLeadId(
+    service,
+    {
+      lead_id: str(payload.lead_id),
+      ghl_contact_id: ghlContactId,
+      phone: str(payload.phone),
+    },
+    ghlContactId
+      ? {
+          ghl_contact_id: ghlContactId,
+          phone: payload.phone,
+          created_at: payload.occurred_at ?? payload.dial_at,
+        }
+      : undefined,
+  );
 
   const row = {
     ghl_contact_id: ghlContactId,

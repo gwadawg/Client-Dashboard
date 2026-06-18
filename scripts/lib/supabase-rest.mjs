@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import https from 'https';
@@ -6,8 +6,16 @@ import https from 'https';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function loadEnv() {
+  const fromProcess = {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    GHL_ACQUISITION_API_TOKEN: process.env.GHL_ACQUISITION_API_TOKEN,
+    GHL_API_TOKEN: process.env.GHL_API_TOKEN,
+    GHL_ACQUISITION_LOCATION_ID: process.env.GHL_ACQUISITION_LOCATION_ID,
+  };
   const envPath = resolve(__dirname, '../../.env.local');
-  return readFileSync(envPath, 'utf-8')
+  if (!existsSync(envPath)) return fromProcess;
+  const fileEnv = readFileSync(envPath, 'utf-8')
     .split('\n')
     .filter((line) => line && !line.startsWith('#'))
     .reduce((acc, line) => {
@@ -15,6 +23,7 @@ function loadEnv() {
       if (key && val.length) acc[key.trim()] = val.join('=').trim();
       return acc;
     }, {});
+  return { ...fromProcess, ...fileEnv };
 }
 
 const envVars = loadEnv();
@@ -22,7 +31,9 @@ const SUPABASE_URL = envVars['NEXT_PUBLIC_SUPABASE_URL'];
 const SERVICE_KEY = envVars['SUPABASE_SERVICE_ROLE_KEY'];
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
-  throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local');
+  throw new Error(
+    'Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY (.env.local or environment)',
+  );
 }
 
 const SUPABASE_HOST = new URL(SUPABASE_URL).hostname;
