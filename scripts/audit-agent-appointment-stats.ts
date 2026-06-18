@@ -27,6 +27,7 @@ import {
   type AgentAppointmentOutcomeCounts,
 } from '../src/lib/agent-appointment-stats';
 import { buildRosterMatcher } from '../src/lib/agent-roster';
+import { canonicalAgentAlias } from '../src/lib/agent-name-aliases';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -149,6 +150,10 @@ function runUnitTests() {
     incrementOutcomeCount(manual, row.status);
   }
   assert(manual.shows === alice.shows, 'incrementOutcomeCount parity');
+
+  const resolveBernardo = buildRosterMatcher([{ name: 'Bernardo Fabris', phone: '1' }]);
+  assert(resolveBernardo('Bernado Fabris') === 'Bernardo Fabris', 'typo alias Bernado → Bernardo');
+  assert(canonicalAgentAlias('Bernado Fabris') === 'Bernardo Fabris', 'canonicalAgentAlias');
 
   console.log('  ✓ outcome enrichment + agent aggregation + invariants');
 }

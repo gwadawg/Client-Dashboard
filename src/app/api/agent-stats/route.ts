@@ -7,6 +7,7 @@ import {
   summarizeOutcomesByAgent,
 } from '@/lib/agent-appointment-stats';
 import { buildRosterMatcher } from '@/lib/agent-roster';
+import { fetchAgentEventsInRange } from '@/lib/agent-event-fetch';
 import { computeSpeedToLead, type SpeedToLeadEventRow } from '@/lib/speed-to-lead';
 
 type AgentAccumulator = {
@@ -52,34 +53,26 @@ export async function GET(req: Request) {
   const startDate = searchParams.get('startDate');
   const endDate = searchParams.get('endDate');
 
-  let eventsQuery = ctx.service
-    .from('events')
-    .select('agent_name, client_id, event_type, is_pickup, is_conversation, speed_to_lead_seconds, occurred_at, occurred_at_has_time, lead_created_at, ghl_contact_id, lead_phone, phone_number_used');
-
-  if (startDate) eventsQuery = eventsQuery.gte('occurred_at', `${startDate}T00:00:00.000Z`);
-  if (endDate) eventsQuery = eventsQuery.lte('occurred_at', `${endDate}T23:59:59.999Z`);
-
   const [
     { data: roster, error: rosterError },
-    { data, error },
+    data,
     { data: availability, error: availabilityError },
     enrichedBookings,
   ] = await Promise.all([
     ctx.service.from('agents').select('name, phone').order('name'),
-    eventsQuery,
+    fetchAgentEventsInRange(ctx.service, startDate, endDate),
     ctx.service.from('setter_availability').select('weekday, time_start, time_end, is_live'),
     fetchEnrichedBookingsInRange(ctx.service, startDate, endDate),
   ]);
 
   if (rosterError) return NextResponse.json({ error: rosterError.message }, { status: 500 });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (availabilityError) return NextResponse.json({ error: availabilityError.message }, { status: 500 });
 
   const resolveAgent = buildRosterMatcher(roster ?? []);
   const outcomeByAgent = summarizeOutcomesByAgent(enrichedBookings, resolveAgent);
 
   const speed = computeSpeedToLead(
-    (data ?? []) as SpeedToLeadEventRow[],
+    data as SpeedToLeadEventRow[],
     availability ?? [],
     undefined,
     resolveAgent,
@@ -95,7 +88,7 @@ export async function GET(req: Request) {
     todayMap.set(agent.name, emptyToday());
   }
 
-  for (const row of data ?? []) {
+  for (const row of data) {
     const name = resolveAgent(row.agent_name);
     if (!name) continue;
 
