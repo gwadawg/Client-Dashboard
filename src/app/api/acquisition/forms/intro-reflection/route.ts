@@ -25,6 +25,12 @@ function str(v: unknown): string | null {
   return s || null;
 }
 
+function parseRating(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(String(v));
+  return Number.isFinite(n) ? n : null;
+}
+
 function tokenApptId(
   introId: string | null,
   demoId: string | null,
@@ -194,6 +200,8 @@ export async function POST(req: NextRequest) {
       scheduled_at: str(body.scheduled_at),
       disposition: str(body.disposition),
       rebook_at: str(body.rebook_at),
+      call_rating: parseRating(body.call_rating),
+      improvement_notes: str(body.improvement_notes),
     });
 
     let ghl_sync_status = 'skipped';

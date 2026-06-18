@@ -82,6 +82,8 @@ export default function IntroReflectionFormClient({ defaultFormContext }: Props)
   const [objectionsNoted, setObjectionsNoted] = useState("");
   const [handoffNotes, setHandoffNotes] = useState("");
   const [notes, setNotes] = useState("");
+  const [callRating, setCallRating] = useState("");
+  const [improvementNotes, setImprovementNotes] = useState("");
   const [selectedIntroUuid, setSelectedIntroUuid] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; error?: string; ghl_sync_status?: string; ghl_sync_error?: string | null } | null>(null);
@@ -158,6 +160,8 @@ export default function IntroReflectionFormClient({ defaultFormContext }: Props)
           booking_source: bookingSource,
           booked_at: bookedAt ? new Date(bookedAt).toISOString() : null,
           scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+          call_rating: !isClaim && callRating ? Number(callRating) : null,
+          improvement_notes: !isClaim ? improvementNotes || null : null,
         }),
       });
       const data = await res.json();
@@ -241,6 +245,42 @@ export default function IntroReflectionFormClient({ defaultFormContext }: Props)
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
+            </label>
+          </>
+        )}
+
+        {!isClaim && (
+          <>
+            <p className="text-xs font-semibold uppercase tracking-wider pt-2" style={{ color: "#64748b" }}>
+              Call review
+            </p>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-400">Call rating (1–10)</span>
+              <select
+                required={status === "showed"}
+                value={callRating}
+                onChange={(e) => setCallRating(e.target.value)}
+                className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={inputStyle}
+              >
+                <option value="">Select rating…</option>
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={String(n)}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-400">Review / what to improve</span>
+              <textarea
+                value={improvementNotes}
+                onChange={(e) => setImprovementNotes(e.target.value)}
+                rows={3}
+                placeholder="What went well or what would you do differently?"
+                className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none resize-y"
+                style={inputStyle}
+              />
             </label>
           </>
         )}

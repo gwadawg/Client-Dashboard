@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { DOWNSELL_OFFER_TYPES } from '@/lib/acquisition-config';
+import { DOWNSELL_OFFER_TYPES, GHL_CF } from '@/lib/acquisition-config';
 import { applyCloserForm } from '@/lib/acquisition-form-apply';
 import { verifyAcquisitionFormToken } from '@/lib/acquisition-form-token';
+import {
+  ACQUISITION_LEAD_SOURCES,
+  resolveAcquisitionLeadSource,
+} from '@/lib/acquisition-lead-source';
 import {
   LEAD_QUALITY_SCORES,
   ROOT_CAUSE_OBJECTIONS,
@@ -11,6 +15,7 @@ import {
 import {
   getAcquisitionContact,
   ghlContactName,
+  ghlCustomFieldById,
 } from '@/lib/ghl-acquisition-api';
 import { REPORTING_TYPES } from '@/lib/reporting-types';
 import { SERVICE_PROGRAMS } from '@/lib/service-program';
@@ -53,6 +58,14 @@ export async function GET(req: NextRequest) {
       appt = data;
     }
 
+    const { data: lead } = await service
+      .from('acquisition_leads')
+      .select('source')
+      .eq('ghl_contact_id', contactId)
+      .maybeSingle();
+    const ghlLeadSource = ghlCustomFieldById(contact, GHL_CF.leadSource);
+    const leadSourceDefault = resolveAcquisitionLeadSource(lead?.source, ghlLeadSource);
+
     return NextResponse.json({
       contact_id: contactId,
       appointment_id: appointmentId,
@@ -60,6 +73,8 @@ export async function GET(req: NextRequest) {
       lead_name: ghlContactName(contact),
       closer_name_default: appt?.call_taken_by ?? null,
       setter_name_default: appt?.setter_name ?? null,
+      lead_source_default: leadSourceDefault,
+      lead_source_options: ACQUISITION_LEAD_SOURCES,
       reporting_types: REPORTING_TYPES,
       service_programs: SERVICE_PROGRAMS,
       downsell_offer_types: Array.from(DOWNSELL_OFFER_TYPES),
@@ -133,6 +148,7 @@ export async function POST(req: NextRequest) {
       surface_objection_other: str(body.surface_objection_other),
       root_cause_objection: str(body.root_cause_objection),
       root_cause_objection_other: str(body.root_cause_objection_other),
+      lead_source: str(body.lead_source),
     });
 
     return NextResponse.json({ ok: true, ...result });

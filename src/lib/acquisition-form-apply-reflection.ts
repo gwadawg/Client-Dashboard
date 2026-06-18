@@ -7,6 +7,7 @@ import {
 } from './acquisition-config';
 import type { DemoBookingCreditInput, DemoBookingCreditResult } from './acquisition-form-apply';
 import { upsertAcquisitionLead } from './acquisition-ingest';
+import { leadSourceUpdateFromFormInput } from './acquisition-lead-source';
 import {
   getAcquisitionContact,
   ghlContactName,
@@ -52,6 +53,8 @@ export type SetterIntroReflectionInput = {
   scheduled_at?: string | null;
   disposition?: string | null;
   rebook_at?: string | null;
+  call_rating?: number | null;
+  improvement_notes?: string | null;
 };
 
 export type SetterIntroReflectionResult = {
@@ -88,6 +91,7 @@ export type CloserFormInput = {
   surface_objection_other?: string | null;
   root_cause_objection?: string | null;
   root_cause_objection_other?: string | null;
+  lead_source?: string | null;
 };
 
 export type CloserFormResult = {
@@ -192,6 +196,8 @@ async function upsertIntroCall(
     disposition: input.disposition ?? null,
     rebook_at: input.rebook_at ?? null,
     form_context: input.form_context ?? null,
+    call_rating: input.call_rating ?? null,
+    improvement_notes: input.improvement_notes ?? null,
   };
 
   const row = {
@@ -224,6 +230,10 @@ async function upsertIntroCall(
         .select('id')
         .single();
       if (error) throw new Error(error.message);
+      await service
+        .from('acquisition_appointments')
+        .update({ status: input.status, updated_at: new Date().toISOString() })
+        .eq('id', introApptId);
       return data.id;
     }
   }
@@ -234,6 +244,12 @@ async function upsertIntroCall(
     .select('id')
     .single();
   if (error) throw new Error(error.message);
+  if (introApptId) {
+    await service
+      .from('acquisition_appointments')
+      .update({ status: input.status, updated_at: new Date().toISOString() })
+      .eq('id', introApptId);
+  }
   return data.id;
 }
 
@@ -506,6 +522,26 @@ export async function applyCloserForm(
   const contactId = input.ghl_contact_id.trim();
   const leadId = await ensureLeadId(service, contactId);
 
+  const { data: leadRow } = await service
+    .from('acquisition_leads')
+    .select('raw')
+    .eq('id', leadId)
+    .maybeSingle();
+  if (input.lead_source?.trim() && !leadSourceUpdateFromFormInput(leadRow?.raw, input.lead_source)) {
+    throw new Error('Invalid lead source. Choose Organic, Meta, Referral, or Cold.');
+  }
+  const leadSourcePatch = leadSourceUpdateFromFormInput(leadRow?.raw, input.lead_source);
+  if (leadSourcePatch) {
+    await service
+      .from('acquisition_leads')
+      .update({
+        source: leadSourcePatch.source,
+        raw: leadSourcePatch.raw,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', leadId);
+  }
+
   const appt = await apptByGhlId(service, input.ghl_appointment_id);
   const calledAt = appt?.scheduled_at ?? appt?.booked_at ?? new Date().toISOString();
   const callType = resolveCloserCallType(appt?.appointment_type);
@@ -545,6 +581,7 @@ export async function applyCloserForm(
     lead_quality_explanation: input.lead_quality_explanation ?? null,
     surface_objection: surfaceObjection,
     root_cause_objection: rootCauseObjection,
+    lead_source: leadSourcePatch?.source ?? null,
   };
 
   const callRow = {
@@ -566,6 +603,10 @@ export async function applyCloserForm(
 
   let callId: string;
   if (appt?.id) {
+    await service
+      .from('acquisition_appointments')
+      .update({ status: 'showed', updated_at: new Date().toISOString() })
+      .eq('id', appt.id);
     const { data: existing } = await service
       .from('acquisition_calls')
       .select('id')

@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import {
+  isLowLeadQualityScore,
   LEAD_QUALITY_SCORES,
-  LOW_LEAD_QUALITY_SCORES,
   ROOT_CAUSE_OBJECTIONS,
   SURFACE_OBJECTIONS,
 } from "@/lib/closer-form-config";
 import { REPORTING_TYPE_META, type ReportingType } from "@/lib/reporting-types";
 import { SERVICE_PROGRAM_META, type ServiceProgram } from "@/lib/service-program";
+import { ACQUISITION_LEAD_SOURCES } from "@/lib/acquisition-lead-source";
 
 const inputStyle: CSSProperties = {
   background: "#0f2040",
@@ -17,7 +18,7 @@ const inputStyle: CSSProperties = {
   color: "#e2e8f0",
 };
 
-const OFFER_TYPES = ["Core Offer", "Bootcamp", "Mid Offer", "Skool"];
+const OFFER_TYPES = ["Core Offer", "Full Service", "Bootcamp", "Mid Offer", "Skool"];
 
 const APPT_LABELS: Record<string, string> = {
   demo: "demo",
@@ -66,6 +67,8 @@ export default function CloserFormClient() {
   const [surfaceObjectionOther, setSurfaceObjectionOther] = useState("");
   const [rootCauseObjection, setRootCauseObjection] = useState("");
   const [rootCauseObjectionOther, setRootCauseObjectionOther] = useState("");
+  const [leadSource, setLeadSource] = useState("");
+  const [leadSourceOptions, setLeadSourceOptions] = useState(ACQUISITION_LEAD_SOURCES);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; error?: string } | null>(null);
 
@@ -81,9 +84,7 @@ export default function CloserFormClient() {
   }, [offerYes, offerNo, closedNo]);
 
   const needsLeadQualityExplanation =
-    needsReflection &&
-    leadQualityScore !== "" &&
-    LOW_LEAD_QUALITY_SCORES.has(leadQualityScore as (typeof LEAD_QUALITY_SCORES)[number]);
+    needsReflection && leadQualityScore !== "" && isLowLeadQualityScore(leadQualityScore);
 
   useEffect(() => {
     if (!contactId || !token) {
@@ -103,6 +104,8 @@ export default function CloserFormClient() {
         setAppointmentType(d.appointment_type ?? null);
         if (d.closer_name_default) setCloserName(d.closer_name_default);
         if (d.setter_name_default) setSetterName(d.setter_name_default);
+        if (d.lead_source_default) setLeadSource(d.lead_source_default);
+        if (d.lead_source_options?.length) setLeadSourceOptions(d.lead_source_options);
       })
       .catch((e) => setLoadError(e.message));
   }, [contactId, token, appointmentId]);
@@ -141,6 +144,7 @@ export default function CloserFormClient() {
           surface_objection_other: needsReflection ? surfaceObjectionOther || null : null,
           root_cause_objection: needsReflection ? rootCauseObjection || null : null,
           root_cause_objection_other: needsReflection ? rootCauseObjectionOther || null : null,
+          lead_source: leadSource || null,
         }),
       });
       const data = await res.json();
@@ -209,6 +213,25 @@ export default function CloserFormClient() {
             className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
             style={inputStyle}
           />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-slate-400">Lead source</span>
+          <select
+            value={leadSource}
+            onChange={(e) => setLeadSource(e.target.value)}
+            className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
+            style={inputStyle}
+          >
+            <option value="">Not set — select if known</option>
+            {leadSourceOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-500 mt-1">
+            Pre-filled when we already know the source. Leave blank or pick one to update reporting.
+          </p>
         </label>
         <label className="block">
           <span className="text-xs font-medium text-slate-400">Recording URL</span>
@@ -419,7 +442,7 @@ export default function CloserFormClient() {
               />
             </label>
             <label className="block">
-              <span className="text-xs font-medium text-slate-400">Lead quality score</span>
+              <span className="text-xs font-medium text-slate-400">Lead quality score (1–10)</span>
               <select
                 required
                 value={leadQualityScore}
