@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 
 const CALL_FIELDS =
-  'id, lead_id, client_id, call_type, called_at, status, handled_by, co_handler, recording_url, transcript_url, disposition, notes, details, appointment_id, linked_demo_appointment_id, acquisition_leads(lead_name, phone)';
+  'id, lead_id, client_id, call_type, called_at, status, handled_by, co_handler, recording_url, transcript_url, disposition, notes, details, appointment_id, linked_demo_appointment_id, form_submission_id, acquisition_leads(lead_name, phone)';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -14,9 +14,9 @@ export async function GET(req: Request) {
   const from = searchParams.get('from');
   const to = searchParams.get('to');
   const callType = searchParams.get('call_type');
-  const includeDials = searchParams.get('include_dials') === 'true';
   const leadId = searchParams.get('lead_id');
   const callId = searchParams.get('call_id');
+  const documentedOnly = searchParams.get('documented_only') !== 'false';
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
   const limit = Math.min(200, parseInt(searchParams.get('limit') ?? '50', 10));
   const offset = (page - 1) * limit;
@@ -31,7 +31,8 @@ export async function GET(req: Request) {
   if (to) query = query.lte('called_at', `${to}T23:59:59.999Z`);
   if (callType) query = query.eq('call_type', callType);
   if (leadId) query = query.eq('lead_id', leadId);
-  if (!includeDials) query = query.neq('call_type', 'dial');
+  if (documentedOnly) query = query.not('form_submission_id', 'is', null);
+  query = query.neq('call_type', 'dial');
 
   const { data, error, count } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

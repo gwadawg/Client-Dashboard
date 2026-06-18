@@ -88,6 +88,21 @@ export function acquisitionSalesCallHref(callId: string, pathname: string): stri
   return `${pathname}?${params.toString()}`;
 }
 
+export function acquisitionAppointmentHref(appointmentId: string, pathname: string): string {
+  const params = new URLSearchParams({
+    view: 'acquisition',
+    tab: 'appointments',
+    appointment_id: appointmentId,
+  });
+  return `${pathname}?${params.toString()}`;
+}
+
+export function acquisitionCallIsDocumented(row: {
+  form_submission_id?: string | null;
+}): boolean {
+  return !!row.form_submission_id;
+}
+
 export function appointmentRep(row: EnrichedAcquisitionAppointment): string | null {
   return row.call_handled_by ?? row.setter_name ?? row.call_taken_by ?? null;
 }

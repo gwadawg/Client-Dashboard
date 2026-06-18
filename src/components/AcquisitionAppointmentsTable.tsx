@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   ACQUISITION_STATUS_OPTIONS,
   ACQUISITION_STATUS_STYLES,
   acquisitionAppointmentNeedsDisposition,
+  acquisitionCallIsDocumented,
   acquisitionLeadFileUrl,
-  acquisitionSalesCallHref,
   appointmentRep,
   type AcquisitionAppointmentStatus,
   type EnrichedAcquisitionAppointment,
@@ -72,7 +72,9 @@ function LinkChip({
 }
 
 export default function AcquisitionAppointmentsTable({ startDate, endDate }: Props) {
-  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const highlightedAppointmentId = searchParams.get("appointment_id");
+  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const [rows, setRows] = useState<EnrichedAcquisitionAppointment[]>([]);
   const [total, setTotal] = useState(0);
   const [pendingDispositionCount, setPendingDispositionCount] = useState(0);
@@ -95,6 +97,7 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
     if (typeFilter !== "all") q.set("appointment_type", typeFilter);
     if (pendingOnly) q.set("queue_action", "needs_disposition");
     if (debouncedSearch) q.set("search", debouncedSearch);
+    if (highlightedAppointmentId) q.set("appointment_id", highlightedAppointmentId);
 
     fetch(`/api/acquisition/appointments?${q}`)
       .then(async r => {
@@ -115,7 +118,14 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
         setError(e instanceof Error ? e.message : "Failed to load appointments");
       })
       .finally(() => setLoading(false));
-  }, [startDate, endDate, typeFilter, pendingOnly, debouncedSearch]);
+  }, [startDate, endDate, typeFilter, pendingOnly, debouncedSearch, highlightedAppointmentId]);
+
+  useEffect(() => {
+    if (!highlightedAppointmentId || loading) return;
+    const el = rowRefs.current[highlightedAppointmentId];
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightedAppointmentId, loading, rows]);
 
   const pendingCount = pendingOnly
     ? total
@@ -169,6 +179,19 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
 
   return (
     <div className="space-y-4">
+      {highlightedAppointmentId && (
+        <div
+          className="px-4 py-2.5 rounded-xl text-sm"
+          style={{
+            background: "rgba(52,211,153,0.1)",
+            border: "1px solid rgba(52,211,153,0.35)",
+            color: "#6ee7b7",
+          }}
+        >
+          Highlighting appointment linked from a documented sales call.
+        </div>
+      )}
+
       {!pendingOnly && pendingCount > 0 && (
         <div
           className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-xl"
@@ -288,19 +311,29 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
                   const style = ACQUISITION_STATUS_STYLES[status] ?? ACQUISITION_STATUS_STYLES.pending;
                   const needsDisposition = acquisitionAppointmentNeedsDisposition(row);
                   const ghlUrl = acquisitionLeadFileUrl(row);
-                  const callHref = row.call_id ? acquisitionSalesCallHref(row.call_id, pathname) : null;
+                  const documented = acquisitionCallIsDocumented(row);
+                  const highlighted = row.id === highlightedAppointmentId;
 
                   return (
                     <tr
                       key={row.id}
+                      ref={el => {
+                        rowRefs.current[row.id] = el;
+                      }}
                       style={{
                         borderTop: "1px solid rgba(255,255,255,0.03)",
-                        background: needsDisposition
-                          ? "rgba(245,158,11,0.07)"
-                          : i % 2 === 0
-                            ? "rgba(255,255,255,0.015)"
-                            : "transparent",
-                        boxShadow: needsDisposition ? "inset 3px 0 0 #f59e0b" : undefined,
+                        background: highlighted
+                          ? "rgba(52,211,153,0.12)"
+                          : needsDisposition
+                            ? "rgba(245,158,11,0.07)"
+                            : i % 2 === 0
+                              ? "rgba(255,255,255,0.015)"
+                              : "transparent",
+                        boxShadow: highlighted
+                          ? "inset 3px 0 0 #34d399"
+                          : needsDisposition
+                            ? "inset 3px 0 0 #f59e0b"
+                            : undefined,
                       }}
                     >
                       <td className="px-4 py-2.5 whitespace-nowrap text-slate-300">{formatWhen(row.booked_at)}</td>
@@ -338,11 +371,25 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
                         )}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap">
-                        {callHref ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            <LinkChip href={callHref} label="View call log" color="#34d399" />
+                        {documented ? (
+                          <div className="flex flex-wrap gap-1.5 items-center">
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+                              style={{
+                                background: "rgba(52,211,153,0.15)",
+                                border: "1px solid rgba(52,211,153,0.35)",
+                                color: "#6ee7b7",
+                              }}
+                            >
+                              Form logged
+                            </span>
                             {row.recording_url && (
                               <LinkChip href={row.recording_url} label="Recording" color="#38bdf8" external />
+                            )}
+                            {row.disposition && (
+                              <span className="text-xs text-slate-400 max-w-[140px] truncate" title={row.disposition}>
+                                {row.disposition}
+                              </span>
                             )}
                           </div>
                         ) : row.recording_url ? (

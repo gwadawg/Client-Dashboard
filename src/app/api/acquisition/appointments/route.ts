@@ -20,6 +20,7 @@ export async function GET(req: Request) {
   const queueAction = searchParams.get('queue_action');
   const setter = searchParams.get('setter');
   const leadId = searchParams.get('lead_id');
+  const appointmentId = searchParams.get('appointment_id');
   const search = searchParams.get('search')?.trim() ?? '';
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
   const limit = Math.min(200, parseInt(searchParams.get('limit') ?? '50', 10));
@@ -47,6 +48,16 @@ export async function GET(req: Request) {
   const { data, error, count } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  let rows = data ?? [];
+  if (appointmentId && !rows.some(r => r.id === appointmentId)) {
+    const { data: focused } = await ctx.service
+      .from('v_acquisition_appointment_enriched')
+      .select(ENRICHED_APPOINTMENT_COLUMNS)
+      .eq('id', appointmentId)
+      .maybeSingle();
+    if (focused) rows = [focused, ...rows];
+  }
+
   let pendingDispositionCount = 0;
   if (!queueAction) {
     let pendingQuery = ctx.service
@@ -61,10 +72,11 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({
-    rows: data ?? [],
+    rows,
     total: count ?? 0,
     page,
     pending_disposition_count: pendingDispositionCount,
+    highlighted_appointment_id: appointmentId,
   });
 }
 
