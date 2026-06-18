@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { enrichAppointmentsWithCloserFormLinks } from '@/lib/acquisition-closer-form';
+import {
+  flattenRawCloseRow,
+  flattenRawOfferRow,
+  RAW_CLOSE_SELECT,
+  RAW_OFFER_SELECT,
+} from '@/lib/acquisition-raw-enriched';
 
 const TABLE_MAP = {
   leads: 'acquisition_leads',
@@ -37,7 +43,14 @@ export async function GET(req: NextRequest) {
               ? 'occurred_at'
               : 'created_at';
 
-  let query = ctx.service.from(table).select('*', { count: 'exact' }).order(dateCol, { ascending: false }).limit(limit);
+  const select =
+    type === 'offers' ? RAW_OFFER_SELECT : type === 'closes' ? RAW_CLOSE_SELECT : '*';
+
+  let query = ctx.service
+    .from(table)
+    .select(select, { count: 'exact' })
+    .order(dateCol, { ascending: false })
+    .limit(limit);
 
   const from = req.nextUrl.searchParams.get('from');
   const to = req.nextUrl.searchParams.get('to');
@@ -50,6 +63,10 @@ export async function GET(req: NextRequest) {
   let rows = data ?? [];
   if (type === 'appointments' && rows.length > 0) {
     rows = await enrichAppointmentsWithCloserFormLinks(ctx.service, rows);
+  } else if (type === 'offers') {
+    rows = rows.map(flattenRawOfferRow);
+  } else if (type === 'closes') {
+    rows = rows.map(flattenRawCloseRow);
   }
 
   return NextResponse.json({ type, rows, total: count ?? 0 });

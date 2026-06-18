@@ -31,17 +31,24 @@ const COLUMNS: Record<Props["type"], { key: string; label: string }[]> = {
   ],
   offers: [
     { key: "offered_at", label: "Date" },
+    { key: "lead_name", label: "Lead" },
     { key: "offer_type", label: "Offer" },
     { key: "is_closed", label: "Closed" },
     { key: "cash_collected", label: "Cash" },
     { key: "setter_name", label: "Setter" },
     { key: "offered_by", label: "Closer" },
+    { key: "lead_email", label: "Email" },
   ],
   closes: [
     { key: "closed_at", label: "Closed" },
-    { key: "close_source", label: "Source" },
+    { key: "lead_name", label: "Lead" },
     { key: "offer_type", label: "Offer" },
-    { key: "client_id", label: "Client ID" },
+    { key: "setter_name", label: "Setter" },
+    { key: "offered_by", label: "Closer" },
+    { key: "close_source", label: "Source" },
+    { key: "mapping_status", label: "Status" },
+    { key: "client_name", label: "Client" },
+    { key: "cash_collected", label: "Cash" },
   ],
   ads: [
     { key: "insight_date", label: "Date" },
@@ -62,8 +69,17 @@ const COLUMNS: Record<Props["type"], { key: string; label: string }[]> = {
 function fmt(key: string, v: unknown): string {
   if (v == null) return "—";
   if (key === "is_closed") return v ? "Y" : "N";
+  if (key === "mapping_status") {
+    const s = String(v);
+    if (s === "mapped") return "Mapped";
+    if (s === "pending_client") return "Pending";
+    if (s === "dismissed") return "Dismissed";
+    return s.replace(/_/g, " ");
+  }
   if (typeof v === "boolean") return v ? "Yes" : "No";
-  if (typeof v === "number" && key.includes("spent")) return `$${v.toLocaleString()}`;
+  if (typeof v === "number" && (key.includes("spent") || key.includes("cash") || key.includes("collected"))) {
+    return `$${v.toLocaleString()}`;
+  }
   if (typeof v === "string" && v.includes("T")) return v.slice(0, 16).replace("T", " ");
   return String(v);
 }
