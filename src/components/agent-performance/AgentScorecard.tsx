@@ -6,6 +6,7 @@ import {
   GOAL_METRICS,
   type TeamAverages,
 } from "@/lib/agent-performance-types";
+import AgentActivityLog from "./AgentActivityLog";
 
 type Props = {
   agent: AgentPerformanceRow;
@@ -13,6 +14,8 @@ type Props = {
   goals: AgentGoal[];
   teamAverages: TeamAverages;
   periodDays: number;
+  startDate: string;
+  endDate: string;
   expanded: boolean;
   onToggle: () => void;
 };
@@ -97,6 +100,8 @@ export default function AgentScorecard({
   goals,
   teamAverages,
   periodDays,
+  startDate,
+  endDate,
   expanded,
   onToggle,
 }: Props) {
@@ -324,6 +329,12 @@ export default function AgentScorecard({
               · {dailyApptPace}/day avg over {periodDays} day{periodDays !== 1 ? "s" : ""}
             </span>
           </div>
+
+          <AgentActivityLog
+            agentName={agent.agent_name}
+            startDate={startDate}
+            endDate={endDate}
+          />
         </div>
       )}
     </div>

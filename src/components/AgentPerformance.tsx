@@ -103,6 +103,8 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
                   goals={goals}
                   teamAverages={teamAverages}
                   periodDays={days}
+                  startDate={startDate}
+                  endDate={endDate}
                   expanded={expandedAgent === a.agent_name}
                   onToggle={() => toggleAgent(a.agent_name)}
                 />
