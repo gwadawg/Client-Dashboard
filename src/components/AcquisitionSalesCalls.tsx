@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 type CallDetails = {
   call_rating?: number | null;
@@ -56,6 +57,9 @@ function formatWhen(iso: string) {
 const TYPE_FILTERS = ["all", "intro", "demo", "followup", "bamfam", "organic", "other"] as const;
 
 export default function AcquisitionSalesCalls({ startDate, endDate }: Props) {
+  const searchParams = useSearchParams();
+  const highlightedCallId = searchParams.get("call_id");
+  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const [rows, setRows] = useState<CallRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -67,6 +71,7 @@ export default function AcquisitionSalesCalls({ startDate, endDate }: Props) {
     const q = new URLSearchParams({ from: startDate, to: endDate, limit: "200" });
     if (typeFilter !== "all") q.set("call_type", typeFilter);
     if (includeDials) q.set("include_dials", "true");
+    if (highlightedCallId) q.set("call_id", highlightedCallId);
 
     fetch(`/api/acquisition/calls?${q}`)
       .then((r) => r.json())
@@ -75,10 +80,30 @@ export default function AcquisitionSalesCalls({ startDate, endDate }: Props) {
         setTotal(d.total ?? 0);
       })
       .finally(() => setLoading(false));
-  }, [startDate, endDate, typeFilter, includeDials]);
+  }, [startDate, endDate, typeFilter, includeDials, highlightedCallId]);
+
+  useEffect(() => {
+    if (!highlightedCallId || loading) return;
+    const el = rowRefs.current[highlightedCallId];
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightedCallId, loading, rows]);
 
   return (
     <div className="space-y-4">
+      {highlightedCallId && (
+        <div
+          className="px-4 py-2.5 rounded-xl text-sm"
+          style={{
+            background: "rgba(52,211,153,0.1)",
+            border: "1px solid rgba(52,211,153,0.35)",
+            color: "#6ee7b7",
+          }}
+        >
+          Showing documented call linked from Appointments.
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         {TYPE_FILTERS.map((t) => (
           <button
@@ -118,28 +143,42 @@ export default function AcquisitionSalesCalls({ startDate, endDate }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="border-t border-white/5" style={{ color: "#cbd5e1" }}>
-                    <td className="px-4 py-2 whitespace-nowrap">{formatWhen(row.called_at)}</td>
-                    <td className="px-4 py-2 capitalize">{row.call_type}</td>
-                    <td className="px-4 py-2">{leadName(row)}</td>
-                    <td className="px-4 py-2">{row.handled_by ?? "—"}</td>
-                    <td className="px-4 py-2">{row.status}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-slate-400">
-                      {reflectionSummary(row) ?? "—"}
-                    </td>
-                    <td className="px-4 py-2 space-x-2">
-                      {row.recording_url && (
-                        <a href={row.recording_url} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">Recording</a>
-                      )}
-                      {row.transcript_url && (
-                        <a href={row.transcript_url} target="_blank" rel="noreferrer" className="text-violet-400 hover:underline">Transcript</a>
-                      )}
-                      {!row.recording_url && !row.transcript_url && "—"}
-                    </td>
-                    <td className="px-4 py-2 max-w-[200px] truncate">{row.disposition ?? row.notes ?? "—"}</td>
-                  </tr>
-                ))}
+                {rows.map((row) => {
+                  const highlighted = row.id === highlightedCallId;
+                  return (
+                    <tr
+                      key={row.id}
+                      ref={el => {
+                        rowRefs.current[row.id] = el;
+                      }}
+                      className="border-t border-white/5"
+                      style={{
+                        color: "#cbd5e1",
+                        background: highlighted ? "rgba(52,211,153,0.12)" : undefined,
+                        boxShadow: highlighted ? "inset 3px 0 0 #34d399" : undefined,
+                      }}
+                    >
+                      <td className="px-4 py-2 whitespace-nowrap">{formatWhen(row.called_at)}</td>
+                      <td className="px-4 py-2 capitalize">{row.call_type}</td>
+                      <td className="px-4 py-2">{leadName(row)}</td>
+                      <td className="px-4 py-2">{row.handled_by ?? "—"}</td>
+                      <td className="px-4 py-2">{row.status}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-slate-400">
+                        {reflectionSummary(row) ?? "—"}
+                      </td>
+                      <td className="px-4 py-2 space-x-2">
+                        {row.recording_url && (
+                          <a href={row.recording_url} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">Recording</a>
+                        )}
+                        {row.transcript_url && (
+                          <a href={row.transcript_url} target="_blank" rel="noreferrer" className="text-violet-400 hover:underline">Transcript</a>
+                        )}
+                        {!row.recording_url && !row.transcript_url && "—"}
+                      </td>
+                      <td className="px-4 py-2 max-w-[200px] truncate">{row.disposition ?? row.notes ?? "—"}</td>
+                    </tr>
+                  );
+                })}
                 {!rows.length && (
                   <tr>
                     <td colSpan={8} className="px-4 py-8 text-center text-slate-500">No calls in range</td>

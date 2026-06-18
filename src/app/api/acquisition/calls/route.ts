@@ -16,6 +16,7 @@ export async function GET(req: Request) {
   const callType = searchParams.get('call_type');
   const includeDials = searchParams.get('include_dials') === 'true';
   const leadId = searchParams.get('lead_id');
+  const callId = searchParams.get('call_id');
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
   const limit = Math.min(200, parseInt(searchParams.get('limit') ?? '50', 10));
   const offset = (page - 1) * limit;
@@ -35,9 +36,20 @@ export async function GET(req: Request) {
   const { data, error, count } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  let rows = data ?? [];
+  if (callId && !rows.some(r => r.id === callId)) {
+    const { data: focused } = await ctx.service
+      .from('acquisition_calls')
+      .select(CALL_FIELDS)
+      .eq('id', callId)
+      .maybeSingle();
+    if (focused) rows = [focused, ...rows];
+  }
+
   return NextResponse.json({
-    rows: data ?? [],
-    total: count ?? 0,
+    rows,
+    total: count ?? rows.length,
     page,
+    highlighted_call_id: callId,
   });
 }
