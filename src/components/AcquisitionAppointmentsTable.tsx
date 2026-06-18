@@ -97,11 +97,22 @@ export default function AcquisitionAppointmentsTable({ startDate, endDate }: Pro
     if (debouncedSearch) q.set("search", debouncedSearch);
 
     fetch(`/api/acquisition/appointments?${q}`)
-      .then(r => r.json())
+      .then(async r => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error ?? "Failed to load appointments");
+        return d;
+      })
       .then(d => {
         setRows(d.rows ?? []);
         setTotal(d.total ?? 0);
         setPendingDispositionCount(d.pending_disposition_count ?? 0);
+        setError(null);
+      })
+      .catch(e => {
+        setRows([]);
+        setTotal(0);
+        setPendingDispositionCount(0);
+        setError(e instanceof Error ? e.message : "Failed to load appointments");
       })
       .finally(() => setLoading(false));
   }, [startDate, endDate, typeFilter, pendingOnly, debouncedSearch]);

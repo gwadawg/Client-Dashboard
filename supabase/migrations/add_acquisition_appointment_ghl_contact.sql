@@ -1,4 +1,5 @@
 -- Expose lead GHL contact id on the enriched appointment read model.
+-- ghl_contact_id is appended last so CREATE OR REPLACE does not rename existing columns.
 
 create or replace view v_acquisition_appointment_enriched as
 select
@@ -22,7 +23,6 @@ select
   a.demo_credit_slack_notified_at,
   a.inserted_at,
   a.updated_at,
-  l.ghl_contact_id,
   c.id as call_id,
   c.call_type as call_type,
   c.called_at as call_called_at,
@@ -44,7 +44,8 @@ select
       and a.scheduled_at is not null
       and a.scheduled_at < now() then 'needs_disposition'
     else null
-  end as queue_action
+  end as queue_action,
+  l.ghl_contact_id
 from acquisition_appointments a
 left join acquisition_leads l on l.id = a.lead_id
 left join acquisition_calls c
