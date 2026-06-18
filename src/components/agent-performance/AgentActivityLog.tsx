@@ -139,7 +139,8 @@ export default function AgentActivityLog({ agentName, startDate, endDate }: Prop
       </div>
 
       {tab === "appointments" && !loading && !error && (
-        <div className="flex flex-wrap gap-3 mb-3 text-xs tabular-nums">
+        <div className="space-y-2 mb-3">
+          <div className="flex flex-wrap gap-3 text-xs tabular-nums">
           <span style={{ color: "#94a3b8" }}>
             <span className="font-semibold" style={{ color: "#e2e8f0" }}>
               {summary.appointments ?? 0}
@@ -155,6 +156,10 @@ export default function AgentActivityLog({ agentName, startDate, endDate }: Prop
           <span style={{ color: "#fbbf24" }}>
             <span className="font-semibold">{summary.pending ?? 0}</span> pending
           </span>
+          </div>
+          <p className="text-[11px]" style={{ color: "#475569" }}>
+            Counts match the scorecard KPIs — each row is an appointment booked in this period with its linked show/no-show outcome.
+          </p>
         </div>
       )}
 

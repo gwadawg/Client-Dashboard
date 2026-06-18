@@ -17,6 +17,9 @@ export type AgentPerformanceRow = {
   live_transfers: number;
   shows: number;
   no_shows: number;
+  lo_bailed: number;
+  pending: number;
+  cancelled: number;
   show_rate: number;
   avg_speed_to_lead_min: number | null;
   today: AgentTodayStats;

@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import {
+  emptyOutcomeCounts,
+  fetchEnrichedBookingsInRange,
+  grossShowRate,
+  summarizeOutcomesByAgent,
+} from '@/lib/agent-appointment-stats';
 import { buildRosterMatcher } from '@/lib/agent-roster';
 import { computeSpeedToLead, type SpeedToLeadEventRow } from '@/lib/speed-to-lead';
 
@@ -11,8 +17,6 @@ type AgentAccumulator = {
   appointments: number;
   callbacks: number;
   live_transfers: number;
-  shows: number;
-  no_shows: number;
 };
 
 type TodayStats = {
@@ -31,8 +35,6 @@ function emptyAccumulator(name: string): AgentAccumulator {
     appointments: 0,
     callbacks: 0,
     live_transfers: 0,
-    shows: 0,
-    no_shows: 0,
   };
 }
 
@@ -61,10 +63,12 @@ export async function GET(req: Request) {
     { data: roster, error: rosterError },
     { data, error },
     { data: availability, error: availabilityError },
+    enrichedBookings,
   ] = await Promise.all([
     ctx.service.from('agents').select('name, phone').order('name'),
     eventsQuery,
     ctx.service.from('setter_availability').select('weekday, time_start, time_end, is_live'),
+    fetchEnrichedBookingsInRange(ctx.service, startDate, endDate),
   ]);
 
   if (rosterError) return NextResponse.json({ error: rosterError.message }, { status: 500 });
@@ -72,6 +76,7 @@ export async function GET(req: Request) {
   if (availabilityError) return NextResponse.json({ error: availabilityError.message }, { status: 500 });
 
   const resolveAgent = buildRosterMatcher(roster ?? []);
+  const outcomeByAgent = summarizeOutcomesByAgent(enrichedBookings, resolveAgent);
 
   const speed = computeSpeedToLead(
     (data ?? []) as SpeedToLeadEventRow[],
@@ -114,21 +119,24 @@ export async function GET(req: Request) {
     } else if (row.event_type === 'live_transfer') {
       a.live_transfers++;
       if (isToday) t.live_transfers++;
-    } else if (row.event_type === 'show') {
-      a.shows++;
-    } else if (row.event_type === 'no_show') {
-      a.no_shows++;
     }
+    // Shows/no-shows come from booking-outcome matching, not raw outcome events.
   }
 
-  function hasActivity(a: AgentAccumulator, today: TodayStats) {
+  function hasActivity(
+    a: AgentAccumulator,
+    outcomes: ReturnType<typeof emptyOutcomeCounts>,
+    today: TodayStats,
+  ) {
     return (
       a.dials > 0 ||
       a.appointments > 0 ||
       a.callbacks > 0 ||
       a.live_transfers > 0 ||
-      a.shows > 0 ||
-      a.no_shows > 0 ||
+      outcomes.shows > 0 ||
+      outcomes.no_shows > 0 ||
+      outcomes.lo_bailed > 0 ||
+      outcomes.pending > 0 ||
       today.dials > 0 ||
       today.appointments > 0 ||
       today.live_transfers > 0
@@ -136,9 +144,13 @@ export async function GET(req: Request) {
   }
 
   const agents = Array.from(agentMap.values())
-    .filter(a => hasActivity(a, todayMap.get(a.agent_name) ?? emptyToday()))
+    .filter(a => {
+      const outcomes = outcomeByAgent.get(a.agent_name) ?? emptyOutcomeCounts();
+      return hasActivity(a, outcomes, todayMap.get(a.agent_name) ?? emptyToday());
+    })
     .map(a => {
       const todayStats = todayMap.get(a.agent_name) ?? emptyToday();
+      const outcomes = outcomeByAgent.get(a.agent_name) ?? emptyOutcomeCounts();
       const avg_speed = speed.by_agent[a.agent_name]?.median_min ?? null;
       return {
         agent_name: a.agent_name,
@@ -147,12 +159,15 @@ export async function GET(req: Request) {
         pickup_rate: a.dials > 0 ? Math.round((a.pickups / a.dials) * 100) : 0,
         conversations: a.conversations,
         conversation_rate: a.dials > 0 ? Math.round((a.conversations / a.dials) * 100) : 0,
-        appointments: a.appointments,
+        appointments: outcomes.appointments,
         callbacks: a.callbacks,
         live_transfers: a.live_transfers,
-        shows: a.shows,
-        no_shows: a.no_shows,
-        show_rate: (a.shows + a.no_shows) > 0 ? Math.round((a.shows / (a.shows + a.no_shows)) * 100) : 0,
+        shows: outcomes.shows,
+        no_shows: outcomes.no_shows,
+        lo_bailed: outcomes.lo_bailed,
+        pending: outcomes.pending,
+        cancelled: outcomes.cancelled,
+        show_rate: grossShowRate(outcomes),
         avg_speed_to_lead_min: avg_speed,
         today: todayStats,
       };
@@ -161,28 +176,36 @@ export async function GET(req: Request) {
   agents.sort((a, b) => b.appointments - a.appointments || a.agent_name.localeCompare(b.agent_name));
 
   const activeCount = agents.length || 1;
-  const teamTotals = agents.reduce(
+  const teamOutcomeTotals = agents.reduce(
     (acc, a) => ({
-      dials: acc.dials + a.dials,
-      pickups: acc.pickups + a.pickups,
       appointments: acc.appointments + a.appointments,
-      live_transfers: acc.live_transfers + a.live_transfers,
       shows: acc.shows + a.shows,
       no_shows: acc.no_shows + a.no_shows,
+      lo_bailed: acc.lo_bailed + a.lo_bailed,
+      dials: acc.dials + a.dials,
+      pickups: acc.pickups + a.pickups,
+      live_transfers: acc.live_transfers + a.live_transfers,
     }),
-    { dials: 0, pickups: 0, appointments: 0, live_transfers: 0, shows: 0, no_shows: 0 },
+    { appointments: 0, shows: 0, no_shows: 0, lo_bailed: 0, dials: 0, pickups: 0, live_transfers: 0 },
   );
 
   const team_averages = {
-    dials: Math.round(teamTotals.dials / activeCount),
-    pickups: Math.round(teamTotals.pickups / activeCount),
-    appointments: Math.round(teamTotals.appointments / activeCount),
-    live_transfers: Math.round(teamTotals.live_transfers / activeCount),
-    shows: Math.round(teamTotals.shows / activeCount),
-    pickup_rate: teamTotals.dials > 0 ? Math.round((teamTotals.pickups / teamTotals.dials) * 100) : 0,
+    dials: Math.round(teamOutcomeTotals.dials / activeCount),
+    pickups: Math.round(teamOutcomeTotals.pickups / activeCount),
+    appointments: Math.round(teamOutcomeTotals.appointments / activeCount),
+    live_transfers: Math.round(teamOutcomeTotals.live_transfers / activeCount),
+    shows: Math.round(teamOutcomeTotals.shows / activeCount),
+    pickup_rate:
+      teamOutcomeTotals.dials > 0
+        ? Math.round((teamOutcomeTotals.pickups / teamOutcomeTotals.dials) * 100)
+        : 0,
     show_rate:
-      teamTotals.shows + teamTotals.no_shows > 0
-        ? Math.round((teamTotals.shows / (teamTotals.shows + teamTotals.no_shows)) * 100)
+      teamOutcomeTotals.shows + teamOutcomeTotals.no_shows + teamOutcomeTotals.lo_bailed > 0
+        ? Math.round(
+            (teamOutcomeTotals.shows /
+              (teamOutcomeTotals.shows + teamOutcomeTotals.no_shows + teamOutcomeTotals.lo_bailed)) *
+              100,
+          )
         : 0,
   };
 

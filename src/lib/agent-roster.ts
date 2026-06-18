@@ -16,3 +16,10 @@ export function buildRosterMatcher(agents: RosterAgent[]) {
     return byKey.get(normalizeAgentKey(raw.trim())) ?? null;
   };
 }
+
+/** Raw agent_name values on events that resolve to this roster agent (name + phone). */
+export function rosterAliasesForAgent(agents: RosterAgent[], canonicalName: string): string[] {
+  const agent = agents.find(a => a.name === canonicalName);
+  if (!agent) return [];
+  return [agent.name, agent.phone].filter((v): v is string => !!v && v.trim().length > 0);
+}

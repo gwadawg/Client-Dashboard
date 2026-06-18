@@ -9,6 +9,7 @@
     "lint": "eslint",
     "verify:onboard": "npx tsx scripts/verify-onboard-payload.ts",
     "audit:roster": "node scripts/audit-client-roster.mjs",
+    "audit:agent-stats": "npx tsx scripts/audit-agent-appointment-stats.ts",
     "reconcile:payments": "node scripts/reconcile-client-payments.mjs",
     "cleanup:roster": "npx tsx scripts/apply-roster-cleanup.ts",
     "cleanup:roster:apply": "npx tsx scripts/apply-roster-cleanup.ts --apply"
