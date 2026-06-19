@@ -77,7 +77,8 @@ export async function GET(req: NextRequest) {
     const { data, error, count } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     const rows = ((data ?? []) as Record<string, unknown>[]).map(flattenRawCloseRow);
-    return NextResponse.json({ type, rows, total: count ?? 0 });
+    const { data: clients } = await ctx.service.from('clients').select('id, name').order('name');
+    return NextResponse.json({ type, rows, total: count ?? 0, clients: clients ?? [] });
   }
 
   const table = TABLE_MAP[type];

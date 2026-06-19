@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
-import { linkAcquisitionCloseFromClient } from '@/lib/acquisition-ingest';
-
 export async function GET() {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -62,11 +60,28 @@ export async function POST(req: Request) {
 
       const { data: close, error: closeErr } = await ctx.service
         .from('acquisition_closes')
-        .select('lead_id, closed_at, reporting_type, service_program')
+        .select('lead_id, closed_at, reporting_type, service_program, client_id, mapping_status')
         .eq('id', closeId)
         .single();
       if (closeErr || !close) {
         return NextResponse.json({ error: 'Close not found' }, { status: 404 });
+      }
+
+      if (close.client_id === clientId && close.mapping_status === 'mapped') {
+        return NextResponse.json({ success: true });
+      }
+
+      const { data: conflict } = await ctx.service
+        .from('acquisition_closes')
+        .select('id')
+        .eq('client_id', clientId)
+        .neq('id', closeId)
+        .maybeSingle();
+      if (conflict) {
+        return NextResponse.json(
+          { error: 'That client is already linked to another close' },
+          { status: 409 },
+        );
       }
 
       const clientPatch: Record<string, unknown> = {};
@@ -76,25 +91,43 @@ export async function POST(req: Request) {
         await ctx.service.from('clients').update(clientPatch).eq('id', clientId);
       }
 
-      await ctx.service
+      const { error: closeUpdateErr } = await ctx.service
         .from('acquisition_closes')
         .update({
           client_id: clientId,
           mapping_status: 'mapped',
         })
         .eq('id', closeId);
+      if (closeUpdateErr) throw new Error(closeUpdateErr.message);
 
       if (close.lead_id) {
-        await ctx.service
+        const { error: leadErr } = await ctx.service
           .from('acquisition_leads')
-          .update({ converted_client_id: clientId })
+          .update({ converted_client_id: clientId, updated_at: new Date().toISOString() })
           .eq('id', close.lead_id);
+        if (leadErr) throw new Error(leadErr.message);
       }
 
-      await linkAcquisitionCloseFromClient(ctx.service, clientId, {
-        closedAt: close.closed_at,
-      });
+      return NextResponse.json({ success: true });
+    }
 
+    if (action === 'restore') {
+      const { data: close, error: closeErr } = await ctx.service
+        .from('acquisition_closes')
+        .select('client_id')
+        .eq('id', closeId)
+        .single();
+      if (closeErr || !close) {
+        return NextResponse.json({ error: 'Close not found' }, { status: 404 });
+      }
+
+      const { error } = await ctx.service
+        .from('acquisition_closes')
+        .update({
+          mapping_status: close.client_id ? 'mapped' : 'pending_client',
+        })
+        .eq('id', closeId);
+      if (error) throw new Error(error.message);
       return NextResponse.json({ success: true });
     }
 
