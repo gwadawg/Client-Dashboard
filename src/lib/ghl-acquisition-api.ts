@@ -254,28 +254,66 @@ export async function updateAcquisitionOpportunityStage(
   });
 }
 
+/** Fetch one export page (for debugging / flexible parsing). */
+export async function fetchGhlCallExportPage(
+  cursor?: string,
+  pageSize = 100,
+  channel = 'Call',
+): Promise<Record<string, unknown>> {
+  const params = new URLSearchParams({
+    locationId: GHL_ACQUISITION_LOCATION_ID,
+    limit: String(pageSize),
+  });
+  if (channel) params.set('channel', channel);
+  if (cursor) params.set('cursor', cursor);
+  return ghlRequest<Record<string, unknown>>('GET', `/conversations/messages/export?${params}`);
+}
+
+function parseExportBatch(data: Record<string, unknown>): GhlCallMessage[] {
+  const envelope =
+    (data.messages as Record<string, unknown> | undefined) ??
+    (data.data as Record<string, unknown> | undefined) ??
+    data;
+  if (Array.isArray(envelope)) return envelope as GhlCallMessage[];
+  if (Array.isArray(envelope?.messages)) return envelope.messages as GhlCallMessage[];
+  if (Array.isArray(data.messages)) return data.messages as GhlCallMessage[];
+  return [];
+}
+
+function parseExportCursor(data: Record<string, unknown>, batch: GhlCallMessage[]) {
+  const envelope =
+    (data.messages as Record<string, unknown> | undefined) ??
+    (data.data as Record<string, unknown> | undefined) ??
+    data;
+  const nextPage = Boolean(
+    (envelope as Record<string, unknown> | undefined)?.nextPage ?? data.nextPage,
+  );
+  const lastMessageId = String(
+    (envelope as Record<string, unknown> | undefined)?.lastMessageId ??
+      data.lastMessageId ??
+      batch[batch.length - 1]?.id ??
+      '',
+  );
+  return { nextPage, lastMessageId };
+}
+
 /** Page call messages for the acquisition location (requires conversations/message.readonly). */
 export async function* exportGhlCallMessages(pageSize = 100): AsyncGenerator<GhlCallMessage> {
-  let cursor: string | undefined;
-  for (;;) {
-    const params = new URLSearchParams({
-      locationId: GHL_ACQUISITION_LOCATION_ID,
-      channel: 'Call',
-      limit: String(pageSize),
-    });
-    if (cursor) params.set('cursor', cursor);
-    const data = await ghlRequest<{
-      messages?: { messages?: GhlCallMessage[]; lastMessageId?: string; nextPage?: boolean };
-      lastMessageId?: string;
-      nextPage?: boolean;
-    }>('GET', `/conversations/messages/export?${params}`);
-    const envelope = data?.messages;
-    const batch: GhlCallMessage[] = Array.isArray(envelope?.messages) ? envelope.messages : [];
-    for (const message of batch) yield message;
-    const nextPage = envelope?.nextPage ?? data?.nextPage;
-    const lastMessageId = envelope?.lastMessageId ?? data?.lastMessageId;
-    if (!nextPage || !lastMessageId || !batch.length) break;
-    cursor = lastMessageId;
+  for (const channel of ['Call', '']) {
+    let cursor: string | undefined;
+    let total = 0;
+    for (;;) {
+      const data = await fetchGhlCallExportPage(cursor, pageSize, channel);
+      const batch = parseExportBatch(data);
+      for (const message of batch) {
+        total++;
+        yield message;
+      }
+      const { nextPage, lastMessageId } = parseExportCursor(data, batch);
+      if (!nextPage || !lastMessageId || !batch.length) break;
+      cursor = lastMessageId;
+    }
+    if (total > 0) return;
   }
 }
 
