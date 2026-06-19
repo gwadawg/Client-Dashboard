@@ -130,6 +130,19 @@ export default function ChurnOffboardingFormFields({
       </label>
 
       <label className="block space-y-1.5">
+        <span className="text-sm font-medium text-slate-400">Exit call transcript (optional)</span>
+        <textarea
+          value={draft.transcript}
+          onChange={e => setDraft(prev => ({ ...prev, transcript: e.target.value }))}
+          rows={5}
+          placeholder="Paste the full exit call transcript…"
+          className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-y"
+          style={fieldStyle}
+        />
+        <p className="text-xs text-slate-500">Saved on the churn call in Client Calls for search and review.</p>
+      </label>
+
+      <label className="block space-y-1.5">
         <span className="text-sm font-medium text-slate-400">Would they rejoin? (optional)</span>
         <select
           value={draft.would_rejoin}

@@ -151,6 +151,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       called_at: calledAt,
       disposition: 'completed',
       recording_url: draft.recording_url.trim() || null,
+      transcript: draft.transcript.trim() || null,
       notes: draft.client_feedback.trim(),
       status_history_id: historyId ?? null,
       created_by: ctx.userId,

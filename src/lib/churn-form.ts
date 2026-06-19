@@ -31,6 +31,7 @@ export type ChurnFormDraft = {
   client_feedback: string;
   internal_notes: string;
   recording_url: string;
+  transcript: string;
   would_rejoin: WouldRejoin;
   checklist: Record<ChurnChecklistKey, boolean>;
   checklist_answered: Record<ChurnChecklistKey, boolean>;
@@ -56,6 +57,7 @@ export function emptyChurnDraft(effectiveDate = ''): ChurnFormDraft {
     client_feedback: '',
     internal_notes: '',
     recording_url: '',
+    transcript: '',
     would_rejoin: '',
     ...emptyChecklistMaps(),
   };
@@ -102,6 +104,7 @@ export function churnDraftToResponses(draft: ChurnFormDraft): Record<string, unk
     client_feedback: draft.client_feedback.trim(),
     internal_notes: draft.internal_notes.trim() || null,
     recording_url: draft.recording_url.trim() || null,
+    transcript: draft.transcript.trim() || null,
     would_rejoin: draft.would_rejoin || null,
     checklist: draft.checklist,
     checklist_exceptions,
@@ -119,6 +122,8 @@ export function churnResponsesToDraft(responses: Record<string, unknown>): Churn
     typeof responses.internal_notes === 'string' ? responses.internal_notes : '';
   draft.recording_url =
     typeof responses.recording_url === 'string' ? responses.recording_url : '';
+  draft.transcript =
+    typeof responses.transcript === 'string' ? responses.transcript : '';
   draft.would_rejoin =
     responses.would_rejoin === 'yes' ||
     responses.would_rejoin === 'no' ||
@@ -192,6 +197,7 @@ export function parseChurnDraftFromBody(body: Record<string, unknown>): ChurnFor
   draft.client_feedback = typeof body.client_feedback === 'string' ? body.client_feedback : '';
   draft.internal_notes = typeof body.internal_notes === 'string' ? body.internal_notes : '';
   draft.recording_url = typeof body.recording_url === 'string' ? body.recording_url : '';
+  draft.transcript = typeof body.transcript === 'string' ? body.transcript : '';
   draft.would_rejoin =
     body.would_rejoin === 'yes' || body.would_rejoin === 'no' || body.would_rejoin === 'unknown'
       ? body.would_rejoin

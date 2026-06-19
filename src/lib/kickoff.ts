@@ -124,6 +124,7 @@ export type KickoffClient = {
 export type KickoffOnboardingCall = {
   id: string;
   recording_url: string | null;
+  transcript: string | null;
   called_at: string;
 };
 
@@ -202,6 +203,7 @@ export type KickoffDraft = {
   live_transfer_approved: '' | 'yes' | 'no';
   ghl_location_id: string;
   recording_url: string;
+  transcript: string;
   advance_lifecycle: boolean;
   pm_landing_copy: string;
   pm_brand_assets: string;
@@ -218,6 +220,7 @@ export function kickoffDraftFromClient(
   c: KickoffClient,
   recordingUrl = '',
   verticalConfirmed = false,
+  transcript = '',
 ): KickoffDraft {
   const phone = c.phone ?? '';
   return {
@@ -239,6 +242,7 @@ export function kickoffDraftFromClient(
     live_transfer_approved: c.live_transfer_approved === true ? 'yes' : c.live_transfer_approved === false ? 'no' : '',
     ghl_location_id: c.ghl_location_id ?? '',
     recording_url: recordingUrl,
+    transcript,
     advance_lifecycle: c.lifecycle_status === 'new_account',
     pm_landing_copy: '',
     pm_brand_assets: '',
@@ -330,6 +334,7 @@ export function kickoffDraftToBody(
     timezone: draft.timezone.trim() || null,
     ghl_location_id: draft.ghl_location_id.trim() || null,
     recording_url: draft.recording_url.trim() || null,
+    transcript: draft.transcript.trim() || null,
     advance_lifecycle: draft.advance_lifecycle,
   };
 

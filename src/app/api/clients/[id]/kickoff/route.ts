@@ -54,7 +54,7 @@ function parseLiveTransferApproved(value: unknown): boolean | null {
 async function findOnboardingCall(service: SupabaseClient, clientId: string) {
   const { data } = await service
     .from('client_calls')
-    .select('id, recording_url, called_at')
+    .select('id, recording_url, transcript, called_at')
     .eq('client_id', clientId)
     .eq('call_type', 'onboarding')
     .is('deleted_at', null)
@@ -106,6 +106,7 @@ function draftFromBody(body: Record<string, unknown>): KickoffDraft {
           : '',
     ghl_location_id: optionalText(body.ghl_location_id) ?? '',
     recording_url: optionalText(body.recording_url) ?? '',
+    transcript: optionalText(body.transcript) ?? '',
     advance_lifecycle: body.advance_lifecycle !== false,
     pm_landing_copy: optionalText(body.pm_landing_copy) ?? '',
     pm_brand_assets: optionalText(body.pm_brand_assets) ?? '',
@@ -198,6 +199,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   let ghlLocationId = optionalText(body.ghl_location_id);
   let recordingUrl = optionalText(body.recording_url);
+  let transcript = optionalText(body.transcript);
   const subAccountName = optionalText(body.sub_account_name);
 
   if (!includeRevenue && body.daily_adspend != null && body.daily_adspend !== '') {
@@ -223,6 +225,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (saveMode === 'complete') {
     ghlLocationId = ghlLocationId ?? optionalText(existingClient.ghl_location_id);
     recordingUrl = recordingUrl ?? optionalText(existingOnboardingCall?.recording_url);
+    transcript = transcript ?? optionalText(existingOnboardingCall?.transcript);
     const effectiveSubName = subAccountName ?? optionalText(existingClient.name);
     if (!effectiveSubName || clientNeedsGhlMapping({ ...existingClient, name: effectiveSubName })) {
       return NextResponse.json(
@@ -316,6 +319,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         .from('client_calls')
         .update({
           recording_url: recordingUrl,
+          transcript,
           disposition: 'completed',
           updated_by: ctx.userId,
           updated_at: now,
@@ -333,6 +337,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           call_type: 'onboarding',
           called_at: calledAt,
           recording_url: recordingUrl,
+          transcript,
           disposition: 'completed',
           created_by: ctx.userId,
           updated_by: ctx.userId,
@@ -374,6 +379,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           sub_account_name: subAccountName,
           ghl_location_id: ghlLocationId,
           recording_url: recordingUrl,
+          transcript,
         },
         applied_patch: updates,
       });

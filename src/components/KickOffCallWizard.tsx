@@ -101,8 +101,9 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
       }
       const c = data.client as KickoffClient;
       const recording = data.onboarding_call?.recording_url ?? "";
+      const transcript = data.onboarding_call?.transcript ?? "";
       const verticalConfirmed = !!data.vertical_confirmed;
-      const nextDraft = kickoffDraftFromClient(c, recording, verticalConfirmed);
+      const nextDraft = kickoffDraftFromClient(c, recording, verticalConfirmed, transcript);
       setClientName(c.name || fallbackName);
       setCanViewRevenue(!!data.can_view_revenue);
       setDraft(nextDraft);
@@ -201,10 +202,12 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
       return;
     }
     const recording = data.onboarding_call?.recording_url ?? draft.recording_url;
+    const transcript = data.onboarding_call?.transcript ?? draft.transcript;
     const refreshed = kickoffDraftFromClient(
       data.client as KickoffClient,
       recording,
       !!data.vertical_confirmed,
+      transcript,
     );
     setDraft(refreshed);
     setInitialSnapshot(refreshed);
@@ -542,6 +545,9 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                       </Field>
                       <Field label="OB Call Recording Link" required shareMode={shareMode} status={fieldStatus("recording_url")}>
                         <input type="url" value={draft.recording_url} disabled={saving} onChange={e => patch("recording_url", e.target.value)} placeholder="https://…" className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("recording_url"))} />
+                      </Field>
+                      <Field label="OB Call Transcript" shareMode={shareMode} helper="Paste the full call transcript for search and review in Client Calls.">
+                        <textarea value={draft.transcript} disabled={saving} onChange={e => patch("transcript", e.target.value)} rows={5} placeholder="Paste call transcript…" className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-y" style={fieldStyle(shareMode, fieldStatus("transcript"))} />
                       </Field>
                       <label className="flex items-start gap-3 cursor-pointer">
                         <input type="checkbox" checked={draft.advance_lifecycle} disabled={saving} onChange={e => patch("advance_lifecycle", e.target.checked)} className="mt-1" />

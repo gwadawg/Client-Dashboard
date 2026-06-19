@@ -72,6 +72,10 @@ export function formatChurnClickUpComment(
     lines.push('', line('Exit call recording', draft.recording_url.trim()));
   }
 
+  if (draft.transcript.trim()) {
+    lines.push(line('Exit call transcript', 'Saved in Client Calls'));
+  }
+
   lines.push('', '— Offboarding checklist —');
   for (const item of CHURN_CHECKLIST_ITEMS) {
     lines.push(formatChurnChecklistLine(draft, item, { plainText: true }).trimStart());
