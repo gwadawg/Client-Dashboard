@@ -55,8 +55,20 @@ export type GhlCallMessage = {
     callDuration?: string | number;
     callStatus?: string;
     userName?: string;
+    call?: {
+      duration?: string | number;
+      status?: string;
+    };
   };
   source?: string;
+};
+
+export type GhlUser = {
+  id?: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
 };
 
 function getToken(): string {
@@ -252,6 +264,24 @@ export async function updateAcquisitionOpportunityStage(
       status: 'open',
     },
   });
+}
+
+/** Map GHL user id → display name for the acquisition location (requires users.readonly). */
+export async function listAcquisitionLocationUsers(): Promise<Map<string, string>> {
+  const data = await ghlRequest<{ users?: GhlUser[] }>(
+    'GET',
+    `/users/?locationId=${encodeURIComponent(GHL_ACQUISITION_LOCATION_ID)}`,
+  );
+  const map = new Map<string, string>();
+  for (const user of data.users ?? []) {
+    if (!user.id) continue;
+    const name =
+      user.name?.trim() ||
+      [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
+      user.email?.trim();
+    if (name) map.set(user.id, name);
+  }
+  return map;
 }
 
 /** Fetch one export page (for debugging / flexible parsing). */

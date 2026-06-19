@@ -1,6 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { GHL_ACQUISITION_LOCATION_ID, normalizePhone } from './acquisition-config';
-import { exportGhlCallMessages, resolveGhlMessageRecordingUrl, type GhlCallMessage } from './ghl-acquisition-api';
+import {
+  exportGhlCallMessages,
+  listAcquisitionLocationUsers,
+  resolveGhlMessageRecordingUrl,
+  type GhlCallMessage,
+} from './ghl-acquisition-api';
+import { normalizeStoredAgentName } from './agent-name-aliases';
 
 const CALL_MESSAGE_TYPES = new Set([
   'TYPE_CALL',
@@ -26,6 +32,7 @@ export type AcquisitionDialsGhlBackfillReport = {
   until: string | null;
   with_recordings: boolean;
   outbound_only: boolean;
+  ghl_users_loaded: number;
   ghl_messages_seen: number;
   call_messages: number;
   skipped_not_call: number;
@@ -44,6 +51,8 @@ type ExistingDial = {
   lead_id: string | null;
   occurred_at: string;
   duration_seconds: number | null;
+  outcome: string | null;
+  agent_name: string | null;
   recording_url: string | null;
   raw: Record<string, unknown> | null;
 };
@@ -89,14 +98,24 @@ function dialPhone(message: GhlCallMessage): string | null {
 }
 
 function dialOutcome(message: GhlCallMessage): string | null {
-  return message.meta?.callStatus ?? message.status ?? null;
+  return message.meta?.callStatus ?? message.meta?.call?.status ?? message.status ?? null;
 }
 
 function dialDuration(message: GhlCallMessage): number | null {
-  const raw = message.meta?.callDuration;
+  const raw = message.meta?.callDuration ?? message.meta?.call?.duration;
   if (raw == null || raw === '') return null;
   const n = Number(String(raw).trim());
   return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+function resolveDialAgentName(message: GhlCallMessage, usersById: Map<string, string>): string | null {
+  const direct = message.userName ?? message.meta?.userName;
+  if (direct?.trim()) return normalizeStoredAgentName(direct);
+  const userId = message.userId;
+  if (userId && usersById.has(userId)) {
+    return normalizeStoredAgentName(usersById.get(userId));
+  }
+  return null;
 }
 
 function fingerprint(contactId: string | null | undefined, occurredAt: string, durationSeconds: number | null): string {
@@ -133,6 +152,7 @@ export async function backfillAcquisitionDialsFromGhl(
     until,
     with_recordings: withRecordings,
     outbound_only: outboundOnly,
+    ghl_users_loaded: 0,
     ghl_messages_seen: 0,
     call_messages: 0,
     skipped_not_call: 0,
@@ -145,8 +165,18 @@ export async function backfillAcquisitionDialsFromGhl(
     warnings: [],
   };
 
+  let usersById = new Map<string, string>();
+  try {
+    usersById = await listAcquisitionLocationUsers();
+    report.ghl_users_loaded = usersById.size;
+  } catch (e) {
+    report.warnings.push(`users lookup: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   const [{ data: existingDials, error: dialsError }, { data: leads, error: leadsError }] = await Promise.all([
-    service.from('acquisition_dials').select('id, ghl_contact_id, lead_id, occurred_at, duration_seconds, recording_url, raw'),
+    service
+      .from('acquisition_dials')
+      .select('id, ghl_contact_id, lead_id, occurred_at, duration_seconds, outcome, agent_name, recording_url, raw'),
     service.from('acquisition_leads').select('id, ghl_contact_id'),
   ]);
   if (dialsError) throw new Error(dialsError.message);
@@ -187,6 +217,8 @@ export async function backfillAcquisitionDialsFromGhl(
     }
 
     const durationSeconds = dialDuration(message);
+    const agentName = resolveDialAgentName(message, usersById);
+    const outcome = dialOutcome(message);
     const fp = fingerprint(contactId, occurredAt, durationSeconds);
     const existing = byMessageId.get(message.id) ?? byFingerprint.get(fp) ?? null;
 
@@ -214,8 +246,11 @@ export async function backfillAcquisitionDialsFromGhl(
     if (existing) {
       const needsRecording = recordingUrl && !existing.recording_url;
       const needsLead = leadByContact.get(contactId) && !existing.lead_id;
+      const needsAgent = agentName && !existing.agent_name;
+      const needsDuration = durationSeconds != null && existing.duration_seconds == null;
+      const needsOutcome = outcome && !existing.outcome;
       const needsRaw = existing.raw?.ghl_message_id !== message.id;
-      if (!needsRecording && !needsLead && !needsRaw) {
+      if (!needsRecording && !needsLead && !needsAgent && !needsDuration && !needsOutcome && !needsRaw) {
         report.skipped_existing++;
         continue;
       }
@@ -223,12 +258,17 @@ export async function backfillAcquisitionDialsFromGhl(
         const patch: Record<string, unknown> = {};
         if (needsRecording) patch.recording_url = recordingUrl;
         if (needsLead) patch.lead_id = leadByContact.get(contactId);
+        if (needsAgent) patch.agent_name = agentName;
+        if (needsDuration) patch.duration_seconds = durationSeconds;
+        if (needsOutcome) patch.outcome = outcome;
         if (needsRaw) patch.raw = { ...(existing.raw ?? {}), ...rawPayload };
         const { error } = await service.from('acquisition_dials').update(patch).eq('id', existing.id);
         if (error) {
           report.warnings.push(`update ${existing.id}: ${error.message}`);
           continue;
         }
+        if (needsAgent) existing.agent_name = agentName;
+        if (needsDuration) existing.duration_seconds = durationSeconds;
       }
       report.updated++;
     } else {
@@ -238,8 +278,8 @@ export async function backfillAcquisitionDialsFromGhl(
         occurred_at: occurredAt,
         phone: dialPhone(message),
         duration_seconds: durationSeconds,
-        outcome: dialOutcome(message),
-        agent_name: message.userName ?? message.meta?.userName ?? null,
+        outcome,
+        agent_name: agentName,
         recording_url: recordingUrl,
         raw: rawPayload,
       };
