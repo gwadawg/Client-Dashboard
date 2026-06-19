@@ -413,7 +413,6 @@ export async function upsertAcquisitionDial(
     });
     const callRow = {
       lead_id: leadId,
-      dial_id: data.id,
       call_type: 'dial' as const,
       called_at: occurredAt,
       status: dialToCallStatus(outcome),
@@ -422,7 +421,7 @@ export async function upsertAcquisitionDial(
       disposition: outcome,
       recording_url: recordingUrl,
       source: 'dial_ingest' as const,
-      details: { outcome, phone: row.phone },
+      details: { outcome, phone: row.phone, acquisition_dial_id: data.id },
       raw: payload,
       updated_at: new Date().toISOString(),
     };
@@ -430,7 +429,9 @@ export async function upsertAcquisitionDial(
     const { data: existingCall } = await service
       .from('acquisition_calls')
       .select('id')
-      .eq('dial_id', data.id)
+      .eq('lead_id', leadId)
+      .eq('call_type', 'dial')
+      .contains('details', { acquisition_dial_id: data.id })
       .maybeSingle();
 
     if (existingCall?.id) {
