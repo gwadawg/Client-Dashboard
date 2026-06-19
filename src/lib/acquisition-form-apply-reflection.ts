@@ -22,6 +22,7 @@ import {
   resolveObjectionLabel,
   validateCloserFormReflection,
 } from './closer-form-config';
+import { resolveDialLinkForSubmit } from './acquisition-dial-linkage';
 
 export type FunOutcome = 'pass' | 'boot_camp' | 'nurture' | 'not_fit';
 
@@ -55,6 +56,7 @@ export type SetterIntroReflectionInput = {
   rebook_at?: string | null;
   call_rating?: number | null;
   improvement_notes?: string | null;
+  dial_id?: string | null;
 };
 
 export type SetterIntroReflectionResult = {
@@ -92,6 +94,7 @@ export type CloserFormInput = {
   root_cause_objection?: string | null;
   root_cause_objection_other?: string | null;
   lead_source?: string | null;
+  dial_id?: string | null;
 };
 
 export type CloserFormResult = {
@@ -147,6 +150,9 @@ async function ensureLeadId(service: SupabaseClient, contactId: string): Promise
   }
   const upserted = await upsertAcquisitionLead(service, payload);
   if ('error' in upserted) throw new Error(upserted.error);
+  if ('skipped' in upserted) {
+    throw new Error(`Could not create acquisition lead (${upserted.reason})`);
+  }
   return upserted.id;
 }
 
@@ -251,6 +257,47 @@ async function upsertIntroCall(
       .eq('id', introApptId);
   }
   return data.id;
+}
+
+async function linkDialToCallRow(
+  service: SupabaseClient,
+  callId: string,
+  leadId: string,
+  opts: {
+    dial_id?: string | null;
+    appointmentAt?: string | null;
+    recording_url?: string | null;
+  },
+): Promise<void> {
+  const link = await resolveDialLinkForSubmit(service, leadId, opts);
+  if (!link) return;
+
+  const { data: existing } = await service
+    .from('acquisition_calls')
+    .select('details, recording_url')
+    .eq('id', callId)
+    .maybeSingle();
+
+  const prevDetails =
+    typeof existing?.details === 'object' && existing.details !== null && !Array.isArray(existing.details)
+      ? (existing.details as Record<string, unknown>)
+      : {};
+
+  const updates: Record<string, unknown> = {
+    dial_id: link.dial_id,
+    details: {
+      ...prevDetails,
+      linked_dial_id: link.dial_id,
+      link_method: link.link_method,
+    },
+    updated_at: new Date().toISOString(),
+  };
+
+  if (link.recording_url && !existing?.recording_url && !opts.recording_url?.trim()) {
+    updates.recording_url = link.recording_url;
+  }
+
+  await service.from('acquisition_calls').update(updates).eq('id', callId);
 }
 
 async function linkDemoToIntro(
@@ -472,6 +519,18 @@ export async function applySetterIntroReflection(
     .update({ form_submission_id: submissionId })
     .eq('id', introCallId);
 
+  const appointmentAt =
+    introAppt?.scheduled_at ??
+    introAppt?.booked_at ??
+    demoApptPre?.scheduled_at ??
+    demoApptPre?.booked_at ??
+    null;
+
+  await linkDialToCallRow(service, introCallId, leadId, {
+    dial_id: input.dial_id,
+    appointmentAt,
+  });
+
   return {
     submission_id: submissionId,
     lead_id: leadId,
@@ -546,6 +605,12 @@ export async function applyCloserForm(
   const calledAt = appt?.scheduled_at ?? appt?.booked_at ?? new Date().toISOString();
   const callType = resolveCloserCallType(appt?.appointment_type);
 
+  const dialLink = await resolveDialLinkForSubmit(service, leadId, {
+    dial_id: input.dial_id,
+    appointmentAt: calledAt,
+    recording_url: input.recording_url,
+  });
+
   const reflectionError = validateCloserFormReflection({
     offer_presented: input.offer_presented,
     closed_on_call: input.closed_on_call,
@@ -582,6 +647,9 @@ export async function applyCloserForm(
     surface_objection: surfaceObjection,
     root_cause_objection: rootCauseObjection,
     lead_source: leadSourcePatch?.source ?? null,
+    ...(dialLink
+      ? { linked_dial_id: dialLink.dial_id, link_method: dialLink.link_method }
+      : {}),
   };
 
   const callRow = {
@@ -592,7 +660,8 @@ export async function applyCloserForm(
     status: 'showed' as const,
     handled_by: input.closer_name,
     co_handler: input.setter_name ?? null,
-    recording_url: input.recording_url ?? null,
+    dial_id: dialLink?.dial_id ?? null,
+    recording_url: input.recording_url?.trim() || dialLink?.recording_url || null,
     transcript_url: input.transcript_url ?? null,
     notes: input.notes ?? null,
     disposition: input.disposition ?? rootCauseObjection ?? surfaceObjection ?? null,

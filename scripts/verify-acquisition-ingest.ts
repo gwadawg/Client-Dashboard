@@ -149,6 +149,7 @@ async function runLiveRoundTrip() {
 
   const lead = await upsertAcquisitionLead(service, p.lead);
   assert.ok(!('error' in lead), `lead ingest: ${'error' in lead ? lead.error : ''}`);
+  assert.ok(!('skipped' in lead), 'lead ingest skipped unexpectedly');
 
   const booked = await upsertAcquisitionAppointment(service, p.appointmentBooked);
   assert.ok(!('error' in booked), `appt booked: ${'error' in booked ? booked.error : ''}`);
