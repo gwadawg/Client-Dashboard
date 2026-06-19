@@ -6,6 +6,11 @@ import {
   type AcquisitionLeadProfile,
 } from '@/lib/acquisition-lead-profiles';
 import {
+  phoneDigits10,
+  pickCanonicalLead,
+  type AcquisitionLeadRow,
+} from '@/lib/acquisition-lead-resolve';
+import {
   isAcquisitionLeadSource,
   normalizeAcquisitionLeadSource,
 } from '@/lib/acquisition-lead-source';
@@ -45,7 +50,7 @@ export async function GET(req: Request) {
   const { data: leadRows, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const leads = leadRows ?? [];
+  const leads = dedupeLeadsByPhone(leadRows ?? []);
   if (leads.length === 0) {
     return NextResponse.json({
       rows: [],
@@ -58,14 +63,23 @@ export async function GET(req: Request) {
   }
 
   const leadIds = leads.map(l => l.id);
+  const ghlContactIds = [...new Set(leads.map(l => l.ghl_contact_id).filter(Boolean))] as string[];
 
   const convertedLeadIds = leads.filter(l => l.converted_client_id).map(l => l.id);
 
-  const [apptsRes, offersRes, closesRes, dialsRes, callsRes, journeyRes] = await Promise.all([
+  const dialQueries = [
+    ctx.service.from('acquisition_dials').select('*').in('lead_id', leadIds),
+    ghlContactIds.length > 0
+      ? ctx.service.from('acquisition_dials').select('*').in('ghl_contact_id', ghlContactIds)
+      : Promise.resolve({ data: [], error: null }),
+  ];
+
+  const [apptsRes, offersRes, closesRes, dialsByLeadRes, dialsByGhlRes, callsRes, journeyRes] =
+    await Promise.all([
     ctx.service.from('acquisition_appointments').select('*').in('lead_id', leadIds),
     ctx.service.from('acquisition_offers').select('*').in('lead_id', leadIds),
     ctx.service.from('acquisition_closes').select('*').in('lead_id', leadIds),
-    ctx.service.from('acquisition_dials').select('*').in('lead_id', leadIds),
+    ...dialQueries,
     ctx.service.from('acquisition_calls').select('*').in('lead_id', leadIds),
     convertedLeadIds.length > 0
       ? ctx.service
@@ -75,6 +89,11 @@ export async function GET(req: Request) {
           .eq('domain', 'client')
       : Promise.resolve({ data: [], error: null }),
   ]);
+
+  const dialsRes = {
+    data: mergeDialRows(dialsByLeadRes.data ?? [], dialsByGhlRes.data ?? [], leads),
+    error: dialsByLeadRes.error ?? dialsByGhlRes.error,
+  };
 
   if (apptsRes.error) return NextResponse.json({ error: apptsRes.error.message }, { status: 500 });
   if (offersRes.error) return NextResponse.json({ error: offersRes.error.message }, { status: 500 });
@@ -186,6 +205,83 @@ export async function PATCH(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
   return NextResponse.json({ ok: true, lead_id: data.id, source: data.source });
+}
+
+function dedupeLeadsByPhone<T extends AcquisitionLeadRow>(leads: T[]): T[] {
+  const withoutPhone: T[] = [];
+  const byPhone = new Map<string, T[]>();
+
+  for (const lead of leads) {
+    const key = phoneDigits10(lead.phone);
+    if (!key) {
+      withoutPhone.push(lead);
+      continue;
+    }
+    const list = byPhone.get(key) ?? [];
+    list.push(lead);
+    byPhone.set(key, list);
+  }
+
+  const deduped: T[] = [...withoutPhone];
+  for (const group of byPhone.values()) {
+    const canonical = pickCanonicalLead(group);
+    if (canonical) deduped.push(canonical);
+  }
+
+  return deduped.sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+}
+
+type MergedDialRow = {
+  id: string;
+  lead_id: string | null;
+  ghl_contact_id: string | null;
+  occurred_at: string;
+  agent_name: string | null;
+  duration_seconds: number | null;
+  outcome: string | null;
+  recording_url: string | null;
+};
+
+function mergeDialRows(
+  byLeadId: MergedDialRow[],
+  byGhlContactId: MergedDialRow[],
+  leads: Array<{ id: string; ghl_contact_id: string | null; raw?: unknown }>,
+): MergedDialRow[] {
+  const leadIdSet = new Set(leads.map((lead) => lead.id));
+  const ghlToLead = new Map<string, string>();
+  for (const lead of leads) {
+    if (lead.ghl_contact_id) ghlToLead.set(lead.ghl_contact_id, lead.id);
+    const raw =
+      lead.raw && typeof lead.raw === 'object' && !Array.isArray(lead.raw)
+        ? (lead.raw as Record<string, unknown>)
+        : null;
+    const alt = raw?.alternate_ghl_contact_ids;
+    if (Array.isArray(alt)) {
+      for (const id of alt) {
+        if (typeof id === 'string' && id.trim()) ghlToLead.set(id.trim(), lead.id);
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  const merged: MergedDialRow[] = [];
+
+  for (const dial of [...byLeadId, ...byGhlContactId]) {
+    if (seen.has(dial.id)) continue;
+    seen.add(dial.id);
+    if (dial.lead_id && leadIdSet.has(dial.lead_id)) {
+      merged.push(dial);
+      continue;
+    }
+    const mappedLeadId = dial.ghl_contact_id ? ghlToLead.get(dial.ghl_contact_id) : null;
+    if (mappedLeadId) {
+      merged.push({ ...dial, lead_id: mappedLeadId });
+    }
+  }
+
+  return merged;
 }
 
 function groupBy<T extends { lead_id: string | null }>(
