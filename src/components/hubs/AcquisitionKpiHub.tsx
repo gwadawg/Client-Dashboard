@@ -8,6 +8,7 @@ import AcquisitionKpiSetters from "../acquisition-kpi/AcquisitionKpiSetters";
 import AcquisitionKpiClosers from "../acquisition-kpi/AcquisitionKpiClosers";
 import AcquisitionKpiCosts from "../acquisition-kpi/AcquisitionKpiCosts";
 import { ACQUISITION_KPI_TABS, type AcquisitionKpiTab } from "@/lib/nav";
+import type { DatePreset } from "@/lib/date-presets";
 
 type Props = {
   tab: AcquisitionKpiTab;
@@ -15,9 +16,27 @@ type Props = {
   startDate: string;
   endDate: string;
   isOwner?: boolean;
+  preset: DatePreset;
+  customStart: string;
+  customEnd: string;
+  onPresetChange: (preset: DatePreset) => void;
+  onCustomStartChange: (value: string) => void;
+  onCustomEndChange: (value: string) => void;
 };
 
-export default function AcquisitionKpiHub({ tab, onTabChange, startDate, endDate, isOwner = false }: Props) {
+export default function AcquisitionKpiHub({
+  tab,
+  onTabChange,
+  startDate,
+  endDate,
+  isOwner = false,
+  preset,
+  customStart,
+  customEnd,
+  onPresetChange,
+  onCustomStartChange,
+  onCustomEndChange,
+}: Props) {
   const [filters, setFilters] = useState<KpiFilters>({ offerScope: "core", repFilter: "" });
   const [setterNames, setSetterNames] = useState<string[]>([]);
   const [closerNames, setCloserNames] = useState<string[]>([]);
@@ -47,6 +66,12 @@ export default function AcquisitionKpiHub({ tab, onTabChange, startDate, endDate
         setterNames={setterNames}
         closerNames={closerNames}
         onChange={setFilters}
+        preset={preset}
+        customStart={customStart}
+        customEnd={customEnd}
+        onPresetChange={onPresetChange}
+        onCustomStartChange={onCustomStartChange}
+        onCustomEndChange={onCustomEndChange}
       />
       <div className="flex-1 overflow-y-auto">
         <div className="px-6 pt-6">

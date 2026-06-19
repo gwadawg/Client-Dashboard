@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ClientSelect from "./ClientSelect";
@@ -59,42 +59,10 @@ import {
   resolveViewFromParams,
 } from "@/lib/nav";
 import { hasPermission, canViewClientRevenue, canAccessAutomations, type AllowedPermissions } from "@/lib/permissions";
+import DateRangeFilter from "./DateRangeFilter";
+import { type DatePreset, getDateRange } from "@/lib/date-presets";
 
 type Client = { id: string; name: string; is_live?: boolean; reporting_type?: ReportingType };
-
-type Preset =
-  | "today"
-  | "yesterday"
-  | "this_week"
-  | "last_week"
-  | "this_month"
-  | "last_month"
-  | "this_quarter"
-  | "ytd"
-  | "last_7"
-  | "last_14"
-  | "last_30"
-  | "last_90"
-  | "all_time"
-  | "custom";
-
-const PRESET_LABELS: Record<Preset, string> = {
-  today: "Today",
-  yesterday: "Yesterday",
-  this_week: "This Week",
-  last_week: "Last Week",
-  this_month: "This Month",
-  last_month: "Last Month",
-  this_quarter: "This Quarter",
-  ytd: "Year to Date",
-  last_7: "Last 7 Days",
-  last_14: "Last 14 Days",
-  last_30: "Last 30 Days",
-  last_90: "Last 90 Days",
-  all_time: "All Time",
-  custom: "Custom Range",
-};
-
 
 const LEGACY_VIEW_KEYS = new Set(Object.keys(LEGACY_VIEW_REDIRECTS));
 
@@ -138,67 +106,6 @@ const DEFAULT_COLLAPSED_GROUPS = new Set<string>(["Executive", "Admin"]);
 
 function ymd(d: Date): string {
   return d.toISOString().split("T")[0];
-}
-
-/**
- * Format a Date as YYYY-MM-DD using LOCAL calendar fields. Presets like
- * "today" / "this month" are local-calendar concepts; using the UTC `ymd`
- * here shifted the boundary by a day near midnight for non-UTC operators.
- */
-function ymdLocal(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-/**
- * "All Time" lower bound. A fixed floor well before any ingested data so the
- * range stays bounded (the client-health API requires both dates) while still
- * effectively meaning "everything".
- */
-const ALL_TIME_START = "2000-01-01";
-
-function getDateRange(p: Preset): { start: string; end: string } {
-  const now = new Date();
-  const today = ymdLocal(now);
-  if (p === "today") return { start: today, end: today };
-  if (p === "yesterday") {
-    const y = ymdLocal(new Date(now.getTime() - 86400000));
-    return { start: y, end: y };
-  }
-  if (p === "this_week") {
-    // Week starts Monday.
-    const day = now.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    return { start: ymdLocal(new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff)), end: today };
-  }
-  if (p === "last_week") {
-    const day = now.getDay();
-    const diffToMon = day === 0 ? -6 : 1 - day;
-    const thisMon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon);
-    const lastMon = new Date(thisMon.getTime() - 7 * 86400000);
-    const lastSun = new Date(thisMon.getTime() - 86400000);
-    return { start: ymdLocal(lastMon), end: ymdLocal(lastSun) };
-  }
-  if (p === "this_month") return {
-    start: ymdLocal(new Date(now.getFullYear(), now.getMonth(), 1)), end: today,
-  };
-  if (p === "last_month") return {
-    start: ymdLocal(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
-    end: ymdLocal(new Date(now.getFullYear(), now.getMonth(), 0)),
-  };
-  if (p === "this_quarter") {
-    const q = Math.floor(now.getMonth() / 3);
-    return { start: ymdLocal(new Date(now.getFullYear(), q * 3, 1)), end: today };
-  }
-  if (p === "ytd") return { start: ymdLocal(new Date(now.getFullYear(), 0, 1)), end: today };
-  if (p === "last_90") return { start: ymdLocal(new Date(now.getTime() - 90 * 86400000)), end: today };
-  if (p === "last_30") return { start: ymdLocal(new Date(now.getTime() - 30 * 86400000)), end: today };
-  if (p === "last_14") return { start: ymdLocal(new Date(now.getTime() - 14 * 86400000)), end: today };
-  if (p === "last_7")  return { start: ymdLocal(new Date(now.getTime() - 7 * 86400000)), end: today };
-  // all_time: bounded floor -> today, so the client-health view actually loads.
-  return { start: ALL_TIME_START, end: today };
 }
 
 /** Map the KPI timeline buckets onto the metric keys their cards use, for sparklines. */
@@ -362,7 +269,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
   const [hubTab, setHubTab] = useState<string | null>(() => parseUrlView(searchParams).tab);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
-  const [preset, setPreset] = useState<Preset>("this_month");
+  const [preset, setPreset] = useState<DatePreset>("this_month");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [metrics, setMetrics] = useState<MetricsResult | null>(null);
@@ -371,14 +278,12 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
   const [sparkMap, setSparkMap] = useState<SparkMap | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [overduePending, setOverduePending] = useState<number | null>(null);
-  const [showPresetMenu, setShowPresetMenu] = useState(false);
   const [heatmapDays, setHeatmapDays] = useState(0);
   const [heatmapClientId, setHeatmapClientId] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set(DEFAULT_COLLAPSED_GROUPS));
   const [dashboardSubView, setDashboardSubView] = useState<"main" | "conversions">("main");
   const [renderDate] = useState(() => new Date());
-  const presetRef = useRef<HTMLDivElement>(null);
 
   const goToView = (next: View, tab?: string | null) => {
     const target = resolveAllowedView(next);
@@ -434,14 +339,6 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
     setHubTab(parsed.tab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (presetRef.current && !presetRef.current.contains(e.target as Node)) setShowPresetMenu(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
 
   useEffect(() => {
     fetch("/api/clients").then(r => r.json()).then(d => setClients(d.clients ?? []));
@@ -544,7 +441,6 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
     || isAcquisition
     || isAcquisitionDataExplorer
     || isAgents
-    || view === "acquisition_kpis"
     || view === "dial_analytics"
     || view === "media_buyer"
     || view === "client_calls"
@@ -713,47 +609,14 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
                 </button>
               )}
 
-              <div className="relative" ref={presetRef}>
-                <button
-                  onClick={() => setShowPresetMenu(v => !v)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  style={{ background: "#f59e0b", color: "#fff", minWidth: "9rem" }}
-                >
-                  <span className="flex-1 text-left">{PRESET_LABELS[preset]}</span>
-                  <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {showPresetMenu && (
-                  <div className="absolute top-full right-0 mt-1.5 rounded-xl overflow-hidden z-20 w-48"
-                    style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
-                    {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
-                      <button key={p} onClick={() => { setPreset(p); setShowPresetMenu(false); }}
-                        className="block w-full text-left px-4 py-2.5 text-sm transition-colors"
-                        style={preset === p
-                          ? { background: "rgba(245,158,11,0.15)", color: "#f59e0b", fontWeight: 600 }
-                          : { color: "#94a3b8" }}
-                        onMouseEnter={e => { if (preset !== p) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)"; }}
-                        onMouseLeave={e => { if (preset !== p) (e.currentTarget as HTMLElement).style.background = ""; }}
-                      >
-                        {PRESET_LABELS[p]}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {preset === "custom" && (
-                <>
-                  <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
-                    className="px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
-                  <span className="text-sm" style={{ color: "#334155" }}>to</span>
-                  <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
-                    className="px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
-                </>
-              )}
+              <DateRangeFilter
+                preset={preset}
+                customStart={customStart}
+                customEnd={customEnd}
+                onPresetChange={setPreset}
+                onCustomStartChange={setCustomStart}
+                onCustomEndChange={setCustomEnd}
+              />
             </>
           )}
 
@@ -940,6 +803,12 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
               startDate={dateStart}
               endDate={dateEnd}
               isOwner={isOwner}
+              preset={preset}
+              customStart={customStart}
+              customEnd={customEnd}
+              onPresetChange={setPreset}
+              onCustomStartChange={setCustomStart}
+              onCustomEndChange={setCustomEnd}
             />
           )}
 

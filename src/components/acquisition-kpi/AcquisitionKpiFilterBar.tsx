@@ -2,6 +2,8 @@
 
 import type { OfferScope } from "@/lib/acquisition-metrics";
 import type { AcquisitionKpiTab } from "@/lib/nav";
+import type { DatePreset } from "@/lib/date-presets";
+import DateRangeFilter from "../DateRangeFilter";
 
 export type KpiFilters = {
   offerScope: OfferScope;
@@ -14,6 +16,12 @@ type Props = {
   setterNames: string[];
   closerNames: string[];
   onChange: (f: KpiFilters) => void;
+  preset: DatePreset;
+  customStart: string;
+  customEnd: string;
+  onPresetChange: (preset: DatePreset) => void;
+  onCustomStartChange: (value: string) => void;
+  onCustomEndChange: (value: string) => void;
 };
 
 const SCOPE_LABELS: Record<OfferScope, string> = {
@@ -29,6 +37,12 @@ export default function AcquisitionKpiFilterBar({
   setterNames,
   closerNames,
   onChange,
+  preset,
+  customStart,
+  customEnd,
+  onPresetChange,
+  onCustomStartChange,
+  onCustomEndChange,
 }: Props) {
   const repNames = activeTab === "closers" ? closerNames : setterNames;
   const repLabel = activeTab === "closers" ? "Closer" : "Setter";
@@ -39,6 +53,24 @@ export default function AcquisitionKpiFilterBar({
       className="flex flex-wrap items-center gap-3 px-6 py-3 text-xs"
       style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(15,17,21,0.8)" }}
     >
+      {/* Date range — same presets as Client KPIs */}
+      <div className="flex items-center gap-2">
+        <span style={{ color: "#475569", fontFamily: "var(--font-mono, monospace)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          Period
+        </span>
+        <DateRangeFilter
+          variant="inline"
+          preset={preset}
+          customStart={customStart}
+          customEnd={customEnd}
+          onPresetChange={onPresetChange}
+          onCustomStartChange={onCustomStartChange}
+          onCustomEndChange={onCustomEndChange}
+        />
+      </div>
+
+      <div style={{ width: 1, height: 20, background: "rgba(255,255,255,0.08)" }} />
+
       {/* Offer scope */}
       <div className="flex items-center gap-2">
         <span style={{ color: "#475569", fontFamily: "var(--font-mono, monospace)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase" }}>
