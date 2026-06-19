@@ -7,6 +7,7 @@ import ReportingTypeBadge, { ReportingTypeSelectOptions, ServiceProgramSelectOpt
 import { normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import { normalizeServiceProgram, serviceProgramApplies, type ServiceProgram, getServiceProgramLabel } from "@/lib/service-program";
 import { getReportingTypeLabel } from "@/lib/reporting-types";
+import { toDateInputValue } from "@/lib/client-dates";
 
 export type EditableClient = {
   name: string;
@@ -16,7 +17,9 @@ export type EditableClient = {
   billing_email: string | null;
   phone: string | null;
   reporting_type: string | null;
+  offer?: string | null;
   service_program?: string | null;
+  clickup_task_id?: string | null;
   source: string | null;
   website: string | null;
   brokerage_name: string | null;
@@ -42,9 +45,12 @@ type Draft = {
   name: string;
   primary_contact_name: string;
   email: string;
+  billing_email: string;
   phone: string;
   reporting_type: ReportingType;
+  offer: ReportingType;
   service_program: ServiceProgram | "";
+  clickup_task_id: string;
   source: string;
   website: string;
   brokerage_name: string;
@@ -63,6 +69,7 @@ type Draft = {
   contract_end_date: string;
   daily_adspend: string;
   performance_terms: string;
+  churned_at: string;
 };
 
 const LIFECYCLE_OPTIONS = ["new_account", "onboarding", "active", "paused", "off_boarding", "churned"];
@@ -77,10 +84,13 @@ export function clientToDraft(c: EditableClient): Draft {
   return {
     name: c.name ?? "",
     primary_contact_name: c.primary_contact_name || c.primary_contact || "",
-    email: c.email || c.billing_email || "",
+    email: c.email ?? "",
+    billing_email: c.billing_email ?? "",
     phone: c.phone ?? "",
     reporting_type: normalizeReportingType(c.reporting_type),
+    offer: normalizeReportingType(c.offer ?? c.reporting_type),
     service_program: normalizeServiceProgram(c.service_program) ?? "",
+    clickup_task_id: c.clickup_task_id ?? "",
     source: c.source ?? "",
     website: c.website ?? "",
     brokerage_name: c.brokerage_name ?? "",
@@ -93,12 +103,13 @@ export function clientToDraft(c: EditableClient): Draft {
     billing_type: c.billing_type ?? "",
     mrr: c.mrr != null ? String(c.mrr) : "",
     billing_day: c.billing_day != null ? String(c.billing_day) : "",
-    launch_date: c.launch_date ?? "",
-    date_signed: c.date_signed ?? "",
+    launch_date: toDateInputValue(c.launch_date),
+    date_signed: toDateInputValue(c.date_signed),
     contract_term_months: c.contract_term_months != null ? String(c.contract_term_months) : "",
-    contract_end_date: c.contract_end_date ?? "",
+    contract_end_date: toDateInputValue(c.contract_end_date),
     daily_adspend: c.daily_adspend != null ? String(c.daily_adspend) : "",
     performance_terms: c.performance_terms ?? "",
+    churned_at: toDateInputValue(c.churned_at),
   };
 }
 
@@ -107,8 +118,11 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     name: draft.name.trim(),
     primary_contact_name: draft.primary_contact_name.trim() || null,
     email: draft.email.trim() || null,
+    billing_email: draft.billing_email.trim() || null,
     phone: draft.phone.trim() || null,
     reporting_type: draft.reporting_type,
+    offer: draft.offer,
+    clickup_task_id: draft.clickup_task_id.trim() || null,
     service_program: serviceProgramApplies(draft.reporting_type)
       ? normalizeServiceProgram(draft.service_program)
       : null,
@@ -129,6 +143,9 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     contract_end_date: draft.contract_end_date || null,
     performance_terms: draft.performance_terms.trim() || null,
   };
+  if (draft.lifecycle_status === "churned") {
+    body.churned_at = draft.churned_at || null;
+  }
   if (canViewRevenue) {
     body.mrr = draft.mrr.trim() || null;
     body.daily_adspend = draft.daily_adspend.trim() || null;
@@ -169,22 +186,29 @@ export default function ClientFileEditForm({
   canViewRevenue: boolean;
   saving: boolean;
   saveError: string | null;
-  onSave: (body: Record<string, unknown>) => void;
+  onSave: (body: Record<string, unknown>) => void | Promise<void>;
   onRequestOffboard?: () => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => clientToDraft(client));
+  const [submitting, setSubmitting] = useState(false);
+  const busy = saving || submitting;
 
   function patch<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft(prev => ({ ...prev, [key]: value }));
   }
 
-  function submit() {
+  async function submit() {
     if (!draft.name.trim()) return;
     if (draft.lifecycle_status === "churned" && client.lifecycle_status !== "churned") {
       onRequestOffboard?.();
       return;
     }
-    onSave(draftToPatchBody(draft, canViewRevenue));
+    setSubmitting(true);
+    try {
+      await onSave(draftToPatchBody(draft, canViewRevenue));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -200,12 +224,16 @@ export default function ClientFileEditForm({
           <Field label="Sub-account name *" value={draft.name} onChange={v => patch("name", v)} />
           <Field label="Client name" value={draft.primary_contact_name} onChange={v => patch("primary_contact_name", v)} highlightEmpty />
           <Field label="Email" type="email" value={draft.email} onChange={v => patch("email", v)} highlightEmpty />
+          <Field label="Billing email" type="email" value={draft.billing_email} onChange={v => patch("billing_email", v)} highlightEmpty />
           <Field label="Phone" value={draft.phone} onChange={v => patch("phone", v)} highlightEmpty />
           <SelectField label="Client vertical" value={draft.reporting_type} onChange={v => {
             const vertical = normalizeReportingType(v);
             patch("reporting_type", vertical);
             if (!serviceProgramApplies(vertical)) patch("service_program", "");
           }}>
+            <ReportingTypeSelectOptions />
+          </SelectField>
+          <SelectField label="Offer (portfolio slice)" value={draft.offer} onChange={v => patch("offer", normalizeReportingType(v))}>
             <ReportingTypeSelectOptions />
           </SelectField>
           {serviceProgramApplies(draft.reporting_type) ? (
@@ -223,13 +251,19 @@ export default function ClientFileEditForm({
           <Field label="Brokerage" value={draft.brokerage_name} onChange={v => patch("brokerage_name", v)} highlightEmpty />
           <Field label="NMLS" value={draft.nmls} onChange={v => patch("nmls", v)} highlightEmpty />
           <Field label="State" value={draft.state} onChange={v => patch("state", v)} highlightEmpty />
+          <Field
+            label="ClickUp task ID"
+            value={draft.clickup_task_id}
+            onChange={v => patch("clickup_task_id", v)}
+            placeholder="e.g. 86abc123"
+          />
           <label className="flex flex-col gap-1">
             <span className="text-xs uppercase tracking-wider" style={{ color: !draft.states_licensed.length ? "#f59e0b" : "#475569" }}>
               Licensed in{!draft.states_licensed.length ? " · missing" : ""}
             </span>
             <StatesLicensedSelect
               value={draft.states_licensed}
-              disabled={saving}
+              disabled={busy}
               onChange={codes => patch("states_licensed", codes)}
               className="w-full"
             />
@@ -240,7 +274,7 @@ export default function ClientFileEditForm({
             </span>
             <TimezoneSelect
               value={draft.timezone}
-              disabled={saving}
+              disabled={busy}
               highlightEmpty
               onChange={tz => patch("timezone", tz ?? "")}
             />
@@ -280,12 +314,15 @@ export default function ClientFileEditForm({
           <Field label="Date signed" type="date" value={draft.date_signed} onChange={v => patch("date_signed", v)} highlightEmpty />
           <Field label="Contract term (mo)" type="number" value={draft.contract_term_months} onChange={v => patch("contract_term_months", v)} highlightEmpty />
           <Field label="Contract end" type="date" value={draft.contract_end_date} onChange={v => patch("contract_end_date", v)} />
+          {draft.lifecycle_status === "churned" && (
+            <Field label="Churn date" type="date" value={draft.churned_at} onChange={v => patch("churned_at", v)} />
+          )}
         </div>
         <div className="mt-4">
           <Field label="Performance terms" value={draft.performance_terms} onChange={v => patch("performance_terms", v)} wide multiline />
         </div>
-        {client.churned_at && (
-          <p className="text-xs mt-3" style={{ color: "#475569" }}>Churned on {client.churned_at} — set by system when lifecycle is churned.</p>
+        {draft.lifecycle_status === "churned" && !draft.churned_at && (
+          <p className="text-xs mt-3" style={{ color: "#f59e0b" }}>No churn date on file — set one above to backfill reporting.</p>
         )}
       </Section>
 
@@ -293,11 +330,11 @@ export default function ClientFileEditForm({
         <button
           type="button"
           onClick={submit}
-          disabled={saving || !draft.name.trim()}
+          disabled={busy || !draft.name.trim()}
           className="text-xs font-semibold px-4 py-2 rounded-lg"
-          style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", opacity: saving || !draft.name.trim() ? 0.5 : 1 }}
+          style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", opacity: busy || !draft.name.trim() ? 0.5 : 1 }}
         >
-          {saving ? "Saving…" : "Save changes"}
+          {busy ? "Saving…" : "Save changes"}
         </button>
       </div>
     </div>

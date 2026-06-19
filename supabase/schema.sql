@@ -689,7 +689,9 @@ begin
     new.last_status_changed_at := now();
 
     if new.lifecycle_status = 'churned' then
-      new.churned_at := now();
+      if new.churned_at is null then
+        new.churned_at := now();
+      end if;
     elsif new.lifecycle_status not in ('churned', 'off_boarding') then
       new.churned_at := null;
     end if;

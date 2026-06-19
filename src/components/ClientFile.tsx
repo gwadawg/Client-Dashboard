@@ -36,7 +36,8 @@ import { getServiceProgramLabel } from "@/lib/service-program";
 import { formatStatesLicensed } from "@/lib/us-states";
 import { timezoneLabel } from "@/lib/us-timezones";
 import ClientContactsSection from "@/components/ClientContactsSection";
-import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileEditForm";
+import { countMissingFields } from "@/components/ClientFileEditForm";
+import { toDateInputValue } from "@/lib/client-dates";
 import LifecycleStatusSelect from "@/components/LifecycleStatusSelect";
 import ClientFormsSection, { type FormSubmissionSummary } from "@/components/ClientFormsSection";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
@@ -78,6 +79,7 @@ type FileClient = {
   name: string;
   is_live: boolean | null;
   reporting_type: string | null;
+  offer?: string | null;
   service_program?: string | null;
   lifecycle_status: string | null;
   client_stage: string | null;
@@ -103,6 +105,7 @@ type FileClient = {
   states_licensed: string[] | null;
   timezone: string | null;
   ghl_location_id: string | null;
+  clickup_task_id?: string | null;
   created_at: string | null;
   churned_at: string | null;
 };
@@ -513,17 +516,19 @@ export default function ClientFile({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setSaveError(d.error ?? "Save failed");
+      setSaveError(typeof d.error === "string" ? d.error : "Save failed");
       setSavingProfile(false);
-      return;
+      return false;
     }
+    if (d.client) setClient(d.client);
     setEditing(false);
     setStatusChange(null);
     await load();
     onUpdated?.();
     setSavingProfile(false);
+    return true;
   }
 
   async function saveProfile(body: Record<string, unknown>) {
@@ -701,7 +706,7 @@ export default function ClientFile({
         ) : editing && client ? (
           <div className="px-6 py-5">
             <ClientFileEditForm
-              key={client.id}
+              key={`${client.id}-${client.churned_at ?? ""}-${client.launch_date ?? ""}-${client.date_signed ?? ""}-${client.clickup_task_id ?? ""}-${client.billing_email ?? ""}-${client.offer ?? ""}`}
               client={client}
               canViewRevenue={canViewRevenue}
               saving={savingProfile}
@@ -771,7 +776,8 @@ export default function ClientFile({
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
                 <Detail label="Sub-account name" value={client?.name} />
                 <Detail label="Client name" value={client?.primary_contact_name || client?.primary_contact} missing={!client?.primary_contact_name && !client?.primary_contact} />
-                <Detail label="Email" value={client?.email || client?.billing_email} missing={!client?.email && !client?.billing_email} />
+                <Detail label="Email" value={client?.email} missing={!client?.email} />
+                <Detail label="Billing email" value={client?.billing_email} missing={!client?.billing_email} />
                 <Detail label="Phone" value={client?.phone} missing={!client?.phone} />
                 <Detail
                   label="Client vertical"
@@ -791,6 +797,28 @@ export default function ClientFile({
                       <span>{getServiceProgramLabel(client.service_program)}</span>
                     </span>
                   ) : "—"}
+                />
+                <Detail
+                  label="Offer"
+                  value={client?.offer ? (
+                    <span className="inline-flex items-center gap-2">
+                      <ReportingTypeBadge value={client.offer} size="md" />
+                      <span>{getReportingTypeLabel(client.offer)}</span>
+                    </span>
+                  ) : null}
+                />
+                <Detail
+                  label="ClickUp task"
+                  value={client?.clickup_task_id ? (
+                    <a
+                      href={`https://app.clickup.com/t/${client.clickup_task_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sky-400 hover:underline"
+                    >
+                      {client.clickup_task_id} ↗
+                    </a>
+                  ) : null}
                 />
                 <Detail label="Lead source" value={client?.source} missing={!client?.source} />
                 <Detail label="Website" value={client?.website} missing={!client?.website} />
@@ -862,7 +890,7 @@ export default function ClientFile({
                 <Detail label="Contract term" value={client?.contract_term_months ? `${client.contract_term_months} mo` : null} missing={client?.contract_term_months == null} />
                 <Detail label="Contract end" value={client?.contract_end_date} />
                 {canViewRevenue && <Detail label="Daily ad spend" value={money(client?.daily_adspend)} />}
-                <Detail label="Churned" value={client?.churned_at} />
+                <Detail label="Churned" value={client?.churned_at ? toDateInputValue(client.churned_at) || client.churned_at : null} />
               </div>
               {client?.performance_terms && (
                 <div className="mt-4">

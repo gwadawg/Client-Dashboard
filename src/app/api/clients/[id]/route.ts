@@ -22,6 +22,7 @@ import {
 } from '@/lib/client-duplicate-check';
 import { replayPendingForClientId } from '@/lib/pending-events';
 import { CLIENT_CONTACT_FIELDS } from '@/lib/client-contacts';
+import { parseClientDatePatch } from '@/lib/client-dates';
 
 const STATUS_HISTORY_FIELDS =
   'id, previous_status, new_status, reason_code, note, mrr_at_change, changed_at, changed_by, source, related_call_id';
@@ -30,7 +31,7 @@ const CLIENT_NOTES_FIELDS =
   'id, note_type, reason_code, body, created_at, created_by, updated_at, related_call_id';
 
 const FILE_CLIENT_FIELDS =
-  'id, name, is_live, reporting_type, service_program, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, created_at, churned_at';
+  'id, name, is_live, reporting_type, service_program, offer, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, clickup_task_id, created_at, churned_at';
 
 const FILE_BILLING_FIELDS =
   'id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, passthrough_amount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, created_at';
@@ -151,14 +152,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const allowed = [
-    'name', 'is_live', 'reporting_type', 'service_program',
+    'name', 'is_live', 'reporting_type', 'service_program', 'offer',
     // Billing fields (editable from the Client Billing tab)
     'mrr', 'billing_type', 'billing_day', 'launch_date', 'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
     // Lifecycle (pause/churn/reactivate) + performance pricing note.
-    // churned_at is intentionally NOT here — the DB trigger owns it.
-    'lifecycle_status', 'performance_terms',
+    // churned_at: editable for churned clients (backfill / corrections). On a fresh
+    // churn transition the trigger still defaults to now() when churned_at is omitted.
+    'lifecycle_status', 'churned_at', 'performance_terms',
     // Identity / contact (Client Roster + Client File editor)
-    'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'ghl_location_id',
+    'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'ghl_location_id', 'clickup_task_id',
     'phone', 'source', 'website', 'brokerage_name', 'nmls', 'state', 'states_licensed', 'timezone',
     // Kick-off / ops fields
     'phone_live_transfer', 'phone_notifications', 'live_transfer_approved',
@@ -175,26 +177,39 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   for (const k of allowed) {
     if (!(k in body)) continue;
     if (k === 'states_licensed') continue;
+    if (k === 'churned_at') continue;
     if (!includeRevenue && revenueFields.has(k)) continue;
-    if (k === 'reporting_type') updates[k] = normalizeReportingType(body[k]);
+    if (k === 'reporting_type' || k === 'offer') updates[k] = normalizeReportingType(body[k]);
     else if (k === 'service_program') updates[k] = normalizeServiceProgram(body[k]);
+    else if (k === 'clickup_task_id') {
+      const raw = typeof body[k] === 'string' ? body[k].trim() : '';
+      updates[k] = raw || null;
+    }
     else if (k === 'kpi_benchmarks') updates[k] = body[k] ?? null; // object or null, stored as-is
     else if (booleanFields.has(k)) updates[k] = body[k] === true || body[k] === 'yes';
     else if (numericFields.has(k)) updates[k] = body[k] === '' || body[k] === null ? null : Number(body[k]);
     else updates[k] = body[k] === '' ? null : body[k];
   }
 
-  // Mirror vertical into offer for CEO / portfolio breakdowns.
+  // When only vertical changes, keep offer aligned unless the editor sent an explicit offer.
   if ('reporting_type' in updates) {
-    updates.offer = updates.reporting_type;
     if (!serviceProgramApplies(updates.reporting_type)) {
       updates.service_program = null;
     }
+    if (!('offer' in body)) {
+      updates.offer = updates.reporting_type;
+    }
   }
 
-  // Keep email and billing_email identical — roster edits one field, both columns update.
-  if ('email' in body || 'billing_email' in body) {
-    const raw = 'email' in body ? body.email : body.billing_email;
+  // Profile editor sends both columns; partial patches may send only one — keep those aligned.
+  const hasEmail = 'email' in body;
+  const hasBillingEmail = 'billing_email' in body;
+  if (hasEmail && hasBillingEmail) {
+    updates.email = body.email === '' || body.email == null ? null : body.email;
+    updates.billing_email =
+      body.billing_email === '' || body.billing_email == null ? null : body.billing_email;
+  } else if (hasEmail || hasBillingEmail) {
+    const raw = hasEmail ? body.email : body.billing_email;
     const synced = raw === '' || raw == null ? null : raw;
     updates.email = synced;
     updates.billing_email = synced;
@@ -234,7 +249,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ? body.status_change_note.trim()
       : null;
 
-  if (newLifecycle && requiresReasonOnChurn(newLifecycle)) {
+  // Capture prior row before lifecycle validation — profile edits on an already-
+  // churned client still include lifecycle_status in the body and must not require
+  // a churn reason unless the status is actually changing.
+  let previousLifecycle: string | null = null;
+  let previousMrr: number | null = null;
+  const { data: priorRow, error: priorErr } = await ctx.service
+    .from('clients')
+    .select('lifecycle_status, mrr, is_live, churned_at')
+    .eq('id', id)
+    .single();
+  if (priorErr) return NextResponse.json({ error: priorErr.message }, { status: 500 });
+  previousLifecycle = priorRow.lifecycle_status ?? null;
+  previousMrr = priorRow.mrr ?? null;
+
+  const lifecycleIsChanging =
+    !!newLifecycle && newLifecycle !== previousLifecycle;
+
+  if (lifecycleIsChanging && requiresReasonOnChurn(newLifecycle)) {
     if (!statusChangeReason || !isValidReasonCode(statusChangeReason)) {
       return NextResponse.json(
         { error: 'A churn reason is required when marking a client as churned' },
@@ -246,17 +278,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'Invalid status_change_reason' }, { status: 400 });
   }
 
-  // Capture prior row for lifecycle match + MRR history.
-  let previousLifecycle: string | null = null;
-  let previousMrr: number | null = null;
-  const { data: priorRow, error: priorErr } = await ctx.service
-    .from('clients')
-    .select('lifecycle_status, mrr, is_live')
-    .eq('id', id)
-    .single();
-  if (priorErr) return NextResponse.json({ error: priorErr.message }, { status: 500 });
-  previousLifecycle = priorRow.lifecycle_status ?? null;
-  previousMrr = priorRow.mrr ?? null;
+  if ('churned_at' in body) {
+    const targetLifecycle =
+      typeof updates.lifecycle_status === 'string'
+        ? updates.lifecycle_status
+        : previousLifecycle;
+    if (targetLifecycle !== 'churned') {
+      return NextResponse.json(
+        { error: 'Churn date can only be set while the client is churned' },
+        { status: 400 },
+      );
+    }
+    updates.churned_at = parseClientDatePatch(body.churned_at);
+  }
 
   if (newLifecycle) {
     const syncedLive = syncIsLiveWithLifecycle(
@@ -270,6 +304,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     typeof body.related_call_id === 'string' && body.related_call_id.trim()
       ? body.related_call_id.trim()
       : null;
+
+  if ('clickup_task_id' in updates && updates.clickup_task_id) {
+    const { data: taskDup, error: taskDupErr } = await ctx.service
+      .from('clients')
+      .select('id, name')
+      .eq('clickup_task_id', updates.clickup_task_id as string)
+      .neq('id', id)
+      .maybeSingle();
+    if (taskDupErr) return NextResponse.json({ error: taskDupErr.message }, { status: 500 });
+    if (taskDup) {
+      return NextResponse.json(
+        { error: `ClickUp task ID is already linked to ${taskDup.name}` },
+        { status: 409 },
+      );
+    }
+  }
 
   if ('name' in updates || 'email' in updates || 'ghl_location_id' in updates || 'primary_contact_name' in updates) {
     const { data: current } = await ctx.service
@@ -311,7 +361,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Enrich the trigger-created history row when lifecycle changes with feedback.
-  if (newLifecycle && previousLifecycle !== newLifecycle) {
+  if (lifecycleIsChanging) {
     const { data: historyRows, error: historyError } = await ctx.service
       .from('client_status_history')
       .select('id')

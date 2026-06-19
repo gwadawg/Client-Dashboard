@@ -93,11 +93,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const historyNote = formatChurnHistoryNote(draft);
   const responses = churnDraftToResponses(draft);
   const calledAt = `${draft.effective_churn_date}T12:00:00.000Z`;
+  const churnedAt = calledAt;
 
   const { error: updateErr } = await ctx.service
     .from('clients')
     .update({
       lifecycle_status: lifecycleStatus,
+      churned_at: churnedAt,
       ...(syncedLive !== undefined ? { is_live: syncedLive } : {}),
     })
     .eq('id', clientId);
