@@ -73,7 +73,7 @@ export type CloserFormInput = {
   closer_name: string;
   setter_name?: string | null;
   recording_url?: string | null;
-  transcript_url?: string | null;
+  transcript?: string | null;
   notes?: string | null;
   offer_presented: boolean;
   disposition?: string | null;
@@ -662,7 +662,7 @@ export async function applyCloserForm(
     co_handler: input.setter_name ?? null,
     dial_id: dialLink?.dial_id ?? null,
     recording_url: input.recording_url?.trim() || dialLink?.recording_url || null,
-    transcript_url: input.transcript_url ?? null,
+    transcript: input.transcript?.trim() || null,
     notes: input.notes ?? null,
     disposition: input.disposition ?? rootCauseObjection ?? surfaceObjection ?? null,
     source: 'form' as const,

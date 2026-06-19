@@ -39,6 +39,7 @@ export type EnrichedAcquisitionAppointment = {
   call_co_handler: string | null;
   recording_url: string | null;
   transcript_url: string | null;
+  transcript: string | null;
   disposition: string | null;
   call_notes: string | null;
   call_duration_seconds: number | null;
@@ -51,7 +52,7 @@ export type EnrichedAcquisitionAppointment = {
 };
 
 export const ENRICHED_APPOINTMENT_COLUMNS =
-  'id, lead_id, ghl_contact_id, ghl_appointment_id, appointment_type, calendar_id, booking_source, how_booked, booked_at, scheduled_at, status, qualified, setter_name, call_taken_by, lead_name, phone, intro_call_id, demo_credit_claimed_at, call_id, call_type, call_called_at, call_status, call_handled_by, call_co_handler, recording_url, transcript_url, disposition, call_notes, call_duration_seconds, call_source, form_submission_id, call_offer_id, credit_granted, queue_action, lead_source';
+  'id, lead_id, ghl_contact_id, ghl_appointment_id, appointment_type, calendar_id, booking_source, how_booked, booked_at, scheduled_at, status, qualified, setter_name, call_taken_by, lead_name, phone, intro_call_id, demo_credit_claimed_at, call_id, call_type, call_called_at, call_status, call_handled_by, call_co_handler, recording_url, transcript_url, transcript, disposition, call_notes, call_duration_seconds, call_source, form_submission_id, call_offer_id, credit_granted, queue_action, lead_source';
 
 export const ACQUISITION_STATUS_OPTIONS: { value: AcquisitionAppointmentStatus; label: string }[] = [
   { value: 'pending', label: 'Pending' },

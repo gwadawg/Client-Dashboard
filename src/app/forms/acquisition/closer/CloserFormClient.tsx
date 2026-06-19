@@ -11,6 +11,8 @@ import {
 import { REPORTING_TYPE_META, type ReportingType } from "@/lib/reporting-types";
 import { SERVICE_PROGRAM_META, type ServiceProgram } from "@/lib/service-program";
 import { ACQUISITION_LEAD_SOURCES } from "@/lib/acquisition-lead-source";
+import DialCallPicker from "@/components/acquisition/DialCallPicker";
+import type { DialOption } from "@/lib/acquisition-dial-linkage";
 
 const inputStyle: CSSProperties = {
   background: "#0f2040",
@@ -41,14 +43,16 @@ export default function CloserFormClient() {
   const contactId = searchParams.get("contact_id") ?? "";
   const appointmentId = searchParams.get("appointment_id") ?? "";
   const token = searchParams.get("token") ?? "";
+  const dialIdFromUrl = searchParams.get("dial_id") ?? "";
 
   const [leadName, setLeadName] = useState<string | null>(null);
   const [appointmentType, setAppointmentType] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [closerName, setCloserName] = useState("");
   const [setterName, setSetterName] = useState("");
-  const [recordingUrl, setRecordingUrl] = useState("");
-  const [transcriptUrl, setTranscriptUrl] = useState("");
+  const [selectedDialId, setSelectedDialId] = useState("");
+  const [selectedDial, setSelectedDial] = useState<DialOption | null>(null);
+  const [transcript, setTranscript] = useState("");
   const [notes, setNotes] = useState("");
   const [offerPresented, setOfferPresented] = useState<"" | "yes" | "no">("");
   const [closedOnCall, setClosedOnCall] = useState<"" | "yes" | "no">("");
@@ -124,8 +128,9 @@ export default function CloserFormClient() {
           token,
           closer_name: closerName,
           setter_name: setterName || null,
-          recording_url: recordingUrl || null,
-          transcript_url: transcriptUrl || null,
+          dial_id: selectedDialId || null,
+          recording_url: selectedDial?.recording_url || null,
+          transcript: transcript || null,
           notes: notes || null,
           offer_presented: offerYes,
           closed_on_call: offerYes ? (closedYes ? true : closedNo ? false : null) : false,
@@ -234,24 +239,32 @@ export default function CloserFormClient() {
           </p>
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-slate-400">Recording URL</span>
-          <input
-            type="url"
-            value={recordingUrl}
-            onChange={(e) => setRecordingUrl(e.target.value)}
-            className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
-            style={inputStyle}
+          <span className="text-xs font-medium text-slate-400">Which call is this report for?</span>
+          <DialCallPicker
+            contactId={contactId}
+            token={token}
+            appointmentId={appointmentId || null}
+            initialDialId={dialIdFromUrl || null}
+            value={selectedDialId}
+            onChange={(id, dial) => {
+              setSelectedDialId(id);
+              setSelectedDial(dial);
+            }}
           />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-slate-400">Transcript URL</span>
-          <input
-            type="url"
-            value={transcriptUrl}
-            onChange={(e) => setTranscriptUrl(e.target.value)}
-            className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
+          <span className="text-xs font-medium text-slate-400">Call transcript</span>
+          <textarea
+            value={transcript}
+            onChange={(e) => setTranscript(e.target.value)}
+            rows={6}
+            placeholder="Paste the full call transcript…"
+            className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none resize-y"
             style={inputStyle}
           />
+          <p className="text-xs text-slate-500 mt-1">
+            Paste the full transcript here — stored for review and future AI coaching.
+          </p>
         </label>
         <label className="block">
           <span className="text-xs font-medium text-slate-400">Notes (optional)</span>

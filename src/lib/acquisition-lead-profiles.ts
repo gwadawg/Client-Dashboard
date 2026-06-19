@@ -28,6 +28,7 @@ export type AcquisitionTimelineItem = {
   details: string | null;
   recording_url: string | null;
   transcript_url: string | null;
+  transcript: string | null;
 };
 
 export type AcquisitionLeadProfile = {
@@ -128,6 +129,7 @@ type CallRow = {
   co_handler: string | null;
   recording_url: string | null;
   transcript_url: string | null;
+  transcript: string | null;
   disposition: string | null;
   notes: string | null;
   duration_seconds: number | null;
@@ -142,6 +144,7 @@ type ClientJourneyRow = {
   handled_by: string | null;
   recording_url: string | null;
   transcript_url: string | null;
+  transcript: string | null;
   disposition: string | null;
   notes: string | null;
 };
@@ -258,6 +261,7 @@ export function buildAcquisitionLeadProfile(
     details: joinDetails([lead.source, lead.offer_interest]),
     recording_url: null,
     transcript_url: null,
+    transcript: null,
   });
 
   const apptIdsWithCalls = new Set(
@@ -281,6 +285,7 @@ export function buildAcquisitionLeadProfile(
         ]),
         recording_url: null,
         transcript_url: null,
+        transcript: null,
       });
     }
     if (appt.scheduled_at) {
@@ -300,6 +305,7 @@ export function buildAcquisitionLeadProfile(
             ]),
             recording_url: null,
             transcript_url: null,
+            transcript: null,
           });
         }
       }
@@ -321,6 +327,7 @@ export function buildAcquisitionLeadProfile(
       ]),
       recording_url: call.recording_url,
       transcript_url: call.transcript_url,
+      transcript: call.transcript ?? null,
     });
     if (eventType === 'dial') {
       bumpCountsFromEvent(counts, 'dial');
@@ -347,6 +354,7 @@ export function buildAcquisitionLeadProfile(
       ]),
       recording_url: offer.recording_link,
       transcript_url: null,
+      transcript: null,
     });
     bumpCountsFromEvent(counts, 'offer_made');
     funnelStage = stageFromEvent('offer_made', funnelStage);
@@ -360,6 +368,7 @@ export function buildAcquisitionLeadProfile(
         details: joinDetails([offer.offer_type, 'marked closed on offer sheet']),
         recording_url: offer.recording_link,
         transcript_url: null,
+        transcript: null,
       });
     }
   }
@@ -386,6 +395,7 @@ export function buildAcquisitionLeadProfile(
       ]),
       recording_url: null,
       transcript_url: null,
+      transcript: null,
     });
     if (!dismissed) {
       bumpCountsFromEvent(counts, 'client_closed');
@@ -409,6 +419,7 @@ export function buildAcquisitionLeadProfile(
         ]),
         recording_url: dial.recording_url,
         transcript_url: null,
+        transcript: null,
       });
     }
   }
@@ -422,6 +433,7 @@ export function buildAcquisitionLeadProfile(
       details: joinDetails([row.handled_by, row.disposition, row.notes]),
       recording_url: row.recording_url,
       transcript_url: row.transcript_url,
+      transcript: row.transcript ?? null,
     });
   }
 

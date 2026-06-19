@@ -115,8 +115,12 @@ function TimelineRow({ item }: { item: AcquisitionTimelineItem }) {
           </a>
         ) : item.transcript_url ? (
           <a href={item.transcript_url} target="_blank" rel="noopener noreferrer" style={{ color: "#38bdf8" }}>
-            Transcript
+            Transcript link
           </a>
+        ) : item.transcript ? (
+          <span style={{ color: "#38bdf8" }} title={`${item.transcript.length.toLocaleString()} characters`}>
+            Transcript
+          </span>
         ) : (
           <span style={{ color: "#334155" }}>—</span>
         )}

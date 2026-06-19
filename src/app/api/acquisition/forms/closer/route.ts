@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
       closer_name: closerName,
       setter_name: str(body.setter_name),
       recording_url: str(body.recording_url),
-      transcript_url: str(body.transcript_url),
+      transcript: str(body.transcript) ?? str(body.transcript_url),
       notes: str(body.notes),
       offer_presented: offerPresented,
       disposition: str(body.disposition),
@@ -149,6 +149,7 @@ export async function POST(req: NextRequest) {
       root_cause_objection: str(body.root_cause_objection),
       root_cause_objection_other: str(body.root_cause_objection_other),
       lead_source: str(body.lead_source),
+      dial_id: str(body.dial_id),
     });
 
     return NextResponse.json({ ok: true, ...result });

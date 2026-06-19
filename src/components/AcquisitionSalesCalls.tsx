@@ -21,6 +21,7 @@ type CallRow = {
   co_handler: string | null;
   recording_url: string | null;
   transcript_url: string | null;
+  transcript: string | null;
   disposition: string | null;
   notes: string | null;
   appointment_id: string | null;
@@ -172,9 +173,14 @@ export default function AcquisitionSalesCalls({ startDate, endDate }: Props) {
                           <a href={row.recording_url} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">Recording</a>
                         )}
                         {row.transcript_url && (
-                          <a href={row.transcript_url} target="_blank" rel="noreferrer" className="text-violet-400 hover:underline">Transcript</a>
+                          <a href={row.transcript_url} target="_blank" rel="noreferrer" className="text-violet-400 hover:underline">Transcript link</a>
                         )}
-                        {!row.recording_url && !row.transcript_url && (
+                        {row.transcript && (
+                          <span className="text-violet-400" title={`${row.transcript.length.toLocaleString()} characters`}>
+                            Transcript
+                          </span>
+                        )}
+                        {!row.recording_url && !row.transcript_url && !row.transcript && (
                           <span className="text-slate-600">—</span>
                         )}
                       </td>
