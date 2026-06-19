@@ -43,6 +43,7 @@ import ClientFormsSection, { type FormSubmissionSummary } from "@/components/Cli
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
+import StatusChangeModal from "@/components/StatusChangeModal";
 import ClientInterventionHistory from "@/components/ClientInterventionHistory";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
