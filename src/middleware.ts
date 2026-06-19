@@ -8,6 +8,7 @@ const BYPASS_ROUTES = [
   '/api/ad-spend',
   '/api/meta-ad-insights',
   '/api/admin/onboard',
+  '/api/admin/backfill-acquisition-dials',
   '/api/admin/clients',
   '/api/onboard',
   '/api/billings/reminders',
