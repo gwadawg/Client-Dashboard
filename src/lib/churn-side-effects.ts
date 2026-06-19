@@ -10,7 +10,9 @@ import {
   updateClickUpTask,
 } from '@/lib/clickup';
 import {
+  CHURN_CHECKLIST_ITEMS,
   churnReasonDisplay,
+  formatChurnChecklistLine,
   formatChurnSlackChecklist,
   wouldRejoinLabel,
   type ChurnFormDraft,
@@ -71,15 +73,8 @@ export function formatChurnClickUpComment(
   }
 
   lines.push('', '— Offboarding checklist —');
-  for (const item of [
-    ['exit_call_completed', 'Exit / churn call completed'],
-    ['meta_ads_paused', 'Meta ads paused or transferred'],
-    ['ghl_access_documented', 'GHL access documented / revoked'],
-    ['billing_finalized', 'Billing finalized'],
-    ['slack_channel_archived', 'Slack channel archived / notified'],
-  ] as const) {
-    const done = draft.checklist[item[0]];
-    lines.push(`${done ? '✓' : '—'} ${item[1]}`);
+  for (const item of CHURN_CHECKLIST_ITEMS) {
+    lines.push(formatChurnChecklistLine(draft, item, { plainText: true }).trimStart());
   }
 
   return lines.join('\n');

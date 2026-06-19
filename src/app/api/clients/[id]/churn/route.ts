@@ -4,6 +4,7 @@ import { CLIENT_CALL_FIELDS } from '@/lib/client-calls';
 import { isValidReasonCode } from '@/lib/client-feedback';
 import {
   churnDraftToResponses,
+  churnChecklistValidationError,
   formatChurnHistoryNote,
   isChurnFormComplete,
   parseChurnDraftFromBody,
@@ -64,7 +65,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   if (!isChurnFormComplete(draft)) {
     return NextResponse.json(
-      { error: 'Complete all required fields and checklist items before submitting' },
+      {
+        error:
+          churnChecklistValidationError(draft) ??
+          'Complete all required fields and checklist items before submitting',
+      },
       { status: 400 },
     );
   }

@@ -5,6 +5,8 @@ import {
   CHURN_CHECKLIST_ITEMS,
   WOULD_REJOIN_OPTIONS,
   churnReasonDisplay,
+  isChurnChecklistItemSatisfied,
+  type ChurnChecklistKey,
   type ChurnFormDraft,
 } from "@/lib/churn-form";
 
@@ -17,7 +19,8 @@ const fieldStyle = {
 type Props = {
   draft: ChurnFormDraft;
   setDraft: React.Dispatch<React.SetStateAction<ChurnFormDraft>>;
-  patchChecklist: (key: keyof ChurnFormDraft["checklist"], checked: boolean) => void;
+  patchChecklist: (key: ChurnChecklistKey, completed: boolean) => void;
+  patchChecklistException: (key: ChurnChecklistKey, explanation: string) => void;
   alreadyChurned: boolean;
   existingSubmission: { submitted_at: string; responses: Record<string, unknown> } | null;
   saveError: string | null;
@@ -30,6 +33,7 @@ export default function ChurnOffboardingFormFields({
   draft,
   setDraft,
   patchChecklist,
+  patchChecklistException,
   alreadyChurned,
   existingSubmission,
   saveError,
@@ -139,18 +143,21 @@ export default function ChurnOffboardingFormFields({
         </select>
       </label>
 
-      <div className="space-y-2 pt-2">
-        <p className="text-sm font-medium text-slate-400">Offboarding checklist *</p>
+      <div className="space-y-3 pt-2">
+        <div>
+          <p className="text-sm font-medium text-slate-400">Offboarding checklist *</p>
+          <p className="text-xs mt-0.5 text-slate-500">
+            Answer yes or no for each item. If no, explain why so the form can still be submitted.
+          </p>
+        </div>
         {CHURN_CHECKLIST_ITEMS.map(item => (
-          <label key={item.key} className="flex items-start gap-3 cursor-pointer rounded-lg px-3 py-2 hover:bg-white/5">
-            <input
-              type="checkbox"
-              checked={draft.checklist[item.key]}
-              onChange={e => patchChecklist(item.key, e.target.checked)}
-              className="mt-1"
-            />
-            <span className="text-sm text-slate-200">{item.label}</span>
-          </label>
+          <ChurnChecklistItemRow
+            key={item.key}
+            item={item}
+            draft={draft}
+            onSelect={completed => patchChecklist(item.key, completed)}
+            onExceptionChange={explanation => patchChecklistException(item.key, explanation)}
+          />
         ))}
       </div>
 
@@ -167,6 +174,74 @@ export default function ChurnOffboardingFormFields({
       >
         {saving ? "Submitting…" : submitLabel}
       </button>
+    </div>
+  );
+}
+
+function ChurnChecklistItemRow({
+  item,
+  draft,
+  onSelect,
+  onExceptionChange,
+}: {
+  item: (typeof CHURN_CHECKLIST_ITEMS)[number];
+  draft: ChurnFormDraft;
+  onSelect: (completed: boolean) => void;
+  onExceptionChange: (explanation: string) => void;
+}) {
+  const answered = draft.checklist_answered[item.key];
+  const completed = draft.checklist[item.key];
+  const satisfied = isChurnChecklistItemSatisfied(draft, item.key);
+  const showExplanation = answered && !completed;
+
+  return (
+    <div
+      className="rounded-lg px-3 py-3 space-y-2"
+      style={{
+        background: satisfied ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.02)",
+        border: satisfied ? "1px solid rgba(34,197,94,0.2)" : "1px solid rgba(255,255,255,0.06)",
+      }}
+    >
+      <p className="text-sm text-slate-200">{item.label}</p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onSelect(true)}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+          style={{
+            background: answered && completed ? "rgba(34,197,94,0.2)" : "rgba(255,255,255,0.05)",
+            color: answered && completed ? "#86efac" : "#94a3b8",
+            border: answered && completed ? "1px solid rgba(34,197,94,0.4)" : "1px solid rgba(255,255,255,0.1)",
+          }}
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelect(false)}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+          style={{
+            background: answered && !completed ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.05)",
+            color: answered && !completed ? "#fcd34d" : "#94a3b8",
+            border: answered && !completed ? "1px solid rgba(245,158,11,0.35)" : "1px solid rgba(255,255,255,0.1)",
+          }}
+        >
+          No
+        </button>
+      </div>
+      {showExplanation && (
+        <label className="block space-y-1.5">
+          <span className="text-xs font-medium text-slate-400">Why wasn&apos;t this completed? *</span>
+          <textarea
+            value={draft.checklist_exceptions[item.key]}
+            onChange={e => onExceptionChange(e.target.value)}
+            rows={2}
+            placeholder="Brief explanation (e.g. client never ran Meta ads, billing handled by partner, etc.)"
+            className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-y"
+            style={fieldStyle}
+          />
+        </label>
+      )}
     </div>
   );
 }

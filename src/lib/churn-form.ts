@@ -33,11 +33,23 @@ export type ChurnFormDraft = {
   recording_url: string;
   would_rejoin: WouldRejoin;
   checklist: Record<ChurnChecklistKey, boolean>;
+  checklist_answered: Record<ChurnChecklistKey, boolean>;
+  checklist_exceptions: Record<ChurnChecklistKey, string>;
 };
 
-export function emptyChurnDraft(effectiveDate = ''): ChurnFormDraft {
+function emptyChecklistMaps() {
   const checklist = {} as Record<ChurnChecklistKey, boolean>;
-  for (const item of CHURN_CHECKLIST_ITEMS) checklist[item.key] = false;
+  const checklist_answered = {} as Record<ChurnChecklistKey, boolean>;
+  const checklist_exceptions = {} as Record<ChurnChecklistKey, string>;
+  for (const item of CHURN_CHECKLIST_ITEMS) {
+    checklist[item.key] = false;
+    checklist_answered[item.key] = false;
+    checklist_exceptions[item.key] = '';
+  }
+  return { checklist, checklist_answered, checklist_exceptions };
+}
+
+export function emptyChurnDraft(effectiveDate = ''): ChurnFormDraft {
   return {
     reason_code: '',
     effective_churn_date: effectiveDate || new Date().toISOString().slice(0, 10),
@@ -45,18 +57,45 @@ export function emptyChurnDraft(effectiveDate = ''): ChurnFormDraft {
     internal_notes: '',
     recording_url: '',
     would_rejoin: '',
-    checklist,
+    ...emptyChecklistMaps(),
   };
+}
+
+export function isChurnChecklistItemSatisfied(
+  draft: ChurnFormDraft,
+  key: ChurnChecklistKey,
+): boolean {
+  if (!draft.checklist_answered[key]) return false;
+  if (draft.checklist[key]) return true;
+  return !!draft.checklist_exceptions[key]?.trim();
+}
+
+export function churnChecklistValidationError(draft: ChurnFormDraft): string | null {
+  for (const item of CHURN_CHECKLIST_ITEMS) {
+    if (!draft.checklist_answered[item.key]) {
+      return `Answer yes or no for every checklist item (missing: "${item.label}").`;
+    }
+    if (!draft.checklist[item.key] && !draft.checklist_exceptions[item.key]?.trim()) {
+      return `Explain why "${item.label}" was not completed.`;
+    }
+  }
+  return null;
 }
 
 export function isChurnFormComplete(draft: ChurnFormDraft): boolean {
   if (!draft.effective_churn_date.trim()) return false;
   if (!isValidReasonCode(draft.reason_code)) return false;
   if (!draft.client_feedback.trim()) return false;
-  return CHURN_CHECKLIST_ITEMS.every(item => draft.checklist[item.key] === true);
+  return CHURN_CHECKLIST_ITEMS.every(item => isChurnChecklistItemSatisfied(draft, item.key));
 }
 
 export function churnDraftToResponses(draft: ChurnFormDraft): Record<string, unknown> {
+  const checklist_exceptions = Object.fromEntries(
+    CHURN_CHECKLIST_ITEMS.map(item => [
+      item.key,
+      draft.checklist[item.key] ? null : draft.checklist_exceptions[item.key].trim() || null,
+    ]),
+  );
   return {
     reason_code: draft.reason_code,
     effective_churn_date: draft.effective_churn_date,
@@ -65,6 +104,7 @@ export function churnDraftToResponses(draft: ChurnFormDraft): Record<string, unk
     recording_url: draft.recording_url.trim() || null,
     would_rejoin: draft.would_rejoin || null,
     checklist: draft.checklist,
+    checklist_exceptions,
   };
 }
 
@@ -92,6 +132,19 @@ export function churnResponsesToDraft(responses: Record<string, unknown>): Churn
       draft.checklist[item.key] = !!(raw as Record<string, boolean>)[item.key];
     }
   }
+
+  const rawExceptions = responses.checklist_exceptions;
+  if (rawExceptions && typeof rawExceptions === 'object') {
+    for (const item of CHURN_CHECKLIST_ITEMS) {
+      const value = (rawExceptions as Record<string, unknown>)[item.key];
+      draft.checklist_exceptions[item.key] = typeof value === 'string' ? value : '';
+    }
+  }
+
+  for (const item of CHURN_CHECKLIST_ITEMS) {
+    draft.checklist_answered[item.key] =
+      draft.checklist[item.key] || !!draft.checklist_exceptions[item.key]?.trim();
+  }
   return draft;
 }
 
@@ -108,11 +161,23 @@ export function formatChurnHistoryNote(draft: ChurnFormDraft): string {
   return parts.join('\n\n');
 }
 
+export function formatChurnChecklistLine(
+  draft: ChurnFormDraft,
+  item: (typeof CHURN_CHECKLIST_ITEMS)[number],
+  options?: { plainText?: boolean },
+): string {
+  if (draft.checklist[item.key]) return `  ✓ ${item.label}`;
+  const reason = draft.checklist_exceptions[item.key]?.trim();
+  if (reason) {
+    const suffix = options?.plainText ? `(not done: ${reason})` : `_(not done: ${reason})_`;
+    return `  — ${item.label} ${suffix}`;
+  }
+  return `  — ${item.label}`;
+}
+
 export function formatChurnSlackChecklist(responses: Record<string, unknown>): string {
   const draft = churnResponsesToDraft(responses);
-  return CHURN_CHECKLIST_ITEMS.map(item =>
-    draft.checklist[item.key] ? `  ✓ ${item.label}` : `  — ${item.label}`,
-  ).join('\n');
+  return CHURN_CHECKLIST_ITEMS.map(item => formatChurnChecklistLine(draft, item)).join('\n');
 }
 
 export function churnReasonDisplay(code: string | null | undefined): string {
@@ -134,6 +199,24 @@ export function parseChurnDraftFromBody(body: Record<string, unknown>): ChurnFor
   if (body.checklist && typeof body.checklist === 'object') {
     for (const item of CHURN_CHECKLIST_ITEMS) {
       draft.checklist[item.key] = !!(body.checklist as Record<string, boolean>)[item.key];
+    }
+  }
+  if (body.checklist_exceptions && typeof body.checklist_exceptions === 'object') {
+    for (const item of CHURN_CHECKLIST_ITEMS) {
+      const value = (body.checklist_exceptions as Record<string, unknown>)[item.key];
+      draft.checklist_exceptions[item.key] = typeof value === 'string' ? value : '';
+    }
+  }
+  if (body.checklist_answered && typeof body.checklist_answered === 'object') {
+    for (const item of CHURN_CHECKLIST_ITEMS) {
+      draft.checklist_answered[item.key] = !!(body.checklist_answered as Record<string, boolean>)[
+        item.key
+      ];
+    }
+  } else {
+    for (const item of CHURN_CHECKLIST_ITEMS) {
+      draft.checklist_answered[item.key] =
+        draft.checklist[item.key] || !!draft.checklist_exceptions[item.key]?.trim();
     }
   }
   return draft;

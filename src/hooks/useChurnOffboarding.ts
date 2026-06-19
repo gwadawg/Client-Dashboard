@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  churnChecklistValidationError,
   emptyChurnDraft,
   isChurnFormComplete,
+  type ChurnChecklistKey,
   type ChurnFormDraft,
 } from "@/lib/churn-form";
 
@@ -61,10 +63,22 @@ export function useChurnOffboarding(clientId: string | null) {
     return () => { cancelled = true; };
   }, [clientId]);
 
-  const patchChecklist = useCallback((key: keyof ChurnFormDraft["checklist"], checked: boolean) => {
+  const patchChecklist = useCallback((key: ChurnChecklistKey, completed: boolean) => {
     setDraft(prev => ({
       ...prev,
-      checklist: { ...prev.checklist, [key]: checked },
+      checklist_answered: { ...prev.checklist_answered, [key]: true },
+      checklist: { ...prev.checklist, [key]: completed },
+      checklist_exceptions: completed
+        ? { ...prev.checklist_exceptions, [key]: "" }
+        : prev.checklist_exceptions,
+    }));
+    setSaveError(null);
+  }, []);
+
+  const patchChecklistException = useCallback((key: ChurnChecklistKey, explanation: string) => {
+    setDraft(prev => ({
+      ...prev,
+      checklist_exceptions: { ...prev.checklist_exceptions, [key]: explanation },
     }));
     setSaveError(null);
   }, []);
@@ -72,7 +86,10 @@ export function useChurnOffboarding(clientId: string | null) {
   const submit = useCallback(async (): Promise<boolean> => {
     if (!clientId) return false;
     if (!isChurnFormComplete(draft)) {
-      setSaveError("Complete all required fields and checklist items.");
+      setSaveError(
+        churnChecklistValidationError(draft) ??
+          "Complete all required fields and checklist items.",
+      );
       return false;
     }
     setSaving(true);
@@ -110,6 +127,7 @@ export function useChurnOffboarding(clientId: string | null) {
     draft,
     setDraft,
     patchChecklist,
+    patchChecklistException,
     submit,
     success,
     resetAfterSuccess,

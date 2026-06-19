@@ -63,6 +63,7 @@ export default function ChurnOffboardingPage({
     draft,
     setDraft,
     patchChecklist,
+    patchChecklistException,
     submit,
     success,
     resetAfterSuccess,
@@ -228,6 +229,7 @@ export default function ChurnOffboardingPage({
               draft={draft}
               setDraft={setDraft}
               patchChecklist={patchChecklist}
+              patchChecklistException={patchChecklistException}
               alreadyChurned={alreadyChurned}
               existingSubmission={existingSubmission}
               saveError={saveError}

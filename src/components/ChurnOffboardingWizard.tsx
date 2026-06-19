@@ -23,6 +23,7 @@ export default function ChurnOffboardingWizard({ clientId, fallbackName, onClose
     draft,
     setDraft,
     patchChecklist,
+    patchChecklistException,
     submit,
   } = useChurnOffboarding(clientId);
 
@@ -69,6 +70,7 @@ export default function ChurnOffboardingWizard({ clientId, fallbackName, onClose
               draft={draft}
               setDraft={setDraft}
               patchChecklist={patchChecklist}
+              patchChecklistException={patchChecklistException}
               alreadyChurned={alreadyChurned}
               existingSubmission={existingSubmission}
               saveError={saveError}
