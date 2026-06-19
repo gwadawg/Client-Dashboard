@@ -1421,8 +1421,8 @@ export function buildClientHealthRow(input: BuildHealthRowInput): ClientHealthRo
   } = input;
   const isHe = usesCallCenterKpiLayout(reporting_type);
 
-  const fresh =
-    launch_date && isFreshLaunchClient(launch_date, today)
+  const fresh: FreshLaunchSnapshot | null =
+    launch_date != null && isFreshLaunchClient(launch_date, today)
       ? buildFreshLaunchSnapshot(
           freshLaunchEvents,
           freshLaunchSpend,
@@ -1477,7 +1477,6 @@ export function buildClientHealthRow(input: BuildHealthRowInput): ClientHealthRo
   const { trend, trend_delta_score } = compareHealthTrend(current, priorSnapshot);
   const focus = computeFocus(current, recentLeading, reporting_type);
   const has_activity =
-    is_fresh_launch ||
     current.metrics.new_leads > 0 ||
     current.metrics.booked_appointments > 0 ||
     current.metrics.ad_spend > 0 ||
