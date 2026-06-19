@@ -17,7 +17,7 @@ import {
   type OpenActionSummary,
   type PendingIntervention,
 } from '@/lib/client-health';
-import { OPEN_ACTION_STATUSES, summarizeOpenAction } from '@/lib/client-health-interventions';
+import { OPEN_ACTION_STATUSES, summarizeOpenAction, type ActionLogRow } from '@/lib/client-health-interventions';
 import { normalizeReportingType, usesCallCenterKpiLayout } from '@/lib/kpi-layouts';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import type { EventRow, SpendRow } from '@/lib/metrics';
@@ -32,18 +32,7 @@ type SpendByClientRow = {
   platform?: string;
 };
 
-type ActionRow = {
-  id: string;
-  client_id: string;
-  title: string;
-  review_date: string | null;
-  status: string;
-  created_at: string;
-  change_date: string | null;
-  success_metric: string | null;
-  baseline_value: number | null;
-  outcome_value: number | null;
-};
+type ActionRow = ActionLogRow;
 
 function spendInRange(rows: SpendByClientRow[], start: string, end: string): SpendByClientRow[] {
   return rows.filter(r => r.spend_date >= start && r.spend_date <= end);
@@ -105,6 +94,11 @@ export async function GET(req: Request) {
     liveClientIds = await getLiveClientIds(ctx.service);
   }
 
+  const { data: clients, error: clientsError } = await clientQuery;
+  if (clientsError) {
+    return NextResponse.json({ error: clientsError.message }, { status: 500 });
+  }
+
   const rangeStart = [verdictPrior?.start, leadingPrior?.start, start_date]
     .concat(
       (clients ?? [])
@@ -130,7 +124,7 @@ export async function GET(req: Request) {
   let actionsQuery = ctx.service
     .from('client_action_logs')
     .select(
-      'id, client_id, title, review_date, status, created_at, change_date, success_metric, baseline_value, outcome_value',
+      'id, client_id, title, review_date, status, created_at, change_date, success_metric, baseline_value, target_value, baseline_snapshot_id, outcome_value, outcome_recorded_at',
     )
     .in('status', [...OPEN_ACTION_STATUSES]);
   if (liveClientIds?.length) {
@@ -138,22 +132,17 @@ export async function GET(req: Request) {
   }
 
   const [
-    { data: clients, error: clientsError },
     { data: events, error: eventsError },
     { data: actionRows, error: actionsError },
     metaSpend,
   ] = await Promise.all([
-    clientQuery,
     eventsQuery,
     actionsQuery,
     fetchMetaSpendByClient(ctx, spendFilters),
   ]);
 
-  if (clientsError || eventsError) {
-    return NextResponse.json(
-      { error: clientsError?.message ?? eventsError?.message },
-      { status: 500 },
-    );
+  if (eventsError) {
+    return NextResponse.json({ error: eventsError.message }, { status: 500 });
   }
   if (actionsError) {
     return NextResponse.json({ error: actionsError.message }, { status: 500 });
