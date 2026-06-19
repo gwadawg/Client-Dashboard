@@ -538,6 +538,7 @@ create table if not exists client_action_logs (
   target_value         numeric,
   status               text    not null default 'planned',
   review_date          date,
+  change_date          date,             -- when the change went live (may differ from created_at)
   outcome_value        numeric,
   outcome_notes        text,
   outcome_recorded_at  timestamptz,
@@ -927,9 +928,14 @@ create or replace view v_client_activity as
     trim(both ' ' from n.note_type || coalesce(' · ' || n.reason_code, '') || ' — ' || left(n.body, 200)),
     'client_notes'::text from client_notes n where n.deleted_at is null
   union all
-  select a.client_id, a.id, 'action'::text, a.created_at, coalesce(a.layer, 'action'),
-    trim(both ' ' from a.title || coalesce(' · ' || a.constraint_label, '')
-      || coalesce(' — ' || left(a.change_description, 160), '')),
+  select a.client_id, a.id, 'action'::text,
+    coalesce(a.change_date::timestamptz at time zone 'UTC', a.created_at),
+    coalesce(a.status, 'action'),
+    trim(both ' ' from a.title
+      || coalesce(' · ' || a.status, '')
+      || coalesce(' · ' || a.success_metric, '')
+      || coalesce(' · review ' || a.review_date::text, '')
+      || coalesce(' — ' || left(a.change_description, 120), '')),
     'client_action_logs'::text from client_action_logs a
   union all
   select b.client_id, b.id, 'billing'::text, (b.billed_on::timestamptz at time zone 'UTC'), b.status,

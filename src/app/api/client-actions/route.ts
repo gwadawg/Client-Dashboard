@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requireAnyPermission, requirePermission } from '@/lib/api-auth';
 import {
   buildClientHealthSnapshot,
   buildHeClientHealthSnapshot,
@@ -11,6 +11,9 @@ import {
   evaluateActionOutcome,
   OPEN_ACTION_STATUSES,
   snapshotToInsert,
+  baselineWindowForChange,
+  actionChangeDate,
+  isFinalActionStatus,
   type ActionLogRow,
 } from '@/lib/client-health-interventions';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
@@ -23,7 +26,7 @@ const SELECT = '*';
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, 'client_health');
+  const denied = requireAnyPermission(ctx, ['client_health', 'admin_clients']);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
@@ -61,8 +64,9 @@ export async function POST(req: Request) {
     hypothesis = null,
     success_metric = null,
     target_value = null,
-    status = 'planned',
+    status = 'in_progress',
     review_date = null,
+    change_date = null,
     ai_generated = false,
     period_start = null,
     period_end = null,
@@ -90,7 +94,16 @@ export async function POST(req: Request) {
   let baseline_value: number | null =
     body.baseline_value != null ? Number(body.baseline_value) : null;
 
-  if (period_start && period_end) {
+  const today = new Date().toISOString().split('T')[0];
+  const effectiveChangeDate =
+    typeof change_date === 'string' && change_date.trim()
+      ? change_date.trim()
+      : today;
+  const baselineWindow = baselineWindowForChange(effectiveChangeDate);
+  const baselineStart = period_start ?? baselineWindow.start;
+  const baselineEnd = period_end ?? baselineWindow.end;
+
+  if (baselineStart && baselineEnd) {
     const [{ data: events, error: eventsError }, spend] = await Promise.all([
       ctx.service
         .from('events')
@@ -98,15 +111,15 @@ export async function POST(req: Request) {
           'occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state',
         )
         .eq('client_id', client_id)
-        .gte('occurred_at', `${period_start}T00:00:00.000Z`)
-        .lte('occurred_at', `${period_end}T23:59:59.999Z`)
+        .gte('occurred_at', `${baselineStart}T00:00:00.000Z`)
+        .lte('occurred_at', `${baselineEnd}T23:59:59.999Z`)
         .limit(200000),
       isHe
         ? Promise.resolve([])
         : fetchCombinedSpendForMetrics(ctx.service, {
             client_id,
-            start_date: period_start,
-            end_date: period_end,
+            start_date: baselineStart,
+            end_date: baselineEnd,
           }),
     ]);
 
@@ -126,8 +139,8 @@ export async function POST(req: Request) {
       .insert(
         snapshotToInsert(
           client_id,
-          period_start,
-          period_end,
+          baselineStart,
+          baselineEnd,
           'INTERVENTION_BASELINE',
           snap,
           ctx.userId,
@@ -158,6 +171,7 @@ export async function POST(req: Request) {
       target_value: target_value != null ? Number(target_value) : null,
       status,
       review_date,
+      change_date: effectiveChangeDate,
       ai_generated: Boolean(ai_generated),
     })
     .select(SELECT)
@@ -219,7 +233,7 @@ async function evaluateOneAction(
 
   const reporting_type = normalizeReportingType(client?.reporting_type);
   const benchmarks = (client?.kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
-  const createdDate = action.created_at.split('T')[0];
+  const changeDate = actionChangeDate(action);
   const today = new Date().toISOString().split('T')[0];
   const reviewEnd = action.review_date && action.review_date <= today ? action.review_date : today;
 
@@ -230,14 +244,14 @@ async function evaluateOneAction(
         'occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state',
       )
       .eq('client_id', action.client_id)
-      .gte('occurred_at', `${createdDate}T00:00:00.000Z`)
+      .gte('occurred_at', `${changeDate}T00:00:00.000Z`)
       .lte('occurred_at', `${reviewEnd}T23:59:59.999Z`)
       .limit(200000),
     usesCallCenterKpiLayout(reporting_type)
       ? Promise.resolve([])
       : fetchCombinedSpendForMetrics(ctx.service, {
           client_id: action.client_id,
-          start_date: createdDate,
+          start_date: changeDate,
           end_date: reviewEnd,
         }),
   ]);
@@ -253,15 +267,16 @@ async function evaluateOneAction(
 
   if (!evaluation) return null;
 
-  await ctx.service
-    .from('client_action_logs')
-    .update({
-      outcome_value: evaluation.outcome_value,
-      outcome_notes: evaluation.summary,
-      outcome_recorded_at: new Date().toISOString(),
-      status: evaluation.status,
-    })
-    .eq('id', action.id);
+  const update: Record<string, unknown> = {
+    outcome_value: evaluation.outcome_value,
+    outcome_notes: evaluation.summary,
+    status: evaluation.status,
+  };
+  if (isFinalActionStatus(evaluation.status)) {
+    update.outcome_recorded_at = new Date().toISOString();
+  }
+
+  await ctx.service.from('client_action_logs').update(update).eq('id', action.id);
 
   return { id: action.id, status: evaluation.status, summary: evaluation.summary };
 }

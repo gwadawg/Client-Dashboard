@@ -93,6 +93,22 @@ export type OpenActionSummary = {
   overdue: boolean;
 };
 
+export type PendingIntervention = {
+  id: string;
+  client_id: string;
+  client_name: string;
+  reporting_type: ReportingType;
+  title: string;
+  status: string;
+  success_metric: string | null;
+  change_date: string | null;
+  review_date: string | null;
+  baseline_value: number | null;
+  outcome_value: number | null;
+  overdue: boolean;
+  review_due: boolean;
+};
+
 export type ClientHealthRow = {
   client_id: string;
   client_name: string;
@@ -110,12 +126,43 @@ export type ClientHealthRow = {
   focus: FocusResult;
   /** Next open intervention follow-up, if any. */
   open_action: OpenActionSummary | null;
+  /** ISO launch date when set; used for fresh-launch grading. */
+  launch_date: string | null;
+  /** Within the first {@link FRESH_LAUNCH_DAYS} after launch — graded on leading KPIs only. */
+  is_fresh_launch: boolean;
+  /** Launch-to-date snapshot (CPL / CPQL / booking — no CPConv). */
+  fresh: FreshLaunchSnapshot | null;
+};
+
+/** First N days after launch use leading KPIs instead of matured CPConv grading. */
+export const FRESH_LAUNCH_DAYS = 14;
+
+export const FRESH_LAUNCH_RM_KEYS: KpiKey[] = [
+  'cpl',
+  'cpql',
+  'lead_booking_rate',
+  'lead_to_qualified',
+];
+
+export const FRESH_LAUNCH_HE_KEYS: KpiKey[] = ['lead_booking_rate'];
+
+export type FreshLaunchSnapshot = {
+  launch_date: string;
+  days_since_launch: number;
+  window_days: number;
+  start: string;
+  end: string;
+  leads: number;
+  qualified_leads: number;
+  dials: number;
+  grades: KpiGrade[];
+  worst_tier: HealthTier;
 };
 
 /**
- * Leading indicators over the most recent window. These resolve fast (no
- * booking->appointment lag), so they're shown separately as an early-warning
- * "Recent" instrument rather than folded into the matured verdict.
+ * Leading indicators over the calendar-last N days through today. These resolve
+ * fast (no booking→appointment lag), so they're shown separately as an early-warning
+ * instrument rather than folded into the matured verdict.
  */
 export type RecentLeading = {
   window_days: number;
@@ -907,14 +954,17 @@ export function computePriorityScore(row: ClientHealthRow): number {
  */
 export const MATURITY_DAYS = 7;
 
-/** Window (days) for the leading-indicator "Recent" early-warning instrument. */
-export const RECENT_WINDOW_DAYS = 14;
-
 /**
- * Fresh cost window (days). CPL/CPQL resolve same-day as spend + leads, so they
- * use the calendar-last N days through today — independent of the matured verdict.
+ * Calendar-last N days through today for the leading early-warning instrument
+ * (CPL, CPQL, qual %, hand-raise / booking). Independent of the matured verdict.
  */
-export const FRESH_COST_WINDOW_DAYS = MATURITY_DAYS;
+export const LEADING_WINDOW_DAYS = 7;
+
+/** @deprecated Use LEADING_WINDOW_DAYS */
+export const RECENT_WINDOW_DAYS = LEADING_WINDOW_DAYS;
+
+/** CPL/CPQL share the leading calendar window. */
+export const FRESH_COST_WINDOW_DAYS = LEADING_WINDOW_DAYS;
 
 function shiftDays(date: string, n: number): string {
   const ms = new Date(`${date}T00:00:00.000Z`).getTime() + n * 86400000;
@@ -949,29 +999,123 @@ export function maturedWindow(
   };
 }
 
-/** The most recent slice of the selected window, clamped to its start. */
+/** Calendar-last N days through today — leading funnel + cost alarms. */
+export function calendarLeadingWindow(
+  days: number = LEADING_WINDOW_DAYS,
+  today: string = utcToday(),
+): { start: string; end: string; window_days: number } {
+  const start = shiftDays(today, -(days - 1));
+  return { start, end: today, window_days: days };
+}
+
+export function daysSinceLaunch(launchDate: string, today: string = utcToday()): number {
+  const launchMs = new Date(`${launchDate}T00:00:00.000Z`).getTime();
+  const todayMs = new Date(`${today}T00:00:00.000Z`).getTime();
+  return Math.floor((todayMs - launchMs) / 86400000);
+}
+
+/** True when the client is in the first {@link FRESH_LAUNCH_DAYS} after launch. */
+export function isFreshLaunchClient(
+  launchDate: string | null | undefined,
+  today: string = utcToday(),
+): boolean {
+  if (!launchDate) return false;
+  const days = daysSinceLaunch(launchDate, today);
+  return days >= 0 && days < FRESH_LAUNCH_DAYS;
+}
+
+/** Calendar window from launch date through today (capped at 14 days). */
+export function freshLaunchWindow(
+  launchDate: string,
+  today: string = utcToday(),
+): { start: string; end: string; window_days: number } {
+  const cappedEnd = shiftDays(launchDate, FRESH_LAUNCH_DAYS - 1);
+  const end = today < cappedEnd ? today : cappedEnd;
+  const window_days = daysSinceLaunch(launchDate, today) + 1;
+  return { start: launchDate, end, window_days: Math.min(window_days, FRESH_LAUNCH_DAYS) };
+}
+
+function computeFreshOverallTier(graded: KpiGrade[]): HealthTier {
+  if (graded.length === 0) return 'insufficient';
+  if (graded.some(g => g.tier === 'critical')) return 'critical';
+  return graded.reduce(
+    (worst, g) => (TIER_WEIGHT[g.tier] > TIER_WEIGHT[worst] ? g.tier : worst),
+    'above' as HealthTier,
+  );
+}
+
+/** Grade a newly launched client on CPL / CPQL / booking (no CPConv). */
+export function buildFreshLaunchSnapshot(
+  events: EventRow[],
+  spendRows: SpendRow[],
+  launchDate: string,
+  reportingType: ReportingType = 'RM',
+  benchmarks?: ClientKpiBenchmarks | null,
+  today: string = utcToday(),
+): FreshLaunchSnapshot {
+  const win = freshLaunchWindow(launchDate, today);
+  const isHe = usesCallCenterKpiLayout(reportingType);
+  const snap = isHe
+    ? buildHeClientHealthSnapshot(events, benchmarks)
+    : buildClientHealthSnapshot(events, spendRows, benchmarks);
+  const m = snap.metrics;
+  const keys = isHe ? FRESH_LAUNCH_HE_KEYS : FRESH_LAUNCH_RM_KEYS;
+  let grades = snap.grades.filter(g => keys.includes(g.key));
+  if (!isHe && !grades.some(g => g.key === 'lead_booking_rate')) {
+    const spec = resolveBands('lead_booking_rate', benchmarks);
+    grades = [
+      ...grades,
+      gradeKpi(
+        'lead_booking_rate',
+        m.lead_booking_rate,
+        formatPct(m.lead_booking_rate),
+        tierFromBands(
+          m.lead_booking_rate,
+          spec.bands,
+          spec.higherIsBetter,
+          KPI_MIN_DENOMINATOR.lead_booking_rate,
+          m.new_leads,
+        ),
+      ),
+    ];
+  }
+  const graded = grades.filter(g => g.tier !== 'insufficient');
+
+  return {
+    launch_date: launchDate,
+    days_since_launch: daysSinceLaunch(launchDate, today),
+    window_days: win.window_days,
+    start: win.start,
+    end: win.end,
+    leads: m.new_leads,
+    qualified_leads: m.qualified_leads,
+    dials: m.outbound_dials,
+    grades,
+    worst_tier: computeFreshOverallTier(graded),
+  };
+}
+
+/** @deprecated Verdict-relative slice; use calendarLeadingWindow for leading signal. */
 export function recentWindow(
   start: string,
   end: string,
-  days: number = RECENT_WINDOW_DAYS,
+  days: number = LEADING_WINDOW_DAYS,
 ): { start: string; end: string; window_days: number } {
   const candidate = shiftDays(end, -(days - 1));
   return { start: candidate > start ? candidate : start, end, window_days: days };
 }
 
-/** Scale leading window with verdict length: 30d→14d, 60d→30d, 90d→30d (capped). */
-export function recentWindowDaysForVerdict(verdictDays: number): number {
-  if (verdictDays <= 30) return 14;
-  return 30;
+/** @deprecated Leading window is fixed calendar days, not scaled to verdict length. */
+export function recentWindowDaysForVerdict(_verdictDays: number): number {
+  return LEADING_WINDOW_DAYS;
 }
 
-/** Calendar-last N days through today — for CPL/CPQL leading cost alarms. */
+/** Alias for calendarLeadingWindow — CPL/CPQL use the same leading slice. */
 export function freshCostWindow(
   days: number = FRESH_COST_WINDOW_DAYS,
   today: string = utcToday(),
 ): { start: string; end: string; window_days: number } {
-  const start = shiftDays(today, -(days - 1));
-  return { start, end: today, window_days: days };
+  return calendarLeadingWindow(days, today);
 }
 
 /** Prior equal-length window immediately before [recentStart, recentEnd]. */
@@ -1107,7 +1251,7 @@ export function buildRecentLeading(
   events: EventRow[],
   start: string,
   end: string,
-  windowDays: number = RECENT_WINDOW_DAYS,
+  windowDays: number = LEADING_WINDOW_DAYS,
   reportingType: ReportingType = 'RM',
   spendRows: SpendRow[] = [],
   benchmarks?: ClientKpiBenchmarks | null,
@@ -1210,6 +1354,11 @@ export function filterEventsToRange<T extends { occurred_at: string }>(
   return events.filter(e => e.occurred_at >= startIso && e.occurred_at <= endIso);
 }
 
+/** Tier for a leading KPI from the calendar-recent window (defaults to insufficient). */
+export function leadingGradeFor(recent: RecentLeading | null, key: KpiKey): HealthTier {
+  return recent?.leading_grades.find(g => g.key === key)?.tier ?? 'insufficient';
+}
+
 export type ClientEventWithDate = ClientEventRow & { occurred_at: string };
 
 export const FOCUS_STYLES: Record<ClientFocus, { bg: string; text: string; border: string }> = {
@@ -1240,6 +1389,10 @@ export type BuildHealthRowInput = {
   end_date: string;
   verdictPrior: { start: string; end: string } | null;
   open_action?: OpenActionSummary | null;
+  launch_date?: string | null;
+  freshLaunchEvents?: EventRow[];
+  freshLaunchSpend?: SpendRow[];
+  today?: string;
 };
 
 /** Assemble one ClientHealthRow from pre-sliced events/spend. */
@@ -1261,18 +1414,28 @@ export function buildClientHealthRow(input: BuildHealthRowInput): ClientHealthRo
     end_date,
     verdictPrior,
     open_action = null,
+    launch_date = null,
+    freshLaunchEvents = [],
+    freshLaunchSpend = [],
+    today = utcToday(),
   } = input;
   const isHe = usesCallCenterKpiLayout(reporting_type);
 
-  const verdictDays =
-    Math.floor(
-      (new Date(`${end_date}T00:00:00.000Z`).getTime() -
-        new Date(`${start_date}T00:00:00.000Z`).getTime()) /
-        86400000,
-    ) + 1;
-  const recentDays = recentWindowDaysForVerdict(verdictDays);
-  const recent = recentWindow(start_date, end_date, recentDays);
-  const recentPrior = getRecentPriorPeriod(recent.start, recent.end);
+  const fresh =
+    launch_date && isFreshLaunchClient(launch_date, today)
+      ? buildFreshLaunchSnapshot(
+          freshLaunchEvents,
+          freshLaunchSpend,
+          launch_date,
+          reporting_type,
+          benchmarks,
+          today,
+        )
+      : null;
+  const is_fresh_launch = fresh != null;
+
+  const leading = calendarLeadingWindow();
+  const leadingPrior = getRecentPriorPeriod(leading.start, leading.end);
 
   const current = isHe
     ? buildHeClientHealthSnapshot(verdictEvents, benchmarks)
@@ -1285,12 +1448,12 @@ export function buildClientHealthRow(input: BuildHealthRowInput): ClientHealthRo
       : null;
 
   const recentPriorLeading =
-    recentPrior != null
+    leadingPrior != null
       ? buildRecentLeading(
           recentPriorEvents,
-          recentPrior.start,
-          recentPrior.end,
-          recentDays,
+          leadingPrior.start,
+          leadingPrior.end,
+          leading.window_days,
           reporting_type,
           recentPriorSpend,
           benchmarks,
@@ -1301,9 +1464,9 @@ export function buildClientHealthRow(input: BuildHealthRowInput): ClientHealthRo
 
   const recentLeading = buildRecentLeading(
     recentEvents,
-    recent.start,
-    recent.end,
-    recentDays,
+    leading.start,
+    leading.end,
+    leading.window_days,
     reporting_type,
     recentSpend,
     benchmarks,
@@ -1314,11 +1477,14 @@ export function buildClientHealthRow(input: BuildHealthRowInput): ClientHealthRo
   const { trend, trend_delta_score } = compareHealthTrend(current, priorSnapshot);
   const focus = computeFocus(current, recentLeading, reporting_type);
   const has_activity =
+    is_fresh_launch ||
     current.metrics.new_leads > 0 ||
     current.metrics.booked_appointments > 0 ||
     current.metrics.ad_spend > 0 ||
     recentLeading.leads > 0 ||
-    recentLeading.dials > 0;
+    recentLeading.dials > 0 ||
+    (fresh?.leads ?? 0) > 0 ||
+    (fresh?.dials ?? 0) > 0;
 
   return {
     client_id: input.client_id,
@@ -1334,6 +1500,9 @@ export function buildClientHealthRow(input: BuildHealthRowInput): ClientHealthRo
     recent_prior: recentPriorLeading,
     focus,
     open_action,
+    launch_date,
+    is_fresh_launch,
+    fresh,
   };
 }
 

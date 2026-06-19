@@ -6,9 +6,7 @@ import {
   getPriorPeriod,
   getRecentPriorPeriod,
   maturedWindow,
-  recentWindow,
-  recentWindowDaysForVerdict,
-  freshCostWindow,
+  calendarLeadingWindow,
   type ClientKpiBenchmarks,
   type CostWindowSlice,
 } from '@/lib/client-health';
@@ -43,21 +41,12 @@ export async function GET(
   const today = new Date().toISOString().split('T')[0];
   const matured = maturedWindow(start_date, end_date);
   const verdictPrior = getPriorPeriod(start_date, end_date);
-  const verdictDays =
-    Math.floor(
-      (new Date(`${end_date}T00:00:00.000Z`).getTime() -
-        new Date(`${start_date}T00:00:00.000Z`).getTime()) /
-        86400000,
-    ) + 1;
-  const recentDays = recentWindowDaysForVerdict(verdictDays);
-  const recent = recentWindow(start_date, end_date, recentDays);
-  const recentPrior = getRecentPriorPeriod(recent.start, recent.end);
-  const freshCost = freshCostWindow();
-  const freshCostPrior = getPriorPeriod(freshCost.start, freshCost.end);
-  const rangeStart = [verdictPrior?.start, recentPrior?.start, freshCostPrior?.start, start_date]
+  const leading = calendarLeadingWindow();
+  const leadingPrior = getRecentPriorPeriod(leading.start, leading.end);
+  const rangeStart = [verdictPrior?.start, leadingPrior?.start, start_date]
     .filter(Boolean)
     .sort()[0] as string;
-  const rangeEnd = freshCost.end > end_date ? freshCost.end : end_date;
+  const rangeEnd = leading.end > end_date ? leading.end : end_date;
 
   const [{ data: client, error: clientError }, { data: events, error: eventsError }, { data: actionRows }] =
     await Promise.all([
@@ -101,12 +90,12 @@ export async function GET(
     await Promise.all([
       filterSpend(start_date, end_date),
       verdictPrior ? filterSpend(verdictPrior.start, verdictPrior.end) : Promise.resolve([]),
-      filterSpend(recent.start, recent.end),
-      recentPrior ? filterSpend(recentPrior.start, recentPrior.end) : Promise.resolve([]),
-      isHe ? Promise.resolve([]) : filterSpend(freshCost.start, freshCost.end),
-      isHe || !freshCostPrior
+      filterSpend(leading.start, leading.end),
+      leadingPrior ? filterSpend(leadingPrior.start, leadingPrior.end) : Promise.resolve([]),
+      isHe ? Promise.resolve([]) : filterSpend(leading.start, leading.end),
+      isHe || !leadingPrior
         ? Promise.resolve([])
-        : filterSpend(freshCostPrior.start, freshCostPrior.end),
+        : filterSpend(leadingPrior.start, leadingPrior.end),
     ]);
 
   const openActions = (actionRows ?? []) as { id: string; title: string; review_date: string | null; status: string }[];
@@ -120,23 +109,28 @@ export async function GET(
       }
     : null;
 
+  const leadingEvents = allEvents.filter(e => inRange(e, leading.start, leading.end));
+  const leadingPriorEvents = leadingPrior
+    ? allEvents.filter(e => inRange(e, leadingPrior.start, leadingPrior.end))
+    : [];
+
   const freshCostSlice: CostWindowSlice | null = isHe
     ? null
     : {
-        start: freshCost.start,
-        end: freshCost.end,
-        window_days: freshCost.window_days,
-        events: allEvents.filter(e => inRange(e, freshCost.start, freshCost.end)),
+        start: leading.start,
+        end: leading.end,
+        window_days: leading.window_days,
+        events: leadingEvents,
         spend: freshCostSpend,
       };
   const freshCostPriorSlice: CostWindowSlice | null =
-    isHe || !freshCostPrior
+    isHe || !leadingPrior
       ? null
       : {
-          start: freshCostPrior.start,
-          end: freshCostPrior.end,
-          window_days: freshCost.window_days,
-          events: allEvents.filter(e => inRange(e, freshCostPrior.start, freshCostPrior.end)),
+          start: leadingPrior.start,
+          end: leadingPrior.end,
+          window_days: leading.window_days,
+          events: leadingPriorEvents,
           spend: freshCostPriorSpend,
         };
 
@@ -148,8 +142,8 @@ export async function GET(
     benchmarks,
     verdictEvents: allEvents.filter(e => inRange(e, start_date, end_date)),
     priorEvents: verdictPrior ? allEvents.filter(e => inRange(e, verdictPrior.start, verdictPrior.end)) : [],
-    recentEvents: allEvents.filter(e => inRange(e, recent.start, recent.end)),
-    recentPriorEvents: recentPrior ? allEvents.filter(e => inRange(e, recentPrior.start, recentPrior.end)) : [],
+    recentEvents: leadingEvents,
+    recentPriorEvents: leadingPriorEvents,
     verdictSpend,
     priorSpend,
     recentSpend,
@@ -176,14 +170,16 @@ export async function GET(
       matured_through: matured.matured_through,
       clamped: matured.clamped,
       empty: matured.empty,
-      recent_window_days: recent.window_days,
-      recent_start: recent.start,
-      recent_end: recent.end,
-      recent_prior_start: recentPrior?.start ?? null,
-      recent_prior_end: recentPrior?.end ?? null,
-      fresh_cost_window_days: freshCost.window_days,
-      fresh_cost_start: freshCost.start,
-      fresh_cost_end: freshCost.end,
+      leading_window_days: leading.window_days,
+      leading_start: leading.start,
+      leading_end: leading.end,
+      leading_prior_start: leadingPrior?.start ?? null,
+      leading_prior_end: leadingPrior?.end ?? null,
+      recent_window_days: leading.window_days,
+      recent_start: leading.start,
+      recent_end: leading.end,
+      recent_prior_start: leadingPrior?.start ?? null,
+      recent_prior_end: leadingPrior?.end ?? null,
     },
     current: row.current,
     prior: row.prior,

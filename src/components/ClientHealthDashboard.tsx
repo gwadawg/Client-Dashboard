@@ -15,16 +15,21 @@ import { Fragment } from "react";
 import {
   computePriorityScore,
   FOCUS_STYLES,
+  FRESH_LAUNCH_DAYS,
   KPI_META,
+  LEADING_WINDOW_DAYS,
   MATURITY_DAYS,
   TIER_LABEL,
+  leadingGradeFor,
   type ClientHealthRow,
   type HealthTier,
   type KpiKey,
+  type PendingIntervention,
 } from "@/lib/client-health";
 import Link from "next/link";
 import ClientFile from "./ClientFile";
 import ClientHealthDetail from "./ClientHealthDetail";
+import PendingInterventionsPanel from "./PendingInterventionsPanel";
 import { churnFormHref } from "@/lib/internal-forms";
 
 // The grading view owns its own date range, deliberately decoupled from the global
@@ -143,6 +148,14 @@ function KpiDot({ tier }: { tier: HealthTier }) {
   );
 }
 
+function freshGrade(row: ClientHealthRow, key: KpiKey): HealthTier {
+  return row.fresh?.grades.find(g => g.key === key)?.tier ?? "insufficient";
+}
+
+function freshGradeDisplay(row: ClientHealthRow, key: KpiKey): string {
+  return row.fresh?.grades.find(g => g.key === key)?.display ?? "—";
+}
+
 function FocusBadge({ focus }: { focus: ClientHealthRow["focus"] }) {
   const s = FOCUS_STYLES[focus.focus];
   return (
@@ -169,12 +182,12 @@ export default function ClientHealthDashboard(_props: Props) {
     matured_through: string;
     clamped: boolean;
     empty: boolean;
-    recent_window_days: number;
-    recent_start: string;
-    recent_end: string;
-    fresh_cost_window_days?: number;
-    fresh_cost_start?: string;
-    fresh_cost_end?: string;
+    leading_window_days: number;
+    leading_start: string;
+    leading_end: string;
+    recent_window_days?: number;
+    recent_start?: string;
+    recent_end?: string;
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [liveOnly, setLiveOnly] = useState(true);
@@ -192,6 +205,7 @@ export default function ClientHealthDashboard(_props: Props) {
     on_track: 0,
     follow_up_overdue: 0,
   });
+  const [pendingInterventions, setPendingInterventions] = useState<PendingIntervention[]>([]);
 
   useEffect(() => {
     fetch("/api/client-actions", {
@@ -220,6 +234,7 @@ export default function ClientHealthDashboard(_props: Props) {
             follow_up_overdue: d.summary.follow_up_overdue ?? 0,
           });
         }
+        setPendingInterventions(d.pending_interventions ?? []);
         if (d.prior_period) {
           setPriorLabel(`${d.prior_period.start} → ${d.prior_period.end}`);
         } else {
@@ -233,15 +248,25 @@ export default function ClientHealthDashboard(_props: Props) {
   const isCallCenterSegment = clientSegment === "CALL_CENTER";
   const chartMetrics = isCallCenterSegment ? HE_CHART_METRICS : RM_CHART_METRICS;
 
-  const filtered = useMemo(() => {
-    let list = rows.filter(r =>
+  const segmentRows = useMemo(() => {
+    return rows.filter(r =>
       isCallCenterSegment
         ? usesCallCenterKpiLayout(r.reporting_type)
         : !usesCallCenterKpiLayout(r.reporting_type),
     );
+  }, [rows, isCallCenterSegment]);
+
+  const freshLaunches = useMemo(() => {
+    return [...segmentRows.filter(r => r.is_fresh_launch)].sort(
+      (a, b) => (a.fresh?.days_since_launch ?? 0) - (b.fresh?.days_since_launch ?? 0),
+    );
+  }, [segmentRows]);
+
+  const filtered = useMemo(() => {
+    let list = segmentRows.filter(r => !r.is_fresh_launch);
     if (hideInactive) list = list.filter(r => r.has_activity);
     return list;
-  }, [rows, hideInactive, isCallCenterSegment]);
+  }, [segmentRows, hideInactive]);
 
   const sorted = useMemo(() => {
     const list = [...filtered];
@@ -277,9 +302,10 @@ export default function ClientHealthDashboard(_props: Props) {
     const active = filtered.filter(r => r.has_activity);
     return {
       active: active.length,
+      fresh_launches: freshLaunches.length,
       ...summaryStats,
     };
-  }, [filtered, summaryStats]);
+  }, [filtered, freshLaunches.length, summaryStats]);
 
   const chartData = useMemo(() => {
     return sorted.slice(0, 20).map(r => {
@@ -365,18 +391,19 @@ export default function ClientHealthDashboard(_props: Props) {
         </h2>
         <p className="text-sm mt-1 max-w-3xl" style={{ color: "#475569" }}>
           {isCallCenterSegment ? (
-            <>
-              HE clients side-by-side — booking (÷ leads) and show rate on a matured window{" "}
-            </>
+            <>HE clients — baseline booking + show on a matured window; leading booking on the calendar-last {LEADING_WINDOW_DAYS} days. </>
           ) : (
-            <>
-              RM clients side-by-side, graded against Waiz KPI standards over a fixed, matured window{" "}
-            </>
+            <>RM clients — baseline CPConv on a matured window; leading CPL / CPQL / qual / hand-raise on the calendar-last {LEADING_WINDOW_DAYS} days. </>
           )}
-          <span style={{ color: "#94a3b8" }}>({startDate} → {endDate})</span> so tiers stay
-          comparable across clients. Sorted by who needs attention first.
+          <span style={{ color: "#94a3b8" }}>
+            {" "}Baseline: {startDate} → {endDate}
+            {maturity?.leading_start && maturity?.leading_end ? (
+              <> · Leading: {maturity.leading_start} → {maturity.leading_end}</>
+            ) : null}
+          </span>
+          . Sorted by who needs attention first.
           {priorLabel ? (
-            <span style={{ color: "#64748b" }}> Progress vs prior period ({priorLabel}).</span>
+            <span style={{ color: "#64748b" }}> Baseline vs prior ({priorLabel}).</span>
           ) : null}
         </p>
         </div>
@@ -407,28 +434,27 @@ export default function ClientHealthDashboard(_props: Props) {
         ))}
       </div>
 
-      {/* Maturity warning — KPIs are graded on the selected range; this only flags
-          that the range includes recent days whose lag-sensitive KPIs may understate. */}
-      {maturity && (maturity.empty || maturity.clamped) ? (
-        <div
-          className="rounded-xl px-4 py-3 text-xs leading-relaxed"
-          style={{ background: "#0a1628", border: "1px solid rgba(56,189,248,0.18)", color: "#94a3b8" }}
-        >
-          <span style={{ color: "#38bdf8", fontWeight: 600 }}>Heads up — recent days are still resolving.</span>{" "}
-          KPIs below are graded on your selected range. Because that range includes days inside the{" "}
-          {maturity.days}-day maturity window, lag-sensitive KPIs
-          {isCallCenterSegment ? " (show rate)" : " (CPConv, show rate, close rate)"} may{" "}
-          <em>understate</em> until those cohorts finish resolving (bookings → appointments → outcomes).
-          Leading KPIs ({isCallCenterSegment ? "leads, dials, booking rate" : "leads, qualified %, booking rate"}) use the
-          matured window. CPL and CPQL use the calendar-last {maturity.fresh_cost_window_days ?? 7} days through today. The{" "}
-          <strong>Recent ({maturity.recent_window_days}d)</strong> indicators (expand a client) are your
-          early-warning view.
-        </div>
-      ) : null}
+      <PendingInterventionsPanel
+        interventions={pendingInterventions}
+        segment={clientSegment}
+        onOpenClient={(id, name) => setDetail({ id, name })}
+      />
+
+      <div
+        className="rounded-xl px-4 py-3 text-xs leading-relaxed"
+        style={{ background: "#0a1628", border: "1px solid rgba(56,189,248,0.18)", color: "#94a3b8" }}
+      >
+        <span style={{ color: "#38bdf8", fontWeight: 600 }}>Two windows.</span>{" "}
+        <strong>Baseline</strong> ({startDate} → {endDate}) ends {MATURITY_DAYS} days before today so CPConv, show, and close reflect resolved cohorts.{" "}
+        <strong>Leading</strong> (
+        {maturity?.leading_start ?? "…"} → {maturity?.leading_end ?? "today"}) is calendar-last {LEADING_WINDOW_DAYS} days through today — CPL, CPQL, qual %, and hand-raise (early warning only; not graded on CPConv).{" "}
+        <strong>Fresh launches</strong> (first {FRESH_LAUNCH_DAYS} days after launch) are graded on CPL, CPQL, qual %, and booking rate only — CPConv starts after day {FRESH_LAUNCH_DAYS}.
+      </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-7 gap-3">
         {[
+          { label: "Fresh launches", value: summary.fresh_launches, color: "#38bdf8" },
           { label: "Act now", value: summary.act_now, color: "#f87171" },
           { label: "Monitor", value: summary.monitor, color: "#fbbf24" },
           { label: "Recovering", value: summary.recovering, color: "#38bdf8" },
@@ -513,9 +539,121 @@ export default function ClientHealthDashboard(_props: Props) {
             onChange={e => setHideInactive(e.target.checked)}
             className="rounded"
           />
-          Hide inactive
+          Hide no baseline data
         </label>
       </div>
+
+      {/* Fresh launches — first 14 days after launch */}
+      {freshLaunches.length > 0 && (
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{ background: "#0a1628", border: "1px solid rgba(56,189,248,0.22)" }}
+        >
+          <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2" style={{ borderBottom: "1px solid rgba(56,189,248,0.12)" }}>
+            <div>
+              <h3 className="text-sm font-semibold" style={{ color: "#38bdf8" }}>
+                Fresh launches
+              </h3>
+              <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
+                First {FRESH_LAUNCH_DAYS} days after launch — graded on CPL, CPQL, qual %, and booking (no CPConv yet).
+              </p>
+            </div>
+            <span className="text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: "#38bdf8", background: "rgba(56,189,248,0.12)" }}>
+              {freshLaunches.length} client{freshLaunches.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  {(isCallCenterSegment
+                    ? ["Client", "Day", "Status", "Booking %", "Leads", "Dials", ""]
+                    : ["Client", "Day", "Status", "CPL", "CPQL", "Qual %", "Booking %", "Leads", ""]
+                  ).map(h => (
+                    <th
+                      key={h}
+                      className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest"
+                      style={{ color: "#475569" }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {freshLaunches.map(row => {
+                  const day = (row.fresh?.days_since_launch ?? 0) + 1;
+                  return (
+                    <tr
+                      key={row.client_id}
+                      className="cursor-pointer transition-colors"
+                      style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                      onClick={() => setDetail({ id: row.client_id, name: row.client_name })}
+                    >
+                      <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>
+                        {row.client_name}
+                      </td>
+                      <td className="px-4 py-3 tabular-nums text-xs" style={{ color: "#94a3b8" }}>
+                        Day {day} / {FRESH_LAUNCH_DAYS}
+                      </td>
+                      <td className="px-4 py-3">
+                        <TierBadge tier={row.fresh?.worst_tier ?? "insufficient"} />
+                      </td>
+                      {isCallCenterSegment ? (
+                        <>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                              <KpiDot tier={freshGrade(row, "lead_booking_rate")} />
+                              {freshGradeDisplay(row, "lead_booking_rate")}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 tabular-nums" style={{ color: "#94a3b8" }}>
+                            {row.fresh?.leads ?? 0}
+                          </td>
+                          <td className="px-4 py-3 tabular-nums" style={{ color: "#94a3b8" }}>
+                            {row.fresh?.dials ?? 0}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                              <KpiDot tier={freshGrade(row, "cpl")} />
+                              {freshGradeDisplay(row, "cpl")}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                              <KpiDot tier={freshGrade(row, "cpql")} />
+                              {freshGradeDisplay(row, "cpql")}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                              <KpiDot tier={freshGrade(row, "lead_to_qualified")} />
+                              {freshGradeDisplay(row, "lead_to_qualified")}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                              <KpiDot tier={freshGrade(row, "lead_booking_rate")} />
+                              {freshGradeDisplay(row, "lead_booking_rate")}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 tabular-nums" style={{ color: "#94a3b8" }}>
+                            {row.fresh?.leads ?? 0}
+                          </td>
+                        </>
+                      )}
+                      <td className="px-4 py-3 text-xs" style={{ color: "#334155" }}>→</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Chart */}
       {chartData.length > 0 && (
@@ -568,8 +706,8 @@ export default function ClientHealthDashboard(_props: Props) {
             <thead>
               <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                 {(isCallCenterSegment
-                  ? ["Client", "Focus", "30d status", "Follow-up", "Leads", "Dials", "Book %", "Show %", ""]
-                  : ["Client", "Focus", "30d CPConv", "Follow-up", "Leads", "Qual %", "Hand-raise", "Show %", ""]
+                  ? ["Client", "Focus", "30d status", `7d book`, "Follow-up", "Leads", "Dials", "30d book", "30d show", ""]
+                  : ["Client", "Focus", "30d CPConv", "7d CPL", "7d CPQL", "7d qual", "7d hand-raise", "30d show", "Follow-up", ""]
                 ).map(h => (
                   <th
                     key={h}
@@ -594,6 +732,8 @@ export default function ClientHealthDashboard(_props: Props) {
                   const m = row.current.metrics;
                   const grade = (key: KpiKey) =>
                     row.current.grades.find(g => g.key === key);
+                  const lead = row.recent;
+                  const leadGrade = (key: KpiKey) => leadingGradeFor(lead, key);
 
                   return (
                     <Fragment key={row.client_id}>
@@ -629,6 +769,47 @@ export default function ClientHealthDashboard(_props: Props) {
                             </div>
                           )}
                         </td>
+                        {isCallCenterSegment ? (
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                              <KpiDot tier={leadGrade("lead_booking_rate")} />
+                              {(lead?.booking_rate ?? 0).toFixed(1)}%
+                            </div>
+                          </td>
+                        ) : (
+                          <>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={leadGrade("cpl")} />
+                                ${Math.round(lead?.cpl ?? 0)}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={leadGrade("cpql")} />
+                                ${Math.round(lead?.cpql ?? 0)}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={leadGrade("lead_to_qualified")} />
+                                {(lead?.lead_to_qualified_pct ?? 0).toFixed(0)}%
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={leadGrade("hand_raise_rate")} />
+                                {(lead?.hand_raise_rate ?? 0).toFixed(0)}%
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                <KpiDot tier={grade("show_rate")?.tier ?? "insufficient"} />
+                                {m.net_show_pct.toFixed(0)}%
+                              </div>
+                            </td>
+                          </>
+                        )}
                         <td className="px-4 py-3 text-xs" style={{ color: row.open_action?.overdue ? "#f87171" : "#64748b" }}>
                           {row.open_action ? (
                             <>
@@ -639,11 +820,11 @@ export default function ClientHealthDashboard(_props: Props) {
                             "—"
                           )}
                         </td>
-                        <td className="px-4 py-3 tabular-nums" style={{ color: "#94a3b8" }}>
-                          {m.new_leads}
-                        </td>
                         {isCallCenterSegment ? (
                           <>
+                            <td className="px-4 py-3 tabular-nums" style={{ color: "#94a3b8" }}>
+                              {m.new_leads}
+                            </td>
                             <td className="px-4 py-3 tabular-nums font-medium" style={{ color: "#e2e8f0" }}>
                               {m.outbound_dials}
                             </td>
@@ -660,28 +841,7 @@ export default function ClientHealthDashboard(_props: Props) {
                               </div>
                             </td>
                           </>
-                        ) : (
-                          <>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                <KpiDot tier={grade("lead_to_qualified")?.tier ?? "insufficient"} />
-                                {row.current.lead_to_qualified_pct.toFixed(0)}%
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                <KpiDot tier={grade("hand_raise_rate")?.tier ?? "insufficient"} />
-                                {m.hand_raise_rate.toFixed(0)}%
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                <KpiDot tier={grade("show_rate")?.tier ?? "insufficient"} />
-                                {m.net_show_pct.toFixed(0)}%
-                              </div>
-                            </td>
-                          </>
-                        )}
+                        ) : null}
                         <td className="px-4 py-3 text-xs" style={{ color: "#334155" }}>
                           {expanded ? "▲" : "▼"}
                         </td>
@@ -693,6 +853,9 @@ export default function ClientHealthDashboard(_props: Props) {
                               className="rounded-lg p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
                               style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.05)" }}
                             >
+                              <p className="col-span-full text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "#475569" }}>
+                                Baseline grades · {startDate} → {endDate}
+                              </p>
                               {row.current.grades.map(g => (
                                 <div key={g.key}>
                                   <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "#475569" }}>
@@ -724,7 +887,7 @@ export default function ClientHealthDashboard(_props: Props) {
                             {row.recent && (
                               <div className="mt-3">
                                 <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#38bdf8" }}>
-                                  Recent {row.recent.window_days}d (leading · early warning)
+                                  Leading {row.recent.window_days}d · {row.recent.start} → {row.recent.end} (calendar · through today)
                                 </p>
                                 <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums" style={{ color: "#94a3b8" }}>
                                   <span>{row.recent.leads} leads</span>
@@ -738,9 +901,6 @@ export default function ClientHealthDashboard(_props: Props) {
                                       <span style={{ color: "#475569" }}>({row.recent.booking_rate.toFixed(0)}% booked)</span>
                                       <span>
                                         CPL ${Math.round(row.recent.cpl)} · CPQL ${Math.round(row.recent.cpql)}
-                                        {row.recent.cost_window_days
-                                          ? ` (last ${row.recent.cost_window_days}d · through today)`
-                                          : ""}
                                       </span>
                                       <span>{row.recent.conversations} conv (LT+show+claimed)</span>
                                     </>
@@ -749,6 +909,16 @@ export default function ClientHealthDashboard(_props: Props) {
                                     {row.recent.momentum}
                                   </span>
                                 </div>
+                                {!isCallCenterSegment && row.recent.leading_grades.length > 0 ? (
+                                  <div className="flex flex-wrap gap-2 mt-2">
+                                    {row.recent.leading_grades.map(g => (
+                                      <span key={g.key} className="text-[10px] inline-flex items-center gap-1" style={{ color: "#64748b" }}>
+                                        <KpiDot tier={g.tier} />
+                                        {KPI_META[g.key].short}: {g.display}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
                               </div>
                             )}
                             {isCallCenterSegment && (
@@ -779,13 +949,12 @@ export default function ClientHealthDashboard(_props: Props) {
       <p className="text-[10px]" style={{ color: "#334155" }}>
         {isCallCenterSegment ? (
           <>
-            HE grades: booking rate (÷ total leads) and net show rate. Focus = 911 on verdict or leading window.
-            Dials shown for volume only.
+            HE baseline: 30d matured booking + show. Leading {LEADING_WINDOW_DAYS}d booking in table. Focus = 911 on verdict or leading window.
           </>
         ) : (
           <>
-            RM verdict anchored on CPConv (spend ÷ live transfers + shows + claimed). Hand-raise = booked + claimed + LT ÷ qualified.
-            Focus = 911 on CPConv or leading CPL/CPQL/hand-raise/qual; Monitor only when a KPI is below target.
+            RM baseline: 30d matured CPConv + show. Leading {LEADING_WINDOW_DAYS}d CPL/CPQL/qual/hand-raise in table (calendar through today).
+            Focus = 911 on CPConv or leading cost/funnel KPIs.
           </>
         )}
       </p>

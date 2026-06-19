@@ -14,6 +14,7 @@ export type ActionLogRow = {
   id: string;
   client_id: string;
   created_at: string;
+  change_date: string | null;
   title: string;
   success_metric: string | null;
   baseline_value: number | null;
@@ -24,6 +25,24 @@ export type ActionLogRow = {
   outcome_value: number | null;
   outcome_recorded_at: string | null;
 };
+
+/** Default lookback for pre-change baseline when freezing a log. */
+export const BASELINE_LOOKBACK_DAYS = 14;
+
+/** Pre-change window: N days ending the day before the change went live. */
+export function baselineWindowForChange(
+  changeDate: string,
+  lookbackDays: number = BASELINE_LOOKBACK_DAYS,
+): { start: string; end: string } {
+  const end = shiftDays(changeDate, -1);
+  const start = shiftDays(end, -(lookbackDays - 1));
+  return { start, end };
+}
+
+/** Effective change date for measurement (falls back to log date). */
+export function actionChangeDate(action: Pick<ActionLogRow, 'change_date' | 'created_at'>): string {
+  return action.change_date ?? ymdFromIso(action.created_at);
+}
 
 export type OutcomeEvaluation = {
   outcome_value: number;
@@ -156,7 +175,7 @@ function improvedVsBaseline(
 }
 
 /**
- * Evaluate an intervention over the post-change window [created_at → review_end].
+ * Evaluate an intervention over the post-change window [change_date → review_end].
  * Uses the same metric definitions as the grader (via metricValue).
  */
 export function evaluateActionOutcome(
@@ -172,12 +191,12 @@ export function evaluateActionOutcome(
   if (action.baseline_value == null) return null;
 
   const meta = SUCCESS_METRIC_META[metricKey];
-  const createdDate = ymdFromIso(action.created_at);
+  const changeDate = actionChangeDate(action);
   const reviewEnd = action.review_date && action.review_date <= today ? action.review_date : today;
-  if (reviewEnd < createdDate) return null;
+  if (reviewEnd < changeDate) return null;
 
   const windowEvents = events.filter(
-    e => e.occurred_at && inRange(e.occurred_at, createdDate, reviewEnd),
+    e => e.occurred_at && inRange(e.occurred_at, changeDate, reviewEnd),
   ) as EventRow[];
 
   const snap = snapshotForWindow(windowEvents, spendRows, reportingType, benchmarks);
@@ -188,8 +207,8 @@ export function evaluateActionOutcome(
     return {
       outcome_value: outcomeValue,
       status: 'measuring',
-      summary: `Not enough volume in ${createdDate} → ${reviewEnd} to judge ${meta.label} yet.`,
-      window_start: createdDate,
+      summary: `Not enough volume in ${changeDate} → ${reviewEnd} to judge ${meta.label} yet.`,
+      window_start: changeDate,
       window_end: reviewEnd,
       insufficient_volume: true,
     };
@@ -220,10 +239,15 @@ export function evaluateActionOutcome(
     outcome_value: outcomeValue,
     status,
     summary,
-    window_start: createdDate,
+    window_start: changeDate,
     window_end: reviewEnd,
     insufficient_volume: false,
   };
+}
+
+/** True when evaluation reached a final succeeded/failed verdict. */
+export function isFinalActionStatus(status: string): boolean {
+  return status === 'succeeded' || status === 'failed';
 }
 
 function formatVal(key: SuccessMetricKey, v: number): string {

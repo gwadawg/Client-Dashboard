@@ -43,7 +43,7 @@ import ClientFormsSection, { type FormSubmissionSummary } from "@/components/Cli
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
-import StatusChangeModal from "@/components/StatusChangeModal";
+import ClientInterventionHistory from "@/components/ClientInterventionHistory";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import type { ClientContact } from "@/lib/client-contacts";
@@ -558,7 +558,6 @@ export default function ClientFile({
     if (!statusChange) return;
     const body = {
       ...statusChange.pendingBody,
-      is_live: statusChange.targetStatus === "active" ? true : false,
       status_change_reason: reason,
       status_change_note: note || undefined,
     };
@@ -636,8 +635,8 @@ export default function ClientFile({
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ color: "#cbd5e1", background: "rgba(148,163,184,0.12)" }}>{lifecycle}</span>
               )}
               {client && (
-                <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={client.is_live ? { color: "#22c55e", background: "rgba(34,197,94,0.12)" } : { color: "#ef4444", background: "rgba(239,68,68,0.12)" }}>
-                  {client.is_live ? "Live" : "Offline"}
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={client.lifecycle_status === "active" ? { color: "#22c55e", background: "rgba(34,197,94,0.12)" } : { color: "#ef4444", background: "rgba(239,68,68,0.12)" }}>
+                  {client.lifecycle_status === "active" ? "Live" : "Offline"}
                 </span>
               )}
               {!editing && missingCount > 0 && (
@@ -848,10 +847,14 @@ export default function ClientFile({
               />
             </Section>
 
+            <Section title="Success interventions">
+              <ClientInterventionHistory clientId={clientId} compact />
+            </Section>
+
             <Section title="Account timeline">
               {activities.length === 0 ? (
                 <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>
-                  No account activity yet — lifecycle changes, calls, notes, and billings appear here.
+                  No account activity yet — lifecycle changes, calls, notes, interventions, and billings appear here.
                 </p>
               ) : (
                 <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
@@ -905,6 +908,10 @@ export default function ClientFile({
             <div className="space-y-7">
             <Section title={`Onboarding forms (${formSubmissions.length})`}>
               <ClientFormsSection submissions={formSubmissions} />
+            </Section>
+
+            <Section title={`Success interventions`}>
+              <ClientInterventionHistory clientId={clientId} />
             </Section>
 
             <Section title={`Lifecycle history (${statusHistory.length})`}>

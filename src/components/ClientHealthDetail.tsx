@@ -17,6 +17,9 @@ type MaturityInfo = {
   matured_through: string;
   clamped: boolean;
   empty: boolean;
+  leading_window_days?: number;
+  leading_start?: string;
+  leading_end?: string;
   recent_window_days: number;
   recent_start: string;
   recent_end: string;
@@ -195,15 +198,15 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                   )}
                 </h2>
                 <p className="text-xs mt-1" style={{ color: "#475569" }}>
-                  {data.period.start} → {data.period.end}
+                  Baseline: {data.period.start} → {data.period.end}
                   {data.prior_period ? ` · vs ${data.prior_period.start} → ${data.prior_period.end}` : ""}
+                  {data.maturity?.leading_start && data.maturity?.leading_end ? (
+                    <> · Leading: {data.maturity.leading_start} → {data.maturity.leading_end}</>
+                  ) : null}
                 </p>
-                {data.maturity && (data.maturity.empty || data.maturity.clamped) ? (
-                  <p className="text-[11px] mt-1" style={{ color: "#38bdf8" }}>
-                    Graded on selected range — includes the last {data.maturity.days}d still resolving, so
-                    {isHe ? " show rate" : " CPConv / show / close"} may understate. See Recent below for leading signal.
-                  </p>
-                ) : null}
+                <p className="text-[11px] mt-1" style={{ color: "#38bdf8" }}>
+                  Baseline ends ~7d before today (matured cohorts). Leading KPIs use the calendar-last {data.maturity?.leading_window_days ?? data.maturity?.recent_window_days ?? 7} days through today.
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 {onOpenClientFile && (
@@ -235,7 +238,7 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
             {data.recent ? (
               <div className="mt-3 rounded-lg px-3 py-2" style={{ background: "#050c18", border: "1px solid rgba(56,189,248,0.18)" }}>
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#38bdf8" }}>
-                  Recent {data.recent.window_days}d · leading indicators (early warning)
+                  Leading {data.recent.window_days}d · {data.recent.start} → {data.recent.end} (calendar · through today)
                 </p>
                 <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs tabular-nums" style={{ color: "#94a3b8" }}>
                   <span>{data.recent.leads} leads</span>
@@ -251,9 +254,6 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                       </span>
                       <span>
                         CPL {Math.round(data.recent.cpl)} · CPQL {Math.round(data.recent.cpql)}
-                        {data.recent.cost_window_days
-                          ? ` (last ${data.recent.cost_window_days}d · through today)`
-                          : ""}
                       </span>
                       <span>{data.recent.conversations} conversations</span>
                     </>

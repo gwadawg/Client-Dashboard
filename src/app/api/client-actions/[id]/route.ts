@@ -32,6 +32,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     update.target_value = body.target_value != null ? Number(body.target_value) : null;
   }
   if (body.review_date !== undefined) update.review_date = body.review_date;
+  if (body.change_date !== undefined) update.change_date = body.change_date;
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'no updatable fields provided' }, { status: 400 });

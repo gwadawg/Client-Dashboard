@@ -7,15 +7,17 @@ import {
   groupEventsByClient,
   groupSpendByClient,
   maturedWindow,
-  recentWindow,
-  recentWindowDaysForVerdict,
-  freshCostWindow,
+  calendarLeadingWindow,
+  isFreshLaunchClient,
+  freshLaunchWindow,
+  filterEventsToRange,
   type ClientEventWithDate,
   type ClientKpiBenchmarks,
   type CostWindowSlice,
   type OpenActionSummary,
+  type PendingIntervention,
 } from '@/lib/client-health';
-import { OPEN_ACTION_STATUSES } from '@/lib/client-health-interventions';
+import { OPEN_ACTION_STATUSES, summarizeOpenAction } from '@/lib/client-health-interventions';
 import { normalizeReportingType, usesCallCenterKpiLayout } from '@/lib/kpi-layouts';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import type { EventRow, SpendRow } from '@/lib/metrics';
@@ -37,6 +39,10 @@ type ActionRow = {
   review_date: string | null;
   status: string;
   created_at: string;
+  change_date: string | null;
+  success_metric: string | null;
+  baseline_value: number | null;
+  outcome_value: number | null;
 };
 
 function spendInRange(rows: SpendByClientRow[], start: string, end: string): SpendByClientRow[] {
@@ -84,21 +90,12 @@ export async function GET(req: Request) {
   const today = new Date().toISOString().split('T')[0];
   const matured = maturedWindow(start_date, end_date);
   const verdictPrior = getPriorPeriod(start_date, end_date);
-  const verdictDays =
-    Math.floor(
-      (new Date(`${end_date}T00:00:00.000Z`).getTime() -
-        new Date(`${start_date}T00:00:00.000Z`).getTime()) /
-        86400000,
-    ) + 1;
-  const recentDays = recentWindowDaysForVerdict(verdictDays);
-  const recent = recentWindow(start_date, end_date, recentDays);
-  const recentPrior = getRecentPriorPeriod(recent.start, recent.end);
-  const freshCost = freshCostWindow();
-  const freshCostPrior = getPriorPeriod(freshCost.start, freshCost.end);
+  const leading = calendarLeadingWindow();
+  const leadingPrior = getRecentPriorPeriod(leading.start, leading.end);
 
   let clientQuery = ctx.service
     .from('clients')
-    .select('id, name, is_live, reporting_type, kpi_benchmarks')
+    .select('id, name, is_live, reporting_type, kpi_benchmarks, launch_date, lifecycle_status')
     .order('name');
 
   if (live_only) clientQuery = clientQuery.eq('is_live', true);
@@ -108,10 +105,15 @@ export async function GET(req: Request) {
     liveClientIds = await getLiveClientIds(ctx.service);
   }
 
-  const rangeStart = [verdictPrior?.start, recentPrior?.start, freshCostPrior?.start, start_date]
+  const rangeStart = [verdictPrior?.start, leadingPrior?.start, start_date]
+    .concat(
+      (clients ?? [])
+        .filter(c => isFreshLaunchClient(c.launch_date as string | null, today))
+        .map(c => c.launch_date as string),
+    )
     .filter(Boolean)
     .sort()[0] as string;
-  const rangeEnd = freshCost.end > end_date ? freshCost.end : end_date;
+  const rangeEnd = leading.end > end_date ? leading.end : end_date;
 
   let eventsQuery = ctx.service.from('events').select(EVENT_SELECT);
   if (liveClientIds) eventsQuery = eventsQuery.in('client_id', liveClientFilter(liveClientIds));
@@ -127,7 +129,9 @@ export async function GET(req: Request) {
 
   let actionsQuery = ctx.service
     .from('client_action_logs')
-    .select('id, client_id, title, review_date, status, created_at')
+    .select(
+      'id, client_id, title, review_date, status, created_at, change_date, success_metric, baseline_value, outcome_value',
+    )
     .in('status', [...OPEN_ACTION_STATUSES]);
   if (liveClientIds?.length) {
     actionsQuery = actionsQuery.in('client_id', liveClientFilter(liveClientIds));
@@ -163,9 +167,9 @@ export async function GET(req: Request) {
   const priorEvents = verdictPrior
     ? allEvents.filter(e => inRange(e, verdictPrior.start, verdictPrior.end))
     : [];
-  const recentEvents = allEvents.filter(e => inRange(e, recent.start, recent.end));
-  const recentPriorEvents = recentPrior
-    ? allEvents.filter(e => inRange(e, recentPrior.start, recentPrior.end))
+  const recentEvents = allEvents.filter(e => inRange(e, leading.start, leading.end));
+  const recentPriorEvents = leadingPrior
+    ? allEvents.filter(e => inRange(e, leadingPrior.start, leadingPrior.end))
     : [];
 
   const spendRows = [...metaSpend];
@@ -173,18 +177,14 @@ export async function GET(req: Request) {
   const priorSpend = verdictPrior
     ? spendInRange(spendRows, verdictPrior.start, verdictPrior.end)
     : [];
-  const recentSpend = spendInRange(spendRows, recent.start, recent.end);
-  const recentPriorSpend = recentPrior
-    ? spendInRange(spendRows, recentPrior.start, recentPrior.end)
+  const recentSpend = spendInRange(spendRows, leading.start, leading.end);
+  const recentPriorSpend = leadingPrior
+    ? spendInRange(spendRows, leadingPrior.start, leadingPrior.end)
     : [];
-  const freshCostEvents = allEvents.filter(e => inRange(e, freshCost.start, freshCost.end));
-  const freshCostPriorEvents = freshCostPrior
-    ? allEvents.filter(e => inRange(e, freshCostPrior.start, freshCostPrior.end))
-    : [];
-  const freshCostSpend = spendInRange(spendRows, freshCost.start, freshCost.end);
-  const freshCostPriorSpend = freshCostPrior
-    ? spendInRange(spendRows, freshCostPrior.start, freshCostPrior.end)
-    : [];
+  const leadingCostEvents = recentEvents;
+  const leadingCostPriorEvents = recentPriorEvents;
+  const leadingCostSpend = recentSpend;
+  const leadingCostPriorSpend = recentPriorSpend;
 
   const currentByClient = groupEventsByClient(verdictEvents);
   const priorByClient = groupEventsByClient(priorEvents);
@@ -199,10 +199,10 @@ export async function GET(req: Request) {
   const recentSpendByClient = spendByClient(recentSpend);
   const recentPriorSpendByClient = spendByClient(recentPriorSpend);
 
-  const freshCostByClient = groupEventsByClient(freshCostEvents);
-  const freshCostPriorByClient = groupEventsByClient(freshCostPriorEvents);
-  const freshCostSpendByClient = spendByClient(freshCostSpend);
-  const freshCostPriorSpendByClient = spendByClient(freshCostPriorSpend);
+  const freshCostByClient = groupEventsByClient(leadingCostEvents);
+  const freshCostPriorByClient = groupEventsByClient(leadingCostPriorEvents);
+  const freshCostSpendByClient = spendByClient(leadingCostSpend);
+  const freshCostPriorSpendByClient = spendByClient(leadingCostPriorSpend);
 
   const actionsByClient = new Map<string, ActionRow[]>();
   for (const a of actionRows ?? []) {
@@ -215,6 +215,22 @@ export async function GET(req: Request) {
     const benchmarks = (c.kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
     const reporting_type = normalizeReportingType(c.reporting_type);
     const isHe = usesCallCenterKpiLayout(reporting_type);
+    const launch_date = (c.launch_date as string | null) ?? null;
+    const clientEvents = allEvents.filter(e => e.client_id === c.id);
+    const freshWin =
+      launch_date && isFreshLaunchClient(launch_date, today)
+        ? freshLaunchWindow(launch_date, today)
+        : null;
+    const freshLaunchEvents = freshWin
+      ? filterEventsToRange(clientEvents, freshWin.start, freshWin.end).map(
+          ({ client_id: _cid, ...row }) => row,
+        )
+      : [];
+    const freshLaunchSpend = freshWin
+      ? spendInRange(spendRows.filter(r => r.client_id === c.id), freshWin.start, freshWin.end).map(
+          ({ client_id, amount, platform }) => ({ amount, platform }),
+        )
+      : [];
     const toCostSlice = (
       events: EventRow[],
       spend: SpendRow[],
@@ -245,25 +261,64 @@ export async function GET(req: Request) {
         : toCostSlice(
             freshCostByClient.get(c.id) ?? [],
             freshCostSpendByClient.get(c.id) ?? [],
-            freshCost,
+            leading,
           ),
       freshCostPrior:
-        isHe || !freshCostPrior
+        isHe || !leadingPrior
           ? null
           : toCostSlice(
               freshCostPriorByClient.get(c.id) ?? [],
               freshCostPriorSpendByClient.get(c.id) ?? [],
-              { ...freshCostPrior, window_days: freshCost.window_days },
+              { ...leadingPrior, window_days: leading.window_days },
             ),
       start_date,
       end_date,
       verdictPrior,
       open_action: pickOpenAction(actionsByClient.get(c.id) ?? [], today),
+      launch_date,
+      freshLaunchEvents,
+      freshLaunchSpend,
+      today,
     });
   });
 
+  const fresh_launch_count = rows.filter(r => r.is_fresh_launch).length;
+
   const follow_up_due = rows.filter(r => r.open_action?.review_date).length;
   const follow_up_overdue = rows.filter(r => r.open_action?.overdue).length;
+
+  const clientNameById = new Map((clients ?? []).map(c => [c.id, c.name]));
+  const clientTypeById = new Map(
+    (clients ?? []).map(c => [c.id, normalizeReportingType(c.reporting_type)]),
+  );
+
+  const pending_interventions: PendingIntervention[] = (actionRows ?? [])
+    .map(a => {
+      const row = a as ActionRow;
+      const summary = summarizeOpenAction(row, today);
+      return {
+        id: row.id,
+        client_id: row.client_id,
+        client_name: clientNameById.get(row.client_id) ?? 'Unknown',
+        reporting_type: clientTypeById.get(row.client_id) ?? 'RM',
+        title: row.title,
+        status: row.status,
+        success_metric: row.success_metric,
+        change_date: row.change_date,
+        review_date: row.review_date,
+        baseline_value: row.baseline_value != null ? Number(row.baseline_value) : null,
+        outcome_value: row.outcome_value != null ? Number(row.outcome_value) : null,
+        overdue: summary.overdue,
+        review_due: !!row.review_date && row.review_date <= today,
+      };
+    })
+    .sort((a, b) => {
+      if (a.review_due !== b.review_due) return a.review_due ? -1 : 1;
+      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+      const ad = a.review_date ?? '9999-12-31';
+      const bd = b.review_date ?? '9999-12-31';
+      return ad.localeCompare(bd);
+    });
 
   return NextResponse.json({
     period: { start: start_date, end: end_date },
@@ -273,23 +328,27 @@ export async function GET(req: Request) {
       matured_through: matured.matured_through,
       clamped: matured.clamped,
       empty: matured.empty,
-      recent_window_days: recent.window_days,
-      recent_start: recent.start,
-      recent_end: recent.end,
-      recent_prior_start: recentPrior?.start ?? null,
-      recent_prior_end: recentPrior?.end ?? null,
-      fresh_cost_window_days: freshCost.window_days,
-      fresh_cost_start: freshCost.start,
-      fresh_cost_end: freshCost.end,
+      leading_window_days: leading.window_days,
+      leading_start: leading.start,
+      leading_end: leading.end,
+      leading_prior_start: leadingPrior?.start ?? null,
+      leading_prior_end: leadingPrior?.end ?? null,
+      recent_window_days: leading.window_days,
+      recent_start: leading.start,
+      recent_end: leading.end,
+      recent_prior_start: leadingPrior?.start ?? null,
+      recent_prior_end: leadingPrior?.end ?? null,
     },
     summary: {
-      act_now: rows.filter(r => r.focus.focus === 'act_now' && r.has_activity).length,
-      monitor: rows.filter(r => r.focus.focus === 'monitor' && r.has_activity).length,
-      recovering: rows.filter(r => r.focus.focus === 'recovering' && r.has_activity).length,
-      on_track: rows.filter(r => r.focus.focus === 'on_track' && r.has_activity).length,
+      act_now: rows.filter(r => r.focus.focus === 'act_now' && r.has_activity && !r.is_fresh_launch).length,
+      monitor: rows.filter(r => r.focus.focus === 'monitor' && r.has_activity && !r.is_fresh_launch).length,
+      recovering: rows.filter(r => r.focus.focus === 'recovering' && r.has_activity && !r.is_fresh_launch).length,
+      on_track: rows.filter(r => r.focus.focus === 'on_track' && r.has_activity && !r.is_fresh_launch).length,
       follow_up_due,
       follow_up_overdue,
+      fresh_launch_count,
     },
+    pending_interventions,
     clients: rows,
   });
 }

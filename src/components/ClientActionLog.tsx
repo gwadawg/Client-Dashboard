@@ -7,13 +7,14 @@ import {
   type ClientHealthSnapshot,
   type SuccessMetricKey,
 } from "@/lib/client-health";
-import { defaultReviewDateFromTimebox } from "@/lib/client-health-interventions";
+import { defaultReviewDateFromTimebox, BASELINE_LOOKBACK_DAYS, actionChangeDate } from "@/lib/client-health-interventions";
 import { normalizeReportingType } from "@/lib/kpi-layouts";
 
 export type ActionLog = {
   id: string;
   client_id: string;
   created_at: string;
+  change_date: string | null;
   title: string;
   layer: string | null;
   constraint_label: string | null;
@@ -44,6 +45,15 @@ type Props = {
 };
 
 const STATUS_OPTIONS = ["planned", "in_progress", "measuring", "succeeded", "failed", "abandoned"];
+
+const STATUS_HELP: Record<string, string> = {
+  planned: "Change not started yet",
+  in_progress: "Change is live — measuring from change date",
+  measuring: "Review window active — waiting for enough data or final verdict",
+  succeeded: "Target hit or metric improved vs baseline",
+  failed: "Metric did not improve by review date",
+  abandoned: "Stopped tracking this change",
+};
 
 const STATUS_COLOR: Record<string, string> = {
   planned: "#94a3b8",
@@ -115,6 +125,7 @@ export default function ClientActionLog({
   const [hypothesis, setHypothesis] = useState("");
   const [successMetric, setSuccessMetric] = useState<SuccessMetricKey>("cpconv");
   const [targetValue, setTargetValue] = useState("");
+  const [changeDate, setChangeDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [reviewDate, setReviewDate] = useState(() => defaultReviewDate(defaultReviewDays));
 
   const load = useCallback(() => {
@@ -172,13 +183,13 @@ export default function ClientActionLog({
     setHypothesis("");
     setSuccessMetric("cpconv");
     setTargetValue("");
+    setChangeDate(new Date().toISOString().split("T")[0]);
     setReviewDate(defaultReviewDate(defaultReviewDays));
   };
 
   const submit = async () => {
     if (!title.trim()) return;
     setSaving(true);
-    const baseline = metricValue(snapshot, successMetric, normalizeReportingType(reportingType));
     const res = await fetch(`/api/client-actions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -190,12 +201,10 @@ export default function ClientActionLog({
         change_description: changeDescription || null,
         hypothesis: hypothesis || null,
         success_metric: successMetric,
-        baseline_value: baseline,
         target_value: targetValue ? Number(targetValue) : null,
+        change_date: changeDate || null,
         review_date: reviewDate || null,
-        period_start: periodStart,
-        period_end: periodEnd,
-        status: "planned",
+        status: "in_progress",
       }),
     });
     setSaving(false);
@@ -240,7 +249,8 @@ export default function ClientActionLog({
             Change log & progress
           </h3>
           <p className="text-xs mt-0.5" style={{ color: "#475569" }}>
-            Baseline frozen at log time ({periodStart} → {periodEnd}). Outcomes measured from change date → review date.
+            Log after you make a change. Baseline freezes the {BASELINE_LOOKBACK_DAYS} days before the change date;
+            progress is measured from change date → review date on your chosen KPI.
             {evaluating ? " Evaluating due reviews…" : ""}
           </p>
         </div>
@@ -288,6 +298,18 @@ export default function ClientActionLog({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
+              <label style={labelStyle}>When did the change go live?</label>
+              <input
+                style={inputStyle}
+                type="date"
+                value={changeDate}
+                onChange={e => setChangeDate(e.target.value)}
+              />
+              <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
+                Backdate if you logged after the fact. Baseline = {BASELINE_LOOKBACK_DAYS}d before this date.
+              </p>
+            </div>
+            <div>
               <label style={labelStyle}>Success metric</label>
               <select
                 style={inputStyle as React.CSSProperties}
@@ -301,7 +323,8 @@ export default function ClientActionLog({
                 ))}
               </select>
               <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
-                Baseline now: {formatMetric(successMetric, metricValue(snapshot, successMetric, normalizeReportingType(reportingType)))}
+                Current period ({periodStart} → {periodEnd}):{" "}
+                {formatMetric(successMetric, metricValue(snapshot, successMetric, normalizeReportingType(reportingType)))}
               </p>
             </div>
             <div>
@@ -314,6 +337,8 @@ export default function ClientActionLog({
                 placeholder="optional"
               />
             </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label style={labelStyle}>Review date</label>
               <input
@@ -322,6 +347,9 @@ export default function ClientActionLog({
                 value={reviewDate}
                 onChange={e => setReviewDate(e.target.value)}
               />
+              <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
+                System auto-evaluates on this date (or click Evaluate).
+              </p>
             </div>
           </div>
           <button
@@ -398,6 +426,11 @@ export default function ClientActionLog({
                           baseline frozen
                         </span>
                       )}
+                      {(a.change_date ?? actionChangeDate(a)) && (
+                        <span className="text-[10px]" style={{ color: "#475569" }}>
+                          change {a.change_date ?? actionChangeDate(a)}
+                        </span>
+                      )}
                       {a.review_date && (
                         <span className="text-[10px]" style={{ color: "#475569" }}>
                           review {a.review_date}
@@ -433,6 +466,7 @@ export default function ClientActionLog({
                       onChange={e => updateStatus(a, e.target.value)}
                       className="text-[11px] rounded px-1.5 py-1"
                       style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#94a3b8" }}
+                      title={STATUS_HELP[a.status] ?? ""}
                     >
                       {STATUS_OPTIONS.map(s => (
                         <option key={s} value={s}>
