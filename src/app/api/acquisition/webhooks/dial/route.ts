@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   if (searchParams.get('debug') === 'true') {
     try {
       const { fetchGhlCallExportPageWithFallback } = await import('@/lib/ghl-acquisition-api');
-      const { data, channel } = await fetchGhlCallExportPageWithFallback(undefined, 5);
+      const { data, channel } = await fetchGhlCallExportPageWithFallback(undefined, 10);
       return NextResponse.json({ ok: true, channel, sample: data });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
