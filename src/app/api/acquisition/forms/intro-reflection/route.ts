@@ -202,6 +202,9 @@ export async function POST(req: NextRequest) {
       rebook_at: str(body.rebook_at),
       call_rating: parseRating(body.call_rating),
       improvement_notes: str(body.improvement_notes),
+      dial_id: str(body.dial_id),
+      recording_url: str(body.recording_url),
+      transcript: str(body.transcript),
     });
 
     let ghl_sync_status = 'skipped';

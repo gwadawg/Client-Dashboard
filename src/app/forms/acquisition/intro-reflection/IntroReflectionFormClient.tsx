@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
+import DialCallPicker from "@/components/acquisition/DialCallPicker";
+import type { DialOption } from "@/lib/acquisition-dial-linkage";
 
 type IntroCandidate = {
   id: string;
@@ -66,6 +68,7 @@ export default function IntroReflectionFormClient({ defaultFormContext }: Props)
     searchParams.get("demo_appointment_id") ??
     (formContext === "demo_booked" ? searchParams.get("appointment_id") : null) ??
     "";
+  const dialIdFromUrl = searchParams.get("dial_id") ?? "";
 
   const [prefetch, setPrefetch] = useState<Prefetch | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -85,6 +88,10 @@ export default function IntroReflectionFormClient({ defaultFormContext }: Props)
   const [callRating, setCallRating] = useState("");
   const [improvementNotes, setImprovementNotes] = useState("");
   const [selectedIntroUuid, setSelectedIntroUuid] = useState("");
+  const [selectedDialId, setSelectedDialId] = useState("");
+  const [selectedDial, setSelectedDial] = useState<DialOption | null>(null);
+  const [recordingUrl, setRecordingUrl] = useState("");
+  const [transcript, setTranscript] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; error?: string; ghl_sync_status?: string; ghl_sync_error?: string | null } | null>(null);
 
@@ -162,6 +169,9 @@ export default function IntroReflectionFormClient({ defaultFormContext }: Props)
           scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
           call_rating: !isClaim && callRating ? Number(callRating) : null,
           improvement_notes: !isClaim ? improvementNotes || null : null,
+          dial_id: selectedDialId || null,
+          recording_url: recordingUrl.trim() || selectedDial?.recording_url || null,
+          transcript: transcript || null,
         }),
       });
       const data = await res.json();
@@ -224,6 +234,53 @@ export default function IntroReflectionFormClient({ defaultFormContext }: Props)
         <label className="block">
           <span className="text-xs font-medium text-slate-400">Setter name</span>
           <input required value={setterName} onChange={(e) => setSetterName(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} />
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-medium text-slate-400">Which call is this report for?</span>
+          <DialCallPicker
+            contactId={contactId}
+            token={token}
+            introAppointmentId={introApptId || null}
+            demoAppointmentId={demoApptId || null}
+            initialDialId={dialIdFromUrl || null}
+            value={selectedDialId}
+            onChange={(id, dial) => {
+              setSelectedDialId(id);
+              setSelectedDial(dial);
+              if (dial?.recording_url) {
+                setRecordingUrl(dial.recording_url);
+              }
+            }}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-slate-400">Recording link</span>
+          <input
+            type="url"
+            value={recordingUrl}
+            onChange={(e) => setRecordingUrl(e.target.value)}
+            placeholder="https://…"
+            className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
+            style={inputStyle}
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            Pick a recent GHL call above to auto-fill, or paste the recording URL manually.
+          </p>
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-slate-400">Call transcript</span>
+          <textarea
+            value={transcript}
+            onChange={(e) => setTranscript(e.target.value)}
+            rows={6}
+            placeholder="Paste the full call transcript…"
+            className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none resize-y"
+            style={inputStyle}
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            Paste the full transcript for review and future AI coaching.
+          </p>
         </label>
 
         {!isClaim && (

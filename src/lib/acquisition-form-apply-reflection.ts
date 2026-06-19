@@ -57,6 +57,8 @@ export type SetterIntroReflectionInput = {
   call_rating?: number | null;
   improvement_notes?: string | null;
   dial_id?: string | null;
+  recording_url?: string | null;
+  transcript?: string | null;
 };
 
 export type SetterIntroReflectionResult = {
@@ -215,6 +217,8 @@ async function upsertIntroCall(
     handled_by: input.setter_name,
     disposition: input.disposition ?? input.fun_outcome ?? null,
     notes: input.notes ?? null,
+    recording_url: input.recording_url?.trim() || null,
+    transcript: input.transcript?.trim() || null,
     source: 'form' as const,
     details,
     updated_at: new Date().toISOString(),
@@ -267,14 +271,15 @@ async function linkDialToCallRow(
     dial_id?: string | null;
     appointmentAt?: string | null;
     recording_url?: string | null;
+    transcript?: string | null;
   },
 ): Promise<void> {
   const link = await resolveDialLinkForSubmit(service, leadId, opts);
-  if (!link) return;
+  if (!link && !opts.recording_url?.trim() && !opts.transcript?.trim()) return;
 
   const { data: existing } = await service
     .from('acquisition_calls')
-    .select('details, recording_url')
+    .select('details, recording_url, transcript')
     .eq('id', callId)
     .maybeSingle();
 
@@ -284,17 +289,29 @@ async function linkDialToCallRow(
       : {};
 
   const updates: Record<string, unknown> = {
-    dial_id: link.dial_id,
     details: {
       ...prevDetails,
-      linked_dial_id: link.dial_id,
-      link_method: link.link_method,
+      ...(link
+        ? { linked_dial_id: link.dial_id, link_method: link.link_method }
+        : {}),
     },
     updated_at: new Date().toISOString(),
   };
 
-  if (link.recording_url && !existing?.recording_url && !opts.recording_url?.trim()) {
+  if (link) {
+    updates.dial_id = link.dial_id;
+  }
+
+  const explicitRecording = opts.recording_url?.trim();
+  if (explicitRecording) {
+    updates.recording_url = explicitRecording;
+  } else if (link?.recording_url && !existing?.recording_url) {
     updates.recording_url = link.recording_url;
+  }
+
+  const explicitTranscript = opts.transcript?.trim();
+  if (explicitTranscript) {
+    updates.transcript = explicitTranscript;
   }
 
   await service.from('acquisition_calls').update(updates).eq('id', callId);
@@ -529,6 +546,8 @@ export async function applySetterIntroReflection(
   await linkDialToCallRow(service, introCallId, leadId, {
     dial_id: input.dial_id,
     appointmentAt,
+    recording_url: input.recording_url,
+    transcript: input.transcript,
   });
 
   return {
