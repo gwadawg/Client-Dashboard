@@ -36,7 +36,7 @@ import { getServiceProgramLabel } from "@/lib/service-program";
 import { formatStatesLicensed } from "@/lib/us-states";
 import { timezoneLabel } from "@/lib/us-timezones";
 import ClientContactsSection from "@/components/ClientContactsSection";
-import { countMissingFields } from "@/components/ClientFileEditForm";
+import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileEditForm";
 import { toDateInputValue } from "@/lib/client-dates";
 import LifecycleStatusSelect from "@/components/LifecycleStatusSelect";
 import ClientFormsSection, { type FormSubmissionSummary } from "@/components/ClientFormsSection";
