@@ -132,7 +132,7 @@ export function createGhlClient(token, { delayMs = 120 } = {}) {
     },
 
     async checkScopes(locationId) {
-      const out = { locationId, contacts: false, calendars: false, detail: {} };
+      const out = { locationId, contacts: false, calendars: false, conversations: false, detail: {} };
       try {
         await request('POST', '/contacts/search', {
           locationId,
@@ -153,7 +153,77 @@ export function createGhlClient(token, { delayMs = 120 } = {}) {
       } catch (e) {
         out.detail.calendars = e instanceof GhlApiError ? e.body : String(e);
       }
+      try {
+        await request(
+          'GET',
+          `/conversations/messages/export?locationId=${encodeURIComponent(locationId)}&channel=Call&limit=1`,
+          { locationId },
+        );
+        out.conversations = true;
+      } catch (e) {
+        out.detail.conversations = e instanceof GhlApiError ? e.body : String(e);
+      }
       return out;
+    },
+
+    /**
+     * Page call messages for a location (GET /conversations/messages/export).
+     * Requires conversations/message.readonly on the private integration token.
+     */
+    async *exportMessages(locationId, { channel = 'Call', pageSize = 100 } = {}) {
+      let cursor;
+      for (;;) {
+        const params = new URLSearchParams({
+          locationId,
+          channel,
+          limit: String(pageSize),
+        });
+        if (cursor) params.set('cursor', cursor);
+        const data = await request('GET', `/conversations/messages/export?${params}`, { locationId });
+        const envelope = data?.messages ?? data ?? {};
+        const batch = envelope.messages ?? envelope.data ?? (Array.isArray(envelope) ? envelope : []);
+        for (const message of batch) yield message;
+        const nextPage = envelope.nextPage ?? data?.nextPage;
+        const lastMessageId = envelope.lastMessageId ?? data?.lastMessageId;
+        if (!nextPage || !lastMessageId || !batch.length) break;
+        cursor = lastMessageId;
+      }
+    },
+
+    async getMessage(messageId, locationId) {
+      return request('GET', `/conversations/messages/${encodeURIComponent(messageId)}`, { locationId });
+    },
+
+    /** Follow redirects to resolve a playable HTTPS recording URL when GHL provides one. */
+    async resolveMessageRecordingUrl(messageId, locationId) {
+      const path = `/conversations/messages/${encodeURIComponent(messageId)}/locations/${encodeURIComponent(locationId)}/recording`;
+      const headers = {
+        Authorization: `Bearer ${token.trim()}`,
+        Version: GHL_VERSION,
+        Accept: '*/*',
+        ...(locationId ? { locationId } : {}),
+      };
+
+      let url = `${GHL_BASE}${path}`;
+      for (let hop = 0; hop < 5; hop++) {
+        const res = await fetch(url, { method: 'GET', headers, redirect: 'manual' });
+        if (res.status >= 300 && res.status < 400) {
+          const location = res.headers.get('location');
+          if (location?.startsWith('http')) return location;
+          if (location) {
+            url = location.startsWith('/') ? `${GHL_BASE}${location}` : location;
+            continue;
+          }
+        }
+        const ct = res.headers.get('content-type') ?? '';
+        if (res.ok && ct.includes('application/json')) {
+          const body = await res.json().catch(() => null);
+          const candidate = body?.url ?? body?.recordingUrl ?? body?.recording_url;
+          if (typeof candidate === 'string' && candidate.startsWith('http')) return candidate;
+        }
+        break;
+      }
+      return null;
     },
   };
 }

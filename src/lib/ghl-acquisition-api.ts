@@ -37,6 +37,28 @@ export type GhlContact = {
 
 export type GhlCustomFieldInput = { id: string; value: string };
 
+export type GhlCallMessage = {
+  id: string;
+  contactId?: string;
+  conversationId?: string;
+  dateAdded?: string;
+  direction?: string;
+  messageType?: string;
+  type?: number | string;
+  status?: string;
+  userId?: string;
+  userName?: string;
+  from?: string;
+  to?: string;
+  attachments?: string[];
+  meta?: {
+    callDuration?: string | number;
+    callStatus?: string;
+    userName?: string;
+  };
+  source?: string;
+};
+
 function getToken(): string {
   const token =
     process.env.GHL_ACQUISITION_API_TOKEN?.trim() ||
@@ -230,4 +252,61 @@ export async function updateAcquisitionOpportunityStage(
       status: 'open',
     },
   });
+}
+
+/** Page call messages for the acquisition location (requires conversations/message.readonly). */
+export async function* exportGhlCallMessages(pageSize = 100): AsyncGenerator<GhlCallMessage> {
+  let cursor: string | undefined;
+  for (;;) {
+    const params = new URLSearchParams({
+      locationId: GHL_ACQUISITION_LOCATION_ID,
+      channel: 'Call',
+      limit: String(pageSize),
+    });
+    if (cursor) params.set('cursor', cursor);
+    const data = await ghlRequest<{
+      messages?: { messages?: GhlCallMessage[]; lastMessageId?: string; nextPage?: boolean };
+      lastMessageId?: string;
+      nextPage?: boolean;
+    }>('GET', `/conversations/messages/export?${params}`);
+    const envelope = data?.messages ?? data;
+    const batch = envelope?.messages ?? [];
+    for (const message of batch) yield message;
+    const nextPage = envelope?.nextPage ?? data?.nextPage;
+    const lastMessageId = envelope?.lastMessageId ?? data?.lastMessageId;
+    if (!nextPage || !lastMessageId || !batch.length) break;
+    cursor = lastMessageId;
+  }
+}
+
+/** Resolve a playable HTTPS URL when GHL redirects to hosted audio. */
+export async function resolveGhlMessageRecordingUrl(messageId: string): Promise<string | null> {
+  const path = `/conversations/messages/${encodeURIComponent(messageId)}/locations/${encodeURIComponent(GHL_ACQUISITION_LOCATION_ID)}/recording`;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${getToken()}`,
+    Version: GHL_VERSION,
+    Accept: '*/*',
+    locationId: GHL_ACQUISITION_LOCATION_ID,
+  };
+
+  let url = `${GHL_BASE}${path}`;
+  for (let hop = 0; hop < 5; hop++) {
+    const res = await fetch(url, { method: 'GET', headers, redirect: 'manual' });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      if (location?.startsWith('http')) return location;
+      if (location) {
+        url = location.startsWith('/') ? `${GHL_BASE}${location}` : location;
+        continue;
+      }
+    }
+    const ct = res.headers.get('content-type') ?? '';
+    if (res.ok && ct.includes('application/json')) {
+      const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      const candidate = body?.url ?? body?.recordingUrl ?? body?.recording_url;
+      if (typeof candidate === 'string' && candidate.startsWith('http')) return candidate;
+    }
+    break;
+  }
+  return null;
 }
