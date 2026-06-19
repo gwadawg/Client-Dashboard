@@ -114,6 +114,7 @@ type DialRow = {
   agent_name: string | null;
   duration_seconds: number | null;
   outcome: string | null;
+  recording_url: string | null;
 };
 
 type CallRow = {
@@ -406,7 +407,7 @@ export function buildAcquisitionLeadProfile(
           dial.outcome,
           dial.duration_seconds != null ? `${dial.duration_seconds}s` : null,
         ]),
-        recording_url: null,
+        recording_url: dial.recording_url,
         transcript_url: null,
       });
     }

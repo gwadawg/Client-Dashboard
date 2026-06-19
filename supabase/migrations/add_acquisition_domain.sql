@@ -197,6 +197,7 @@ create table if not exists acquisition_dials (
   duration_seconds int,
   outcome         text,
   agent_name      text,
+  recording_url   text,
   raw             jsonb not null default '{}',
   inserted_at     timestamptz not null default now()
 );
