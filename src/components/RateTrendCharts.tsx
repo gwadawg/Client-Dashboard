@@ -26,9 +26,10 @@ type TrendsResponse = {
   kpiSeries: KpiTimelineBucket[];
 };
 
-type RateKey = "net_show_rate" | "show_rate" | "hand_raise_rate" | "booking_rate" | "lead_booking_rate" | "conversation_rate";
+type RateKey = "net_show_rate" | "show_rate" | "lead_to_qual" | "hand_raise_rate" | "booking_rate" | "lead_booking_rate" | "conversation_rate";
 
 const CHARTS: { key: RateKey; title: string; subtitle: string; color: string; heOnly?: boolean; rmOnly?: boolean }[] = [
+  { key: "lead_to_qual", title: "Qualified rate", subtitle: "Qualified Leads ÷ Total Leads", color: "#22c55e", rmOnly: true },
   { key: "net_show_rate", title: "Net show rate", subtitle: "Shows ÷ (Shows + No-Shows)", color: "#34d399" },
   { key: "show_rate", title: "Show rate (of booked)", subtitle: "Shows ÷ (Shows + No Shows + LO bailed)", color: "#3b82f6" },
   { key: "hand_raise_rate", title: "Hand-raise rate", subtitle: "(Booked + Claimed + Live Transfers) ÷ Qualified", color: "#f59e0b", rmOnly: true },

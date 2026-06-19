@@ -56,6 +56,12 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
     cards: [
       { label: "Total Leads", metric: "new_leads", format: "int", hint: "Every new lead/contact ingested in this date range." },
       { label: "Qualified Leads", metric: "qualified_leads", format: "int", hint: "Leads manually tagged as qualified — the ones worth dialing." },
+      {
+        label: "Qualified Rate",
+        metric: "qualified_rate",
+        format: "pct",
+        hint: "Qualified Leads ÷ Total Leads × 100.",
+      },
       { label: "Hot Leads", metric: "hot_leads", format: "int", accent: true, hint: "Leads manually tagged as hot / high-intent." },
       { label: "Out of State Leads", metric: "out_of_state_leads", format: "int", hint: "Leads located outside the target geography." },
       { label: "Claimed", metric: "claimed", format: "int", hint: "Leads the client spoke with or messaged outside our booking flow." },

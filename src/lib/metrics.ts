@@ -58,6 +58,8 @@ export type CostTrendPoint = {
 export type MetricsResult = {
   new_leads: number;
   qualified_leads: number;
+  /** Qualified Leads ÷ Total Leads × 100. */
+  qualified_rate: number;
   hot_leads: number;
   out_of_state_leads: number;
   booked_appointments: number;
@@ -236,6 +238,7 @@ export function calculateMetrics(
   return {
     new_leads: leads,
     qualified_leads,
+    qualified_rate: leads > 0 ? (qualified_leads / leads) * 100 : 0,
     hot_leads,
     out_of_state_leads,
     booked_appointments: booked,

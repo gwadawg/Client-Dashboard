@@ -114,6 +114,7 @@ function buildSparkMap(series: KpiTimelineBucket[]): SparkMap {
   return {
     new_leads: series.map(b => b.leads),
     qualified_leads: series.map(b => b.qualified_leads),
+    qualified_rate: series.map(b => b.lead_to_qual),
     booked_appointments: series.map(b => b.booked),
     shows: series.map(b => b.shows),
     no_shows: series.map(b => b.no_shows),
