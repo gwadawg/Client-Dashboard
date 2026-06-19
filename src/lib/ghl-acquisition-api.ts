@@ -269,8 +269,8 @@ export async function* exportGhlCallMessages(pageSize = 100): AsyncGenerator<Ghl
       lastMessageId?: string;
       nextPage?: boolean;
     }>('GET', `/conversations/messages/export?${params}`);
-    const envelope = data?.messages ?? data;
-    const batch = envelope?.messages ?? [];
+    const envelope = data?.messages;
+    const batch: GhlCallMessage[] = Array.isArray(envelope?.messages) ? envelope.messages : [];
     for (const message of batch) yield message;
     const nextPage = envelope?.nextPage ?? data?.nextPage;
     const lastMessageId = envelope?.lastMessageId ?? data?.lastMessageId;
