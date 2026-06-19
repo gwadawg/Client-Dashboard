@@ -17,12 +17,13 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   if (searchParams.get('debug') === 'true') {
     try {
-      const { fetchGhlCallExportPage } = await import('@/lib/ghl-acquisition-api');
-      const sample = await fetchGhlCallExportPage(undefined, 5, 'Call');
-      return NextResponse.json({ ok: true, sample });
+      const { fetchGhlCallExportPageWithFallback } = await import('@/lib/ghl-acquisition-api');
+      const { data, channel } = await fetchGhlCallExportPageWithFallback(undefined, 5);
+      return NextResponse.json({ ok: true, channel, sample: data });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      return NextResponse.json({ error: message }, { status: 500 });
+      const body = e && typeof e === 'object' && 'body' in e ? (e as { body: unknown }).body : null;
+      return NextResponse.json({ error: message, body }, { status: 500 });
     }
   }
 

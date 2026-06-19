@@ -258,7 +258,7 @@ export async function updateAcquisitionOpportunityStage(
 export async function fetchGhlCallExportPage(
   cursor?: string,
   pageSize = 100,
-  channel = 'Call',
+  channel?: string,
 ): Promise<Record<string, unknown>> {
   const params = new URLSearchParams({
     locationId: GHL_ACQUISITION_LOCATION_ID,
@@ -267,6 +267,24 @@ export async function fetchGhlCallExportPage(
   if (channel) params.set('channel', channel);
   if (cursor) params.set('cursor', cursor);
   return ghlRequest<Record<string, unknown>>('GET', `/conversations/messages/export?${params}`);
+}
+
+/** Some locations reject channel=Call on export; fall back to unfiltered export. */
+export async function fetchGhlCallExportPageWithFallback(
+  cursor?: string,
+  pageSize = 100,
+): Promise<{ data: Record<string, unknown>; channel: string | null }> {
+  const attempts: Array<string | undefined> = ['Call', 'call', undefined];
+  let lastErr: unknown;
+  for (const channel of attempts) {
+    try {
+      const data = await fetchGhlCallExportPage(cursor, pageSize, channel);
+      return { data, channel: channel ?? null };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
 }
 
 function parseExportBatch(data: Record<string, unknown>): GhlCallMessage[] {
@@ -299,22 +317,18 @@ function parseExportCursor(data: Record<string, unknown>, batch: GhlCallMessage[
 
 /** Page call messages for the acquisition location (requires conversations/message.readonly). */
 export async function* exportGhlCallMessages(pageSize = 100): AsyncGenerator<GhlCallMessage> {
-  for (const channel of ['Call', '']) {
-    let cursor: string | undefined;
-    let total = 0;
-    for (;;) {
-      const data = await fetchGhlCallExportPage(cursor, pageSize, channel);
-      const batch = parseExportBatch(data);
-      for (const message of batch) {
-        total++;
-        yield message;
-      }
-      const { nextPage, lastMessageId } = parseExportCursor(data, batch);
-      if (!nextPage || !lastMessageId || !batch.length) break;
-      cursor = lastMessageId;
-    }
-    if (total > 0) return;
+  let cursor: string | undefined;
+  let channelUsed: string | null = 'Call';
+  for (;;) {
+    const { data, channel } = await fetchGhlCallExportPageWithFallback(cursor, pageSize);
+    channelUsed = channel;
+    const batch = parseExportBatch(data);
+    for (const message of batch) yield message;
+    const { nextPage, lastMessageId } = parseExportCursor(data, batch);
+    if (!nextPage || !lastMessageId || !batch.length) break;
+    cursor = lastMessageId;
   }
+  void channelUsed;
 }
 
 /** Resolve a playable HTTPS URL when GHL redirects to hosted audio. */
