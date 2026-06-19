@@ -108,6 +108,28 @@ export type ResolvedDialLink = {
   link_method: 'picker' | 'single_candidate';
 };
 
+/**
+ * A dial may only be linked on one acquisition_calls row (unique index).
+ * Clear stale links on other rows before assigning to the target call.
+ */
+export async function releaseDialLinkFromOtherCalls(
+  service: SupabaseClient,
+  dialId: string,
+  keepCallId?: string | null,
+): Promise<void> {
+  let query = service
+    .from('acquisition_calls')
+    .update({ dial_id: null, updated_at: new Date().toISOString() })
+    .eq('dial_id', dialId);
+
+  if (keepCallId?.trim()) {
+    query = query.neq('id', keepCallId.trim());
+  }
+
+  const { error } = await query;
+  if (error) throw new Error(error.message);
+}
+
 /** Resolve dial for form submit. Requires dial_id unless exactly one candidate near appointment. */
 export async function resolveDialLinkForSubmit(
   service: SupabaseClient,

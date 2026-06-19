@@ -22,7 +22,7 @@ import {
   resolveObjectionLabel,
   validateCloserFormReflection,
 } from './closer-form-config';
-import { resolveDialLinkForSubmit } from './acquisition-dial-linkage';
+import { resolveDialLinkForSubmit, releaseDialLinkFromOtherCalls } from './acquisition-dial-linkage';
 
 export type FunOutcome = 'pass' | 'boot_camp' | 'nurture' | 'not_fit';
 
@@ -276,6 +276,10 @@ async function linkDialToCallRow(
 ): Promise<void> {
   const link = await resolveDialLinkForSubmit(service, leadId, opts);
   if (!link && !opts.recording_url?.trim() && !opts.transcript?.trim()) return;
+
+  if (link?.dial_id) {
+    await releaseDialLinkFromOtherCalls(service, link.dial_id, callId);
+  }
 
   const { data: existing } = await service
     .from('acquisition_calls')
@@ -690,6 +694,7 @@ export async function applyCloserForm(
   };
 
   let callId: string;
+  let existingCallId: string | null = null;
   if (appt?.id) {
     await service
       .from('acquisition_appointments')
@@ -701,6 +706,10 @@ export async function applyCloserForm(
       .eq('appointment_id', appt.id)
       .eq('call_type', callType)
       .maybeSingle();
+    existingCallId = existing?.id ?? null;
+    if (dialLink?.dial_id) {
+      await releaseDialLinkFromOtherCalls(service, dialLink.dial_id, existingCallId);
+    }
     if (existing?.id) {
       const { data, error } = await service
         .from('acquisition_calls')
@@ -720,6 +729,9 @@ export async function applyCloserForm(
       callId = data.id;
     }
   } else {
+    if (dialLink?.dial_id) {
+      await releaseDialLinkFromOtherCalls(service, dialLink.dial_id, null);
+    }
     const { data, error } = await service
       .from('acquisition_calls')
       .insert(callRow)
