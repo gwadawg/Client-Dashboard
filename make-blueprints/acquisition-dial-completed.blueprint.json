@@ -35,6 +35,12 @@
               "a": "{{1.customData.`Phone Call Start Time`}}",
               "o": "exist"
             }
+          ],
+          [
+            {
+              "a": "{{1.customData.`Start Time`}}",
+              "o": "exist"
+            }
           ]
         ]
       },
@@ -62,7 +68,7 @@
         "ca": "",
         "useMtls": false,
         "contentType": "application/json",
-        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"occurred_at\": \"{{formatDate(1.customData.`Phone Call Start Time`; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"phone\": \"{{1.phone}}\", \"duration_seconds\": {{toNumber(ifempty(1.customData.`Call Duration`; ifempty(1.customData.`Duration`; 0)))}}, \"agent_name\": \"{{ifempty(1.user.name; ifempty(1.customData.`User`; 1.assignedUser.name))}}\", \"outcome\": \"{{ifempty(1.customData.`Call Status`; 1.customData.`Status`)}}\", \"recording_url\": \"{{ifempty(1.customData.`Recording URL`; ifempty(1.customData.attachments; ifempty(1.customData.`Message Attachments`; \\\"\\\")))}}\"}"
+        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"occurred_at\": \"{{formatDate(ifempty(1.customData.`Phone Call Start Time`; 1.customData.`Start Time`); \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"phone\": \"{{1.phone}}\", \"duration_seconds\": \"{{ifempty(1.customData.`Call Duration`; ifempty(1.customData.`Duration`; 0))}}\", \"agent_name\": \"{{ifempty(1.user.name; ifempty(1.customData.`User`; 1.assignedUser.name))}}\", \"outcome\": \"{{ifempty(1.customData.`Call Status`; 1.customData.`Status`)}}\", \"recording_url\": \"{{ifempty(1.customData.`Attachment `; ifempty(1.customData.`Message Attachments`; 1.customData.`Recording URL`))}}\"}"
       },
       "metadata": {
         "designer": { "x": 300, "y": 0, "name": "POST acquisition dial" }
@@ -85,6 +91,6 @@
     },
     "designer": { "orphans": [] },
     "zone": "eu1.make.com",
-    "notes": "GHL workflow: outbound call completed. Requires Phone Call Start Time and Call Duration in webhook customData."
+    "notes": "GHL workflow: outbound call completed. customData: Start Time (or Phone Call Start Time), Duration (or Call Duration), User, Call Status. duration_seconds is sent as a string so Make jsonString bodies do not need parseNumber/toNumber."
   }
 }

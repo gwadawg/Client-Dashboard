@@ -63,6 +63,7 @@ const COLUMNS: Record<Props["type"], { key: string; label: string }[]> = {
     { key: "phone", label: "Phone" },
     { key: "duration_seconds", label: "Duration" },
     { key: "outcome", label: "Outcome" },
+    { key: "recording_url", label: "Recording" },
   ],
 };
 
@@ -155,6 +156,16 @@ export default function AcquisitionRawTable({ type, startDate, endDate }: Props)
                     <td key={c.key} className="px-3 py-2 whitespace-nowrap tabular-nums" style={{ color: "#cbd5e1" }}>
                       {c.key === "closer_form" ? (
                         <CloserFormCell row={row} />
+                      ) : c.key === "recording_url" && row[c.key] ? (
+                        <a
+                          href={String(row[c.key])}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-semibold"
+                          style={{ color: "#f59e0b" }}
+                        >
+                          Listen
+                        </a>
                       ) : (
                         fmt(c.key, row[c.key])
                       )}
