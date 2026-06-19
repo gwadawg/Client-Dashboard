@@ -8,15 +8,27 @@ Companion to [`KPIS.md`](KPIS.md). Defines the **Waiz sales funnel** (signing ne
 Ads → Lead → Intro Booked → Intro Showed → Demo Booked → Demo Showed → Offer → Close
 ```
 
-| Stage | Table | Date field (booking metrics) | Date field (show metrics) |
-|-------|-------|------------------------------|---------------------------|
-| Lead | `acquisition_leads` | `created_at` | — |
-| Intro booked | `acquisition_appointments` | `booked_at` | — |
-| Intro showed | `acquisition_appointments` | — | `scheduled_at` |
-| Demo booked | `acquisition_appointments` | `booked_at` | — |
-| Demo showed | `acquisition_appointments` | — | `scheduled_at` |
-| Offer | `acquisition_offers` | `offered_at` | — |
-| Close | `acquisition_closes` | `closed_at` | — |
+| Stage | Table | Webhook field (booked) | DB column (booked) | Webhook / DB field (show) |
+|-------|-------|------------------------|--------------------|---------------------------|
+| Lead | `acquisition_leads` | `occurred_at` | `created_at` | — |
+| Intro booked | `acquisition_appointments` | `occurred_at` | `booked_at` | — |
+| Intro showed | `acquisition_appointments` | — | — | `scheduled_at` |
+| Demo booked | `acquisition_appointments` | `occurred_at` | `booked_at` | — |
+| Demo showed | `acquisition_appointments` | — | — | `scheduled_at` |
+| Offer | `acquisition_offers` | — | `offered_at` | — |
+| Close | `acquisition_closes` | — | `closed_at` | — |
+
+**Appointment webhooks** use the same Make field names as client fulfillment (`docs/KPIS.md`):
+
+| GHL / Make field | Client `events` | Acquisition webhook → DB |
+|------------------|-----------------|---------------------------|
+| Date appointment created | `occurred_at` | `occurred_at` → `booked_at` |
+| Date of appointment | `scheduled_at` | `scheduled_at` → `scheduled_at` |
+| GHL appointment id | `external_id` | `external_id` → `ghl_appointment_id` |
+| Setter / agent | `agent_name` | `agent_name` → `setter_name` |
+| Contact phone | `lead_phone` | `lead_phone` → `phone` |
+
+Status updates send only `external_id` + `status` (dates preserved from booked row).
 
 **Close definition:** New Client form submitted → `client_form_submissions` (`form_type: new_client`) linked to `clients`. Historical backfill uses `clients.date_signed`.
 

@@ -1,26 +1,79 @@
 {
-  "name": "WM Acquisition - Meta Spend Daily → Mr. Waiz",
+  "name": "WM Acquisition - Meta Spend Daily -> Mr. Waiz",
   "flow": [
     {
       "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0, "name": "Meta ad row" },
+        "parameters": [
+          {
+            "name": "hook",
+            "type": "hook:gateway",
+            "label": "Acquisition Meta ad insight row webhook",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
       "module": "http:ActionSendData",
       "version": 3,
-      "parameters": { "handleErrors": false },
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompression": true
+      },
       "mapper": {
         "url": "https://wm-os-production.up.railway.app/api/acquisition/ad-insights",
+        "serializeUrl": false,
         "method": "POST",
         "headers": [
-          { "name": "Authorization", "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET" },
-          { "name": "Content-Type", "value": "application/json" }
+          {
+            "name": "Authorization",
+            "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
         ],
+        "qs": [],
         "bodyType": "raw",
+        "parseResponse": false,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "",
+        "shareCookies": false,
+        "ca": "",
+        "useMtls": false,
         "contentType": "application/json",
-        "data": "{\"date\": \"{{date}}\", \"platform\": \"facebook\", \"adset_name\": \"{{adset_name}}\", \"ad_name\": \"{{ad_name}}\", \"amount_spent\": \"{{spend}}\", \"impressions\": \"{{impressions}}\", \"reach\": \"{{reach}}\", \"cpm\": \"{{cpm}}\"}"
+        "data": "{\"date\": \"{{1.date}}\", \"platform\": \"facebook\", \"adset_name\": \"{{1.adset_name}}\", \"ad_name\": \"{{1.ad_name}}\", \"amount_spent\": \"{{1.spend}}\", \"impressions\": \"{{1.impressions}}\", \"reach\": \"{{1.reach}}\", \"cpm\": \"{{1.cpm}}\"}"
       },
-      "metadata": { "designer": { "x": 0, "y": 0, "name": "POST Waiz Meta spend" } }
+      "metadata": {
+        "designer": { "x": 300, "y": 0, "name": "POST Waiz Meta spend row" }
+      }
     }
   ],
   "metadata": {
-    "notes": "Schedule: daily. Source: Facebook Ads → Waiz acquisition ad account (not client accounts)."
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] },
+    "zone": "eu1.make.com",
+    "notes": "Pass one ad row per webhook call (date, adset_name, ad_name, spend, impressions, reach, cpm). Build a separate scheduled Meta fetch scenario that iterates rows and POSTs to this webhook URL."
   }
 }

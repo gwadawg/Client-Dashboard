@@ -1,24 +1,90 @@
 {
-  "name": "WM Acquisition - Dial Completed → Mr. Waiz",
+  "name": "WM Acquisition - Dial Completed -> Mr. Waiz",
   "flow": [
     {
       "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0, "name": "GHL Dial Completed" },
+        "parameters": [
+          {
+            "name": "hook",
+            "type": "hook:gateway",
+            "label": "Acquisition dial completed webhook",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
       "module": "http:ActionSendData",
       "version": 3,
-      "parameters": { "handleErrors": false },
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompression": true
+      },
+      "filter": {
+        "name": "Has call start time",
+        "conditions": [
+          [
+            {
+              "a": "{{1.customData.`Phone Call Start Time`}}",
+              "o": "exist"
+            }
+          ]
+        ]
+      },
       "mapper": {
         "url": "https://wm-os-production.up.railway.app/api/acquisition/webhooks/dial",
+        "serializeUrl": false,
         "method": "POST",
         "headers": [
-          { "name": "Authorization", "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET" },
-          { "name": "Content-Type", "value": "application/json" }
+          {
+            "name": "Authorization",
+            "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
         ],
+        "qs": [],
         "bodyType": "raw",
+        "parseResponse": false,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "",
+        "shareCookies": false,
+        "ca": "",
+        "useMtls": false,
         "contentType": "application/json",
-        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_contact_id\": \"{{contact.id}}\", \"occurred_at\": \"{{call.dateAdded}}\", \"phone\": \"{{contact.phone}}\", \"duration_seconds\": \"{{call.duration}}\", \"agent_name\": \"{{user.name}}\", \"outcome\": \"{{call.status}}\"}"
+        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"occurred_at\": \"{{formatDate(1.customData.`Phone Call Start Time`; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"phone\": \"{{1.phone}}\", \"duration_seconds\": {{toNumber(ifempty(1.customData.`Call Duration`; ifempty(1.customData.`Duration`; 0)))}}, \"agent_name\": \"{{ifempty(1.user.name; ifempty(1.customData.`User`; 1.assignedUser.name))}}\", \"outcome\": \"{{ifempty(1.customData.`Call Status`; 1.customData.`Status`)}}\", \"recording_url\": \"{{ifempty(1.customData.`Recording URL`; ifempty(1.customData.attachments; ifempty(1.customData.`Message Attachments`; \\\"\\\")))}}\"}"
       },
-      "metadata": { "designer": { "x": 0, "y": 0, "name": "POST acquisition dial" } }
+      "metadata": {
+        "designer": { "x": 300, "y": 0, "name": "POST acquisition dial" }
+      }
     }
   ],
-  "metadata": { "notes": "Trigger: GHL outbound call completed in acquisition location." }
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] },
+    "zone": "eu1.make.com",
+    "notes": "GHL workflow: outbound call completed. Requires Phone Call Start Time and Call Duration in webhook customData."
+  }
 }

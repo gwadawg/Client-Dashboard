@@ -1,26 +1,91 @@
 {
-  "name": "WM Acquisition - Lead Created → Mr. Waiz",
+  "name": "WM Acquisition - Lead Created -> Mr. Waiz",
   "flow": [
     {
       "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0, "name": "GHL Contact Created" },
+        "parameters": [
+          {
+            "name": "hook",
+            "type": "hook:gateway",
+            "label": "Acquisition lead created webhook",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
       "module": "http:ActionSendData",
       "version": 3,
-      "parameters": { "handleErrors": false },
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompression": true
+      },
+      "filter": {
+        "name": "Acquisition location only",
+        "conditions": [
+          [
+            {
+              "a": "{{1.location.id}}",
+              "b": "AcDN4LEPnbiqOCWzG1NH",
+              "o": "text:equal"
+            }
+          ]
+        ]
+      },
       "mapper": {
         "url": "https://wm-os-production.up.railway.app/api/acquisition/webhooks/lead",
+        "serializeUrl": false,
         "method": "POST",
         "headers": [
-          { "name": "Authorization", "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET" },
-          { "name": "Content-Type", "value": "application/json" }
+          {
+            "name": "Authorization",
+            "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
         ],
+        "qs": [],
         "bodyType": "raw",
+        "parseResponse": false,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "",
+        "shareCookies": false,
+        "ca": "",
+        "useMtls": false,
         "contentType": "application/json",
-        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_contact_id\": \"{{contact.id}}\", \"lead_name\": \"{{contact.name}}\", \"email\": \"{{contact.email}}\", \"phone\": \"{{contact.phone}}\", \"source\": \"{{contact.source}}\", \"created_at\": \"{{contact.dateAdded}}\"}"
+        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"lead_name\": \"{{1.full_name}}\", \"email\": \"{{1.email}}\", \"phone\": \"{{1.phone}}\", \"source\": \"{{ifempty(1.`Lead Source`; 1.source)}}\", \"created_at\": \"{{formatDate(1.date_created; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\"}"
       },
-      "metadata": { "designer": { "x": 0, "y": 0, "name": "POST acquisition lead" } }
+      "metadata": {
+        "designer": { "x": 300, "y": 0, "name": "POST acquisition lead" }
+      }
     }
   ],
   "metadata": {
-    "notes": "Trigger: GHL Contact Create in acquisition location AcDN4LEPnbiqOCWzG1NH. Filter location_id before HTTP."
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] },
+    "zone": "eu1.make.com",
+    "notes": "GHL workflow: Contact Created in acquisition location AcDN4LEPnbiqOCWzG1NH -> Custom Webhook -> this Make URL."
   }
 }

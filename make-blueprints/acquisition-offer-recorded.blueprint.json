@@ -1,24 +1,79 @@
 {
-  "name": "WM Acquisition - Offer Recorded → Mr. Waiz",
+  "name": "WM Acquisition - Offer Recorded -> Mr. Waiz",
   "flow": [
     {
       "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0, "name": "GHL Offer Recorded" },
+        "parameters": [
+          {
+            "name": "hook",
+            "type": "hook:gateway",
+            "label": "Acquisition offer webhook (legacy)",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
       "module": "http:ActionSendData",
       "version": 3,
-      "parameters": { "handleErrors": false },
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompression": true
+      },
       "mapper": {
         "url": "https://wm-os-production.up.railway.app/api/acquisition/webhooks/offer",
+        "serializeUrl": false,
         "method": "POST",
         "headers": [
-          { "name": "Authorization", "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET" },
-          { "name": "Content-Type", "value": "application/json" }
+          {
+            "name": "Authorization",
+            "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
         ],
+        "qs": [],
         "bodyType": "raw",
+        "parseResponse": false,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "",
+        "shareCookies": false,
+        "ca": "",
+        "useMtls": false,
         "contentType": "application/json",
-        "data": "{\"ghl_contact_id\": \"{{contact.id}}\", \"offer_type\": \"{{custom_field.what_was_offered}}\", \"is_closed\": \"{{custom_field.closed_deal}}\", \"offered_at\": \"{{now}}\", \"offered_by\": \"{{user.name}}\", \"setter_name\": \"{{custom_field.agent}}\"}"
+        "data": "{\"ghl_contact_id\": \"{{1.contact_id}}\", \"offer_type\": \"{{1.customData.`What Was Offered`}}\", \"is_closed\": \"{{1.customData.`Closed Deal`}}\", \"offered_at\": \"{{formatDate(now; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"offered_by\": \"{{ifempty(1.user.name; 1.assignedUser.name)}}\", \"setter_name\": \"{{1.`Agent`}}\"}"
       },
-      "metadata": { "designer": { "x": 0, "y": 0, "name": "POST acquisition offer" } }
+      "metadata": {
+        "designer": { "x": 300, "y": 0, "name": "POST acquisition offer" }
+      }
     }
   ],
-  "metadata": { "notes": "Trigger: pipeline stage or form when offer is made. Map GHL custom fields." }
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] },
+    "zone": "eu1.make.com",
+    "notes": "DEPRECATED. Prefer Mr. Waiz closer form for offers. Keep only during migration if needed."
+  }
 }

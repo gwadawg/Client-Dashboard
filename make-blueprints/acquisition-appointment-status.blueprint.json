@@ -1,26 +1,91 @@
 {
-  "name": "WM Acquisition - Appointment Status → Mr. Waiz",
+  "name": "WM Acquisition - Appointment Status -> Mr. Waiz",
   "flow": [
     {
       "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0, "name": "GHL Appointment Status" },
+        "parameters": [
+          {
+            "name": "hook",
+            "type": "hook:gateway",
+            "label": "Acquisition appointment status webhook",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
       "module": "http:ActionSendData",
       "version": 3,
-      "parameters": { "handleErrors": false },
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompression": true
+      },
+      "filter": {
+        "name": "Acquisition location only",
+        "conditions": [
+          [
+            {
+              "a": "{{1.location.id}}",
+              "b": "AcDN4LEPnbiqOCWzG1NH",
+              "o": "text:equal"
+            }
+          ]
+        ]
+      },
       "mapper": {
         "url": "https://wm-os-production.up.railway.app/api/acquisition/webhooks/appointment",
+        "serializeUrl": false,
         "method": "POST",
         "headers": [
-          { "name": "Authorization", "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET" },
-          { "name": "Content-Type", "value": "application/json" }
+          {
+            "name": "Authorization",
+            "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
         ],
+        "qs": [],
         "bodyType": "raw",
+        "parseResponse": false,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "",
+        "shareCookies": false,
+        "ca": "",
+        "useMtls": false,
         "contentType": "application/json",
-        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_appointment_id\": \"{{appointment.id}}\", \"event_type\": \"{{status}}\", \"appt_status\": \"{{mapped_status}}\"}"
+        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"external_id\": \"{{1.appointment.id}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"status\": \"{{1.appointment.status}}\"}"
       },
-      "metadata": { "designer": { "x": 0, "y": 0, "name": "POST show/no-show update" } }
+      "metadata": {
+        "designer": { "x": 300, "y": 0, "name": "POST show/no-show update" }
+      }
     }
   ],
   "metadata": {
-    "notes": "Trigger: appointment show / no-show / cancelled. Map status to Y/N/C/X before POST or send appt_status directly."
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] },
+    "zone": "eu1.make.com",
+    "notes": "Same shape as client appointment-status webhook: external_id + status. Dates come from the booked event (occurred_at / scheduled_at)."
   }
 }

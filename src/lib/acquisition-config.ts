@@ -54,11 +54,13 @@ export function normalizeSheetAppointmentType(raw: string | null | undefined): A
 }
 
 export function normalizeApptStatus(raw: string | null | undefined): AcquisitionApptStatus {
-  const s = (raw ?? '').trim().toUpperCase();
-  if (s === 'Y') return 'showed';
-  if (s === 'N') return 'no_show';
-  if (s === 'C') return 'cancelled';
-  if (s === 'X') return 'team_no_show';
+  const s = (raw ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (!s) return 'pending';
+  if (s === 'y' || s === 'showed' || s === 'show') return 'showed';
+  if (s === 'n' || s === 'no_show' || s === 'noshow' || s === 'no_showed') return 'no_show';
+  if (s === 'c' || s === 'cancelled' || s === 'canceled') return 'cancelled';
+  if (s === 'x' || s === 'team_no_show' || s === 'team_noshow') return 'team_no_show';
+  if (s === 'confirmed' || s === 'booked' || s === 'new' || s === 'pending') return 'pending';
   return 'pending';
 }
 

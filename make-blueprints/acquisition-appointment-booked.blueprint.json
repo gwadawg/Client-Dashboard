@@ -1,26 +1,91 @@
 {
-  "name": "WM Acquisition - Appointment → Mr. Waiz",
+  "name": "WM Acquisition - Appointment Booked -> Mr. Waiz",
   "flow": [
     {
       "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0, "name": "GHL Appointment Booked" },
+        "parameters": [
+          {
+            "name": "hook",
+            "type": "hook:gateway",
+            "label": "Acquisition appointment booked webhook",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
       "module": "http:ActionSendData",
       "version": 3,
-      "parameters": { "handleErrors": false },
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompression": true
+      },
+      "filter": {
+        "name": "Acquisition location only",
+        "conditions": [
+          [
+            {
+              "a": "{{1.location.id}}",
+              "b": "AcDN4LEPnbiqOCWzG1NH",
+              "o": "text:equal"
+            }
+          ]
+        ]
+      },
       "mapper": {
         "url": "https://wm-os-production.up.railway.app/api/acquisition/webhooks/appointment",
+        "serializeUrl": false,
         "method": "POST",
         "headers": [
-          { "name": "Authorization", "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET" },
-          { "name": "Content-Type", "value": "application/json" }
+          {
+            "name": "Authorization",
+            "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
         ],
+        "qs": [],
         "bodyType": "raw",
+        "parseResponse": false,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "",
+        "shareCookies": false,
+        "ca": "",
+        "useMtls": false,
         "contentType": "application/json",
-        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_appointment_id\": \"{{appointment.id}}\", \"ghl_contact_id\": \"{{contact.id}}\", \"calendar_id\": \"{{appointment.calendarId}}\", \"booked_at\": \"{{appointment.dateAdded}}\", \"scheduled_at\": \"{{appointment.startTime}}\", \"status\": \"{{appointment.appointmentStatus}}\", \"setter_name\": \"{{custom_field.agent}}\", \"lead_name\": \"{{contact.name}}\", \"phone\": \"{{contact.phone}}\"}"
+        "data": "{\"location_id\": \"AcDN4LEPnbiqOCWzG1NH\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"external_id\": \"{{1.appointment.id}}\", \"occurred_at\": \"{{formatDate(1.calendar.date_created; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"scheduled_at\": \"{{formatDate(1.appointment.startTime; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"calendar_id\": \"{{1.calendar.id}}\", \"calendar_name\": \"{{1.calendar.name}}\", \"lead_name\": \"{{1.contact.name}}\", \"lead_phone\": \"{{1.contact.phone}}\", \"lead_email\": \"{{1.contact.email}}\", \"agent_name\": \"{{ifempty(1.`Agent`; 1.assignedUser.name)}}\", \"contact_tags\": \"{{join(1.contact.tags; \\\",\\\")}}\"}"
       },
-      "metadata": { "designer": { "x": 0, "y": 0, "name": "POST acquisition appointment" } }
+      "metadata": {
+        "designer": { "x": 300, "y": 0, "name": "POST acquisition appointment" }
+      }
     }
   ],
   "metadata": {
-    "notes": "Trigger: GHL Appointment Booked/Updated in acquisition location. Map custom_field.agent to setter."
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] },
+    "zone": "eu1.make.com",
+    "notes": "GHL workflow: Appointment Status Booked (all acquisition calendars). Uses same field names as client fulfillment: occurred_at (booked), scheduled_at, external_id."
   }
 }

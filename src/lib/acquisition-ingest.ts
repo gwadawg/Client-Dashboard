@@ -22,6 +22,48 @@ function bool(v: unknown): boolean | null {
   return null;
 }
 
+function resolveLeadAttribution(payload: JsonObject): { ad_name: string | null; ad_set: string | null } {
+  return {
+    ad_name: str(payload.ad_name ?? payload.adName ?? payload.utm_content),
+    ad_set: str(
+      payload.adset_name ??
+        payload.ad_set_name ??
+        payload.adSetName ??
+        payload.ad_set ??
+        payload.utm_medium,
+    ),
+  };
+}
+
+function intField(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(String(v).trim());
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+function recordingUrlField(v: unknown): string | null {
+  if (v == null) return null;
+  if (Array.isArray(v)) {
+    for (const item of v) {
+      const url = recordingUrlField(item);
+      if (url) return url;
+    }
+    return null;
+  }
+  const s = str(v);
+  if (!s) return null;
+  if (s.startsWith('http://') || s.startsWith('https://')) return s;
+  return null;
+}
+
+function dialToCallStatus(outcome: string | null): string {
+  const s = (outcome ?? '').toLowerCase();
+  if (s.includes('voicemail')) return 'voicemail';
+  if (s.includes('no answer') || s.includes('no_answer')) return 'no_answer';
+  if (s.includes('busy') || s.includes('failed') || s.includes('cancel')) return 'no_answer';
+  return 'connected';
+}
+
 export async function upsertAcquisitionLead(
   service: SupabaseClient,
   payload: JsonObject,
@@ -33,25 +75,49 @@ export async function upsertAcquisitionLead(
 
   const ghlContactId = str(payload.ghl_contact_id) ?? str(payload.contact_id) ?? str(payload.id);
   const phone = normalizePhone(str(payload.phone) ?? str(payload.phone_number) ?? str(payload.lead_phone));
-  const createdAt = str(payload.created_at) ?? str(payload.date_added) ?? new Date().toISOString();
+  const createdAt =
+    str(payload.occurred_at) ??
+    str(payload.created_at) ??
+    str(payload.date_added) ??
+    new Date().toISOString();
+  const attribution = resolveLeadAttribution(payload);
 
   const row = {
     ghl_contact_id: ghlContactId,
     lead_name: str(payload.lead_name) ?? str(payload.contact_name) ?? str(payload.name),
-    email: str(payload.email),
+    email: str(payload.email) ?? str(payload.lead_email),
     phone,
     source: str(payload.source) ?? str(payload.lead_source),
     offer_interest: str(payload.offer) ?? str(payload.offer_interest),
     qualified: bool(payload.qualified),
+    ad_name: attribution.ad_name,
+    ad_set: attribution.ad_set,
     created_at: createdAt,
     raw: payload,
     updated_at: new Date().toISOString(),
   };
 
   if (ghlContactId) {
+    const { data: existingLead } = await service
+      .from('acquisition_leads')
+      .select('id')
+      .eq('ghl_contact_id', ghlContactId)
+      .maybeSingle();
+
+    if (existingLead?.id) {
+      const { data, error } = await service
+        .from('acquisition_leads')
+        .update(row)
+        .eq('id', existingLead.id)
+        .select('id')
+        .single();
+      if (error) return { error: error.message };
+      return { id: data.id };
+    }
+
     const { data, error } = await service
       .from('acquisition_leads')
-      .upsert(row, { onConflict: 'ghl_contact_id' })
+      .insert(row)
       .select('id')
       .single();
     if (error) return { error: error.message };
@@ -133,9 +199,6 @@ export async function upsertAcquisitionAppointment(
   const ghlApptId = str(payload.ghl_appointment_id) ?? str(payload.appointment_id) ?? str(payload.external_id);
   const calendarId = str(payload.calendar_id) ?? str(payload.calendarId);
   const apptTypeRaw = str(payload.appointment_type) ?? str(payload.appointmentType);
-  const appointmentType = apptTypeRaw
-    ? normalizeSheetAppointmentType(apptTypeRaw)
-    : calendarToAppointmentType(calendarId);
 
   let leadId: string | null = str(payload.lead_id);
   const ghlContactId = str(payload.ghl_contact_id) ?? str(payload.contact_id);
@@ -144,49 +207,119 @@ export async function upsertAcquisitionAppointment(
       service,
       {
         ghl_contact_id: ghlContactId,
-        phone: str(payload.phone) ?? str(payload.phone_number),
-        email: str(payload.email),
+        phone: str(payload.lead_phone) ?? str(payload.phone) ?? str(payload.phone_number),
+        email: str(payload.lead_email) ?? str(payload.email),
       },
       ghlContactId
         ? {
             ghl_contact_id: ghlContactId,
             lead_name: payload.lead_name,
-            phone: payload.phone ?? payload.phone_number,
-            email: payload.email,
-            created_at: payload.booked_at ?? payload.created_at,
+            phone: payload.lead_phone ?? payload.phone ?? payload.phone_number,
+            email: payload.lead_email ?? payload.email,
+            created_at: payload.occurred_at ?? payload.booked_at ?? payload.created_at,
           }
         : undefined,
     );
   }
 
+  type ExistingAppt = {
+    id: string;
+    lead_id: string | null;
+    appointment_type: string;
+    calendar_id: string | null;
+    booked_at: string | null;
+    scheduled_at: string | null;
+    status: string;
+    booking_source: string | null;
+    how_booked: string | null;
+    qualified: boolean | null;
+    setter_name: string | null;
+    call_taken_by: string | null;
+    lead_name: string | null;
+    phone: string | null;
+  };
+
+  let existing: ExistingAppt | null = null;
+  if (ghlApptId) {
+    const { data } = await service
+      .from('acquisition_appointments')
+      .select(
+        'id, lead_id, appointment_type, calendar_id, booked_at, scheduled_at, status, booking_source, how_booked, qualified, setter_name, call_taken_by, lead_name, phone',
+      )
+      .eq('ghl_appointment_id', ghlApptId)
+      .maybeSingle();
+    existing = data;
+  }
+
+  const appointmentType = apptTypeRaw
+    ? normalizeSheetAppointmentType(apptTypeRaw)
+    : calendarId
+      ? calendarToAppointmentType(calendarId)
+      : ((existing?.appointment_type as ReturnType<typeof calendarToAppointmentType>) ?? 'other');
+
   const statusRaw = str(payload.appt_status) ?? str(payload.status) ?? str(payload.event_type);
-  const status = statusRaw?.includes('show') && !statusRaw.includes('no')
-    ? 'showed'
-    : normalizeApptStatus(statusRaw);
+  const status = statusRaw
+    ? normalizeApptStatus(statusRaw)
+    : ((existing?.status as ReturnType<typeof normalizeApptStatus>) ?? 'pending');
+
+  const bookedAt =
+    str(payload.occurred_at) ??
+    str(payload.booked_at) ??
+    str(payload.date_apt_created) ??
+    str(payload.created_at) ??
+    existing?.booked_at ??
+    null;
+  const scheduledAt =
+    str(payload.scheduled_at) ??
+    str(payload.date_of_appt) ??
+    str(payload.start_time) ??
+    existing?.scheduled_at ??
+    null;
 
   const row = {
-    lead_id: leadId,
+    lead_id: leadId ?? existing?.lead_id ?? null,
     ghl_appointment_id: ghlApptId,
     appointment_type: appointmentType,
-    calendar_id: calendarId,
-    booking_source: str(payload.booking_source),
-    how_booked: str(payload.how_booked) ?? str(payload.how_was_booked),
-    booked_at: str(payload.booked_at) ?? str(payload.date_apt_created) ?? str(payload.created_at),
-    scheduled_at: str(payload.scheduled_at) ?? str(payload.date_of_appt) ?? str(payload.start_time),
+    calendar_id: calendarId ?? existing?.calendar_id ?? null,
+    booking_source: str(payload.booking_source) ?? existing?.booking_source ?? null,
+    how_booked:
+      str(payload.how_booked) ?? str(payload.how_was_booked) ?? existing?.how_booked ?? null,
+    booked_at: bookedAt,
+    scheduled_at: scheduledAt,
     status,
-    qualified: bool(payload.qualified),
-    setter_name: str(payload.setter) ?? str(payload.setter_name),
-    call_taken_by: str(payload.call_taken_by) ?? str(payload.assigned_to),
-    lead_name: str(payload.lead_name),
-    phone: normalizePhone(str(payload.phone) ?? str(payload.phone_number)),
+    qualified: bool(payload.qualified) ?? existing?.qualified ?? null,
+    setter_name:
+      str(payload.agent_name) ??
+      str(payload.setter) ??
+      str(payload.setter_name) ??
+      existing?.setter_name ??
+      null,
+    call_taken_by:
+      str(payload.call_taken_by) ?? str(payload.assigned_to) ?? existing?.call_taken_by ?? null,
+    lead_name: str(payload.lead_name) ?? existing?.lead_name ?? null,
+    phone:
+      normalizePhone(str(payload.lead_phone) ?? str(payload.phone) ?? str(payload.phone_number)) ??
+      existing?.phone ??
+      null,
     raw: payload,
     updated_at: new Date().toISOString(),
   };
 
   if (ghlApptId) {
+    if (existing?.id) {
+      const { data, error } = await service
+        .from('acquisition_appointments')
+        .update(row)
+        .eq('id', existing.id)
+        .select('id')
+        .single();
+      if (error) return { error: error.message };
+      return { id: data.id };
+    }
+
     const { data, error } = await service
       .from('acquisition_appointments')
-      .upsert(row, { onConflict: 'ghl_appointment_id' })
+      .insert(row)
       .select('id')
       .single();
     if (error) return { error: error.message };
@@ -264,19 +397,73 @@ export async function upsertAcquisitionDial(
       : undefined,
   );
 
+  const occurredAt = str(payload.occurred_at) ?? str(payload.dial_at) ?? new Date().toISOString();
+  const outcome = str(payload.outcome) ?? str(payload.call_status);
+  const agentName = str(payload.agent_name) ?? str(payload.user_name);
+  const durationSeconds =
+    intField(payload.duration_seconds) ?? intField(payload.duration) ?? intField(payload.call_duration);
+  const recordingUrl =
+    recordingUrlField(payload.recording_url) ??
+    recordingUrlField(payload.recordingUrl) ??
+    recordingUrlField(payload.attachments) ??
+    recordingUrlField(payload.message_attachments);
+
   const row = {
     ghl_contact_id: ghlContactId,
     lead_id: leadId,
-    occurred_at: str(payload.occurred_at) ?? str(payload.dial_at) ?? new Date().toISOString(),
+    occurred_at: occurredAt,
     phone: normalizePhone(str(payload.phone)),
-    duration_seconds: typeof payload.duration_seconds === 'number' ? payload.duration_seconds : null,
-    outcome: str(payload.outcome) ?? str(payload.call_status),
-    agent_name: str(payload.agent_name) ?? str(payload.user_name),
+    duration_seconds: durationSeconds,
+    outcome,
+    agent_name: agentName,
+    recording_url: recordingUrl,
     raw: payload,
   };
 
   const { data, error } = await service.from('acquisition_dials').insert(row).select('id').single();
   if (error) return { error: error.message };
+
+  if (leadId) {
+    const callRow = {
+      lead_id: leadId,
+      dial_id: data.id,
+      call_type: 'dial' as const,
+      called_at: occurredAt,
+      status: dialToCallStatus(outcome),
+      handled_by: agentName,
+      duration_seconds: durationSeconds,
+      disposition: outcome,
+      recording_url: recordingUrl,
+      source: 'dial_ingest' as const,
+      details: { outcome, phone: row.phone },
+      raw: payload,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: existingCall } = await service
+      .from('acquisition_calls')
+      .select('id')
+      .eq('dial_id', data.id)
+      .maybeSingle();
+
+    if (existingCall?.id) {
+      await service
+        .from('acquisition_calls')
+        .update({
+          recording_url: recordingUrl ?? undefined,
+          duration_seconds: durationSeconds,
+          disposition: outcome,
+          handled_by: agentName,
+          status: dialToCallStatus(outcome),
+          raw: payload,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingCall.id);
+    } else {
+      await service.from('acquisition_calls').insert(callRow);
+    }
+  }
+
   return { id: data.id };
 }
 
