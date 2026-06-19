@@ -71,6 +71,7 @@ type AdRow = {
   cost_per_show: number | null;
   cost_per_close: number | null;
   booking_rate: number | null;
+  qualified_rate: number | null;
   show_rate: number | null;
   client_count: number;
   has_meta: boolean;
@@ -191,6 +192,7 @@ type SortKey =
   | "cpm"
   | "leads"
   | "qualified"
+  | "qualified_rate"
   | "appointments"
   | "shows"
   | "closes"
@@ -503,6 +505,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                 <SortHeader label="CPM" k="cpm" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Leads" k="leads" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Qual" k="qualified" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="Qual %" k="qualified_rate" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Appts" k="appointments" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Shows" k="shows" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Closes" k="closes" sortKey={sortKey} asc={asc} onSort={onSort} />
@@ -690,6 +693,7 @@ function FragmentRow({
         <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money(ad.cpm)}</td>
         <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.leads)}</td>
         <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.qualified)}</td>
+        <td className="px-3 py-3 text-right" style={{ color: "#a78bfa" }}>{pct(ad.qualified_rate)}</td>
         <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.appointments)}</td>
         <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.shows)}</td>
         <td className="px-3 py-3 text-right" style={{ color: "#34d399" }}>{num(ad.closes)}</td>
@@ -699,7 +703,7 @@ function FragmentRow({
       </tr>
       {isOpen ? (
         <tr style={{ background: "#060e1c" }}>
-          <td colSpan={15} className="px-4 py-4">
+          <td colSpan={16} className="px-4 py-4">
             {drilldown === "loading" || !drilldown ? (
               <p className="text-sm" style={{ color: "#475569" }}>Loading breakdown…</p>
             ) : (

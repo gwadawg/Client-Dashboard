@@ -43,6 +43,8 @@ export type AdPerformanceRow = {
   cost_per_show: number | null;
   cost_per_close: number | null;
   booking_rate: number | null;
+  /** Qualified leads ÷ total leads × 100. */
+  qualified_rate: number | null;
   show_rate: number | null;
   client_count: number;
   /** Client IDs for rollup union; omitted in API responses when empty. */
@@ -298,6 +300,7 @@ function accToRow(acc: Acc): AdPerformanceRow {
     cost_per_show: round(ratio(acc.spend, acc.shows), 2),
     cost_per_close: round(ratio(acc.spend, acc.closes), 2),
     booking_rate: round(ratio(acc.appointments, acc.qualified) != null ? (acc.appointments / acc.qualified) * 100 : null, 1),
+    qualified_rate: round(ratio(acc.qualified, acc.leads) != null ? (acc.qualified / acc.leads) * 100 : null, 1),
     show_rate: round(
       acc.shows + acc.no_shows > 0 ? (acc.shows / (acc.shows + acc.no_shows)) * 100 : null,
       1,
