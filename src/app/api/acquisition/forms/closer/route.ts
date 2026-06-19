@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { DOWNSELL_OFFER_TYPES, GHL_CF } from '@/lib/acquisition-config';
 import { applyCloserForm } from '@/lib/acquisition-form-apply';
+import { recordGhlSyncOnSubmission, syncCloserFormToGhl } from '@/lib/ghl-acquisition-sync';
 import { verifyAcquisitionFormToken } from '@/lib/acquisition-form-token';
 import {
   ACQUISITION_LEAD_SOURCES,
@@ -111,6 +112,12 @@ export async function POST(req: NextRequest) {
   }
 
   const offerPresented = body.offer_presented === true || body.offer_presented === 'yes';
+  const closedOnCall =
+    body.closed_on_call === true || body.closed_on_call === 'yes'
+      ? true
+      : body.closed_on_call === false || body.closed_on_call === 'no'
+        ? false
+        : null;
 
   try {
     const service = createServiceClient();
@@ -125,12 +132,7 @@ export async function POST(req: NextRequest) {
       offer_presented: offerPresented,
       disposition: str(body.disposition),
       next_step: str(body.next_step),
-      closed_on_call:
-        body.closed_on_call === true || body.closed_on_call === 'yes'
-          ? true
-          : body.closed_on_call === false || body.closed_on_call === 'no'
-            ? false
-            : null,
+      closed_on_call: closedOnCall,
       offer_type: str(body.offer_type),
       follow_up_notes: str(body.follow_up_notes),
       reporting_type: str(body.reporting_type) as never,
@@ -152,7 +154,24 @@ export async function POST(req: NextRequest) {
       dial_id: str(body.dial_id),
     });
 
-    return NextResponse.json({ ok: true, ...result });
+    const syncResult = await syncCloserFormToGhl({
+      ghl_contact_id: contactId,
+      offer_presented: offerPresented,
+      closed_on_call: closedOnCall,
+    });
+    await recordGhlSyncOnSubmission(service, result.submission_id, syncResult);
+
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      ghl_sync_status: syncResult.status,
+      ghl_sync_error:
+        syncResult.status === 'failed'
+          ? syncResult.error
+          : syncResult.status === 'skipped'
+            ? syncResult.reason
+            : null,
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: message }, { status: 500 });

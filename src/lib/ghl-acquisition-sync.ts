@@ -1,11 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  getGhlAcquisitionClosedTag,
+  getGhlAcquisitionOfferMadeTag,
   GHL_CF,
   GHL_STAGE_DEMO_BOOKED,
 } from './acquisition-config';
 import type { DemoBookingCreditInput } from './acquisition-form-apply';
 import {
   addAcquisitionContactNote,
+  addAcquisitionContactTags,
   updateAcquisitionContactCustomFields,
   updateAcquisitionOpportunityStage,
 } from './ghl-acquisition-api';
@@ -71,6 +74,36 @@ export async function syncDemoBookingToGhl(
     if (input.notes?.trim()) noteLines.push(`Notes: ${input.notes.trim()}`);
     await addAcquisitionContactNote(contactId, noteLines.join('\n'));
 
+    return { status: 'synced' };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    return { status: 'failed', error };
+  }
+}
+
+export async function syncCloserFormToGhl(input: {
+  ghl_contact_id: string;
+  offer_presented: boolean;
+  closed_on_call?: boolean | null;
+}): Promise<GhlSyncResult> {
+  if (!process.env.GHL_ACQUISITION_API_TOKEN?.trim() && !process.env.GHL_API_TOKEN?.trim()) {
+    return { status: 'skipped', reason: 'GHL_ACQUISITION_API_TOKEN not configured' };
+  }
+
+  const tags: string[] = [];
+  if (input.offer_presented) {
+    tags.push(getGhlAcquisitionOfferMadeTag());
+  }
+  if (input.closed_on_call === true) {
+    tags.push(getGhlAcquisitionClosedTag());
+  }
+
+  if (!tags.length) {
+    return { status: 'skipped', reason: 'No GHL disposition tags apply' };
+  }
+
+  try {
+    await addAcquisitionContactTags(input.ghl_contact_id.trim(), tags);
     return { status: 'synced' };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);

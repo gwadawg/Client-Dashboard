@@ -192,6 +192,17 @@ export async function addAcquisitionContactNote(
   });
 }
 
+export async function addAcquisitionContactTags(
+  contactId: string,
+  tags: string[],
+): Promise<void> {
+  const cleaned = tags.map((t) => t.trim()).filter(Boolean);
+  if (!cleaned.length) return;
+  await ghlRequest('POST', `/contacts/${encodeURIComponent(contactId)}/tags`, {
+    body: { tags: cleaned },
+  });
+}
+
 type PipelineStage = { id: string; name: string };
 type Pipeline = { id: string; name: string; stages?: PipelineStage[] };
 

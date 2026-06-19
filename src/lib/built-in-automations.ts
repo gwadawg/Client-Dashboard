@@ -37,6 +37,17 @@ export const BUILT_IN_AUTOMATIONS: BuiltInAutomation[] = [
     ],
     enabled: true,
   },
+  {
+    id: 'acquisition-closer-form-ghl',
+    name: 'Closer form submitted — GHL disposition tags',
+    event_key: 'acquisition.closer_form_submitted',
+    trigger: 'Closer submits the closer form (offer presented and/or closed on call)',
+    actions: [
+      'GHL acquisition subaccount — add tag "Offer made" when offer presented',
+      'GHL acquisition subaccount — add tag "closed" when deal closed on call',
+    ],
+    enabled: true,
+  },
 ];
 
 export function getBuiltInAutomation(eventKey: string): BuiltInAutomation | undefined {

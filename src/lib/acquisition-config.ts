@@ -138,6 +138,18 @@ export const GHL_CF = {
 export const GHL_WM_PIPELINE_ID = 'veiMi1Ql2sQGJWgfdLcy';
 export const GHL_STAGE_DEMO_BOOKED = 'Demo Booked';
 
+/** GHL contact tags applied when closer form is submitted (must exist in acquisition subaccount). */
+export const GHL_ACQUISITION_OFFER_MADE_TAG_DEFAULT = 'Offer made';
+export const GHL_ACQUISITION_CLOSED_TAG_DEFAULT = 'closed';
+
+export function getGhlAcquisitionOfferMadeTag(): string {
+  return process.env.GHL_ACQUISITION_OFFER_MADE_TAG?.trim() || GHL_ACQUISITION_OFFER_MADE_TAG_DEFAULT;
+}
+
+export function getGhlAcquisitionClosedTag(): string {
+  return process.env.GHL_ACQUISITION_CLOSED_TAG?.trim() || GHL_ACQUISITION_CLOSED_TAG_DEFAULT;
+}
+
 export const DEMO_CALENDAR_ID = '71fF0PpCgY8Qv1PqeMFa';
 
 export const BOOKING_SOURCE_OPTIONS = [
