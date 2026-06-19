@@ -84,3 +84,37 @@ export async function fetchCombinedTrendSpend(
 ): Promise<TrendSpendRow[]> {
   return fetchDailyMetaSpend(service, filters);
 }
+
+/** Sum Meta ad clicks in a date range (landing-page clicks from meta_ad_insights). */
+export async function fetchMetaClicksSum(
+  service: SupabaseClient,
+  filters: SpendQueryFilters,
+): Promise<number> {
+  const pageSize = 1000;
+  let offset = 0;
+  let total = 0;
+
+  while (true) {
+    let q = service
+      .from('meta_ad_insights')
+      .select('clicks')
+      .range(offset, offset + pageSize - 1);
+
+    if (filters.client_id) q = q.eq('client_id', filters.client_id);
+    else if (filters.client_ids?.length) q = q.in('client_id', filters.client_ids);
+    if (filters.start_date) q = q.gte('insight_date', filters.start_date);
+    if (filters.end_date) q = q.lte('insight_date', filters.end_date);
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    const batch = data ?? [];
+    for (const row of batch) {
+      total += Number(row.clicks) || 0;
+    }
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  return total;
+}

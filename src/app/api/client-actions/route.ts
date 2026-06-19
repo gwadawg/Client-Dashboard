@@ -4,6 +4,7 @@ import {
   buildClientHealthSnapshot,
   buildHeClientHealthSnapshot,
   metricValue,
+  withOptinRate,
   type ClientKpiBenchmarks,
   type SuccessMetricKey,
 } from '@/lib/client-health';
@@ -18,7 +19,7 @@ import {
 } from '@/lib/client-health-interventions';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { usesCallCenterKpiLayout } from '@/lib/reporting-types';
-import { fetchCombinedSpendForMetrics } from '@/lib/spend';
+import { fetchCombinedSpendForMetrics, fetchMetaClicksSum } from '@/lib/spend';
 import type { EventRow } from '@/lib/metrics';
 
 const SELECT = '*';
@@ -104,7 +105,7 @@ export async function POST(req: Request) {
   const baselineEnd = period_end ?? baselineWindow.end;
 
   if (baselineStart && baselineEnd) {
-    const [{ data: events, error: eventsError }, spend] = await Promise.all([
+    const [{ data: events, error: eventsError }, spend, metaClicks] = await Promise.all([
       ctx.service
         .from('events')
         .select(
@@ -121,15 +122,23 @@ export async function POST(req: Request) {
             start_date: baselineStart,
             end_date: baselineEnd,
           }),
+      isHe
+        ? Promise.resolve(0)
+        : fetchMetaClicksSum(ctx.service, {
+            client_id,
+            start_date: baselineStart,
+            end_date: baselineEnd,
+          }),
     ]);
 
     if (eventsError) {
       return NextResponse.json({ error: eventsError.message }, { status: 500 });
     }
 
-    const snap = isHe
+    let snap = isHe
       ? buildHeClientHealthSnapshot((events ?? []) as EventRow[], benchmarks)
       : buildClientHealthSnapshot((events ?? []) as EventRow[], spend, benchmarks);
+    if (!isHe) snap = withOptinRate(snap, metaClicks);
 
     const metricKey = (success_metric as SuccessMetricKey) ?? 'cpconv';
     baseline_value = metricValue(snap, metricKey, reporting_type);
@@ -237,7 +246,7 @@ async function evaluateOneAction(
   const today = new Date().toISOString().split('T')[0];
   const reviewEnd = action.review_date && action.review_date <= today ? action.review_date : today;
 
-  const [{ data: events }, spend] = await Promise.all([
+  const [{ data: events }, spend, metaClicks] = await Promise.all([
     ctx.service
       .from('events')
       .select(
@@ -254,6 +263,13 @@ async function evaluateOneAction(
           start_date: changeDate,
           end_date: reviewEnd,
         }),
+    usesCallCenterKpiLayout(reporting_type)
+      ? Promise.resolve(0)
+      : fetchMetaClicksSum(ctx.service, {
+          client_id: action.client_id,
+          start_date: changeDate,
+          end_date: reviewEnd,
+        }),
   ]);
 
   const evaluation = evaluateActionOutcome(
@@ -263,6 +279,7 @@ async function evaluateOneAction(
     reporting_type,
     benchmarks,
     today,
+    metaClicks,
   );
 
   if (!evaluation) return null;

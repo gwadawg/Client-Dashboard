@@ -42,12 +42,27 @@ export type ClientHealthSnapshot = {
   cpconv: number;
   /** Conversation yield = conversations ÷ qualified leads (credits live transfers, not just shows). */
   conversation_yield: number;
+  /** Leads ÷ Meta ad clicks × 100 (funnel opt-in / landing conversion). */
+  optin_rate_pct: number;
   grades: KpiGrade[];
   worst_tier: HealthTier;
   attention_score: number;
   constraint: ConstraintLayer;
   constraint_label: string;
 };
+
+/** Opt-in rate = new leads ÷ ad clicks to landing page. */
+export function computeOptinRatePct(newLeads: number, adClicks: number): number {
+  return adClicks > 0 ? (newLeads / adClicks) * 100 : 0;
+}
+
+/** Attach opt-in rate when Meta click volume is available for the window. */
+export function withOptinRate(snap: ClientHealthSnapshot, adClicks: number): ClientHealthSnapshot {
+  return {
+    ...snap,
+    optin_rate_pct: computeOptinRatePct(snap.metrics.new_leads, adClicks),
+  };
+}
 
 /** Funnel layer that owns a constraint, used for ordering and ownership. */
 export type FunnelLayer = 'L1' | 'L2' | 'L3' | 'L4' | 'DATA' | 'NONE';
@@ -429,6 +444,7 @@ export function buildClientHealthSnapshot(
     cpql,
     cpconv,
     conversation_yield,
+    optin_rate_pct: 0,
     grades,
     worst_tier,
     attention_score,
@@ -475,6 +491,7 @@ export function buildHeClientHealthSnapshot(
     cpql: 0,
     cpconv: 0,
     conversation_yield: 0,
+    optin_rate_pct: 0,
     grades,
     worst_tier,
     attention_score,
@@ -879,7 +896,8 @@ export type SuccessMetricKey =
   | 'booking_rate'
   | 'lead_booking_rate'
   | 'lead_to_qual'
-  | 'conversation_yield';
+  | 'conversation_yield'
+  | 'optin_rate';
 
 export const SUCCESS_METRIC_META: Record<
   SuccessMetricKey,
@@ -894,6 +912,7 @@ export const SUCCESS_METRIC_META: Record<
   lead_booking_rate: { label: 'Booking rate (÷ total leads)', lowerIsBetter: false, unit: 'pct' },
   lead_to_qual: { label: 'Lead-to-qualified', lowerIsBetter: false, unit: 'pct' },
   conversation_yield: { label: 'Conversation yield', lowerIsBetter: false, unit: 'ratio' },
+  optin_rate: { label: 'Opt-in rate (leads ÷ ad clicks)', lowerIsBetter: false, unit: 'pct' },
 };
 
 /** Pull a single success-metric value out of a computed snapshot. */
@@ -922,6 +941,8 @@ export function metricValue(
       return snapshot.lead_to_qualified_pct;
     case 'conversation_yield':
       return snapshot.conversation_yield;
+    case 'optin_rate':
+      return snapshot.optin_rate_pct;
   }
 }
 

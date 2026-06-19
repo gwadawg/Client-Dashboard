@@ -3,6 +3,7 @@ import {
   buildHeClientHealthSnapshot,
   metricValue,
   SUCCESS_METRIC_META,
+  withOptinRate,
   type ClientHealthSnapshot,
   type ClientKpiBenchmarks,
   type SuccessMetricKey,
@@ -72,12 +73,14 @@ export function snapshotForWindow(
   spendRows: SpendRow[] | TrendSpendRow[],
   reportingType: ReportingType,
   benchmarks?: ClientKpiBenchmarks | null,
+  metaClicks?: number,
 ): ClientHealthSnapshot {
   const isHe = usesCallCenterKpiLayout(reportingType);
   const spend: SpendRow[] = spendRows.map(r => ({ amount: r.amount, platform: 'platform' in r ? r.platform : undefined }));
-  return isHe
+  const snap = isHe
     ? buildHeClientHealthSnapshot(events, benchmarks)
     : buildClientHealthSnapshot(events, spend, benchmarks);
+  return metaClicks != null ? withOptinRate(snap, metaClicks) : snap;
 }
 
 export type SnapshotInsertPayload = {
@@ -149,6 +152,8 @@ function minVolumeForMetric(key: SuccessMetricKey, snap: ClientHealthSnapshot): 
       return m.new_leads >= 5;
     case 'conversation_yield':
       return m.qualified_leads >= 5;
+    case 'optin_rate':
+      return m.new_leads >= 5;
     default:
       return true;
   }
@@ -185,6 +190,7 @@ export function evaluateActionOutcome(
   reportingType: ReportingType,
   benchmarks?: ClientKpiBenchmarks | null,
   today: string = new Date().toISOString().split('T')[0],
+  metaClicks?: number,
 ): OutcomeEvaluation | null {
   const metricKey = action.success_metric as SuccessMetricKey | null;
   if (!metricKey || !SUCCESS_METRIC_META[metricKey]) return null;
@@ -199,7 +205,7 @@ export function evaluateActionOutcome(
     e => e.occurred_at && inRange(e.occurred_at, changeDate, reviewEnd),
   ) as EventRow[];
 
-  const snap = snapshotForWindow(windowEvents, spendRows, reportingType, benchmarks);
+  const snap = snapshotForWindow(windowEvents, spendRows, reportingType, benchmarks, metaClicks);
   const outcomeValue = metricValue(snap, metricKey, reportingType);
   const insufficient = !minVolumeForMetric(metricKey, snap);
 

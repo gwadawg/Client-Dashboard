@@ -94,6 +94,17 @@ function formatMetric(key: string | null, value: number | null): string {
   return value.toFixed(3);
 }
 
+function targetInputHint(metric: SuccessMetricKey): { placeholder: string; hint: string } {
+  const meta = SUCCESS_METRIC_META[metric];
+  if (meta.unit === "money") {
+    return { placeholder: "e.g. 450", hint: "Enter dollars (no $ sign), e.g. 450 for $450" };
+  }
+  if (meta.unit === "pct") {
+    return { placeholder: "e.g. 18", hint: "Enter percent as a number, e.g. 18 for 18%" };
+  }
+  return { placeholder: "e.g. 0.35", hint: "Enter the ratio as a decimal, e.g. 0.35" };
+}
+
 function defaultReviewDate(days?: number): string {
   if (days) {
     const d = new Date();
@@ -127,6 +138,8 @@ export default function ClientActionLog({
   const [targetValue, setTargetValue] = useState("");
   const [changeDate, setChangeDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [reviewDate, setReviewDate] = useState(() => defaultReviewDate(defaultReviewDays));
+
+  const targetHint = targetInputHint(successMetric);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -334,8 +347,11 @@ export default function ClientActionLog({
                 type="number"
                 value={targetValue}
                 onChange={e => setTargetValue(e.target.value)}
-                placeholder="optional"
+                placeholder={targetHint.placeholder}
               />
+              <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
+                {targetHint.hint}. Unit follows the success metric you selected above.
+              </p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

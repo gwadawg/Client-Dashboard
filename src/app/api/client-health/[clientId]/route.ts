@@ -7,12 +7,13 @@ import {
   getRecentPriorPeriod,
   maturedWindow,
   calendarLeadingWindow,
+  withOptinRate,
   type ClientKpiBenchmarks,
   type CostWindowSlice,
 } from '@/lib/client-health';
 import { OPEN_ACTION_STATUSES } from '@/lib/client-health-interventions';
 import { normalizeReportingType, usesCallCenterKpiLayout } from '@/lib/kpi-layouts';
-import { fetchCombinedSpendForMetrics } from '@/lib/spend';
+import { fetchCombinedSpendForMetrics, fetchMetaClicksSum } from '@/lib/spend';
 import type { EventRow } from '@/lib/metrics';
 
 const EVENT_SELECT =
@@ -155,6 +156,15 @@ export async function GET(
     verdictPrior,
     open_action: nextAction,
   });
+
+  if (!isHe) {
+    const metaClicks = await fetchMetaClicksSum(ctx.service, {
+      client_id: clientId,
+      start_date,
+      end_date,
+    });
+    row.current = withOptinRate(row.current, metaClicks);
+  }
 
   const guidance = buildConstraintGuidance(row.current, reporting_type);
 
