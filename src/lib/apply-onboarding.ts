@@ -68,8 +68,7 @@ export async function applyOnboardingSubmission(
 
   if (existing?.lifecycle_status === 'new_account') {
     updates.lifecycle_status = 'onboarding';
-    const synced = syncIsLiveWithLifecycle('onboarding', undefined);
-    if (synced !== undefined) updates.is_live = synced;
+    updates.is_live = syncIsLiveWithLifecycle('onboarding');
   }
 
   const { data: updated, error } = await service
@@ -139,8 +138,7 @@ export async function applyPendingOnboardingToClient(
 
   if (existing?.lifecycle_status === 'new_account') {
     updates.lifecycle_status = 'onboarding';
-    const synced = syncIsLiveWithLifecycle('onboarding', undefined);
-    if (synced !== undefined) updates.is_live = synced;
+    updates.is_live = syncIsLiveWithLifecycle('onboarding');
   }
 
   const { error: upErr } = await service.from('clients').update(updates).eq('id', clientId);

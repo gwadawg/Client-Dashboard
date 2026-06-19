@@ -289,8 +289,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const advanceLifecycle = body.advance_lifecycle !== false;
     if (advanceLifecycle && existingClient.lifecycle_status === 'new_account') {
       updates.lifecycle_status = 'onboarding';
-      const syncedLive = syncIsLiveWithLifecycle('onboarding', undefined);
-      if (syncedLive !== undefined) updates.is_live = syncedLive;
+      updates.is_live = syncIsLiveWithLifecycle('onboarding');
     }
   }
 

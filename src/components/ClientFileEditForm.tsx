@@ -134,7 +134,6 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     states_licensed: draft.states_licensed,
     timezone: draft.timezone.trim() || null,
     lifecycle_status: draft.lifecycle_status,
-    is_live: draft.is_live,
     billing_type: draft.billing_type || null,
     billing_day: draft.billing_day.trim() || null,
     launch_date: draft.launch_date || null,
@@ -288,10 +287,19 @@ export default function ClientFileEditForm({
           }}>
             {LIFECYCLE_OPTIONS.map(o => <option key={o} value={o}>{o.replace(/_/g, " ")}</option>)}
           </SelectField>
-          <SelectField label="Dashboard status" value={draft.is_live ? "live" : "offline"} onChange={v => patch("is_live", v === "live")}>
-            <option value="live">Live</option>
-            <option value="offline">Offline</option>
-          </SelectField>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider" style={{ color: "#475569" }}>Reporting</span>
+            <span
+              className="text-sm font-semibold px-2 py-1.5 rounded-lg w-fit"
+              style={
+                draft.lifecycle_status === "active"
+                  ? { color: "#22c55e", background: "rgba(34,197,94,0.12)" }
+                  : { color: "#64748b", background: "rgba(100,116,139,0.12)" }
+              }
+            >
+              {draft.lifecycle_status === "active" ? "Live in dashboards" : "Offline — not in reporting views"}
+            </span>
+          </label>
         </div>
       </Section>
 

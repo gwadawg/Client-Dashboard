@@ -1,16 +1,8 @@
-// Keep is_live aligned with lifecycle when the API doesn't send an explicit override.
+// is_live is derived from lifecycle — only launched (active) clients feed reporting views.
 
-const OFFLINE_LIFECYCLES = new Set(['paused', 'off_boarding', 'churned']);
-
-export function syncIsLiveWithLifecycle(
-  lifecycle: string | null | undefined,
-  explicitIsLive: boolean | undefined,
-): boolean | undefined {
-  if (explicitIsLive !== undefined) return explicitIsLive;
-  if (!lifecycle) return undefined;
-  if (lifecycle === 'active') return true;
-  if (OFFLINE_LIFECYCLES.has(lifecycle)) return false;
-  return undefined;
+/** True only when the client has completed launch and is in fulfillment. */
+export function syncIsLiveWithLifecycle(lifecycle: string | null | undefined): boolean {
+  return lifecycle === 'active';
 }
 
 export const DEPARTURE_LIFECYCLE_STATUSES = ['churned', 'off_boarding'] as const;

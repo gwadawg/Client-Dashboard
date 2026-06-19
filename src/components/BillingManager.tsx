@@ -140,7 +140,7 @@ type RecordedRow = { kind: "recorded"; client: ClientBilling; billing: Billing }
 type WorkRow = ForecastRow | RecordedRow;
 
 function isActive(c: ClientBilling): boolean {
-  return c.is_live === true && c.lifecycle_status !== "paused" && c.lifecycle_status !== "churned";
+  return c.lifecycle_status === 'active';
 }
 
 export default function BillingManager({ canViewRevenue: initialCanViewRevenue = false }: { canViewRevenue?: boolean }) {
@@ -238,7 +238,6 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         lifecycle_status: targetStatus,
-        is_live: false,
         status_change_reason: reason,
         status_change_note: note || undefined,
       }),
@@ -814,7 +813,7 @@ function InactiveTable({
                 <td className="px-4 py-2.5" style={{ color: outstanding > 0 ? "#f59e0b" : "#94a3b8" }}>{money(outstanding)}</td>
               )}
               <td className="px-4 py-2.5">
-                <button onClick={() => onPatch(c.id, { lifecycle_status: "active", is_live: true })} disabled={isBusy} className="text-xs font-semibold" style={{ color: "#22c55e" }}>Reactivate</button>
+                <button onClick={() => onPatch(c.id, { lifecycle_status: "active" })} disabled={isBusy} className="text-xs font-semibold" style={{ color: "#22c55e" }}>Reactivate</button>
               </td>
             </tr>
           );

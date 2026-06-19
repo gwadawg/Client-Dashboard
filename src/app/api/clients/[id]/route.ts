@@ -152,7 +152,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const allowed = [
-    'name', 'is_live', 'reporting_type', 'service_program', 'offer',
+    'name', 'reporting_type', 'service_program', 'offer',
     // Billing fields (editable from the Client Billing tab)
     'mrr', 'billing_type', 'billing_day', 'launch_date', 'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
     // Lifecycle (pause/churn/reactivate) + performance pricing note.
@@ -293,11 +293,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   if (newLifecycle) {
-    const syncedLive = syncIsLiveWithLifecycle(
-      newLifecycle,
-      'is_live' in body ? Boolean(body.is_live) : undefined,
-    );
-    if (syncedLive !== undefined) updates.is_live = syncedLive;
+    updates.lifecycle_status = newLifecycle;
+    updates.is_live = syncIsLiveWithLifecycle(newLifecycle);
   }
 
   const relatedCallId =

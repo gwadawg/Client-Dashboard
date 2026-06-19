@@ -257,7 +257,7 @@ async function main() {
     const patch: Record<string, unknown> = {};
     if (fix.lifecycle_status) patch.lifecycle_status = fix.lifecycle_status;
     const isLive =
-      fix.is_live ?? syncIsLiveWithLifecycle(fix.lifecycle_status, undefined);
+      fix.is_live ?? syncIsLiveWithLifecycle(fix.lifecycle_status);
     if (isLive !== undefined) patch.is_live = isLive;
 
     if (applyMode && Object.keys(patch).length) {

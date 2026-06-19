@@ -94,7 +94,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const previousLifecycle = client.lifecycle_status ?? null;
   const lifecycleStatus = 'churned';
-  const syncedLive = syncIsLiveWithLifecycle(lifecycleStatus, undefined);
   const historyNote = formatChurnHistoryNote(draft);
   const responses = churnDraftToResponses(draft);
   const calledAt = `${draft.effective_churn_date}T12:00:00.000Z`;
@@ -105,7 +104,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .update({
       lifecycle_status: lifecycleStatus,
       churned_at: churnedAt,
-      ...(syncedLive !== undefined ? { is_live: syncedLive } : {}),
+      is_live: syncIsLiveWithLifecycle(lifecycleStatus),
     })
     .eq('id', clientId);
 

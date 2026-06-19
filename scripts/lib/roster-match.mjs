@@ -102,12 +102,9 @@ export const FOOTPRINT_TABLES = [
   'client_form_submissions',
 ];
 
-export const LIVE_LIFECYCLES = new Set(['new_account', 'onboarding', 'active']);
-export const OFFLINE_LIFECYCLES = new Set(['paused', 'off_boarding', 'churned']);
-
 export function expectedIsLive(lifecycle) {
-  if (LIVE_LIFECYCLES.has(lifecycle)) return true;
-  if (OFFLINE_LIFECYCLES.has(lifecycle)) return false;
+  if (lifecycle === 'active') return true;
+  if (['new_account', 'onboarding', 'paused', 'off_boarding', 'churned'].includes(lifecycle)) return false;
   return null;
 }
 

@@ -275,14 +275,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     form_profile: formProfile,
   });
   const lifecycleStatus = 'active';
-  const syncedLive = syncIsLiveWithLifecycle(lifecycleStatus, undefined);
 
   const { error: updateErr } = await ctx.service
     .from('clients')
     .update({
       lifecycle_status: lifecycleStatus,
       launch_date: draft.launch_date,
-      ...(syncedLive !== undefined ? { is_live: syncedLive } : {}),
+      is_live: syncIsLiveWithLifecycle(lifecycleStatus),
     })
     .eq('id', clientId);
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });

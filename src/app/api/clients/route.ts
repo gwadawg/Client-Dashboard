@@ -10,6 +10,7 @@ import {
 } from '@/lib/client-duplicate-check';
 import { replayPendingForClientId } from '@/lib/pending-events';
 import { getFormProgressForClients } from '@/lib/form-submissions';
+import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 
 const DETAIL_FIELDS =
   'id, name, is_live, reporting_type, service_program, offer, share_token, created_at, lifecycle_status, mrr, daily_adspend, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id';
@@ -120,6 +121,8 @@ export async function POST(req: Request) {
     if (numericFields.has(k)) insert[k] = body[k] === '' || body[k] === null ? null : Number(body[k]);
     else insert[k] = body[k] === '' ? null : body[k];
   }
+  const lifecycle = (insert.lifecycle_status as string) ?? 'new_account';
+  insert.is_live = syncIsLiveWithLifecycle(lifecycle);
   // email and billing_email are kept in sync.
   if ('email' in insert || 'billing_email' in insert) {
     const synced = (insert.email ?? insert.billing_email ?? null) as string | null;

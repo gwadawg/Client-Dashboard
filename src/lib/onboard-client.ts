@@ -84,8 +84,6 @@ export function parseOnboardPayload(body: OnboardPayload) {
   const dateSigned = trimString(body.date_signed);
 
   const lifecycleStatus = trimString(body.lifecycle_status) ?? 'new_account';
-  const explicitIsLive = body.is_live === true ? true : undefined;
-  const inferredIsLive = syncIsLiveWithLifecycle(lifecycleStatus, explicitIsLive);
 
   return {
     name,
@@ -107,7 +105,7 @@ export function parseOnboardPayload(body: OnboardPayload) {
     source: trimString(body.source),
     slack_id: trimString(body.slack_id) ?? trimString(body.slackId),
     lifecycle_status: lifecycleStatus,
-    is_live: inferredIsLive ?? false,
+    is_live: syncIsLiveWithLifecycle(lifecycleStatus),
     clickup_task_id:
       trimString(body.clickup_task_id) ??
       trimString(body.clickup_id) ??

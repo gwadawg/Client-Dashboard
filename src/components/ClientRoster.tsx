@@ -527,7 +527,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.12)", color: "#94a3b8" }}
               >
                 <p>Clients are grouped by lifecycle status. The <strong style={{ color: "#cbd5e1" }}>sub-account name</strong> must match the GHL location name — that is how leads map in. The <strong style={{ color: "#cbd5e1" }}>client name</strong> is the person or business contact.</p>
-                <p className="mt-2">Live clients (New account, Onboarding, Active) feed the dashboard&rsquo;s &ldquo;Live Clients&rdquo; filter. Paused, Off-boarding, and Churned are treated as offline.</p>
+                <p className="mt-2">Only <strong style={{ color: "#cbd5e1" }}>Active</strong> (launched) clients feed dashboard reporting and the &ldquo;Live Clients&rdquo; filter. New account, onboarding, paused, off-boarding, and churned clients are offline until launch.</p>
                 <p className="mt-2">Open a client&rsquo;s file to edit details, log calls/notes, or run kick-off, launch, and offboarding. If you see duplicates, merge into the file you want to keep — do not delete a row that has reporting data.</p>
               </div>
             )}
@@ -878,7 +878,7 @@ function ClientRow({
   const showOffboardAction = isChurnOffboardEligible(c.lifecycle_status);
 
   const status = c.lifecycle_status ?? "active";
-  const derivedLive = syncIsLiveWithLifecycle(status, undefined);
+  const derivedLive = syncIsLiveWithLifecycle(status);
   const drift = derivedLive !== undefined && c.is_live !== undefined && derivedLive !== c.is_live;
 
   return (
@@ -1262,7 +1262,6 @@ function AddClientForm({
       email,
       reporting_type: reportingType,
       lifecycle_status: lifecycle,
-      is_live: lifecycle === "active" || lifecycle === "onboarding" || lifecycle === "new_account",
       billing_type: billingType,
       ...(showRevenue ? { mrr } : {}),
       billing_day: billingDay,
