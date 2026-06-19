@@ -52,6 +52,7 @@ export default function CloserFormClient() {
   const [setterName, setSetterName] = useState("");
   const [selectedDialId, setSelectedDialId] = useState("");
   const [selectedDial, setSelectedDial] = useState<DialOption | null>(null);
+  const [recordingUrl, setRecordingUrl] = useState("");
   const [transcript, setTranscript] = useState("");
   const [notes, setNotes] = useState("");
   const [offerPresented, setOfferPresented] = useState<"" | "yes" | "no">("");
@@ -129,7 +130,7 @@ export default function CloserFormClient() {
           closer_name: closerName,
           setter_name: setterName || null,
           dial_id: selectedDialId || null,
-          recording_url: selectedDial?.recording_url || null,
+          recording_url: recordingUrl.trim() || selectedDial?.recording_url || null,
           transcript: transcript || null,
           notes: notes || null,
           offer_presented: offerYes,
@@ -249,8 +250,25 @@ export default function CloserFormClient() {
             onChange={(id, dial) => {
               setSelectedDialId(id);
               setSelectedDial(dial);
+              if (dial?.recording_url) {
+                setRecordingUrl(dial.recording_url);
+              }
             }}
           />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-slate-400">Recording link</span>
+          <input
+            type="url"
+            value={recordingUrl}
+            onChange={(e) => setRecordingUrl(e.target.value)}
+            placeholder="https://…"
+            className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
+            style={inputStyle}
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            Paste the call recording URL. Pre-filled when you pick a linked dial above.
+          </p>
         </label>
         <label className="block">
           <span className="text-xs font-medium text-slate-400">Call transcript</span>
