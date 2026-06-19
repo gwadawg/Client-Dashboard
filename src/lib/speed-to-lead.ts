@@ -22,6 +22,7 @@ export type SpeedToLeadEventRow = {
   lead_created_at?: string | null;
   is_pickup?: boolean | null;
   is_conversation?: boolean | null;
+  recording_url?: string | null;
 };
 
 export type AvailabilityWindow = {
@@ -59,6 +60,7 @@ export type SpeedToLeadReading = {
   lead_weekday: number;
   is_pickup: boolean | null;
   is_conversation: boolean | null;
+  recording_url: string | null;
   /** True when this reading contributed to the median / by_hour buckets. */
   counted: boolean;
   excluded_reason?: SpeedToLeadExclusionReason;
@@ -267,6 +269,7 @@ export function computeSpeedToLead(
       lead_weekday: leadWeekday,
       is_pickup: dial.is_pickup ?? null,
       is_conversation: dial.is_conversation ?? null,
+      recording_url: dial.recording_url?.trim() || null,
     };
 
     if (!leadPrecise || dial.occurred_at_has_time === false) {

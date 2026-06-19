@@ -8,7 +8,7 @@ import {
 } from "@/lib/speed-to-lead";
 
 const EVENT_SELECT =
-  "agent_name, client_id, event_type, is_pickup, is_conversation, occurred_at, occurred_at_has_time, lead_created_at, ghl_contact_id, lead_phone, lead_name, phone_number_used";
+  "agent_name, client_id, event_type, is_pickup, is_conversation, occurred_at, occurred_at_has_time, lead_created_at, ghl_contact_id, lead_phone, lead_name, phone_number_used, recording_url";
 
 const EXCLUSION_LABELS: Record<string, string> = {
   no_time: "Missing precise timestamp",
@@ -32,6 +32,7 @@ function readingToRow(
     agent_name: r.agent,
     is_pickup: r.is_pickup,
     is_conversation: r.is_conversation,
+    recording_url: r.recording_url,
     counted: r.counted,
     excluded_reason: r.excluded_reason ?? null,
     excluded_label: r.excluded_reason ? EXCLUSION_LABELS[r.excluded_reason] ?? r.excluded_reason : null,

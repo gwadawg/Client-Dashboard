@@ -35,6 +35,30 @@ export function normalizeEventType(eventType: string): string {
   return eventType;
 }
 
+function recordingUrlField(v: unknown): string | null {
+  if (v == null) return null;
+  if (Array.isArray(v)) {
+    for (const item of v) {
+      const url = recordingUrlField(item);
+      if (url) return url;
+    }
+    return null;
+  }
+  const s = jsonSafeString(v);
+  if (!s) return null;
+  if (s.startsWith('http://') || s.startsWith('https://')) return s;
+  return null;
+}
+
+function resolveRecordingUrl(payload: Record<string, unknown>): string | null {
+  return (
+    recordingUrlField(payload.recording_url) ??
+    recordingUrlField(payload.recordingUrl) ??
+    recordingUrlField(payload.attachments) ??
+    recordingUrlField(payload.message_attachments)
+  );
+}
+
 function jsonSafeString(v: unknown): string | null {
   if (v == null) return null;
   if (typeof v === 'boolean') return v ? 'true' : 'false';
@@ -324,7 +348,7 @@ export async function ingestWebhookEvent(
       agent_name: agentName,
       direction: jsonStringField(payload.direction),
       call_status: jsonStringField(payload.call_status),
-      recording_url: jsonStringField(payload.recording_url),
+      recording_url: resolveRecordingUrl(payload),
       call_summary: jsonStringField(payload.call_summary),
       phone_number_used: jsonStringField(payload.phone_number_used),
       dial_source,

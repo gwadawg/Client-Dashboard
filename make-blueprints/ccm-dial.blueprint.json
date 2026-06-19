@@ -72,7 +72,7 @@
                 "ca": "",
                 "useMtls": false,
                 "contentType": "application/json",
-                "data": "{\"event_type\": \"dial\", \"client_name\": \"{{trim(1.location.name)}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"occurred_at\": \"{{formatDate(1.customData.`Phone Call Start Time`; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"duration_seconds\": {{toNumber(ifempty(1.customData.`Call Duration`; 0))}}, \"is_pickup\": {{if(toNumber(ifempty(1.customData.`Call Duration`; 0)) >= 40; true; false)}}, \"is_conversation\": {{if(toNumber(ifempty(1.customData.`Call Duration`; 0)) >= 120; true; false)}}}"
+                "data": "{\"event_type\": \"dial\", \"client_name\": \"{{trim(1.location.name)}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"occurred_at\": \"{{formatDate(1.customData.`Phone Call Start Time`; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"duration_seconds\": {{toNumber(ifempty(1.customData.`Call Duration`; 0))}}, \"is_pickup\": {{if(toNumber(ifempty(1.customData.`Call Duration`; 0)) >= 40; true; false)}}, \"is_conversation\": {{if(toNumber(ifempty(1.customData.`Call Duration`; 0)) >= 120; true; false)}}, \"recording_url\": \"{{ifempty(1.customData.`Attachment `; ifempty(1.customData.`Message Attachments`; 1.customData.`Recording URL`))}}\"}"
             },
             "metadata": {
                 "designer": { "x": 300, "y": 0, "name": "Send to Supabase" }

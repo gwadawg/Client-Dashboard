@@ -488,6 +488,126 @@ function DialSourceTable({ sources }: { sources: DialSourceRow[] }) {
   );
 }
 
+type RecentDialRow = {
+  occurred_at: string;
+  lead_name: string | null;
+  lead_phone: string | null;
+  agent_name: string | null;
+  duration_seconds: number | null;
+  recording_url: string | null;
+  clients: { name: string } | null;
+};
+
+function fmtDialWhen(iso: string) {
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function RecentDialsPanel({ startDate, endDate, clientId, liveOnly }: Props) {
+  const [rows, setRows] = useState<RecentDialRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!startDate || !endDate) return;
+    setLoading(true);
+    const params = new URLSearchParams({ type: "dials", page: "1" });
+    params.set("start_date", startDate);
+    params.set("end_date", endDate);
+    if (clientId) params.set("client_id", clientId);
+    else if (liveOnly) params.set("live_only", "true");
+
+    fetch(`/api/raw?${params}`)
+      .then(r => r.json())
+      .then(d => {
+        setRows((d.rows ?? []).slice(0, 30));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [startDate, endDate, clientId, liveOnly]);
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: "#050c18" }}>
+              {["When", "Client", "Lead", "Agent", "Duration", "Recording"].map((h, i) => (
+                <th
+                  key={h}
+                  className={`px-4 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${i >= 4 ? "text-right" : "text-left"}`}
+                  style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-10 text-center text-sm" style={{ color: "#1e3a5f" }}>
+                  Loading recent dials…
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-10 text-center text-sm" style={{ color: "#1e3a5f" }}>
+                  No dials in this period
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, i) => (
+                <tr
+                  key={`${row.occurred_at}-${i}`}
+                  style={{
+                    borderTop: "1px solid rgba(255,255,255,0.03)",
+                    background: i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent",
+                  }}
+                >
+                  <td className="px-4 py-2.5 whitespace-nowrap text-xs" style={{ color: "#64748b" }}>
+                    {fmtDialWhen(row.occurred_at)}
+                  </td>
+                  <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#94a3b8" }}>
+                    {row.clients?.name ?? "—"}
+                  </td>
+                  <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#e2e8f0" }}>
+                    {row.lead_name ?? row.lead_phone ?? "—"}
+                  </td>
+                  <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "#94a3b8" }}>
+                    {row.agent_name ?? "—"}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap" style={{ color: "#94a3b8" }}>
+                    {row.duration_seconds != null ? `${row.duration_seconds}s` : "—"}
+                  </td>
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    {row.recording_url ? (
+                      <a
+                        href={row.recording_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold"
+                        style={{ color: "#f59e0b" }}
+                      >
+                        ▶ Listen
+                      </a>
+                    ) : (
+                      <span className="text-xs" style={{ color: "#334155" }}>—</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function DialAnalytics({ startDate, endDate, clientId, liveOnly }: Props) {
   const [data, setData] = useState<DialAnalyticsResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -672,6 +792,16 @@ export default function DialAnalytics({ startDate, endDate, clientId, liveOnly }
           <DialSourceTable sources={data.dial_sources} />
         </section>
       )}
+
+      <section>
+        <h3 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "#334155" }}>
+          Recent dials
+        </h3>
+        <p className="text-[11px] mb-4" style={{ color: "#475569" }}>
+          Latest outbound dials in this period. Recording links appear when GHL sends them through Make.
+        </p>
+        <RecentDialsPanel startDate={startDate} endDate={endDate} clientId={clientId} liveOnly={liveOnly} />
+      </section>
 
       <section>
         <h3 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>

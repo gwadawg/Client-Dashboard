@@ -208,6 +208,16 @@ is_pickup       = duration_seconds >= 40
 is_conversation = duration_seconds >= 120 AND call_status = 'completed'
 ```
 
+**GHL → Make → `recording_url`:** map the first non-empty URL from GHL custom data, in order:
+
+1. `Attachment ` (note trailing space — GHL’s label)
+2. `Message Attachments`
+3. `Recording URL`
+
+Example Make field: `{{ifempty(1.customData.`Attachment `; ifempty(1.customData.`Message Attachments`; 1.customData.`Recording URL`))}}`
+
+Recordings appear in **Data Explorer → Dials** (▶ Listen) and **Agents → Recordings**.
+
 ### Live transfer (`event_type: live_transfer`) — planned
 
 | Sheet (Live Transfers) | Webhook field |

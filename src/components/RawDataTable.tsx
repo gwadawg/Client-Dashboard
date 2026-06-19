@@ -58,6 +58,7 @@ const COLUMNS: Record<string, { key: string; label: string }[]> = {
     { key: "counted", label: "Counted" },
     { key: "is_pickup", label: "Pickup" },
     { key: "is_conversation", label: "Conversation" },
+    { key: "recording_url", label: "Recording" },
   ],
   meta_ad_insights: [
     { key: "client", label: "Client" },
