@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import ViewHub from "../nav/ViewHub";
 import AcquisitionKpiFilterBar, { type KpiFilters } from "../acquisition-kpi/AcquisitionKpiFilterBar";
 import AcquisitionKpiOverview from "../acquisition-kpi/AcquisitionKpiOverview";
@@ -14,9 +14,10 @@ type Props = {
   onTabChange: (tab: AcquisitionKpiTab) => void;
   startDate: string;
   endDate: string;
+  isOwner?: boolean;
 };
 
-export default function AcquisitionKpiHub({ tab, onTabChange, startDate, endDate }: Props) {
+export default function AcquisitionKpiHub({ tab, onTabChange, startDate, endDate, isOwner = false }: Props) {
   const [filters, setFilters] = useState<KpiFilters>({ offerScope: "core", repFilter: "" });
   const [setterNames, setSetterNames] = useState<string[]>([]);
   const [closerNames, setCloserNames] = useState<string[]>([]);
@@ -24,10 +25,24 @@ export default function AcquisitionKpiHub({ tab, onTabChange, startDate, endDate
   const handleSetterNames = useCallback((names: string[]) => setSetterNames(names), []);
   const handleCloserNames = useCallback((names: string[]) => setCloserNames(names), []);
 
+  // Redirect non-owners away from costs tab
+  useEffect(() => {
+    if (!isOwner && tab === "costs") {
+      onTabChange("overview");
+    }
+  }, [isOwner, tab, onTabChange]);
+
+  // Only show Costs tab to the owner
+  const visibleTabs = isOwner
+    ? ACQUISITION_KPI_TABS
+    : ACQUISITION_KPI_TABS.filter(t => t.key !== "costs");
+
+  const activeTab = (!isOwner && tab === "costs") ? "overview" : tab;
+
   return (
     <div className="flex flex-col" style={{ minHeight: 0 }}>
       <AcquisitionKpiFilterBar
-        activeTab={tab}
+        activeTab={activeTab}
         filters={filters}
         setterNames={setterNames}
         closerNames={closerNames}
@@ -36,15 +51,15 @@ export default function AcquisitionKpiHub({ tab, onTabChange, startDate, endDate
       <div className="flex-1 overflow-y-auto">
         <div className="px-6 pt-6">
           <ViewHub
-            tabs={ACQUISITION_KPI_TABS}
-            activeTab={tab}
+            tabs={visibleTabs}
+            activeTab={activeTab}
             onTabChange={key => onTabChange(key as AcquisitionKpiTab)}
           >
             <div className="mt-2">
-              {tab === "overview" && (
+              {activeTab === "overview" && (
                 <AcquisitionKpiOverview startDate={startDate} endDate={endDate} filters={filters} />
               )}
-              {tab === "setters" && (
+              {activeTab === "setters" && (
                 <AcquisitionKpiSetters
                   startDate={startDate}
                   endDate={endDate}
@@ -52,7 +67,7 @@ export default function AcquisitionKpiHub({ tab, onTabChange, startDate, endDate
                   onSetterNamesLoaded={handleSetterNames}
                 />
               )}
-              {tab === "closers" && (
+              {activeTab === "closers" && (
                 <AcquisitionKpiClosers
                   startDate={startDate}
                   endDate={endDate}
@@ -60,7 +75,7 @@ export default function AcquisitionKpiHub({ tab, onTabChange, startDate, endDate
                   onCloserNamesLoaded={handleCloserNames}
                 />
               )}
-              {tab === "costs" && (
+              {isOwner && activeTab === "costs" && (
                 <AcquisitionKpiCosts startDate={startDate} endDate={endDate} filters={filters} />
               )}
             </div>

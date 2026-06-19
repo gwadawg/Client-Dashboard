@@ -938,6 +938,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
               onTabChange={setHubTabAndUrl}
               startDate={dateStart}
               endDate={dateEnd}
+              isOwner={isOwner}
             />
           )}
 

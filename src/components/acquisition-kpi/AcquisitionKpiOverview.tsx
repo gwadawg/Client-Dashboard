@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react";
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  LineChart,
 } from "recharts";
 import type { AcquisitionMetricsResult } from "@/lib/acquisition-metrics";
 import type { AcquisitionTimeseriesBucket } from "@/lib/acquisition-metrics-timeseries";
 import type { CallQualityResult } from "@/lib/acquisition-call-quality";
 import { rateColor, thresholdStyle } from "@/lib/acquisition-kpi-thresholds";
 import type { KpiFilters } from "./AcquisitionKpiFilterBar";
-import { fmtMoney, fmtPct, fmtNum } from "./kpi-fmt";
+import { fmtPct, fmtNum } from "./kpi-fmt";
 
 // ── Shared card primitives ──────────────────────────────────────────────────
 
@@ -78,11 +77,7 @@ function FunnelViz({ stages }: { stages: FunnelStage[] }) {
                   borderRadius: 3, display: "flex", alignItems: "center", padding: "0 10px",
                   minWidth: 32, transition: "width 0.8s cubic-bezier(.22,1,.36,1)",
                 }}
-              >
-                <span style={{ fontFamily: "monospace", fontSize: 9, color: "rgba(255,255,255,0.85)", whiteSpace: "nowrap" }}>
-                  {fmtPct(pct === 100 ? undefined : undefined)}
-                </span>
-              </div>
+              />
             </div>
             <div style={{ width: 48, textAlign: "right", fontFamily: "monospace", fontSize: 11, color: "#94a3b8", flexShrink: 0 }}>
               {fmtNum(s.count)}
@@ -97,50 +92,34 @@ function FunnelViz({ stages }: { stages: FunnelStage[] }) {
   );
 }
 
-// ── Trend charts ────────────────────────────────────────────────────────────
+// ── Appointment activity chart (no cost data) ───────────────────────────────
 
 function formatDay(d: string) {
   const dt = new Date(`${d}T00:00:00Z`);
   return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
-function SpendLeadsChart({ data }: { data: AcquisitionTimeseriesBucket[] }) {
-  const chartData = data.map(d => ({ label: formatDay(d.date), spend: d.ad_spend, leads: d.leads }));
+function AppointmentActivityChart({ data }: { data: AcquisitionTimeseriesBucket[] }) {
+  const chartData = data.map(d => ({
+    label: formatDay(d.date),
+    leads: d.leads,
+    intros: d.intros_showed,
+    demos: d.demos_showed,
+  }));
   return (
     <ResponsiveContainer width="100%" height={200}>
       <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
         <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#334155" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-        <YAxis yAxisId="left" tick={{ fontSize: 9, fill: "#334155" }} tickLine={false} axisLine={false} tickFormatter={v => `$${Math.round(v / 100) * 100}`} width={50} />
-        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 9, fill: "#334155" }} tickLine={false} axisLine={false} width={30} />
+        <YAxis tick={{ fontSize: 9, fill: "#334155" }} tickLine={false} axisLine={false} width={28} />
         <Tooltip
           contentStyle={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, fontSize: 11 }}
           labelStyle={{ color: "#94a3b8" }}
         />
-        <Bar yAxisId="left" dataKey="spend" fill="rgba(79,142,245,0.3)" name="Ad Spend" />
-        <Line yAxisId="right" type="monotone" dataKey="leads" stroke="#2dd4bf" strokeWidth={2} dot={false} name="Leads" />
+        <Bar dataKey="leads" fill="rgba(79,142,245,0.25)" name="Leads" />
+        <Line type="monotone" dataKey="intros" stroke="#2dd4bf" strokeWidth={2} dot={false} name="Intros showed" />
+        <Line type="monotone" dataKey="demos" stroke="#f0a832" strokeWidth={2} dot={false} name="Demos showed" />
       </ComposedChart>
-    </ResponsiveContainer>
-  );
-}
-
-function CplChart({ data }: { data: AcquisitionTimeseriesBucket[] }) {
-  const chartData = data
-    .filter(d => d.cpl != null)
-    .map(d => ({ label: formatDay(d.date), cpl: d.cpl }));
-  return (
-    <ResponsiveContainer width="100%" height={200}>
-      <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-        <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#334155" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-        <YAxis tick={{ fontSize: 9, fill: "#334155" }} tickLine={false} axisLine={false} tickFormatter={v => `$${Math.round(v)}`} width={44} />
-        <Tooltip
-          contentStyle={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, fontSize: 11 }}
-                  formatter={(v: unknown) => [`$${Number(v).toFixed(2)}`, "CPL"]}
-                  labelStyle={{ color: "#94a3b8" }}
-        />
-        <Line type="monotone" dataKey="cpl" stroke="#f0a832" strokeWidth={2} dot={false} name="CPL" />
-      </LineChart>
     </ResponsiveContainer>
   );
 }
@@ -171,7 +150,6 @@ function NoShowCard({ label, value, color = "#94a3b8", sub }: { label: string; v
 function QualitySnapshot({ quality }: { quality: CallQualityResult }) {
   return (
     <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-      {/* Avg rating */}
       <div style={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "18px 20px" }}>
         <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
           Avg call rating
@@ -184,7 +162,6 @@ function QualitySnapshot({ quality }: { quality: CallQualityResult }) {
         </div>
       </div>
 
-      {/* Top surface objections */}
       <div style={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "18px 20px" }}>
         <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
           Top surface objections
@@ -203,7 +180,6 @@ function QualitySnapshot({ quality }: { quality: CallQualityResult }) {
         )}
       </div>
 
-      {/* Lead quality distribution */}
       <div style={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "18px 20px" }}>
         <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
           Lead quality distribution
@@ -244,10 +220,7 @@ export default function AcquisitionKpiOverview({ startDate, endDate, filters }: 
 
   useEffect(() => {
     setLoading(true);
-    const q = new URLSearchParams({
-      from: startDate, to: endDate,
-      offer_scope: filters.offerScope,
-    });
+    const q = new URLSearchParams({ from: startDate, to: endDate, offer_scope: filters.offerScope });
     Promise.all([
       fetch(`/api/acquisition/metrics?${q}`).then(r => r.json()),
       fetch(`/api/acquisition/metrics/timeseries?${q}`).then(r => r.json()),
@@ -279,18 +252,18 @@ export default function AcquisitionKpiOverview({ startDate, endDate, filters }: 
   return (
     <div className="flex flex-col gap-8 pb-12">
 
-      {/* Hero row */}
+      {/* Hero row — activity & conversions only, no cost data */}
       <div>
         <SectionHead title="Performance snapshot" />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, overflow: "hidden" }}>
-          <HeroCard label="Total ad spend" value={fmtMoney(m.ad_spend)} sub="Meta campaigns" color="#4f8ef5" accent="#4f8ef5" />
-          <HeroCard label="Total leads" value={fmtNum(m.leads)} sub={`${fmtNum(m.meta_leads)} Meta`} accent="#2dd4bf" />
-          <HeroCard label="New cash collected" value={fmtMoney(m.cash_collected)} sub="from closes" color="#3ecf8e" accent="#3ecf8e" />
-          <HeroCard label="Closes" value={fmtNum(m.closes)} sub={`${fmtNum(m.offers_made)} offers made`} accent="#f0a832" />
+          <HeroCard label="Total leads" value={fmtNum(m.leads)} sub={`${fmtNum(m.meta_leads)} from Meta`} color="#e2e8f0" accent="#4f8ef5" />
+          <HeroCard label="Intros booked" value={fmtNum(m.intros_booked)} sub={`${fmtNum(m.intros_showed)} showed`} accent="#2dd4bf" />
+          <HeroCard label="Demos booked" value={fmtNum(m.demos_booked)} sub={`${fmtNum(m.demos_showed)} showed`} accent="#f0a832" />
+          <HeroCard label="Closes" value={fmtNum(m.closes)} sub={`${fmtNum(m.offers_made)} offers made`} color="#3ecf8e" accent="#3ecf8e" />
         </div>
 
         {/* Funnel volume row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, overflow: "hidden", marginTop: 1 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, overflow: "hidden", marginTop: 1 }}>
           <div className="p-5" style={{ background: "#0f1115" }}>
             <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Intros booked</div>
             <div style={{ fontSize: 28, fontWeight: 700, color: "#e2e8f0", letterSpacing: "-1px" }}>{fmtNum(m.intros_booked)}</div>
@@ -308,19 +281,11 @@ export default function AcquisitionKpiOverview({ startDate, endDate, filters }: 
             </div>
           </div>
           <div className="p-5" style={{ background: "#0f1115" }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Closes (core)</div>
+            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Closes &amp; offers</div>
             <div style={{ fontSize: 28, fontWeight: 700, color: "#3ecf8e", letterSpacing: "-1px" }}>{fmtNum(m.closes)}</div>
             <div className="flex gap-4 mt-3">
-              <div><div style={{ fontSize: 8, color: "#334155" }}>Offers</div><div style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>{fmtNum(m.offers_made)}</div></div>
+              <div><div style={{ fontSize: 8, color: "#334155" }}>Offers made</div><div style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>{fmtNum(m.offers_made)}</div></div>
               <div><div style={{ fontSize: 8, color: "#334155" }}>Close %</div><div style={{ fontSize: 13, fontWeight: 600, color: "#3ecf8e" }}>{fmtPct(m.close_rate)}</div></div>
-            </div>
-          </div>
-          <div className="p-5" style={{ background: "#0f1115" }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>CPL / CAC</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: "#4f8ef5", letterSpacing: "-1px" }}>{fmtMoney(m.cpl)}</div>
-            <div className="flex gap-4 mt-3">
-              <div><div style={{ fontSize: 8, color: "#334155" }}>CPL</div><div style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>{fmtMoney(m.cpl)}</div></div>
-              <div><div style={{ fontSize: 8, color: "#334155" }}>CAC</div><div style={{ fontSize: 13, fontWeight: 600, color: "#4f8ef5" }}>{fmtMoney(m.cac)}</div></div>
             </div>
           </div>
         </div>
@@ -347,34 +312,23 @@ export default function AcquisitionKpiOverview({ startDate, endDate, filters }: 
         </div>
       </div>
 
-      {/* Trend charts */}
+      {/* Appointment activity chart — leads, intros showed, demos showed */}
       <div>
-        <SectionHead title="Trends" />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <ChartCard title="Daily spend vs leads">
-            <SpendLeadsChart data={series} />
-          </ChartCard>
-          <ChartCard title="CPL trend">
-            <CplChart data={series} />
-          </ChartCard>
-        </div>
+        <SectionHead title="Activity trends" />
+        <ChartCard title="Daily leads · intros showed · demos showed">
+          <AppointmentActivityChart data={series} />
+        </ChartCard>
       </div>
 
-      {/* No-show breakdown */}
+      {/* No-show breakdown — appointment counts only, no cost cards */}
       <div>
         <SectionHead title="Appointment status breakdown" />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
           <NoShowCard label="Showed" value={fmtNum(ns.showed)} color="#3ecf8e" />
           <NoShowCard label="Lead no-show" value={fmtNum(ns.lead_no_show)} color="#e84040" />
           <NoShowCard label="Cancelled" value={fmtNum(ns.cancelled)} color="#f0a832" />
           <NoShowCard label="Team no-show" value={fmtNum(ns.team_no_show)} color="#94a3b8" />
           <NoShowCard label="Overall show rate" value={fmtPct(ns.show_rate)} color="#3ecf8e" sub="excl. cancelled" />
-          <NoShowCard
-            label="Cost per no-show"
-            value={fmtMoney(m.cost_per_no_show)}
-            color="#e84040"
-            sub="wasted spend"
-          />
         </div>
       </div>
 
