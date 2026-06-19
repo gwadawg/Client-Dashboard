@@ -544,6 +544,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
     || isAcquisition
     || isAcquisitionDataExplorer
     || isAgents
+    || view === "acquisition_kpis"
     || view === "dial_analytics"
     || view === "media_buyer"
     || view === "client_calls"
