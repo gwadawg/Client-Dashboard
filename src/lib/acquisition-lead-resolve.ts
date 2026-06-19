@@ -46,6 +46,57 @@ export function phoneDigits10(raw: string | null | undefined): string | null {
   return digits.slice(-10);
 }
 
+/** GHL auto-creates from outbound dialing: phone only, no name/email/attribution. */
+export function isDialOnlyLeadPayload(
+  payload: JsonObject,
+  row: {
+    lead_name: string | null;
+    email: string | null;
+    source: string | null;
+    offer_interest: string | null;
+    qualified: boolean | null;
+    ad_name: string | null;
+    ad_set: string | null;
+  },
+): boolean {
+  if (row.lead_name) return false;
+  if (row.email) return false;
+  if (row.offer_interest) return false;
+  if (row.qualified === true) return false;
+  if (row.ad_name || row.ad_set) return false;
+  if (str(payload.utm_source) || str(payload.utm_campaign) || str(payload.utm_content)) return false;
+  if (str(payload.ad_name ?? payload.adName)) return false;
+  // Real marketing/referral leads should carry a source; dial scaffolds arrive unset.
+  if (row.source) return false;
+  return true;
+}
+
+export function isDialOnlyScaffoldProfile(profile: {
+  lead_name: string | null;
+  email: string | null;
+  converted_client_id: string | null;
+  funnel_stage: string;
+  counts: {
+    intro_booked: number;
+    intro_showed: number;
+    demo_booked: number;
+    demo_showed: number;
+    offers: number;
+    closes: number;
+  };
+}): boolean {
+  if (profile.lead_name?.trim()) return false;
+  if (profile.email?.trim()) return false;
+  if (profile.converted_client_id) return false;
+  if (profile.counts.intro_booked > 0) return false;
+  if (profile.counts.intro_showed > 0) return false;
+  if (profile.counts.demo_booked > 0) return false;
+  if (profile.counts.demo_showed > 0) return false;
+  if (profile.counts.offers > 0) return false;
+  if (profile.counts.closes > 0) return false;
+  return profile.funnel_stage === 'lead';
+}
+
 function leadRawObject(raw: unknown): JsonObject {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     return { ...(raw as JsonObject) };

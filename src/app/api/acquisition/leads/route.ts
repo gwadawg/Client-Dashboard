@@ -8,6 +8,7 @@ import {
 import {
   phoneDigits10,
   pickCanonicalLead,
+  isDialOnlyScaffoldProfile,
   type AcquisitionLeadRow,
 } from '@/lib/acquisition-lead-resolve';
 import {
@@ -124,6 +125,8 @@ export async function GET(req: Request) {
   if (funnel_stage) {
     profiles = profiles.filter(p => matchesFunnelStageFilter(p, funnel_stage));
   }
+
+  profiles = profiles.filter(p => !isDialOnlyScaffoldProfile(p));
 
   const total = profiles.length;
   const offset = (page - 1) * PAGE_SIZE;

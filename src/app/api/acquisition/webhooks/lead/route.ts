@@ -16,5 +16,6 @@ export async function POST(req: NextRequest) {
   const service = createServiceClient();
   const result = await upsertAcquisitionLead(service, payload as Record<string, unknown>);
   if ('error' in result) return NextResponse.json({ error: result.error }, { status: 400 });
+  if ('skipped' in result) return NextResponse.json({ ok: true, skipped: true, reason: result.reason });
   return NextResponse.json({ ok: true, id: result.id });
 }

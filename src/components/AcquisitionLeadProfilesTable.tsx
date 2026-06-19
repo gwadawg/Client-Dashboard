@@ -380,7 +380,7 @@ export default function AcquisitionLeadProfilesTable({ startDate, endDate }: Pro
                         {open ? "▼" : "▶"}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap font-medium" style={{ color: "#e2e8f0" }}>
-                        {row.lead_name ?? "—"}
+                        {row.lead_name?.trim() || fmtPhone(row.phone)}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-xs" style={{ color: "#94a3b8" }}>
                         {STAGE_LABELS[row.funnel_stage] ?? row.funnel_stage}

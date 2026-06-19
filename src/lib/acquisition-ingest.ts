@@ -9,6 +9,7 @@ import {
 } from './acquisition-config';
 import {
   findCanonicalAcquisitionLead,
+  isDialOnlyLeadPayload,
   linkOrphanDialsToLead,
   mergeIncomingLeadFields,
 } from './acquisition-lead-resolve';
@@ -72,7 +73,7 @@ function dialToCallStatus(outcome: string | null): string {
 export async function upsertAcquisitionLead(
   service: SupabaseClient,
   payload: JsonObject,
-): Promise<{ id: string } | { error: string }> {
+): Promise<{ id: string } | { skipped: true; reason: string } | { error: string }> {
   const locationId = str(payload.location_id) ?? str(payload.locationId) ?? str(payload.ghl_location_id);
   if (locationId && !assertAcquisitionLocation(locationId)) {
     return { error: 'location_id does not match acquisition GHL location' };
@@ -124,6 +125,10 @@ export async function upsertAcquisitionLead(
     return { id: data.id };
   }
 
+  if (isDialOnlyLeadPayload(payload, row)) {
+    return { skipped: true, reason: 'dial_only_contact' };
+  }
+
   const { data, error } = await service.from('acquisition_leads').insert(row).select('id').single();
   if (error) return { error: error.message };
 
@@ -158,6 +163,7 @@ async function resolveAcquisitionLeadId(
       ghl_contact_id: ghlContactId,
     });
     if ('error' in ensured) return null;
+    if ('skipped' in ensured) return null;
     return ensured.id;
   }
 
