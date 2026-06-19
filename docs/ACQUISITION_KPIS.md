@@ -51,13 +51,41 @@ Status updates send only `external_id` + `status` (dates preserved from booked r
 - **Demo show rate** = demos showed ÷ demos taken place
 - **Offer rate** = offers ÷ demos showed
 - **Close rate** = closes ÷ offers
+- **Demo → close rate** = closes ÷ demos showed (end-to-end efficiency)
 
-## Acquisition cost (Meta only by default)
+## Date semantics (mixed canonical)
 
-Spend from `acquisition_ad_insights` joined to lead `created_at` date.
+| Metric | Date field used |
+|--------|----------------|
+| Leads | `created_at` |
+| Intros/Demos booked | `booked_at` |
+| Intros/Demos showed / no-show | `scheduled_at` |
+| Offers | `offered_at` |
+| Closes | `closed_at` |
+| Ad spend | `insight_date` |
 
-- **CPL** = ad spend ÷ Meta leads
-- **CAC** = ad spend ÷ closes (Core Offer default; toggle downsells)
+## Acquisition cost
+
+Spend from `acquisition_ad_insights`. Cost metrics use Meta leads as denominator for CPL.
+
+- **CPL** = Meta ad spend ÷ Meta leads
+- **CAC** = ad spend ÷ closes (scoped by offer type)
+- **Cost/stage** = ad spend ÷ count at each funnel stage
+
+## Cash collected
+
+Defined as `SUM(acquisition_closes.cash_collected)` for closes in the selected date range and offer scope. Does not include offers that haven't closed.
+
+## Offer scope
+
+The KPI dashboard allows filtering by offer type via the `offer_scope` parameter:
+
+| Scope | Counts |
+|-------|--------|
+| `core` (default) | Core Offer, RM — excludes Skool / Mid Offer / Bootcamp |
+| `skool` | Skool offers/closes only |
+| `all_downsells` | Skool + Mid Offer + Bootcamp |
+| `all` | Every offer/close regardless of type |
 
 ## Setter credit
 
@@ -65,9 +93,32 @@ Spend from `acquisition_ad_insights` joined to lead `created_at` date.
 - Bonus credit on **close** (New Client form)
 - Self-booked: in funnel totals, excluded from setter leaderboard
 
-## Offer type toggles
+## KPI thresholds (color coding)
 
-KPI views support include/exclude for downsells: **Skool**, **Mid Offer**, **Bootcamp**.
+Color thresholds are defined in `src/lib/acquisition-kpi-thresholds.ts`. Default targets:
+
+| Metric | Green (≥) | Amber (≥) | Red (<) |
+|--------|-----------|-----------|---------|
+| Intro show rate | 70% | 50% | 50% |
+| Demo show rate | 70% | 50% | 50% |
+| Intro booking rate | 50% | 30% | 30% |
+| Demo booking rate | 60% | 40% | 40% |
+| Offer rate | 70% | 50% | 50% |
+| Close rate | 50% | 30% | 30% |
+| Demo → close rate | 35% | 20% | 20% |
+
+To adjust thresholds, edit `DEFAULT_THRESHOLDS` in `src/lib/acquisition-kpi-thresholds.ts`.
+
+## Dashboard view map
+
+| Dashboard view | URL | What it shows |
+|----------------|-----|---------------|
+| Acquisition KPIs → Overview | `?view=acquisition_kpis&tab=overview` | Hero numbers, funnel flow, rate cards, trends, no-shows, call quality |
+| Acquisition KPIs → Setters | `?view=acquisition_kpis&tab=setters` | Per-setter funnel table + show rate chart |
+| Acquisition KPIs → Closers | `?view=acquisition_kpis&tab=closers` | Per-closer demo/offer/close table + quality |
+| Acquisition KPIs → Costs | `?view=acquisition_kpis&tab=costs` | Cost-per-stage grid, trend charts, no-show cost |
+| Acquisition (ops) | `?view=acquisition` | Appointments, Sales Calls, Credit Queue, Log Close, Pending Closes |
+| Acquisition Data | `?view=acquisition_data_explorer` | Raw table browser |
 
 ## GHL field mapping
 
@@ -98,7 +149,18 @@ See [`docs/ACQUISITION_FORMS_GHL.md`](ACQUISITION_FORMS_GHL.md) for GHL workflow
 
 ## Code references
 
-- `src/lib/acquisition-metrics.ts` — KPI engine
-- `src/lib/acquisition-config.ts` — calendars, normalizers
-- `GET /api/acquisition/metrics` — API
-- `scripts/backfill-acquisition.mjs` — historical import
+| File | Purpose |
+|------|---------|
+| `src/lib/acquisition-metrics.ts` | Core KPI engine (funnel rates, costs, no-show breakdown) |
+| `src/lib/acquisition-team-metrics.ts` | Per-setter rollup |
+| `src/lib/acquisition-closer-metrics.ts` | Per-closer rollup |
+| `src/lib/acquisition-metrics-timeseries.ts` | Daily time-series for charts |
+| `src/lib/acquisition-call-quality.ts` | Call rating + objection aggregation |
+| `src/lib/acquisition-kpi-thresholds.ts` | Color threshold definitions |
+| `src/lib/acquisition-config.ts` | Calendars, offer types, normalizers |
+| `GET /api/acquisition/metrics` | Aggregate metrics API |
+| `GET /api/acquisition/team-stats` | Setter performance API |
+| `GET /api/acquisition/closer-stats` | Closer performance API |
+| `GET /api/acquisition/metrics/timeseries` | Daily series API |
+| `GET /api/acquisition/call-quality` | Quality aggregates API |
+| `scripts/backfill-acquisition.mjs` | Historical import |

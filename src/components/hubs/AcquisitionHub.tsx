@@ -1,7 +1,5 @@
 "use client";
 
-import AcquisitionDashboard from "../AcquisitionDashboard";
-import AcquisitionTeamBoard from "../AcquisitionTeamBoard";
 import AcquisitionSetterCreditQueue from "../AcquisitionSetterCreditQueue";
 import AcquisitionSalesCalls from "../AcquisitionSalesCalls";
 import AcquisitionPendingCloses from "../AcquisitionPendingCloses";
@@ -24,11 +22,9 @@ export default function AcquisitionHub({ tab, onTabChange, startDate, endDate }:
       activeTab={tab}
       onTabChange={key => onTabChange(key as AcquisitionTab)}
     >
-      {tab === "overview" && <AcquisitionDashboard startDate={startDate} endDate={endDate} />}
       {tab === "appointments" && (
         <AcquisitionAppointmentsTable startDate={startDate} endDate={endDate} />
       )}
-      {tab === "team" && <AcquisitionTeamBoard startDate={startDate} endDate={endDate} />}
       {tab === "credit_queue" && (
         <AcquisitionSetterCreditQueue startDate={startDate} endDate={endDate} />
       )}

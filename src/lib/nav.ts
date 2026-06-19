@@ -3,11 +3,12 @@
 
 export type HeatmapTab = "show_rate" | "pickup_rate" | "new_leads";
 export type DataExplorerTab = "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
-export type AcquisitionTab = "overview" | "appointments" | "team" | "credit_queue" | "sales_calls" | "pending_closes" | "log_close";
+export type AcquisitionTab = "appointments" | "credit_queue" | "sales_calls" | "pending_closes" | "log_close";
 export type AcquisitionDataExplorerTab = "leads" | "appointments" | "offers" | "dials" | "closes" | "ads";
+export type AcquisitionKpiTab = "overview" | "setters" | "closers" | "costs";
 export type AgentsTab = "performance" | "goals" | "credit_queue" | "recordings";
 
-export type HubView = "heatmaps" | "data_explorer" | "acquisition" | "acquisition_data_explorer" | "agents";
+export type HubView = "heatmaps" | "data_explorer" | "acquisition" | "acquisition_data_explorer" | "acquisition_kpis" | "agents";
 
 export type View =
   | "dashboard"
@@ -73,13 +74,18 @@ export const DATA_EXPLORER_TABS: HubTabDef<DataExplorerTab>[] = [
 ];
 
 export const ACQUISITION_TABS: HubTabDef<AcquisitionTab>[] = [
-  { key: "overview", label: "Overview" },
   { key: "appointments", label: "Appointments" },
-  { key: "team", label: "Team" },
   { key: "sales_calls", label: "Sales Calls" },
   { key: "credit_queue", label: "Credit Queue" },
   { key: "log_close", label: "Log Close" },
   { key: "pending_closes", label: "Pending Closes" },
+];
+
+export const ACQUISITION_KPI_TABS: HubTabDef<AcquisitionKpiTab>[] = [
+  { key: "overview", label: "Overview" },
+  { key: "setters", label: "Setters" },
+  { key: "closers", label: "Closers" },
+  { key: "costs", label: "Costs" },
 ];
 
 export const ACQUISITION_DATA_EXPLORER_TABS: HubTabDef<AcquisitionDataExplorerTab>[] = [
@@ -111,6 +117,9 @@ export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
     "acquisition_appointments",
     "acquisition_offers",
     "acquisition_ads",
+  ],
+  acquisition_kpis: [
+    "acquisition",
   ],
   acquisition_data_explorer: [
     "acquisition",
@@ -146,8 +155,8 @@ export const LEGACY_VIEW_REDIRECTS: Record<LegacyView, { view: View; tab: string
   agent_scorecards: { view: "agents", tab: "performance" },
   recordings: { view: "agents", tab: "recordings" },
   goals: { view: "agents", tab: "goals" },
-  acquisition_funnel: { view: "acquisition", tab: "overview" },
-  acquisition_team: { view: "acquisition", tab: "team" },
+  acquisition_funnel: { view: "acquisition_kpis", tab: "overview" },
+  acquisition_team: { view: "acquisition_kpis", tab: "setters" },
   acquisition_setter_credit_queue: { view: "acquisition", tab: "credit_queue" },
   acquisition_leads: { view: "acquisition_data_explorer", tab: "leads" },
   acquisition_appointments: { view: "acquisition_data_explorer", tab: "appointments" },
@@ -160,6 +169,7 @@ export const HUB_VIEWS: HubView[] = [
   "data_explorer",
   "acquisition",
   "acquisition_data_explorer",
+  "acquisition_kpis",
   "agents",
 ];
 
@@ -168,6 +178,7 @@ export const HUB_TAB_LABELS: Record<HubView, HubTabDef<string>[]> = {
   data_explorer: DATA_EXPLORER_TABS,
   acquisition: ACQUISITION_TABS,
   acquisition_data_explorer: ACQUISITION_DATA_EXPLORER_TABS,
+  acquisition_kpis: ACQUISITION_KPI_TABS,
   agents: AGENTS_TABS,
 };
 
@@ -200,6 +211,7 @@ export const NAV: NavItem[] = [
   { view: "heatmaps",           label: "Heat Maps",             group: "Clients"      },
   { view: "data_explorer",      label: "Data Explorer",         group: "Clients"      },
   { view: "ceo",                label: "Business",              group: "Executive"    },
+  { view: "acquisition_kpis",          label: "Acquisition KPIs",      group: "Acquisition"  },
   { view: "acquisition",               label: "Acquisition",           group: "Acquisition"  },
   { view: "acquisition_data_explorer", label: "Acquisition Data",      group: "Acquisition"  },
   { view: "agents",             label: "Call Center Hub",       group: "Team"         },
