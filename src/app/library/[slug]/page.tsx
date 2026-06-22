@@ -1,16 +1,22 @@
 import { redirect, notFound } from "next/navigation";
 import { createAuthClient, createServiceClient } from "@/lib/supabase";
 import { hasPermission } from "@/lib/permissions";
-import { loadLibraryDoc } from "@/lib/library-content";
-import { getAllLibrarySlugs } from "@/lib/library-content";
+import { loadLibraryDoc, getAllLibrarySlugs } from "@/lib/library-content";
 import LibraryDocViewer from "@/components/library/LibraryDocViewer";
+
+export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ slug: string }>;
 };
 
-export function generateStaticParams() {
-  return getAllLibrarySlugs().map((slug) => ({ slug }));
+export async function generateStaticParams() {
+  try {
+    const slugs = await getAllLibrarySlugs();
+    return slugs.map((slug) => ({ slug }));
+  } catch {
+    return [];
+  }
 }
 
 export default async function LibraryDocPage({ params }: Props) {
@@ -35,7 +41,7 @@ export default async function LibraryDocPage({ params }: Props) {
   });
   if (!canView) redirect("/dashboard");
 
-  const doc = loadLibraryDoc(slug);
+  const doc = await loadLibraryDoc(slug);
   if (!doc) notFound();
 
   return <LibraryDocViewer meta={doc.meta} body={doc.body} />;

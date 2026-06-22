@@ -2,9 +2,23 @@
 
 Native SOPs, scripts, and playbooks deployed to the Mr. Waiz Resource Library.
 
-**Source of truth:** `Wm-os/docs/acquisition/sales` (markdown + YAML frontmatter)  
-**Deployed copy:** `content/library/` in this repo  
+**Source of truth (production):** Supabase `library_documents` table (edited in-app)  
+**Legacy / bulk import:** `Wm-os/docs/acquisition/sales` → `content/library/` via CLI  
 **Viewer route:** `/library/[slug]`
+
+---
+
+## In-app publish (recommended)
+
+Admins can publish and edit playbooks without a deploy:
+
+1. Open **Dashboard → Resource Library → Playbooks**
+2. Click **Add Content → Playbook / SOP**
+3. Paste markdown (with or without YAML frontmatter)
+4. Set department, type, owner, and status
+5. Click **Publish** — live immediately at `/library/{slug}`
+
+Edits and deletes are available on DB-backed playbooks from the card hover menu.
 
 ---
 
@@ -67,17 +81,20 @@ related_docs:                    # explicit cross-links for sidebar
 
 ---
 
-## Import workflow
+## Import workflow (bulk / Wm-os sync)
 
 ```bash
-# Single doc
+# One-time seed filesystem playbooks into Supabase
+node scripts/migrate-library-to-db.mjs
+
+# Dry run
+node scripts/migrate-library-to-db.mjs --dry-run
+
+# Single doc from Wm-os (filesystem)
 node scripts/import-library-doc.mjs /path/to/doc.md
 
 # Pilot bundle (all setter playbooks)
 node scripts/import-library-doc.mjs --bundle setter-playbooks
-
-# Dry run
-node scripts/import-library-doc.mjs --bundle setter-playbooks --dry-run
 ```
 
 After import:

@@ -4,6 +4,19 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import LibraryDocCard from "@/components/library/LibraryDocCard";
+import LibraryDocEditor, {
+  EMPTY_LIBRARY_EDITOR,
+  libraryRowToEditor,
+  type LibraryEditorState,
+} from "@/components/library/LibraryDocEditor";
+import FormRegistryEditor, {
+  EMPTY_FORM_REGISTRY,
+  formRegistryRowToEditor,
+  type FormRegistryEditorState,
+  type FormRegistryRow,
+} from "@/components/library/FormRegistryEditor";
+import type { InternalFormDef } from "@/lib/internal-forms";
+import type { LibraryDocumentRow } from "@/lib/library-processor";
 import {
   buildUnifiedIndex,
   filterPlaybooks,
@@ -41,6 +54,18 @@ const CATEGORY_META: Record<Category, { label: string; color: string; tint: stri
 const CATEGORY_ORDER: Category[] = ["form", "sop", "document", "template", "other"];
 const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 const TAB_SECTIONS: LibSection[] = ["playbooks", "forms", "links"];
+type AddContentType = "playbook" | "link" | "form";
+
+function registryRowToFormDef(row: FormRegistryRow): InternalFormDef {
+  return {
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    href: row.href,
+    audience: row.audience,
+    tags: row.tags ?? [],
+  };
+}
 
 type FormState = {
   id: string | null;
@@ -91,6 +116,8 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
   const searchParams = useSearchParams();
 
   const [resources, setResources] = useState<Resource[]>([]);
+  const [libraryDocs, setLibraryDocs] = useState<LibraryDocumentRow[]>([]);
+  const [registryForms, setRegistryForms] = useState<FormRegistryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [playbookDepartment, setPlaybookDepartment] = useState<LibraryDepartment | "all">("all");
@@ -102,16 +129,36 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingPlaybookSlug, setDeletingPlaybookSlug] = useState<string | null>(null);
+  const [deletingFormId, setDeletingFormId] = useState<string | null>(null);
+
+  const [playbookEditorOpen, setPlaybookEditorOpen] = useState(false);
+  const [playbookEditor, setPlaybookEditor] = useState<LibraryEditorState>(EMPTY_LIBRARY_EDITOR);
+  const [playbookEditorError, setPlaybookEditorError] = useState<string | null>(null);
+  const [playbookSaving, setPlaybookSaving] = useState(false);
+
+  const [formRegistryOpen, setFormRegistryOpen] = useState(false);
+  const [formRegistryEditor, setFormRegistryEditor] = useState<FormRegistryEditorState>(EMPTY_FORM_REGISTRY);
+  const [formRegistryError, setFormRegistryError] = useState<string | null>(null);
+  const [formRegistrySaving, setFormRegistrySaving] = useState(false);
+
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const section = parseSection(searchParams.get("lib"));
 
-  const playbookItems = useMemo(() => getAllPlaybookItems(), []);
-  const formItems = useMemo(() => getAllFormItems(), []);
+  const registryEntries = useMemo(
+    () => registryForms.map((row) => ({ form: registryRowToFormDef(row), registryId: row.id })),
+    [registryForms],
+  );
+
+  const playbookItems = useMemo(() => getAllPlaybookItems(libraryDocs), [libraryDocs]);
+  const formItems = useMemo(() => getAllFormItems(registryEntries), [registryEntries]);
   const linkItems = useMemo(() => resources.map((r) => linkToItem(r)), [resources]);
   const unifiedIndex = useMemo(
-    () => buildUnifiedIndex(resources),
-    [resources, playbookItems, formItems],
+    () => buildUnifiedIndex(resources, libraryDocs, registryEntries),
+    [resources, libraryDocs, registryEntries],
   );
 
   const counts = useMemo(
@@ -166,11 +213,23 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch("/api/resources");
-      const data = await res.json();
-      setResources(Array.isArray(data) ? data : []);
+      const [resRes, libRes, formsRes] = await Promise.all([
+        fetch("/api/resources"),
+        fetch("/api/library"),
+        fetch("/api/forms-registry"),
+      ]);
+      const [resData, libData, formsData] = await Promise.all([
+        resRes.json(),
+        libRes.json(),
+        formsRes.json(),
+      ]);
+      setResources(Array.isArray(resData) ? resData : []);
+      setLibraryDocs(Array.isArray(libData) ? libData : []);
+      setRegistryForms(Array.isArray(formsData) ? formsData : []);
     } catch {
       setResources([]);
+      setLibraryDocs([]);
+      setRegistryForms([]);
     } finally {
       setLoading(false);
     }
@@ -180,6 +239,17 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
     load();
   }, []);
 
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setAddMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [addMenuOpen]);
+
   function setSection(next: LibSection) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "resources");
@@ -188,10 +258,45 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
-  function openAdd() {
+  function openAddLink() {
+    setAddMenuOpen(false);
     setForm(EMPTY_FORM);
     setFormError(null);
     setModalOpen(true);
+  }
+
+  function openAddPlaybook() {
+    setAddMenuOpen(false);
+    setPlaybookEditor(EMPTY_LIBRARY_EDITOR);
+    setPlaybookEditorError(null);
+    setPlaybookEditorOpen(true);
+  }
+
+  function openEditPlaybook(slug: string) {
+    const row = libraryDocs.find((d) => d.slug === slug);
+    if (!row) return;
+    setPlaybookEditor(libraryRowToEditor(row));
+    setPlaybookEditorError(null);
+    setPlaybookEditorOpen(true);
+  }
+
+  function openAddForm() {
+    setAddMenuOpen(false);
+    setFormRegistryEditor(EMPTY_FORM_REGISTRY);
+    setFormRegistryError(null);
+    setFormRegistryOpen(true);
+  }
+
+  function openEditFormRegistry(id: string) {
+    const row = registryForms.find((f) => f.id === id);
+    if (!row) return;
+    setFormRegistryEditor(formRegistryRowToEditor(row));
+    setFormRegistryError(null);
+    setFormRegistryOpen(true);
+  }
+
+  function openAdd() {
+    openAddLink();
   }
 
   function openEdit(r: Resource) {
@@ -256,6 +361,125 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
     }
   }
 
+  async function handleDeletePlaybook(slug: string) {
+    if (!confirm(`Delete playbook "${slug}"? This cannot be undone.`)) return;
+    setDeletingPlaybookSlug(slug);
+    try {
+      await fetch(`/api/library/${encodeURIComponent(slug)}`, { method: "DELETE" });
+      await load();
+    } finally {
+      setDeletingPlaybookSlug(null);
+    }
+  }
+
+  async function handleSavePlaybook() {
+    if (!playbookEditor.title.trim()) {
+      setPlaybookEditorError("Give the playbook a title.");
+      return;
+    }
+    if (!playbookEditor.body.trim()) {
+      setPlaybookEditorError("Paste or write the markdown body.");
+      return;
+    }
+    setPlaybookSaving(true);
+    setPlaybookEditorError(null);
+    const payload = {
+      title: playbookEditor.title.trim(),
+      slug: playbookEditor.slug.trim() || undefined,
+      body: playbookEditor.body,
+      domain: playbookEditor.domain,
+      owner: playbookEditor.owner,
+      status: playbookEditor.status,
+      artifact_type: playbookEditor.artifact_type,
+      department: playbookEditor.department || null,
+      review_cycle: playbookEditor.review_cycle.trim() || null,
+      script_version: playbookEditor.script_version.trim() || null,
+      tags: playbookEditor.tags,
+      featured: playbookEditor.featured,
+    };
+    try {
+      const url = playbookEditor.editSlug
+        ? `/api/library/${encodeURIComponent(playbookEditor.editSlug)}`
+        : "/api/library";
+      const res = await fetch(url, {
+        method: playbookEditor.editSlug ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPlaybookEditorError(data.error || "Couldn't save the playbook.");
+        return;
+      }
+      setPlaybookEditorOpen(false);
+      await load();
+      if (section !== "playbooks") setSection("playbooks");
+    } catch {
+      setPlaybookEditorError("Couldn't save the playbook.");
+    } finally {
+      setPlaybookSaving(false);
+    }
+  }
+
+  async function handleSaveFormRegistry() {
+    if (!formRegistryEditor.title.trim()) {
+      setFormRegistryError("Give the form a title.");
+      return;
+    }
+    if (!formRegistryEditor.slug.trim()) {
+      setFormRegistryError("Add a slug.");
+      return;
+    }
+    if (!formRegistryEditor.href.trim()) {
+      setFormRegistryError("Add the route path.");
+      return;
+    }
+    setFormRegistrySaving(true);
+    setFormRegistryError(null);
+    const payload = {
+      title: formRegistryEditor.title.trim(),
+      slug: formRegistryEditor.slug.trim(),
+      href: formRegistryEditor.href.trim(),
+      description: formRegistryEditor.description.trim(),
+      audience: formRegistryEditor.audience.trim(),
+      tags: formRegistryEditor.tags,
+      sort_order: formRegistryEditor.sort_order,
+    };
+    try {
+      const res = await fetch(
+        formRegistryEditor.id ? `/api/forms-registry/${formRegistryEditor.id}` : "/api/forms-registry",
+        {
+          method: formRegistryEditor.id ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setFormRegistryError(data.error || "Couldn't save the form entry.");
+        return;
+      }
+      setFormRegistryOpen(false);
+      await load();
+      if (section !== "forms") setSection("forms");
+    } catch {
+      setFormRegistryError("Couldn't save the form entry.");
+    } finally {
+      setFormRegistrySaving(false);
+    }
+  }
+
+  async function handleDeleteFormRegistry(id: string) {
+    if (!confirm("Remove this form from the library? The form page itself will not be deleted.")) return;
+    setDeletingFormId(id);
+    try {
+      await fetch(`/api/forms-registry/${id}`, { method: "DELETE" });
+      await load();
+    } finally {
+      setDeletingFormId(null);
+    }
+  }
+
   return (
     <div className="max-w-6xl space-y-6">
       {/* Header */}
@@ -274,20 +498,45 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
             Playbooks, forms, and links — organized so your team can find what they need fast.
           </p>
         </div>
-        {canManage && section === "links" && (
-          <button
-            type="button"
-            onClick={openAdd}
-            className="group flex items-center gap-2 rounded-full pl-5 pr-2 py-2 text-sm font-semibold active:scale-[0.98]"
-            style={{ background: "#f59e0b", color: "#1a1206", transition: `transform 300ms ${EASE}` }}
-          >
-            Add Link
-            <span className="flex items-center justify-center w-7 h-7 rounded-full" style={{ background: "rgba(0,0,0,0.16)" }}>
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-            </span>
-          </button>
+        {canManage && !isSearching && (
+          <div className="relative" ref={addMenuRef}>
+            <button
+              type="button"
+              onClick={() => setAddMenuOpen((v) => !v)}
+              className="group flex items-center gap-2 rounded-full pl-5 pr-2 py-2 text-sm font-semibold active:scale-[0.98]"
+              style={{ background: "#f59e0b", color: "#1a1206", transition: `transform 300ms ${EASE}` }}
+            >
+              Add Content
+              <span className="flex items-center justify-center w-7 h-7 rounded-full" style={{ background: "rgba(0,0,0,0.16)" }}>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+              </span>
+            </button>
+            {addMenuOpen && (
+              <div
+                className="absolute right-0 top-full mt-2 w-52 rounded-xl py-1.5 z-20"
+                style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 16px 40px rgba(0,0,0,0.5)" }}
+              >
+                {([
+                  { type: "playbook" as AddContentType, label: "Playbook / SOP", color: "#34d399", action: openAddPlaybook },
+                  { type: "form" as AddContentType, label: "Register Form", color: "#60a5fa", action: openAddForm },
+                  { type: "link" as AddContentType, label: "External Link", color: "#c084fc", action: openAddLink },
+                ]).map((opt) => (
+                  <button
+                    key={opt.type}
+                    type="button"
+                    onClick={opt.action}
+                    className="w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-white/[0.04]"
+                    style={{ color: "#e2e8f0" }}
+                  >
+                    <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ background: opt.color }} />
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -361,9 +610,21 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
           department={playbookDepartment}
           deptCounts={playbookDeptCounts}
           onDepartmentChange={setPlaybookDepartment}
+          canManage={canManage}
+          deletingSlug={deletingPlaybookSlug}
+          onAdd={openAddPlaybook}
+          onEdit={openEditPlaybook}
+          onDelete={handleDeletePlaybook}
         />
       ) : section === "forms" ? (
-        <FormsPanel items={formItems} />
+        <FormsPanel
+          items={formItems}
+          canManage={canManage}
+          deletingId={deletingFormId}
+          onAdd={openAddForm}
+          onEdit={openEditFormRegistry}
+          onDelete={handleDeleteFormRegistry}
+        />
       ) : (
         <LinksPanel
           items={filteredLinks}
@@ -393,6 +654,28 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
           error={formError}
           onClose={() => setModalOpen(false)}
           onSave={handleSave}
+        />
+      )}
+
+      {playbookEditorOpen && (
+        <LibraryDocEditor
+          state={playbookEditor}
+          setState={setPlaybookEditor}
+          saving={playbookSaving}
+          error={playbookEditorError}
+          onClose={() => setPlaybookEditorOpen(false)}
+          onSave={handleSavePlaybook}
+        />
+      )}
+
+      {formRegistryOpen && (
+        <FormRegistryEditor
+          state={formRegistryEditor}
+          setState={setFormRegistryEditor}
+          saving={formRegistrySaving}
+          error={formRegistryError}
+          onClose={() => setFormRegistryOpen(false)}
+          onSave={handleSaveFormRegistry}
         />
       )}
 
@@ -441,12 +724,22 @@ function PlaybooksPanel({
   department,
   deptCounts,
   onDepartmentChange,
+  canManage,
+  deletingSlug,
+  onAdd,
+  onEdit,
+  onDelete,
 }: {
   items: PlaybookItem[];
   allItems: PlaybookItem[];
   department: LibraryDepartment | "all";
   deptCounts: Record<LibraryDepartment, number>;
   onDepartmentChange: (v: LibraryDepartment | "all") => void;
+  canManage?: boolean;
+  deletingSlug?: string | null;
+  onAdd?: () => void;
+  onEdit?: (slug: string) => void;
+  onDelete?: (slug: string) => void;
 }) {
   const showGrouped = department === "all";
   const featured = items.find((i) => i.featured);
@@ -500,23 +793,62 @@ function PlaybooksPanel({
           message="No playbooks in this department yet."
           hint={
             department !== "all"
-              ? `${DEPARTMENT_META[department].label} playbooks will appear here as they are imported.`
-              : undefined
+              ? `${DEPARTMENT_META[department].label} playbooks will appear here when you add them.`
+              : canManage
+                ? "Paste a markdown SOP or script to publish it instantly."
+                : undefined
           }
+          canManage={canManage}
+          onAdd={onAdd}
+          addLabel="Add Playbook"
         />
       ) : showGrouped ? (
         <div className="space-y-10">
-          {featured && <LibraryDocCard item={featured} featured />}
+          {featured && (
+            <LibraryDocCard
+              item={featured}
+              featured
+              canManage={canManage}
+              deleting={deletingSlug === featured.dbSlug}
+              onEdit={featured.dbSlug ? () => onEdit?.(featured.dbSlug!) : undefined}
+              onDelete={featured.dbSlug ? () => onDelete?.(featured.dbSlug!) : undefined}
+            />
+          )}
           {groups.map((group) => (
-            <DepartmentPlaybookSection key={group.department} department={group.department} items={group.items} />
+            <DepartmentPlaybookSection
+              key={group.department}
+              department={group.department}
+              items={group.items}
+              canManage={canManage}
+              deletingSlug={deletingSlug}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
           ))}
         </div>
       ) : (
         <div className="space-y-6">
-          {featured && <LibraryDocCard item={featured} featured />}
+          {featured && (
+            <LibraryDocCard
+              item={featured}
+              featured
+              canManage={canManage}
+              deleting={deletingSlug === featured.dbSlug}
+              onEdit={featured.dbSlug ? () => onEdit?.(featured.dbSlug!) : undefined}
+              onDelete={featured.dbSlug ? () => onDelete?.(featured.dbSlug!) : undefined}
+            />
+          )}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {flatItems.map((item, i) => (
-              <LibraryDocCard key={item.id} item={item} index={i} />
+              <LibraryDocCard
+                key={item.id}
+                item={item}
+                index={i}
+                canManage={canManage}
+                deleting={deletingSlug === item.dbSlug}
+                onEdit={item.dbSlug ? () => onEdit?.(item.dbSlug!) : undefined}
+                onDelete={item.dbSlug ? () => onDelete?.(item.dbSlug!) : undefined}
+              />
             ))}
           </div>
         </div>
@@ -567,9 +899,17 @@ function DepartmentChip({
 function DepartmentPlaybookSection({
   department,
   items,
+  canManage,
+  deletingSlug,
+  onEdit,
+  onDelete,
 }: {
   department: LibraryDepartment;
   items: PlaybookItem[];
+  canManage?: boolean;
+  deletingSlug?: string | null;
+  onEdit?: (slug: string) => void;
+  onDelete?: (slug: string) => void;
 }) {
   const meta = DEPARTMENT_META[department];
   const visible = items.filter((i) => !i.featured);
@@ -591,35 +931,88 @@ function DepartmentPlaybookSection({
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {visible.map((item, i) => (
-          <LibraryDocCard key={item.id} item={item} index={i} />
+          <LibraryDocCard
+            key={item.id}
+            item={item}
+            index={i}
+            canManage={canManage}
+            deleting={deletingSlug === item.dbSlug}
+            onEdit={item.dbSlug ? () => onEdit?.(item.dbSlug!) : undefined}
+            onDelete={item.dbSlug ? () => onDelete?.(item.dbSlug!) : undefined}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function FormsPanel({ items }: { items: FormItem[] }) {
+function FormsPanel({
+  items,
+  canManage,
+  deletingId,
+  onAdd,
+  onEdit,
+  onDelete,
+}: {
+  items: FormItem[];
+  canManage?: boolean;
+  deletingId?: string | null;
+  onAdd?: () => void;
+  onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
+}) {
   return (
     <div className="space-y-5">
       <SectionIntro
         title={LIB_SECTION_META.forms.label}
         description={LIB_SECTION_META.forms.description}
       />
-      <div className="grid gap-4 sm:grid-cols-2">
-        {items.map((item, i) => (
-          <FormCard key={item.id} item={item} index={i} />
-        ))}
-      </div>
+      {items.length === 0 ? (
+        <EmptyPanel
+          message="No forms registered yet."
+          hint={canManage ? "Register an existing form route so the team can find it." : undefined}
+          canManage={canManage}
+          onAdd={onAdd}
+          addLabel="Register Form"
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {items.map((item, i) => (
+            <FormCard
+              key={item.id}
+              item={item}
+              index={i}
+              canManage={canManage && !!item.registryId}
+              deleting={deletingId === item.registryId}
+              onEdit={item.registryId ? () => onEdit?.(item.registryId!) : undefined}
+              onDelete={item.registryId ? () => onDelete?.(item.registryId!) : undefined}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function FormCard({ item, index }: { item: FormItem; index: number }) {
+function FormCard({
+  item,
+  index,
+  canManage,
+  deleting,
+  onEdit,
+  onDelete,
+}: {
+  item: FormItem;
+  index: number;
+  canManage?: boolean;
+  deleting?: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
   const [hover, setHover] = useState(false);
   return (
-    <Link
-      href={item.href}
-      className="res-rise block h-full rounded-[1.4rem] p-1.5"
+    <div
+      className="res-rise relative h-full rounded-[1.4rem] p-1.5"
       style={{
         background: "rgba(255,255,255,0.03)",
         border: `1px solid ${hover ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)"}`,
@@ -627,11 +1020,33 @@ function FormCard({ item, index }: { item: FormItem; index: number }) {
         transition: `transform 400ms ${EASE}, border-color 400ms ${EASE}`,
         animation: `res-rise 600ms ${EASE} both`,
         animationDelay: `${Math.min(index * 45, 180)}ms`,
+        opacity: deleting ? 0.5 : 1,
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div className="flex h-full flex-col rounded-[1.05rem] p-5" style={{ background: "#0a1628" }}>
+      {canManage && (
+        <div
+          className="absolute top-3 right-3 z-10 flex items-center gap-1"
+          style={{ opacity: hover ? 1 : 0.4, transition: `opacity 300ms ${EASE}` }}
+        >
+          <button type="button" onClick={onEdit} title="Edit" className="flex items-center justify-center w-7 h-7 rounded-lg" style={{ color: "#64748b", background: "rgba(255,255,255,0.08)" }}>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          <button type="button" onClick={onDelete} disabled={deleting} title="Remove" className="flex items-center justify-center w-7 h-7 rounded-lg" style={{ color: "#f87171", background: "rgba(248,113,113,0.08)" }}>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
+      )}
+      <Link
+        href={item.href}
+        className="flex h-full flex-col rounded-[1.05rem] p-5"
+        style={{ background: "#0a1628" }}
+      >
         <span
           className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider w-fit"
           style={{ background: "rgba(96,165,250,0.12)", color: "#60a5fa" }}
@@ -659,8 +1074,8 @@ function FormCard({ item, index }: { item: FormItem; index: number }) {
         <span className="mt-auto pt-4 text-sm font-semibold" style={{ color: "#60a5fa" }}>
           Open form →
         </span>
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }
 
@@ -885,7 +1300,19 @@ function LoadingState() {
   );
 }
 
-function EmptyPanel({ message, hint }: { message: string; hint?: string }) {
+function EmptyPanel({
+  message,
+  hint,
+  canManage,
+  onAdd,
+  addLabel = "Add",
+}: {
+  message: string;
+  hint?: string;
+  canManage?: boolean;
+  onAdd?: () => void;
+  addLabel?: string;
+}) {
   return (
     <div
       className="rounded-2xl flex flex-col items-center justify-center text-center py-16 px-6"
@@ -893,6 +1320,16 @@ function EmptyPanel({ message, hint }: { message: string; hint?: string }) {
     >
       <p className="text-sm font-semibold" style={{ color: "#94a3b8" }}>{message}</p>
       {hint && <p className="text-xs mt-1 max-w-sm" style={{ color: "#475569" }}>{hint}</p>}
+      {canManage && onAdd && (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="mt-5 rounded-full px-4 py-2 text-xs font-semibold active:scale-[0.98]"
+          style={{ background: "#34d399", color: "#0a1628" }}
+        >
+          {addLabel}
+        </button>
+      )}
     </div>
   );
 }

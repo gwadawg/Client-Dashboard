@@ -40,7 +40,28 @@ function getTextFromChildren(children: React.ReactNode): string {
 
 export default function LibraryDocViewer({ meta, body }: Props) {
   const contentRef = useRef<HTMLDivElement>(null);
-  const related = getRelatedDocs(meta.slug);
+  const relatedFromManifest = getRelatedDocs(meta.slug);
+  const related =
+    relatedFromManifest.length > 0
+      ? relatedFromManifest
+      : meta.related_docs.map((r) => ({
+          slug: r.slug,
+          title: r.label,
+          description: "",
+          domain: meta.domain,
+          owner: meta.owner,
+          status: "active" as const,
+          artifact_type: "reference" as const,
+          last_updated: null,
+          review_cycle: null,
+          script_version: null,
+          path: `db://${r.slug}`,
+          headings: [],
+          stage_nav: [],
+          opening_pills: [],
+          icp_pills: [],
+          related_docs: [],
+        }));
   const art = artifactMeta(meta.artifact_type);
   const st = statusMeta(meta.status);
 

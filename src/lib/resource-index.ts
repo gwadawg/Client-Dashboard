@@ -12,6 +12,7 @@ import {
   type LibraryDocMeta,
   type LibraryOwner,
 } from "@/lib/library-manifest";
+import { rowToDocMeta, type LibraryDocumentRow } from "@/lib/library-processor";
 
 export type LibSection = "playbooks" | "forms" | "links";
 
@@ -43,6 +44,7 @@ export type PlaybookItem = {
   department: LibraryDepartment;
   tags: string[];
   doc: LibraryDocMeta;
+  dbSlug?: string;
 };
 
 export type FormItem = {
@@ -54,6 +56,7 @@ export type FormItem = {
   audience: string;
   tags: string[];
   form: InternalFormDef;
+  registryId?: string;
 };
 
 export type LinkItem = {
@@ -80,11 +83,11 @@ export function ownerLabel(owner: LibraryOwner): string {
   return OWNER_LABELS[owner] ?? owner;
 }
 
-export function playbookToItem(doc: LibraryDocMeta): PlaybookItem {
+export function playbookToItem(doc: LibraryDocMeta, dbSlug?: string): PlaybookItem {
   const department = resolveDepartment(doc);
   return {
     kind: "playbook",
-    id: `playbook:${doc.slug}`,
+    id: dbSlug ? `playbook:db:${dbSlug}` : `playbook:${doc.slug}`,
     title: doc.title,
     description: doc.description,
     href: libraryHref(doc.slug),
@@ -97,19 +100,25 @@ export function playbookToItem(doc: LibraryDocMeta): PlaybookItem {
     department,
     tags: [doc.owner, doc.artifact_type, doc.domain, department, ...(doc.bundle ? [doc.bundle] : [])],
     doc,
+    dbSlug,
   };
 }
 
-export function formToItem(form: InternalFormDef): FormItem {
+export function playbookRowToItem(row: LibraryDocumentRow): PlaybookItem {
+  return playbookToItem(rowToDocMeta(row), row.slug);
+}
+
+export function formToItem(form: InternalFormDef, registryId?: string): FormItem {
   return {
     kind: "form",
-    id: `form:${form.slug}`,
+    id: registryId ? `form:db:${registryId}` : `form:${form.slug}`,
     title: form.title,
     description: form.description,
     href: form.href,
     audience: form.audience,
     tags: [...form.tags, "form", form.audience.toLowerCase()],
     form,
+    registryId,
   };
 }
 
@@ -126,20 +135,53 @@ export function linkToItem(resource: LinkResource): LinkItem {
   };
 }
 
-export function getAllPlaybookItems(): PlaybookItem[] {
-  return LIBRARY_DOCS.map(playbookToItem);
+export function getAllPlaybookItems(dbRows: LibraryDocumentRow[] = []): PlaybookItem[] {
+  const bySlug = new Map<string, PlaybookItem>();
+
+  for (const doc of LIBRARY_DOCS) {
+    bySlug.set(doc.slug, playbookToItem(doc));
+  }
+
+  for (const row of dbRows) {
+    bySlug.set(row.slug, playbookRowToItem(row));
+  }
+
+  return Array.from(bySlug.values()).sort((a, b) => a.title.localeCompare(b.title));
 }
 
-export function getSetterPlaybookItems(): PlaybookItem[] {
-  return getBundleDocs("setter-playbooks").map(playbookToItem);
+export function getSetterPlaybookItems(dbRows: LibraryDocumentRow[] = []): PlaybookItem[] {
+  const bundleSlugs = new Set(getBundleDocs("setter-playbooks").map((d) => d.slug));
+  return getAllPlaybookItems(dbRows).filter(
+    (item) => item.bundle === "setter-playbooks" || bundleSlugs.has(item.doc.slug),
+  );
 }
 
-export function getAllFormItems(): FormItem[] {
-  return INTERNAL_FORMS.map(formToItem);
+export function getAllFormItems(
+  registryEntries: { form: InternalFormDef; registryId: string }[] = [],
+): FormItem[] {
+  const bySlug = new Map<string, FormItem>();
+
+  for (const form of INTERNAL_FORMS) {
+    bySlug.set(form.slug, formToItem(form));
+  }
+
+  for (const { form, registryId } of registryEntries) {
+    bySlug.set(form.slug, formToItem(form, registryId));
+  }
+
+  return Array.from(bySlug.values()).sort((a, b) => a.title.localeCompare(b.title));
 }
 
-export function buildUnifiedIndex(links: LinkResource[]): UnifiedItem[] {
-  return [...getAllPlaybookItems(), ...getAllFormItems(), ...links.map(linkToItem)];
+export function buildUnifiedIndex(
+  links: LinkResource[],
+  dbRows: LibraryDocumentRow[] = [],
+  registryEntries: { form: InternalFormDef; registryId: string }[] = [],
+): UnifiedItem[] {
+  return [
+    ...getAllPlaybookItems(dbRows),
+    ...getAllFormItems(registryEntries),
+    ...links.map(linkToItem),
+  ];
 }
 
 export function filterPlaybooks(
