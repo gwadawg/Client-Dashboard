@@ -323,6 +323,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = false }: { canViewRevenue?: boolean }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleteSummary, setDeleteSummary] = useState<{ id: string; name: string; summary: DataSummary } | null>(null);
@@ -349,8 +350,15 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
-      .then(r => r.json())
-      .then(d => {
+      .then(async r => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          setLoadError(d.error ?? "Failed to load clients");
+          setClients([]);
+          setLoading(false);
+          return;
+        }
+        setLoadError(null);
         setClients(d.clients ?? []);
         if (typeof d.can_view_revenue === "boolean") setShowRevenue(d.can_view_revenue);
         else if (typeof d.can_view_total_paid === "boolean") setShowRevenue(d.can_view_total_paid);
@@ -367,7 +375,14 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const colSpan = columns.length + 3;
 
   async function reload() {
-    const d = await (await fetch("/api/clients?detail=1")).json();
+    const res = await fetch("/api/clients?detail=1");
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setLoadError(d.error ?? "Failed to load clients");
+      setClients([]);
+      return;
+    }
+    setLoadError(null);
     setClients(d.clients ?? []);
     if (typeof d.can_view_revenue === "boolean") setShowRevenue(d.can_view_revenue);
     else if (typeof d.can_view_total_paid === "boolean") setShowRevenue(d.can_view_total_paid);
@@ -569,9 +584,15 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 
       <div className="shrink-0 empty:hidden"><PendingEventsPanel onReplayed={reload} /></div>
 
+      {loadError && (
+        <div className="rounded-xl px-4 py-3 text-sm text-red-400 bg-red-950/40 border border-red-500/30">
+          Could not load clients: {loadError}
+        </div>
+      )}
+
       {clients.length === 0 ? (
         <div className="rounded-xl px-4 py-8 text-center text-sm" style={{ border: "1px solid rgba(255,255,255,0.06)", color: "#334155" }}>
-          No clients yet. Add one above.
+          {loadError ? "Client list unavailable." : "No clients yet. Add one above."}
         </div>
       ) : (
         <div
