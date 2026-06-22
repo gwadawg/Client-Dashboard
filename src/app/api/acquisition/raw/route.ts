@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { enrichAppointmentsWithCloserFormLinks } from '@/lib/acquisition-closer-form';
+import { enrichClosesWithCompleteness } from '@/lib/acquisition-close-enrich';
+import { matchesCloseFilter, type CloseFilterMode } from '@/lib/acquisition-close-completeness';
 import {
-  flattenRawCloseRow,
   flattenRawOfferRow,
   RAW_CLOSE_SELECT,
   RAW_OFFER_SELECT,
 } from '@/lib/acquisition-raw-enriched';
+import { loadDialReportStatusByDialIds } from '@/lib/acquisition-dial-linkage';
 
 const TABLE_MAP = {
   leads: 'acquisition_leads',
@@ -64,6 +66,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (type === 'closes') {
+    const filter = (req.nextUrl.searchParams.get('filter') ?? 'all') as CloseFilterMode;
     const query = applyDateRange(
       ctx.service
         .from('acquisition_closes')
@@ -76,9 +79,22 @@ export async function GET(req: NextRequest) {
     );
     const { data, error, count } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    const rows = ((data ?? []) as Record<string, unknown>[]).map(flattenRawCloseRow);
+    const enriched = await enrichClosesWithCompleteness(ctx.service, (data ?? []) as Record<string, unknown>[]);
+    const incompleteCount = enriched.filter(
+      r => r.mapping_status !== "dismissed" && r.completeness.status !== "complete",
+    ).length;
+    let rows = enriched;
+    if (filter !== 'all') {
+      rows = enriched.filter(row => matchesCloseFilter(row, filter));
+    }
     const { data: clients } = await ctx.service.from('clients').select('id, name').order('name');
-    return NextResponse.json({ type, rows, total: count ?? 0, clients: clients ?? [] });
+    return NextResponse.json({
+      type,
+      rows,
+      total: filter === 'all' ? (count ?? 0) : rows.length,
+      incomplete_count: incompleteCount,
+      clients: clients ?? [],
+    });
   }
 
   const table = TABLE_MAP[type];
@@ -100,6 +116,21 @@ export async function GET(req: NextRequest) {
 
   const { data, error, count } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (type === 'dials' && (data ?? []).length > 0) {
+    const dialIds = (data ?? []).map((r) => r.id as string).filter(Boolean);
+    const statusByDial = await loadDialReportStatusByDialIds(ctx.service, dialIds);
+    const rows = (data ?? []).map((row) => {
+      const st = statusByDial.get(row.id as string);
+      return {
+        ...row,
+        report_status: st?.documented ? 'documented' : 'missing',
+        report_form_type: st?.form_type ?? null,
+        report_call_id: st?.call_id ?? null,
+      };
+    });
+    return NextResponse.json({ type, rows, total: count ?? 0 });
+  }
 
   if (type === 'appointments' && (data ?? []).length > 0) {
     const rows = await enrichAppointmentsWithCloserFormLinks(

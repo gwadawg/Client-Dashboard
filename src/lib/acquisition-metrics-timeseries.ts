@@ -1,6 +1,7 @@
 // Daily time-series buckets for acquisition trend charts.
 
 import { isMetaLeadSource, META_FUNNEL_EXCLUDED_TYPES } from './acquisition-config';
+import { isReportingClose } from './acquisition-close-filter';
 import { inRange, offerMatchesScope, type OfferScope } from './acquisition-metrics';
 import type {
   AcquisitionLeadRow,
@@ -79,6 +80,7 @@ export function calculateAcquisitionTimeseries(input: TimeseriesInput): Acquisit
   }
 
   for (const c of closes) {
+    if (!isReportingClose(c)) continue;
     const d = c.closed_at?.slice(0, 10);
     if (!d || !buckets.has(d)) continue;
     if (!offerMatchesScope(c.offer_type, offerScope)) continue;

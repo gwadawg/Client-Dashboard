@@ -1,6 +1,7 @@
 // Per-setter funnel rollup for the Acquisition KPI dashboard.
 
 import { META_FUNNEL_EXCLUDED_TYPES } from './acquisition-config';
+import { isReportingClose } from './acquisition-close-filter';
 import { inRange, tookPlace, offerMatchesScope, type OfferScope } from './acquisition-metrics';
 import type { AcquisitionAppointmentRow, AcquisitionOfferRow, AcquisitionCloseRow } from './acquisition-metrics';
 
@@ -97,6 +98,7 @@ export function calculateSetterMetrics(input: SetterMetricsInput): SetterRow[] {
   }
 
   for (const c of closes) {
+    if (!isReportingClose(c)) continue;
     if (!inRange(c.closed_at, from, to)) continue;
     if (!offerMatchesScope(c.offer_type, offerScope)) continue;
     // Closes don't always have setter_name; skip for setter attribution

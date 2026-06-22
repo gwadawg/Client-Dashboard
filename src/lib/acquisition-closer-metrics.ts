@@ -3,6 +3,7 @@
 
 import { inRange, tookPlace, offerMatchesScope, type OfferScope } from './acquisition-metrics';
 import type { AcquisitionOfferRow, AcquisitionCloseRow } from './acquisition-metrics';
+import { isReportingClose } from './acquisition-close-filter';
 
 export type CloserCallRow = {
   id: string;
@@ -100,6 +101,7 @@ export function calculateCloserMetrics(input: CloserMetricsInput): CloserRow[] {
   }
 
   for (const c of closes) {
+    if (!isReportingClose(c)) continue;
     if (!inRange(c.closed_at, from, to)) continue;
     if (!offerMatchesScope(c.offer_type, offerScope)) continue;
     const callId = (c as { call_id?: string | null }).call_id;

@@ -7,6 +7,7 @@ import {
   META_FUNNEL_EXCLUDED_TYPES,
   type AcquisitionApptStatus,
 } from './acquisition-config';
+import { isReportingClose } from './acquisition-close-filter';
 
 export type DateMode = 'booked' | 'scheduled' | 'lead_created' | 'offered';
 
@@ -49,6 +50,7 @@ export type AcquisitionCloseRow = {
   closed_at: string;
   offer_type: string | null;
   cash_collected?: number | null;
+  mapping_status?: string | null;
 };
 
 export type AcquisitionAdSpendRow = {
@@ -218,6 +220,7 @@ export function calculateAcquisitionMetrics(input: AcquisitionMetricsInput): Acq
   });
 
   const closeRows = closes.filter(c => {
+    if (!isReportingClose(c)) return false;
     if (!inRange(c.closed_at, from, to)) return false;
     return offerMatchesScope(c.offer_type, offerScope);
   });
