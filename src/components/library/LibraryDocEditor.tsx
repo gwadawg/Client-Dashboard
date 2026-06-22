@@ -161,7 +161,7 @@ export default function LibraryDocEditor({ state, setState, saving, error, onClo
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="URL slug" hint="lowercase-hyphens">
+              <Field label="URL slug" hint="becomes /library/your-slug">
                 <input
                   value={state.slug}
                   onChange={(e) => {

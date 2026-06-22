@@ -477,7 +477,7 @@ create table if not exists library_documents (
     artifact_type in ('script', 'sop', 'checklist', 'reference', 'framework', 'doctrine', 'prompt', 'hub', 'document')
   ),
   constraint library_documents_department_check check (
-    department is null or department in ('sales', 'call-center', 'media-buying', 'client-success')
+    department is null or department in ('sales', 'call-center', 'media-buying', 'client-success', 'operations')
   )
 );
 

@@ -21,7 +21,7 @@ const VALID_STATUSES: LibraryStatus[] = ["active", "draft"];
 const VALID_ARTIFACT_TYPES: LibraryArtifactType[] = [
   "script", "sop", "checklist", "reference", "framework", "doctrine", "prompt", "hub", "document",
 ];
-const VALID_DEPARTMENTS: LibraryDepartment[] = ["sales", "call-center", "media-buying", "client-success"];
+const VALID_DEPARTMENTS: LibraryDepartment[] = ["sales", "call-center", "media-buying", "client-success", "operations"];
 
 function cleanString(v: unknown): string | null {
   if (typeof v !== "string") return null;

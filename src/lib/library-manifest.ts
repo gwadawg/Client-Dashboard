@@ -13,7 +13,7 @@ export type LibraryArtifactType =
 
 export type LibraryOwner = "setter" | "closer" | "sales-leadership" | "operations";
 
-export type LibraryDepartment = "sales" | "call-center" | "media-buying" | "client-success";
+export type LibraryDepartment = "sales" | "call-center" | "media-buying" | "client-success" | "operations";
 
 export type LibraryStatus = "active" | "draft";
 
@@ -126,6 +126,7 @@ export const DEPARTMENT_ORDER: LibraryDepartment[] = [
   "call-center",
   "media-buying",
   "client-success",
+  "operations",
 ];
 
 export const DEPARTMENT_META: Record<
@@ -152,9 +153,15 @@ export const DEPARTMENT_META: Record<
   },
   "client-success": {
     label: "Client Success",
-    description: "Onboarding, client comms & operations SOPs",
+    description: "Onboarding, client comms & retention SOPs",
     color: "#60a5fa",
     tint: "rgba(96,165,250,0.10)",
+  },
+  operations: {
+    label: "Operations",
+    description: "Company-wide ops, tooling, and internal process SOPs",
+    color: "#f59e0b",
+    tint: "rgba(245,158,11,0.10)",
   },
 };
 
