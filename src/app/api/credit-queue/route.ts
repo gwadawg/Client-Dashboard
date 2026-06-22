@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import {
+  creditQueueCreditedAgentAndFilter,
+  creditQueueEventOrFilter,
+  creditQueueUncreditedAgentOrFilter,
+} from '@/lib/credit-queue-eligibility';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
-
-const CREDITABLE_EVENT_TYPES = ['appointment_booked', 'live_transfer', 'callback_booked'];
 
 type CreditQueueStatus = 'uncredited' | 'credited' | 'all';
 
@@ -38,8 +41,7 @@ export async function GET(req: Request) {
       'id, client_id, event_type, occurred_at, scheduled_at, calendar_name, lead_name, lead_phone, agent_name, clients(name)',
       { count: 'exact' }
     )
-    .in('event_type', CREDITABLE_EVENT_TYPES)
-    .not('is_ai_booked', 'eq', true)
+    .or(creditQueueEventOrFilter())
     .order('occurred_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -47,8 +49,8 @@ export async function GET(req: Request) {
   else if (liveClientIds) query = query.in('client_id', liveClientFilter(liveClientIds));
   if (startDate) query = query.gte('occurred_at', `${startDate}T00:00:00.000Z`);
   if (endDate) query = query.lte('occurred_at', `${endDate}T23:59:59.999Z`);
-  if (status === 'uncredited') query = query.or('agent_name.is.null,agent_name.eq.');
-  if (status === 'credited') query = query.not('agent_name', 'is', null).neq('agent_name', '');
+  if (status === 'uncredited') query = query.or(creditQueueUncreditedAgentOrFilter());
+  if (status === 'credited') query = query.and(creditQueueCreditedAgentAndFilter());
   if (search) {
     const escaped = search.replace(/[%,()]/g, ' ');
     const term = `*${escaped}*`;

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
-
-const CREDITABLE_EVENT_TYPES = ['appointment_booked', 'live_transfer', 'callback_booked'];
+import { isCreditQueueEligibleEvent } from '@/lib/credit-queue-eligibility';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -25,11 +24,21 @@ export async function PATCH(req: Request, { params }: RouteContext) {
     return NextResponse.json({ error: 'agent_name cannot be empty' }, { status: 400 });
   }
 
+  const { data: existing, error: existingError } = await ctx.service
+    .from('events')
+    .select('id, event_type, calendar_name, agent_name')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+  if (!existing || !isCreditQueueEligibleEvent(existing.event_type, existing.calendar_name, existing.agent_name)) {
+    return NextResponse.json({ error: 'Creditable event not found' }, { status: 404 });
+  }
+
   const { data, error } = await ctx.service
     .from('events')
     .update({ agent_name: nextAgentName })
     .eq('id', id)
-    .in('event_type', CREDITABLE_EVENT_TYPES)
     .select('id, agent_name')
     .maybeSingle();
 

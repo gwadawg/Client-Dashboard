@@ -11,5 +11,8 @@ export function canonicalAgentAlias(raw: string): string {
 /** Rewrite known misspellings before persisting agent_name on events. */
 export function normalizeStoredAgentName(raw: string | null | undefined): string | null {
   if (!raw?.trim()) return null;
-  return canonicalAgentAlias(raw.trim());
+  const trimmed = raw.trim();
+  const lowered = trimmed.toLowerCase();
+  if (lowered === '#n/a' || lowered === 'n/a') return null;
+  return canonicalAgentAlias(trimmed);
 }

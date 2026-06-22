@@ -182,7 +182,7 @@ HE accounts have **no ad-cost grading** (CPL / CPQL / CPConv are omitted). **Out
 | Agent | `agent_name` | `agent_name` |
 | AI booking flag | `contact_tags` includes `ai-booked`, or `is_ai_booked: true` | `is_ai_booked` (excludes from agent credit queue; still counts in KPIs) |
 
-**Credit queue:** Appointments/callbacks with the GHL tag `ai-booked` (or explicit `is_ai_booked: true` in the webhook) are stored with `is_ai_booked = true` and hidden from the agent credit queue. Live transfers are always credit-eligible.
+**Credit queue:** **Live transfers** plus appointments/callbacks on **`Call Center Booking Calendar`** always appear. **`AI Booking Calendar`** bookings also appear for historical rep credit (null/empty agent or already credited to a real name). Rows with agent `#N/A` on the AI calendar are Conversation AI and stay out of the queue. `#N/A` on the Call Center calendar counts as uncredited. Run `node scripts/backfill-legacy-calendar-agent-credit.mjs --apply` once to auto-credit bookings from the last roster dial before the appointment.
 
 **Lifecycle:** Send the **same** `external_id` (GHL appointment id) on `appointment_booked` and when calling **`POST /api/webhooks/appointment-status`** (show / no_show / cancelled). For separate outcome **inserts** (`show`, `no_show`, `lo_bailed`, `appointment_cancelled` via main webhook), include **`external_id`** on each row so joins and exports stay aligned. Include **`calendar_id`** on booking (and on any follow-up inserts if you want it denormalized).
 
