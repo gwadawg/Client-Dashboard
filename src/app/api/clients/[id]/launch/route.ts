@@ -92,6 +92,8 @@ function parseLaunchDraft(body: Record<string, unknown>, profile: OnboardingForm
     launch_date: optionalText(body.launch_date) ?? new Date().toISOString().slice(0, 10),
     completed_by_user_id: optionalText(body.completed_by_user_id) ?? '',
     completed_by_label: optionalText(body.completed_by_label) ?? '',
+    recording_url: optionalText(body.recording_url) ?? '',
+    transcript: optionalText(body.transcript) ?? '',
     notes: optionalText(body.notes) ?? '',
     checklist,
     confirmations,
@@ -106,6 +108,10 @@ function validateLaunchDraft(
 ): NextResponse | null {
   if (!draft.completed_by_user_id) {
     return NextResponse.json({ error: 'Select who completed this launch checklist' }, { status: 400 });
+  }
+
+  if (!draft.recording_url.trim()) {
+    return NextResponse.json({ error: 'Launch call recording link is required' }, { status: 400 });
   }
 
   const assignable = assignableUsers.find(u => u.id === draft.completed_by_user_id);
@@ -293,6 +299,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       client_id: clientId,
       call_type: 'launch',
       called_at: now,
+      recording_url: draft.recording_url.trim(),
+      transcript: draft.transcript.trim() || null,
       disposition: 'completed',
       notes: draft.notes || 'Launch checklist completed',
       created_by: ctx.userId,

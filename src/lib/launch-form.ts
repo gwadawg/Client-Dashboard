@@ -174,29 +174,15 @@ export const LAUNCH_CHECKLIST_ITEMS: LaunchChecklistItemDef[] = [
     profiles: ['call_center'],
   },
   {
-    key: 'cc_setter_schedule_assigned',
-    label: 'Setter watch schedule assigned',
+    key: 'cc_make_new_lead_bonzo_active',
+    label: 'Make scenario "New Lead Bonzo" is active, and the leads in queue cleared',
     section: 'admin',
     confirmType: 'checkbox',
     profiles: ['call_center'],
   },
   {
-    key: 'cc_scripts_loaded',
-    label: 'Call scripts loaded in GHL',
-    section: 'admin',
-    confirmType: 'checkbox',
-    profiles: ['call_center'],
-  },
-  {
-    key: 'cc_hp_tag_verified',
-    label: 'Assigned user has HP tag verified',
-    section: 'admin',
-    confirmType: 'checkbox',
-    profiles: ['call_center'],
-  },
-  {
-    key: 'cc_make_ghl_active',
-    label: 'Make scenario for GHL lead ingestion is active',
+    key: 'cc_make_claimed_bonzo_active',
+    label: 'Make scenario "Claimed Bonzo" is active',
     section: 'admin',
     confirmType: 'checkbox',
     profiles: ['call_center'],
@@ -211,6 +197,8 @@ export type LaunchFormDraft = {
   launch_date: string;
   completed_by_user_id: string;
   completed_by_label: string;
+  recording_url: string;
+  transcript: string;
   notes: string;
   checklist: Record<string, boolean>;
   confirmations: Record<string, string>;
@@ -269,6 +257,8 @@ export function emptyLaunchDraft(
     launch_date: launchDate || new Date().toISOString().slice(0, 10),
     completed_by_user_id: completedByUserId,
     completed_by_label: completedByLabel,
+    recording_url: '',
+    transcript: '',
     notes: '',
     checklist,
     confirmations,
@@ -313,6 +303,7 @@ export function isLaunchChecklistComplete(
 ): boolean {
   if (!draft.launch_date.trim()) return false;
   if (!draft.completed_by_user_id.trim()) return false;
+  if (!draft.recording_url.trim()) return false;
   if (draft.final_confirmation.trim().toUpperCase() !== LAUNCH_FINAL_CONFIRMATION) return false;
   return getLaunchItemsForProfile(profile).every(item => isLaunchItemSatisfied(item, draft));
 }
@@ -339,6 +330,8 @@ export function launchDraftToResponses(
     launch_date: draft.launch_date,
     completed_by_user_id: draft.completed_by_user_id,
     completed_by_label: draft.completed_by_label.trim() || null,
+    recording_url: draft.recording_url.trim() || null,
+    transcript: draft.transcript.trim() || null,
     notes: draft.notes.trim() || null,
     checklist: draft.checklist,
     confirmations: draft.confirmations,
@@ -360,6 +353,8 @@ export function launchResponsesToDraft(
     typeof responses.completed_by_user_id === 'string' ? responses.completed_by_user_id : '',
     typeof responses.completed_by_label === 'string' ? responses.completed_by_label : '',
   );
+  draft.recording_url = typeof responses.recording_url === 'string' ? responses.recording_url : '';
+  draft.transcript = typeof responses.transcript === 'string' ? responses.transcript : '';
   draft.notes = typeof responses.notes === 'string' ? responses.notes : '';
   draft.final_confirmation =
     typeof responses.final_confirmation === 'string' ? responses.final_confirmation : '';

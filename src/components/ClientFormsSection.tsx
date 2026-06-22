@@ -67,6 +67,12 @@ function humanizeLaunchResponses(responses: Record<string, unknown>): { label: s
   if (responses.launch_date) {
     rows.push({ label: "Launch date", value: String(responses.launch_date) });
   }
+  if (responses.recording_url) {
+    rows.push({ label: "Launch call recording", value: String(responses.recording_url) });
+  }
+  if (responses.transcript) {
+    rows.push({ label: "Launch call transcript", value: String(responses.transcript) });
+  }
 
   for (const section of getLaunchSectionsForProfile(profile)) {
     rows.push({ label: section.label, value: "", section: section.label });

@@ -130,7 +130,7 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
       return;
     }
     if (!isLaunchChecklistComplete(draft, formProfile)) {
-      setSaveError("Confirm every checklist item, select completed-by, and type LAUNCH before going live.");
+      setSaveError("Confirm every checklist item, add the launch call recording link, select completed-by, and type LAUNCH before going live.");
       const items = getLaunchItemsForProfile(formProfile);
       const firstIncomplete = items.find(item => !isLaunchItemSatisfied(item, draft));
       if (firstIncomplete) scrollToItem(firstIncomplete.key);
@@ -244,6 +244,41 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
                   onPatchConfirmation={patchConfirmation}
                 />
               ))}
+
+              <section
+                className="rounded-lg overflow-hidden"
+                style={{ border: "1px solid rgba(255,255,255,0.08)", background: "#0a1628" }}
+              >
+                <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  <h3 className="text-sm font-semibold text-slate-200">Launch Call</h3>
+                  <p className="text-xs mt-0.5 text-slate-500">Saved to Client Calls history when you go live.</p>
+                </div>
+                <div className="px-4 py-4 space-y-4">
+                  <label className="block space-y-1.5">
+                    <span className="text-sm font-medium text-slate-400">Launch call recording link</span>
+                    <input
+                      type="url"
+                      value={draft.recording_url}
+                      onChange={e => setDraft(prev => ({ ...prev, recording_url: e.target.value }))}
+                      placeholder="https://…"
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                      style={fieldStyle}
+                    />
+                  </label>
+                  <label className="block space-y-1.5">
+                    <span className="text-sm font-medium text-slate-400">Launch call transcript</span>
+                    <textarea
+                      value={draft.transcript}
+                      onChange={e => setDraft(prev => ({ ...prev, transcript: e.target.value }))}
+                      rows={5}
+                      placeholder="Paste call transcript…"
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-y"
+                      style={fieldStyle}
+                    />
+                    <p className="text-xs text-slate-500">Paste the full call transcript for search and review in Client Calls.</p>
+                  </label>
+                </div>
+              </section>
 
               <label className="block space-y-1.5">
                 <span className="text-sm font-medium text-slate-400">Notes (optional)</span>
