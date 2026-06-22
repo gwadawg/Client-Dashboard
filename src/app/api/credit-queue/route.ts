@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import {
-  creditQueueCreditedAgentAndFilter,
   creditQueueEventOrFilter,
   creditQueueUncreditedAgentOrFilter,
 } from '@/lib/credit-queue-eligibility';
@@ -50,7 +49,12 @@ export async function GET(req: Request) {
   if (startDate) query = query.gte('occurred_at', `${startDate}T00:00:00.000Z`);
   if (endDate) query = query.lte('occurred_at', `${endDate}T23:59:59.999Z`);
   if (status === 'uncredited') query = query.or(creditQueueUncreditedAgentOrFilter());
-  if (status === 'credited') query = query.and(creditQueueCreditedAgentAndFilter());
+  if (status === 'credited') {
+    query = query
+      .not('agent_name', 'is', null)
+      .neq('agent_name', '')
+      .neq('agent_name', '#N/A');
+  }
   if (search) {
     const escaped = search.replace(/[%,()]/g, ' ');
     const term = `*${escaped}*`;
