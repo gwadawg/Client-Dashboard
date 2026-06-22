@@ -174,7 +174,7 @@ export async function PATCH(req: Request) {
 
   if (rawSource !== null && rawSource !== '' && !source) {
     return NextResponse.json(
-      { error: 'source must be organic, Meta, Referral, Cold, or null' },
+      { error: 'source must be organic, Meta, Referral, Cold, Unknown, or null' },
       { status: 400 },
     );
   }

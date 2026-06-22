@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { notifyAcquisitionFormSlackIfNeeded } from '@/lib/acquisition-form-notify';
 
 export type AcquisitionAppointmentStatus =
   | 'pending'
@@ -42,5 +43,10 @@ export async function setAcquisitionAppointmentStatus(
 
   if (error) return { error: error.message };
   if (!data) return { error: 'Appointment not found' };
+
+  if (status === 'showed') {
+    await notifyAcquisitionFormSlackIfNeeded(service, appointmentId);
+  }
+
   return { ok: true };
 }

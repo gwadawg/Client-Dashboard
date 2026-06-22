@@ -1,12 +1,13 @@
 /** Canonical acquisition lead sources (editable on leads / appointments). */
 
-export type AcquisitionLeadSource = 'organic' | 'Meta' | 'Referral' | 'Cold';
+export type AcquisitionLeadSource = 'organic' | 'Meta' | 'Referral' | 'Cold' | 'Unknown';
 
 export const ACQUISITION_LEAD_SOURCES: { value: AcquisitionLeadSource; label: string }[] = [
   { value: 'organic', label: 'Organic' },
   { value: 'Meta', label: 'Meta' },
   { value: 'Referral', label: 'Referral' },
   { value: 'Cold', label: 'Cold' },
+  { value: 'Unknown', label: 'Unknown' },
 ];
 
 const SOURCE_SET = new Set<string>(ACQUISITION_LEAD_SOURCES.map((s) => s.value));
@@ -28,6 +29,8 @@ export function normalizeAcquisitionLeadSource(raw: string | null | undefined): 
   if (s === 'cold' || s.includes('cold call') || s === 'cold_call') return 'Cold';
 
   if (s === 'organic' || s === 'funnel' || s.includes('organic') || s.includes('website')) return 'organic';
+
+  if (s === 'unknown') return 'Unknown';
 
   if (isAcquisitionLeadSource(raw.trim())) return raw.trim() as AcquisitionLeadSource;
 

@@ -71,7 +71,8 @@ function normalizeLeadSource(raw) {
   if (s === 'referral' || s.includes('refer')) return 'Referral';
   if (s === 'cold' || s.includes('cold')) return 'Cold';
   if (s === 'organic' || s === 'funnel' || s.includes('organic') || s.includes('website')) return 'organic';
-  if (['organic', 'Meta', 'Referral', 'Cold'].includes(raw.trim())) return raw.trim();
+  if (['organic', 'Meta', 'Referral', 'Cold', 'Unknown'].includes(raw.trim())) return raw.trim();
+  if (raw.trim().toLowerCase() === 'unknown') return 'Unknown';
   return null;
 }
 

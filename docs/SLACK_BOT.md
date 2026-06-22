@@ -53,6 +53,9 @@ Run that in each private client or ops channel you want Mr. Waiz to post to.
 |-------|---------|---------------|
 | Client launch (go-live) | Client's `slack_id` | `MAKE_LAUNCH_COMPLETE_WEBHOOK_URL` if Slack fails or no token |
 | Onboarding form complete | Team channel `#ops-alerts` (slug `ops_alerts`) | — |
+| Demo booked — booking credit | `setters` | — |
+| Intro showed — setter reflection | `setters` | — |
+| Demo showed — closer form | `ceo` | — |
 
 ## Test from the dashboard
 
