@@ -1,18 +1,16 @@
 // Acquisition funnel KPI engine — mirrors business-metrics.ts / metrics.ts pattern.
 
 import {
-  DOWNSELL_OFFER_TYPES,
-  CORE_OFFER_TYPES,
   isMetaLeadSource,
   META_FUNNEL_EXCLUDED_TYPES,
   type AcquisitionApptStatus,
 } from './acquisition-config';
+import { offerMatchesScope as catalogOfferMatchesScope, type OfferScope } from './offer-catalog';
 import { isReportingClose } from './acquisition-close-filter';
 
 export type DateMode = 'booked' | 'scheduled' | 'lead_created' | 'offered';
 
-/** Controls which offers/closes count toward offer/close/cash KPIs. */
-export type OfferScope = 'core' | 'skool' | 'all_downsells' | 'all';
+export type { OfferScope };
 
 export type AcquisitionLeadRow = {
   id: string;
@@ -123,21 +121,8 @@ export function inRange(iso: string | null, from: string, to: string): boolean {
   return d >= from && d <= to;
 }
 
-function isDownsellOffer(offerType: string): boolean {
-  return DOWNSELL_OFFER_TYPES.has(offerType) || DOWNSELL_OFFER_TYPES.has(offerType.toLowerCase());
-}
-
-function isSkoolOffer(offerType: string): boolean {
-  return offerType.toLowerCase() === 'skool';
-}
-
 export function offerMatchesScope(offerType: string | null, scope: OfferScope): boolean {
-  const t = offerType ?? 'Core Offer';
-  if (scope === 'all') return true;
-  if (scope === 'all_downsells') return isDownsellOffer(t);
-  if (scope === 'skool') return isSkoolOffer(t);
-  // 'core' — Core Offer, RM, or anything not in the downsell set
-  return !isDownsellOffer(t);
+  return catalogOfferMatchesScope(offerType, scope);
 }
 
 export function tookPlace(status: string): boolean {

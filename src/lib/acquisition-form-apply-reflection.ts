@@ -2,9 +2,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   DEMO_CALENDAR_ID,
   GHL_CF,
-  normalizeOfferType,
   normalizePhone,
 } from './acquisition-config';
+import { deriveServiceProgram, normalizeSalesPackage } from './offer-catalog';
 import type { DemoBookingCreditInput, DemoBookingCreditResult } from './acquisition-form-apply';
 import { upsertAcquisitionLead } from './acquisition-ingest';
 import { leadSourceUpdateFromFormInput } from './acquisition-lead-source';
@@ -14,10 +14,6 @@ import {
   ghlCustomFieldById,
 } from './ghl-acquisition-api';
 import { normalizeReportingType, type ReportingType } from './reporting-types';
-import {
-  normalizeServiceProgram,
-  type ServiceProgram,
-} from './service-program';
 import {
   resolveObjectionLabel,
   validateCloserFormReflection,
@@ -84,7 +80,7 @@ export type CloserFormInput = {
   offer_type?: string | null;
   follow_up_notes?: string | null;
   reporting_type?: ReportingType | null;
-  service_program?: ServiceProgram | null;
+  service_program?: string | null;
   cash_collected?: number | null;
   closed_at?: string | null;
   call_rating?: number | null;
@@ -746,7 +742,7 @@ export async function applyCloserForm(
 
   if (input.offer_presented) {
     const offeredAt = calledAt;
-    const offerType = normalizeOfferType(input.offer_type ?? 'Core Offer');
+    const offerType = normalizeSalesPackage(input.offer_type ?? 'core_offer');
     const isClosed = input.closed_on_call === true;
 
     const offerRow = {
@@ -796,9 +792,7 @@ export async function applyCloserForm(
       const reportingType = input.reporting_type
         ? normalizeReportingType(input.reporting_type)
         : null;
-      const serviceProgram = input.service_program
-        ? normalizeServiceProgram(input.service_program)
-        : null;
+      const serviceProgram = deriveServiceProgram(reportingType, offerType);
       const closedAt = input.closed_at ?? offeredAt;
 
       const { data: closeRow, error: closeErr } = await service

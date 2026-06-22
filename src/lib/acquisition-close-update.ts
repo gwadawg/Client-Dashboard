@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { normalizeOfferType } from '@/lib/acquisition-config';
+import { normalizeSalesPackage } from '@/lib/offer-catalog';
+import { deriveServiceProgram } from '@/lib/offer-catalog';
 import { normalizeReportingType } from '@/lib/reporting-types';
-import { normalizeServiceProgram, serviceProgramApplies } from '@/lib/service-program';
 
 export type PatchCloseInput = {
   lead_id?: string | null;
@@ -53,8 +53,17 @@ export async function assignClientToClose(
   if (conflict) throw new Error('That client is already linked to another close');
 
   const clientPatch: Record<string, unknown> = {};
-  if (close.reporting_type) clientPatch.reporting_type = close.reporting_type;
+  if (close.reporting_type) {
+    clientPatch.reporting_type = close.reporting_type;
+    clientPatch.offer = close.reporting_type;
+  }
   if (close.service_program) clientPatch.service_program = close.service_program;
+  const { data: closeFull } = await service
+    .from('acquisition_closes')
+    .select('offer_type')
+    .eq('id', closeId)
+    .single();
+  if (closeFull?.offer_type) clientPatch.sales_package = closeFull.offer_type;
   if (Object.keys(clientPatch).length) {
     await service.from('clients').update(clientPatch).eq('id', clientId);
   }
@@ -120,21 +129,30 @@ export async function patchAcquisitionClose(
   if (input.closed_at) closePatch.closed_at = input.closed_at;
   if (input.cash_collected !== undefined) closePatch.cash_collected = input.cash_collected;
   if (input.offer_type !== undefined) {
-    closePatch.offer_type = input.offer_type ? normalizeOfferType(input.offer_type) : null;
+    closePatch.offer_type = input.offer_type ? normalizeSalesPackage(input.offer_type) : null;
   }
   if (input.reporting_type !== undefined) {
     closePatch.reporting_type = input.reporting_type
       ? normalizeReportingType(input.reporting_type)
       : null;
   }
-  if (input.service_program !== undefined) {
-    const rt = input.reporting_type ?? existing.reporting_type;
-    closePatch.service_program =
-      input.service_program && serviceProgramApplies(rt)
-        ? normalizeServiceProgram(input.service_program)
-        : input.service_program
-          ? normalizeServiceProgram(input.service_program)
-          : null;
+
+  const nextReportingType =
+    (input.reporting_type !== undefined
+      ? closePatch.reporting_type
+      : existing.reporting_type) as string | null;
+  const nextOfferType =
+    (input.offer_type !== undefined
+      ? closePatch.offer_type
+      : existing.offer_type) as string | null;
+
+  if (input.offer_type !== undefined || input.reporting_type !== undefined) {
+    closePatch.service_program = deriveServiceProgram(nextReportingType, nextOfferType);
+  } else if (input.service_program !== undefined) {
+    closePatch.service_program = deriveServiceProgram(
+      nextReportingType,
+      nextOfferType ?? 'core_offer',
+    );
   }
   if (input.setter_name !== undefined) closePatch.setter_name = str(input.setter_name);
   if (input.mapping_status) closePatch.mapping_status = input.mapping_status;
@@ -153,7 +171,7 @@ export async function patchAcquisitionClose(
   if (offerId) {
     await syncLinkedOffer(service, offerId, {
       cash_collected: input.cash_collected,
-      offer_type: input.offer_type ? normalizeOfferType(input.offer_type) : undefined,
+      offer_type: input.offer_type ? normalizeSalesPackage(input.offer_type) : undefined,
       setter_name: input.setter_name,
       offered_by: input.offered_by,
       is_closed: true,
@@ -161,9 +179,9 @@ export async function patchAcquisitionClose(
   } else if (input.offered_by !== undefined || input.setter_name !== undefined) {
     const leadId = (input.lead_id ?? existing.lead_id) as string | null;
     const offerType = input.offer_type
-      ? normalizeOfferType(input.offer_type)
+      ? normalizeSalesPackage(input.offer_type)
       : existing.offer_type
-        ? normalizeOfferType(existing.offer_type as string)
+        ? normalizeSalesPackage(existing.offer_type as string)
         : null;
     if (leadId && offerType) {
       const { data: found } = await service

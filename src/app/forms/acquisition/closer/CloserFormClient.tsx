@@ -9,10 +9,18 @@ import {
   SURFACE_OBJECTIONS,
 } from "@/lib/closer-form-config";
 import { REPORTING_TYPE_META, type ReportingType } from "@/lib/reporting-types";
-import { SERVICE_PROGRAM_META, type ServiceProgram } from "@/lib/service-program";
 import { ACQUISITION_LEAD_SOURCES } from "@/lib/acquisition-lead-source";
 import DialCallPicker from "@/components/acquisition/DialCallPicker";
 import type { DialOption } from "@/lib/acquisition-dial-linkage";
+
+type CatalogOption = {
+  code: string;
+  label: string;
+  short_label: string | null;
+  description: string | null;
+  applies_to?: string[];
+  is_downsell?: boolean;
+};
 
 const inputStyle: CSSProperties = {
   background: "#0f2040",
@@ -20,7 +28,7 @@ const inputStyle: CSSProperties = {
   color: "#e2e8f0",
 };
 
-const OFFER_TYPES = ["Core Offer", "Full Service", "Bootcamp", "Mid Offer", "Skool"];
+const OFFER_TYPES = ["core_offer", "mid_offer", "skool"];
 
 const APPT_LABELS: Record<string, string> = {
   demo: "demo",
@@ -57,9 +65,9 @@ export default function CloserFormClient() {
   const [notes, setNotes] = useState("");
   const [offerPresented, setOfferPresented] = useState<"" | "yes" | "no">("");
   const [closedOnCall, setClosedOnCall] = useState<"" | "yes" | "no">("");
-  const [offerType, setOfferType] = useState("Core Offer");
+  const [offerType, setOfferType] = useState("core_offer");
   const [reportingType, setReportingType] = useState<ReportingType>("RM");
-  const [serviceProgram, setServiceProgram] = useState<ServiceProgram>("core");
+  const [salesPackages, setSalesPackages] = useState<CatalogOption[]>([]);
   const [cashCollected, setCashCollected] = useState("");
   const [disposition, setDisposition] = useState("");
   const [nextStep, setNextStep] = useState("");
@@ -81,6 +89,20 @@ export default function CloserFormClient() {
   const offerNo = offerPresented === "no";
   const closedYes = closedOnCall === "yes";
   const closedNo = closedOnCall === "no";
+
+  const packageOptions = useMemo(() => {
+    const fromApi = salesPackages.filter(
+      p => !p.applies_to?.length || p.applies_to.includes(reportingType),
+    );
+    if (fromApi.length) return fromApi;
+    return OFFER_TYPES.map(code => ({ code, label: code, short_label: null, description: null }));
+  }, [salesPackages, reportingType]);
+
+  useEffect(() => {
+    if (!packageOptions.some(p => p.code === offerType)) {
+      setOfferType(packageOptions[0]?.code ?? "core_offer");
+    }
+  }, [packageOptions, offerType]);
 
   const needsReflection = useMemo(() => {
     if (offerNo) return true;
@@ -111,6 +133,7 @@ export default function CloserFormClient() {
         if (d.setter_name_default) setSetterName(d.setter_name_default);
         if (d.lead_source_default) setLeadSource(d.lead_source_default);
         if (d.lead_source_options?.length) setLeadSourceOptions(d.lead_source_options);
+        if (d.sales_packages?.length) setSalesPackages(d.sales_packages);
       })
       .catch((e) => setLoadError(e.message));
   }, [contactId, token, appointmentId]);
@@ -137,7 +160,6 @@ export default function CloserFormClient() {
           closed_on_call: offerYes ? (closedYes ? true : closedNo ? false : null) : false,
           offer_type: offerType,
           reporting_type: reportingType,
-          service_program: serviceProgram,
           cash_collected: cashCollected || null,
           disposition: disposition || null,
           next_step: nextStep || null,
@@ -365,9 +387,9 @@ export default function CloserFormClient() {
                     className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
                     style={inputStyle}
                   >
-                    {OFFER_TYPES.map((o) => (
-                      <option key={o} value={o}>
-                        {o}
+                    {packageOptions.map((o) => (
+                      <option key={o.code} value={o.code}>
+                        {o.label}
                       </option>
                     ))}
                   </select>
@@ -388,7 +410,7 @@ export default function CloserFormClient() {
             {closedYes && (
               <>
                 <label className="block">
-                  <span className="text-xs font-medium text-slate-400">Client vertical (roster)</span>
+                  <span className="text-xs font-medium text-slate-400">Product</span>
                   <select
                     value={reportingType}
                     onChange={(e) => setReportingType(e.target.value as ReportingType)}
@@ -402,23 +424,21 @@ export default function CloserFormClient() {
                     ))}
                   </select>
                 </label>
-                {(reportingType === "RM" || reportingType === "DSCR") && (
-                  <label className="block">
-                    <span className="text-xs font-medium text-slate-400">Service tier</span>
-                    <select
-                      value={serviceProgram}
-                      onChange={(e) => setServiceProgram(e.target.value as ServiceProgram)}
-                      className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={inputStyle}
-                    >
-                      {(Object.keys(SERVICE_PROGRAM_META) as ServiceProgram[]).map((p) => (
-                        <option key={p} value={p}>
-                          {SERVICE_PROGRAM_META[p].label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-400">Sales package</span>
+                  <select
+                    value={offerType}
+                    onChange={(e) => setOfferType(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={inputStyle}
+                  >
+                    {packageOptions.map((o) => (
+                      <option key={o.code} value={o.code}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <label className="block">
                   <span className="text-xs font-medium text-slate-400">Cash collected</span>
                   <input

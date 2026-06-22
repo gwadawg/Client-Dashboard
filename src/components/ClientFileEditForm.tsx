@@ -3,9 +3,8 @@
 import { useState, type ReactNode } from "react";
 import StatesLicensedSelect from "@/components/StatesLicensedSelect";
 import TimezoneSelect from "@/components/TimezoneSelect";
-import ReportingTypeBadge, { ReportingTypeSelectOptions, ServiceProgramSelectOptions } from "@/components/ReportingTypeBadge";
+import ReportingTypeBadge, { ReportingTypeSelectOptions } from "@/components/ReportingTypeBadge";
 import { normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
-import { normalizeServiceProgram, serviceProgramApplies, type ServiceProgram, getServiceProgramLabel } from "@/lib/service-program";
 import { getReportingTypeLabel } from "@/lib/reporting-types";
 import { toDateInputValue } from "@/lib/client-dates";
 
@@ -48,8 +47,6 @@ type Draft = {
   billing_email: string;
   phone: string;
   reporting_type: ReportingType;
-  offer: ReportingType;
-  service_program: ServiceProgram | "";
   clickup_task_id: string;
   source: string;
   website: string;
@@ -88,8 +85,6 @@ export function clientToDraft(c: EditableClient): Draft {
     billing_email: c.billing_email ?? "",
     phone: c.phone ?? "",
     reporting_type: normalizeReportingType(c.reporting_type),
-    offer: normalizeReportingType(c.offer ?? c.reporting_type),
-    service_program: normalizeServiceProgram(c.service_program) ?? "",
     clickup_task_id: c.clickup_task_id ?? "",
     source: c.source ?? "",
     website: c.website ?? "",
@@ -121,11 +116,7 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     billing_email: draft.billing_email.trim() || null,
     phone: draft.phone.trim() || null,
     reporting_type: draft.reporting_type,
-    offer: draft.offer,
     clickup_task_id: draft.clickup_task_id.trim() || null,
-    service_program: serviceProgramApplies(draft.reporting_type)
-      ? normalizeServiceProgram(draft.service_program)
-      : null,
     source: draft.source.trim() || null,
     website: draft.website.trim() || null,
     brokerage_name: draft.brokerage_name.trim() || null,
@@ -225,26 +216,11 @@ export default function ClientFileEditForm({
           <Field label="Email" type="email" value={draft.email} onChange={v => patch("email", v)} highlightEmpty />
           <Field label="Billing email" type="email" value={draft.billing_email} onChange={v => patch("billing_email", v)} highlightEmpty />
           <Field label="Phone" value={draft.phone} onChange={v => patch("phone", v)} highlightEmpty />
-          <SelectField label="Client vertical" value={draft.reporting_type} onChange={v => {
-            const vertical = normalizeReportingType(v);
-            patch("reporting_type", vertical);
-            if (!serviceProgramApplies(vertical)) patch("service_program", "");
+          <SelectField label="Product" value={draft.reporting_type} onChange={v => {
+            patch("reporting_type", normalizeReportingType(v));
           }}>
             <ReportingTypeSelectOptions />
           </SelectField>
-          <SelectField label="Offer (portfolio slice)" value={draft.offer} onChange={v => patch("offer", normalizeReportingType(v))}>
-            <ReportingTypeSelectOptions />
-          </SelectField>
-          {serviceProgramApplies(draft.reporting_type) ? (
-            <SelectField label="Service program" value={draft.service_program} onChange={v => patch("service_program", normalizeServiceProgram(v) ?? "")}>
-              <ServiceProgramSelectOptions />
-            </SelectField>
-          ) : (
-            <div>
-              <p className="text-xs uppercase tracking-wider mb-0.5" style={{ color: "#475569" }}>Service program</p>
-              <p className="text-sm" style={{ color: "#64748b" }}>N/A for Call Center clients</p>
-            </div>
-          )}
           <Field label="Lead source" value={draft.source} onChange={v => patch("source", v)} highlightEmpty />
           <Field label="Website" value={draft.website} onChange={v => patch("website", v)} highlightEmpty />
           <Field label="Brokerage" value={draft.brokerage_name} onChange={v => patch("brokerage_name", v)} highlightEmpty />

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { DOWNSELL_OFFER_TYPES, GHL_CF } from '@/lib/acquisition-config';
+import { GHL_CF } from '@/lib/acquisition-config';
+import { loadOfferCatalog, getProducts, getSalesPackages } from '@/lib/offer-catalog';
+import { REPORTING_TYPES } from '@/lib/reporting-types';
 import { applyCloserForm } from '@/lib/acquisition-form-apply';
 import { recordGhlSyncOnSubmission, syncCloserFormToGhl } from '@/lib/ghl-acquisition-sync';
 import { verifyAcquisitionFormToken } from '@/lib/acquisition-form-token';
@@ -18,8 +20,6 @@ import {
   ghlContactName,
   ghlCustomFieldById,
 } from '@/lib/ghl-acquisition-api';
-import { REPORTING_TYPES } from '@/lib/reporting-types';
-import { SERVICE_PROGRAMS } from '@/lib/service-program';
 
 function str(v: unknown): string | null {
   if (v == null) return null;
@@ -67,6 +67,10 @@ export async function GET(req: NextRequest) {
     const ghlLeadSource = ghlCustomFieldById(contact, GHL_CF.leadSource);
     const leadSourceDefault = resolveAcquisitionLeadSource(lead?.source, ghlLeadSource);
 
+    const catalog = await loadOfferCatalog(service);
+    const products = getProducts(catalog);
+    const salesPackages = getSalesPackages(catalog);
+
     return NextResponse.json({
       contact_id: contactId,
       appointment_id: appointmentId,
@@ -77,8 +81,20 @@ export async function GET(req: NextRequest) {
       lead_source_default: leadSourceDefault,
       lead_source_options: ACQUISITION_LEAD_SOURCES,
       reporting_types: REPORTING_TYPES,
-      service_programs: SERVICE_PROGRAMS,
-      downsell_offer_types: Array.from(DOWNSELL_OFFER_TYPES),
+      products: products.map(p => ({
+        code: p.code,
+        label: p.label,
+        short_label: p.short_label,
+        description: p.description,
+      })),
+      sales_packages: salesPackages.map(p => ({
+        code: p.code,
+        label: p.label,
+        short_label: p.short_label,
+        description: p.description,
+        applies_to: p.applies_to,
+        is_downsell: p.is_downsell,
+      })),
       lead_quality_scores: LEAD_QUALITY_SCORES,
       surface_objections: SURFACE_OBJECTIONS,
       root_cause_objections: ROOT_CAUSE_OBJECTIONS,

@@ -13,6 +13,7 @@ import {
   linkOrphanDialsToLead,
   mergeIncomingLeadFields,
 } from './acquisition-lead-resolve';
+import { normalizeProduct } from './offer-catalog';
 
 type JsonObject = Record<string, unknown>;
 
@@ -94,7 +95,10 @@ export async function upsertAcquisitionLead(
     email: str(payload.email) ?? str(payload.lead_email),
     phone,
     source: str(payload.source) ?? str(payload.lead_source),
-    offer_interest: str(payload.offer) ?? str(payload.offer_interest),
+    offer_interest: (() => {
+      const raw = str(payload.offer) ?? str(payload.offer_interest);
+      return raw ? normalizeProduct(raw) : null;
+    })(),
     qualified: bool(payload.qualified),
     ad_name: attribution.ad_name,
     ad_set: attribution.ad_set,

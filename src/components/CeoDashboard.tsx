@@ -556,7 +556,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
               </div>
               <div className="rounded-xl p-5" style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: MUTED }}>
-                  Active MRR by offer
+                  Active MRR by product
                 </p>
                 <BreakdownBars
                   rows={data.portfolio.by_offer.map((o) => ({ key: `${o.offer} (${o.count})`, amount: o.mrr }))}

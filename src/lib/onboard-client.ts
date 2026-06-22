@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import type { ReportingType } from '@/lib/reporting-types';
-import { normalizeServiceProgram, serviceProgramApplies } from '@/lib/service-program';
+import { deriveServiceProgram, normalizeSalesPackage } from '@/lib/offer-catalog';
 import { findClientConflicts } from '@/lib/client-duplicate-check';
 import { clientNamesMatch } from '@/lib/client-name-match';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
@@ -78,9 +78,10 @@ export function parseOnboardPayload(body: OnboardPayload) {
   const billingEmail = trimString(body.billing_email) ?? email;
   const offer = normalizeOffer(body.offer) ?? normalizeOffer(body.reporting_type);
   const reporting_type = reportingTypeFromOffer(offer, body.reporting_type);
-  const service_program = serviceProgramApplies(reporting_type)
-    ? normalizeServiceProgram(body.service_program ?? body.serviceProgram)
-    : null;
+  const sales_package = normalizeSalesPackage(
+    body.sales_package ?? body.offer_type ?? body.salesPackage,
+  );
+  const service_program = deriveServiceProgram(reporting_type, sales_package);
   const dateSigned = trimString(body.date_signed);
 
   const lifecycleStatus = trimString(body.lifecycle_status) ?? 'new_account';
@@ -98,6 +99,7 @@ export function parseOnboardPayload(body: OnboardPayload) {
     offer,
     reporting_type,
     service_program,
+    sales_package,
     nmls: trimString(body.nmls),
     brokerage_name: trimString(body.brokerage_name),
     ghl_location_id: trimString(body.ghl_location_id) ?? trimString(body.location_id),
@@ -202,7 +204,7 @@ function buildClientRecord(parsed: ParsedOnboard): Record<string, unknown> {
   };
   const optional: (keyof ParsedOnboard)[] = [
     'email', 'billing_email', 'primary_contact_name', 'phone', 'mrr',
-    'billing_type', 'contract_term_months', 'date_signed', 'offer', 'service_program', 'nmls',
+    'billing_type', 'contract_term_months', 'date_signed', 'offer', 'service_program', 'sales_package', 'nmls',
     'brokerage_name', 'ghl_location_id', 'ghl_contact_id',
     'ghl_subaccount_url', 'source',
     'clickup_task_id', 'slack_id',

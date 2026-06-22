@@ -82,9 +82,9 @@ The KPI dashboard allows filtering by offer type via the `offer_scope` parameter
 
 | Scope | Counts |
 |-------|--------|
-| `core` (default) | Core Offer, RM — excludes Skool / Mid Offer / Bootcamp |
+| `core` (default) | Core Offer + Mid Offer — excludes downsells (Skool, Bootcamp) |
 | `skool` | Skool offers/closes only |
-| `all_downsells` | Skool + Mid Offer + Bootcamp |
+| `all_downsells` | Skool + Bootcamp (catalog `is_downsell`) |
 | `all` | Every offer/close regardless of type |
 
 ## Setter credit

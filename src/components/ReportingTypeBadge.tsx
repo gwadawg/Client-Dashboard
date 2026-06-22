@@ -10,6 +10,10 @@ import {
   SERVICE_PROGRAM_META,
   type ServiceProgram,
 } from '@/lib/service-program';
+import {
+  getSalesPackageLabel,
+  normalizeSalesPackage,
+} from '@/lib/offer-catalog';
 
 type Props = {
   value: unknown;
@@ -48,6 +52,28 @@ export function ServiceProgramBadge({ value, size = 'sm' }: { value: unknown; si
       title={getServiceProgramLabel(program) ?? undefined}
     >
       {meta.shortLabel}
+    </span>
+  );
+}
+
+export function SalesPackageBadge({ value, size = 'sm' }: { value: unknown; size?: 'sm' | 'md' }) {
+  const code = normalizeSalesPackage(value);
+  if (!value) return null;
+  const label = getSalesPackageLabel(code);
+  const pad = size === 'md' ? 'px-2 py-0.5' : 'px-1.5 py-0.5';
+  const text = size === 'md' ? 'text-xs' : 'text-[10px]';
+  const isDownsell = code === 'skool' || code === 'bootcamp';
+
+  return (
+    <span
+      className={`inline-flex items-center font-semibold uppercase tracking-wide rounded shrink-0 ${pad} ${text}`}
+      style={{
+        color: isDownsell ? '#f472b6' : '#34d399',
+        background: isDownsell ? 'rgba(244,114,182,0.12)' : 'rgba(52,211,153,0.12)',
+      }}
+      title={label}
+    >
+      {label.split(' ')[0]}
     </span>
   );
 }

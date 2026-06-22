@@ -6,8 +6,8 @@ import {
   isValidReasonCode,
   requiresReasonOnChurn,
 } from '@/lib/client-feedback';
+import { deriveServiceProgram, normalizeSalesPackage } from '@/lib/offer-catalog';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
-import { normalizeServiceProgram, serviceProgramApplies } from '@/lib/service-program';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import {
@@ -31,7 +31,7 @@ const CLIENT_NOTES_FIELDS =
   'id, note_type, reason_code, body, created_at, created_by, updated_at, related_call_id';
 
 const FILE_CLIENT_FIELDS =
-  'id, name, is_live, reporting_type, service_program, offer, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, clickup_task_id, created_at, churned_at';
+  'id, name, is_live, reporting_type, service_program, sales_package, offer, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, clickup_task_id, created_at, churned_at';
 
 const FILE_BILLING_FIELDS =
   'id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, passthrough_amount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, created_at';
@@ -152,7 +152,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const allowed = [
-    'name', 'reporting_type', 'service_program', 'offer',
+    'name', 'reporting_type', 'service_program', 'sales_package', 'offer',
     // Billing fields (editable from the Client Billing tab)
     'mrr', 'billing_type', 'billing_day', 'launch_date', 'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
     // Lifecycle (pause/churn/reactivate) + performance pricing note.
@@ -180,7 +180,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (k === 'churned_at') continue;
     if (!includeRevenue && revenueFields.has(k)) continue;
     if (k === 'reporting_type' || k === 'offer') updates[k] = normalizeReportingType(body[k]);
-    else if (k === 'service_program') updates[k] = normalizeServiceProgram(body[k]);
+    else if (k === 'sales_package') updates[k] = body[k] ? normalizeSalesPackage(body[k]) : null;
+    else if (k === 'service_program') {
+      // service_program is derived — ignore direct edits unless sales_package not sent
+      if (!('sales_package' in body)) {
+        const rt = updates.reporting_type ?? body.reporting_type;
+        const pkg = updates.sales_package ?? body.sales_package;
+        updates.service_program = deriveServiceProgram(rt, pkg ?? 'core_offer');
+      }
+    }
     else if (k === 'clickup_task_id') {
       const raw = typeof body[k] === 'string' ? body[k].trim() : '';
       updates[k] = raw || null;
@@ -193,12 +201,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // When only vertical changes, keep offer aligned unless the editor sent an explicit offer.
   if ('reporting_type' in updates) {
-    if (!serviceProgramApplies(updates.reporting_type)) {
-      updates.service_program = null;
-    }
     if (!('offer' in body)) {
       updates.offer = updates.reporting_type;
     }
+    const pkg = updates.sales_package ?? body.sales_package;
+    updates.service_program = deriveServiceProgram(updates.reporting_type, pkg ?? 'core_offer');
+  }
+
+  if ('sales_package' in updates) {
+    const rt = updates.reporting_type ?? body.reporting_type;
+    updates.service_program = deriveServiceProgram(rt, updates.sales_package);
   }
 
   // Profile editor sends both columns; partial patches may send only one — keep those aligned.

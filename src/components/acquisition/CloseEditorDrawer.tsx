@@ -6,7 +6,6 @@ import {
   type CloseCompleteness,
 } from "@/lib/acquisition-close-completeness";
 import { REPORTING_TYPES } from "@/lib/reporting-types";
-import { SERVICE_PROGRAMS, serviceProgramApplies } from "@/lib/service-program";
 
 type ClientOption = { id: string; name: string; email?: string | null; phone?: string | null };
 type LeadOffer = {
@@ -45,7 +44,11 @@ type Props = {
   onSaved: () => void;
 };
 
-const OFFER_TYPES = ["Core Offer", "Skool", "Mid Offer", "Bootcamp"];
+const DEFAULT_PACKAGES = [
+  { code: "core_offer", label: "Core Offer" },
+  { code: "mid_offer", label: "Mid Offer" },
+  { code: "skool", label: "Skool" },
+];
 
 const inputStyle: CSSProperties = {
   background: "#0f2040",
@@ -109,13 +112,25 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
   const [clientId, setClientId] = useState("");
   const [offerId, setOfferId] = useState("");
   const [closedAt, setClosedAt] = useState("");
-  const [offerType, setOfferType] = useState("Core Offer");
+  const [offerType, setOfferType] = useState("core_offer");
   const [cashCollected, setCashCollected] = useState("");
   const [reportingType, setReportingType] = useState("");
-  const [serviceProgram, setServiceProgram] = useState("");
+  const [packageOptions, setPackageOptions] = useState(DEFAULT_PACKAGES);
   const [setterName, setSetterName] = useState("");
   const [offeredBy, setOfferedBy] = useState("");
   const [mappingStatus, setMappingStatus] = useState("mapped");
+
+  useEffect(() => {
+    fetch("/api/offer-catalog")
+      .then(r => r.json())
+      .then(d => {
+        const pkgs = (d.catalog ?? [])
+          .filter((r: { kind: string; is_active: boolean }) => r.kind === "sales_package" && r.is_active)
+          .map((r: { code: string; label: string }) => ({ code: r.code, label: r.label }));
+        if (pkgs.length) setPackageOptions(pkgs);
+      })
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     if (!closeId) return;
@@ -138,10 +153,9 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
       setClientId(c.client_id ?? "");
       setOfferId(c.offer_id ?? "");
       setClosedAt(c.closed_at ? c.closed_at.slice(0, 16) : "");
-      setOfferType(c.offer_type ?? "Core Offer");
+      setOfferType(c.offer_type ?? "core_offer");
       setCashCollected(c.cash_collected != null ? String(c.cash_collected) : "");
       setReportingType(c.reporting_type ?? "");
-      setServiceProgram(c.service_program ?? "");
       setSetterName(c.setter_name ?? "");
       setOfferedBy(c.offered_by ?? "");
       setMappingStatus(c.mapping_status ?? "mapped");
@@ -191,7 +205,6 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
         offer_type: offerType || null,
         cash_collected: cashCollected === "" ? null : Number(cashCollected),
         reporting_type: reportingType || null,
-        service_program: serviceProgram || null,
         setter_name: setterName || null,
         offered_by: offeredBy || null,
         mapping_status: mappingStatus,
@@ -255,7 +268,11 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
 
   if (!closeId) return null;
 
-  const showServiceProgram = serviceProgramApplies(reportingType || "RM");
+  const filteredPackages = packageOptions.filter(p => {
+    if (p.code === "skool") return reportingType === "RM";
+    if (p.code === "mid_offer") return reportingType === "RM" || reportingType === "DSCR" || !reportingType;
+    return true;
+  });
   const isExcluded = mappingStatus === "dismissed";
 
   return (
@@ -404,15 +421,15 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
                     />
                   </div>
                   <div>
-                    <FieldLabel>Offer type</FieldLabel>
+                    <FieldLabel>Sales package</FieldLabel>
                     <select
                       value={offerType}
                       onChange={e => setOfferType(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg text-sm"
                       style={inputStyle}
                     >
-                      {OFFER_TYPES.map(t => (
-                        <option key={t} value={t}>{t}</option>
+                      {filteredPackages.map(t => (
+                        <option key={t.code} value={t.code}>{t.label}</option>
                       ))}
                     </select>
                   </div>
@@ -430,7 +447,7 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
                     />
                   </div>
                   <div>
-                    <FieldLabel>Reporting type</FieldLabel>
+                    <FieldLabel>Product</FieldLabel>
                     <select
                       value={reportingType}
                       onChange={e => setReportingType(e.target.value)}
@@ -443,22 +460,6 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
                       ))}
                     </select>
                   </div>
-                  {showServiceProgram && (
-                    <div>
-                      <FieldLabel>Service program</FieldLabel>
-                      <select
-                        value={serviceProgram}
-                        onChange={e => setServiceProgram(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg text-sm"
-                        style={inputStyle}
-                      >
-                        <option value="">—</option>
-                        {SERVICE_PROGRAMS.map(t => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                 </div>
               </section>
 

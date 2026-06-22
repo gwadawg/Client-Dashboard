@@ -18,8 +18,8 @@ import { syncIsLiveWithLifecycle } from "@/lib/lifecycle-sync";
 import { clientNeedsGhlMapping } from "@/lib/client-ghl-mapping";
 import { DEFAULT_REPORTING_TYPE, normalizeReportingType, usesCallCenterKpiLayout, type ReportingType } from "@/lib/kpi-layouts";
 import { REPORTING_TYPE_META, REPORTING_TYPES } from "@/lib/reporting-types";
-import { normalizeServiceProgram, SERVICE_PROGRAM_META, serviceProgramApplies } from "@/lib/service-program";
-import ReportingTypeBadge, { ReportingTypeSelectOptions, ServiceProgramBadge, ServiceProgramSelectOptions } from "@/components/ReportingTypeBadge";
+import { normalizeSalesPackage } from "@/lib/offer-catalog";
+import ReportingTypeBadge, { ReportingTypeSelectOptions, SalesPackageBadge } from "@/components/ReportingTypeBadge";
 import {
   DEFAULT_KPI_BANDS,
   HE_KPI_KEYS,
@@ -43,6 +43,7 @@ type Client = {
   is_live?: boolean;
   reporting_type?: ReportingType;
   service_program?: string | null;
+  sales_package?: string | null;
   lifecycle_status?: string | null;
   mrr?: number | null;
   daily_adspend?: number | null;
@@ -336,7 +337,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<SectionKey | "all">("all");
   const [offerFilter, setOfferFilter] = useState<ReportingType | "all">("all");
-  const [programFilter, setProgramFilter] = useState<"all" | "core" | "lead_gen" | "unset">("all");
+  const [packageFilter, setPackageFilter] = useState<"all" | "core_offer" | "mid_offer" | "skool" | "unset">("all");
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [statusChange, setStatusChange] = useState<{ clientId: string; clientName: string; targetStatus: string } | null>(null);
@@ -494,15 +495,16 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const q = query.trim().toLowerCase();
   const matched = clients.filter(c => {
     if (offerFilter !== "all" && normalizeReportingType(c.reporting_type) !== offerFilter) return false;
-    if (programFilter === "core" && normalizeServiceProgram(c.service_program) !== "core") return false;
-    if (programFilter === "lead_gen" && normalizeServiceProgram(c.service_program) !== "lead_gen") return false;
-    if (programFilter === "unset" && normalizeServiceProgram(c.service_program) != null) return false;
+    if (packageFilter === "core_offer" && normalizeSalesPackage(c.sales_package) !== "core_offer") return false;
+    if (packageFilter === "mid_offer" && normalizeSalesPackage(c.sales_package) !== "mid_offer") return false;
+    if (packageFilter === "skool" && normalizeSalesPackage(c.sales_package) !== "skool") return false;
+    if (packageFilter === "unset" && c.sales_package) return false;
     if (!q) return true;
     return clientMatchesQuery(c, q);
   });
   const grouped = groupClientsBySection(matched);
   const counts = groupClientsBySection(clients);
-  const isFiltering = q.length > 0 || statusFilter !== "all" || offerFilter !== "all" || programFilter !== "all";
+  const isFiltering = q.length > 0 || statusFilter !== "all" || offerFilter !== "all" || packageFilter !== "all";
   const visibleSections = ROSTER_SECTIONS.filter(s => statusFilter === "all" || s.key === statusFilter);
   const matchTotal = visibleSections.reduce((n, s) => n + grouped[s.key].length, 0);
 
@@ -665,18 +667,19 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 );
               })}
             </div>
-            <div className="flex items-center gap-1 flex-wrap" title="Filter by service program (RM/DSCR)">
+            <div className="flex items-center gap-1 flex-wrap" title="Filter by sales package">
               {([
-                { key: "all", label: "All programs" },
-                { key: "core", label: "Core" },
-                { key: "lead_gen", label: "Lead Gen" },
+                { key: "all", label: "All packages" },
+                { key: "core_offer", label: "Core Offer" },
+                { key: "mid_offer", label: "Mid Offer" },
+                { key: "skool", label: "Skool" },
                 { key: "unset", label: "Unset" },
               ] as const).map(opt => {
-                const active = programFilter === opt.key;
+                const active = packageFilter === opt.key;
                 return (
                   <button
                     key={opt.key}
-                    onClick={() => setProgramFilter(opt.key)}
+                    onClick={() => setPackageFilter(opt.key)}
                     className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors"
                     style={{
                       color: active ? "#e2e8f0" : "#64748b",
@@ -888,7 +891,7 @@ function ClientRow({
         <div className="flex flex-col gap-0.5 min-w-0">
             <span className="flex items-center gap-2 min-w-0">
             <ReportingTypeBadge value={c.reporting_type} />
-            <ServiceProgramBadge value={c.service_program} />
+            <SalesPackageBadge value={c.sales_package} />
             <span className="text-sm font-medium truncate max-w-[16rem]" style={{ color: clientName ? "#e2e8f0" : "#475569" }} title={clientName || "No client name set"}>
               {clientName || "Unnamed client"}
             </span>

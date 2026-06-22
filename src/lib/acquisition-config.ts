@@ -64,16 +64,7 @@ export function normalizeApptStatus(raw: string | null | undefined): Acquisition
   return 'pending';
 }
 
-export function normalizeOfferType(raw: string | null | undefined): string {
-  const s = (raw ?? '').trim();
-  if (!s) return 'Core Offer';
-  if (s.toLowerCase() === 'skool') return 'Skool';
-  if (s.toLowerCase() === 'mid offer') return 'Mid Offer';
-  if (s.toLowerCase() === 'bootcamp') return 'Bootcamp';
-  if (s.toLowerCase() === 'core offer') return 'Core Offer';
-  if (s.toLowerCase() === 'full service') return 'Core Offer';
-  return s;
-}
+export { normalizeOfferType, normalizeSalesPackage } from '@/lib/offer-catalog';
 
 export function isMetaLeadSource(source: string | null | undefined): boolean {
   if (!source) return false;

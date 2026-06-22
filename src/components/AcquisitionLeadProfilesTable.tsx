@@ -468,7 +468,7 @@ export default function AcquisitionLeadProfilesTable({ startDate, endDate }: Pro
                               Funnel history
                               {row.offer_interest ? (
                                 <span className="normal-case font-normal ml-2" style={{ color: "#64748b" }}>
-                                  · Offer interest: {row.offer_interest}
+                                  · Product interest: {row.offer_interest}
                                 </span>
                               ) : null}
                               {row.ad_name ? (
