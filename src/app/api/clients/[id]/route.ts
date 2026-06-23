@@ -157,9 +157,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // Billing fields (editable from the Client Billing tab)
     'mrr', 'billing_type', 'billing_day', 'launch_date', 'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
     // Lifecycle (pause/churn/reactivate) + performance pricing note.
-    // churned_at: editable for churned clients (backfill / corrections). On a fresh
-    // churn transition the trigger still defaults to now() when churned_at is omitted.
-    'lifecycle_status', 'churned_at', 'performance_terms',
+    // billing_paused: billing-tab pause without changing lifecycle status.
+    'lifecycle_status', 'churned_at', 'performance_terms', 'billing_paused', 'billing_paused_note',
     // Identity / contact (Client Roster + Client File editor)
     'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'ghl_location_id', 'clickup_task_id',
     'phone', 'source', 'website', 'brokerage_name', 'nmls', 'state', 'states_licensed', 'timezone',
@@ -170,7 +169,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     'kpi_benchmarks',
   ];
   const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend', 'billing_day']);
-  const booleanFields = new Set(['live_transfer_approved']);
+  const booleanFields = new Set(['live_transfer_approved', 'billing_paused']);
   const updates: Record<string, unknown> = {};
   if ('states_licensed' in body) {
     updates.states_licensed = normalizeStatesLicensed(body.states_licensed);
@@ -324,6 +323,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (newLifecycle) {
     updates.lifecycle_status = newLifecycle;
     updates.is_live = syncIsLiveWithLifecycle(newLifecycle);
+  }
+
+  // Stamp billing pause / resume timestamps when the flag changes.
+  if ('billing_paused' in updates) {
+    const pausing = updates.billing_paused === true;
+    updates.billing_paused_at = pausing ? new Date().toISOString() : null;
+    if (!pausing) updates.billing_paused_note = null;
   }
 
   const relatedCallId =

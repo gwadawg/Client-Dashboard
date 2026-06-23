@@ -42,6 +42,9 @@ type ClientBilling = {
   name: string;
   is_live: boolean | null;
   lifecycle_status: string | null;
+  billing_paused: boolean | null;
+  billing_paused_at: string | null;
+  billing_paused_note: string | null;
   mrr: number | null;
   billing_type: string | null;
   billing_day: number | null;
@@ -148,12 +151,22 @@ function isActive(c: ClientBilling): boolean {
   return c.lifecycle_status === "active";
 }
 
+/** Active lifecycle clients with billing not paused — eligible for the worklist. */
+function isInBillingQueue(c: ClientBilling): boolean {
+  return isActive(c) && !c.billing_paused;
+}
+
+function isBillingPaused(c: ClientBilling): boolean {
+  return isActive(c) && !!c.billing_paused;
+}
+
 export default function BillingManager({ canViewRevenue: initialCanViewRevenue = false }: { canViewRevenue?: boolean }) {
   const [clients, setClients] = useState<ClientBilling[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
+  const [showBillingPaused, setShowBillingPaused] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [canViewRevenue, setCanViewRevenue] = useState(initialCanViewRevenue);
   const [statusChange, setStatusChange] = useState<{
@@ -260,6 +273,49 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     setBusy(null);
   }
 
+  async function pauseClientBilling(client: ClientBilling) {
+    const note = window.prompt(
+      `Pause billing for ${client.name}? Optional note (e.g. reason):`,
+      client.billing_paused_note ?? "",
+    );
+    if (note === null) return;
+    await patchClient(client.id, {
+      billing_paused: true,
+      billing_paused_note: note.trim() || undefined,
+    });
+  }
+
+  async function unpauseClientBilling(clientId: string) {
+    await patchClient(clientId, { billing_paused: false });
+  }
+
+  async function unpauseAndSchedule(client: ClientBilling, opts: ScheduleOpts) {
+    setBusy(`sch-${client.id}`);
+    await fetch(`/api/clients/${client.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ billing_paused: false }),
+    });
+    await fetch("/api/billings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: client.id,
+        billed_on: todayYmd(),
+        due_date: opts.dueDate,
+        base_amount: opts.base,
+        performance_amount: opts.performance,
+        late_fee: 0,
+        discount: opts.discount,
+        method: opts.method || undefined,
+        note: opts.note || undefined,
+        status: opts.markPaid ? "paid" : "scheduled",
+      }),
+    });
+    await load();
+    setBusy(null);
+  }
+
   async function confirmStatusChange(reason: string | null, note: string) {
     if (!statusChange) return;
     const { clientId, targetStatus } = statusChange;
@@ -297,7 +353,7 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     const paid: RecordedRow[] = [];
 
     for (const c of clients) {
-      if (isActive(c)) {
+      if (isInBillingQueue(c)) {
         let hasOpenOrScheduled = false;
 
         for (const b of c.billings) {
@@ -352,6 +408,11 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     [clients],
   );
 
+  const billingPaused = useMemo(
+    () => clients.filter(isBillingPaused).sort((a, b) => a.name.localeCompare(b.name)),
+    [clients],
+  );
+
   if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#334155" }}>Loading…</p>;
 
   return (
@@ -388,6 +449,51 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
       <p className="text-xs" style={{ color: "#475569" }}>
         Need to add a client or update billing settings? Use the Client Roster tab — billing reads launch date, MRR, and lifecycle from there.
       </p>
+
+      {/* Billing-paused chip + panel */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setShowBillingPaused(s => !s)}
+          className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full transition-colors"
+          style={{
+            color: billingPaused.length > 0 ? "#f59e0b" : "#64748b",
+            background: billingPaused.length > 0 ? "rgba(245,158,11,0.12)" : "rgba(148,163,184,0.08)",
+            border: `1px solid ${billingPaused.length > 0 ? "rgba(245,158,11,0.35)" : "rgba(148,163,184,0.15)"}`,
+          }}
+        >
+          <span
+            className="w-2 h-2 rounded-full"
+            style={{ background: billingPaused.length > 0 ? "#f59e0b" : "#475569" }}
+          />
+          Billing paused
+          <span
+            className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+            style={{
+              color: billingPaused.length > 0 ? "#fbbf24" : "#64748b",
+              background: "rgba(0,0,0,0.25)",
+            }}
+          >
+            {billingPaused.length}
+          </span>
+        </button>
+        {billingPaused.length > 0 && !showBillingPaused && (
+          <span className="text-xs" style={{ color: "#475569" }}>
+            Click to view paused clients and resume billing when ready.
+          </span>
+        )}
+      </div>
+
+      {showBillingPaused && (
+        <BillingPausedPanel
+          clients={billingPaused}
+          busy={busy}
+          canViewRevenue={canViewRevenue}
+          onUnpause={unpauseClientBilling}
+          onUnpauseAndSchedule={unpauseAndSchedule}
+          onClose={() => setShowBillingPaused(false)}
+        />
+      )}
 
       {showImport && canViewRevenue && (
         <RecordPastPaymentForm clients={clients} busy={busy} onRecord={recordBilling} />
@@ -435,6 +541,7 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
             busy={busy}
             canViewRevenue={canViewRevenue}
             onPatch={patchClient}
+            onPauseBilling={pauseClientBilling}
             onRequestPause={(clientId, clientName) =>
               setStatusChange({ clientId, clientName, targetStatus: "paused" })
             }
@@ -714,11 +821,14 @@ function LabeledInput({ label, children }: { label: string; children: ReactNode 
 // Replaces the old ForecastEditor — creates a real DB row instead of a
 // transient pending billing, so terms can be edited before payment is due.
 function ScheduleEditor({
-  client, busy, onSchedule,
+  client, busy, onSchedule, submitLabel, busyLabel, showMarkPaid = true,
 }: {
   client: ClientBilling;
   busy: string | null;
   onSchedule: (opts: ScheduleOpts) => void;
+  submitLabel?: string;
+  busyLabel?: string;
+  showMarkPaid?: boolean;
 }) {
   const suggestedDate = client.suggested_next_date ?? client.next_billing_date ?? todayYmd();
   const [base, setBase] = useState(String(client.mrr ?? ""));
@@ -802,16 +912,18 @@ function ScheduleEditor({
           className="text-xs font-semibold px-3 py-1.5 rounded"
           style={{ color: "#818cf8", background: "rgba(129,140,248,0.1)", opacity: disabled ? 0.5 : 1 }}
         >
-          {busy === schedKey ? "Scheduling…" : "Schedule billing"}
+          {busy === schedKey ? (busyLabel ?? "Scheduling…") : (submitLabel ?? "Schedule billing")}
         </button>
-        <button
-          onClick={() => onSchedule({ base: Number(base) || 0, performance: Number(performance) || 0, discount: Number(discount) || 0, dueDate, note: note || undefined, markPaid: true })}
-          disabled={disabled}
-          className="text-xs font-semibold px-3 py-1.5 rounded"
-          style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: disabled ? 0.5 : 1 }}
-        >
-          Schedule + mark paid
-        </button>
+        {showMarkPaid && (
+          <button
+            onClick={() => onSchedule({ base: Number(base) || 0, performance: Number(performance) || 0, discount: Number(discount) || 0, dueDate, note: note || undefined, markPaid: true })}
+            disabled={disabled}
+            className="text-xs font-semibold px-3 py-1.5 rounded"
+            style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: disabled ? 0.5 : 1 }}
+          >
+            Schedule + mark paid
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1190,16 +1302,17 @@ function PaidSection({
 }
 
 function SetupTable({
-  clients, busy, canViewRevenue, onPatch, onRequestPause, onRequestOffboard,
+  clients, busy, canViewRevenue, onPatch, onPauseBilling, onRequestPause, onRequestOffboard,
 }: {
   clients: ClientBilling[];
   busy: string | null;
   canViewRevenue: boolean;
   onPatch: (clientId: string, body: Record<string, unknown>) => void;
+  onPauseBilling: (client: ClientBilling) => void;
   onRequestPause: (clientId: string, clientName: string) => void;
   onRequestOffboard: (clientId: string) => void;
 }) {
-  const sorted = clients.filter(isActive).sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = clients.filter(isInBillingQueue).sort((a, b) => a.name.localeCompare(b.name));
   const missingConfig = sorted.filter(c => !c.billing_day && !c.launch_date).length;
 
   const headers = canViewRevenue
@@ -1292,12 +1405,22 @@ function SetupTable({
                 </td>
                 <td className="px-4 py-2.5 whitespace-nowrap">
                   <button
+                    onClick={() => onPauseBilling(c)}
+                    disabled={isBusy}
+                    className="text-xs font-semibold mr-3"
+                    style={{ color: "#fbbf24" }}
+                    title="Remove from billing queue without changing client lifecycle"
+                  >
+                    Pause billing
+                  </button>
+                  <button
                     onClick={() => onRequestPause(c.id, c.name)}
                     disabled={isBusy}
                     className="text-xs font-semibold mr-3"
                     style={{ color: "#f59e0b" }}
+                    title="Pause client lifecycle (moves to inactive roster)"
                   >
-                    Pause
+                    Pause client
                   </button>
                   <button
                     onClick={() => onRequestOffboard(c.id)}
@@ -1319,6 +1442,126 @@ function SetupTable({
 
 // InactiveTable: shows paused / churned clients with any open billing rows
 // so nothing slips through the cracks during off-boarding.
+function formatPausedAt(iso: string | null): string {
+  if (!iso) return "—";
+  return iso.slice(0, 10);
+}
+
+function BillingPausedPanel({
+  clients, busy, canViewRevenue, onUnpause, onUnpauseAndSchedule, onClose,
+}: {
+  clients: ClientBilling[];
+  busy: string | null;
+  canViewRevenue: boolean;
+  onUnpause: (clientId: string) => void;
+  onUnpauseAndSchedule: (client: ClientBilling, opts: ScheduleOpts) => void;
+  onClose: () => void;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ border: "1px solid rgba(245,158,11,0.25)", background: "#0a1628" }}
+    >
+      <div
+        className="flex items-center justify-between px-4 py-3"
+        style={{ borderBottom: "1px solid rgba(245,158,11,0.15)" }}
+      >
+        <div>
+          <h3 className="text-sm font-semibold" style={{ color: "#fbbf24" }}>
+            Billing paused
+          </h3>
+          <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
+            These clients stay active in the roster but are excluded from Past Due and Upcoming until billing resumes.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-xs font-semibold px-2 py-1 rounded"
+          style={{ color: "#64748b" }}
+        >
+          Close
+        </button>
+      </div>
+
+      {clients.length === 0 ? (
+        <p className="px-4 py-8 text-center text-xs" style={{ color: "#475569" }}>
+          No clients with billing paused.
+        </p>
+      ) : (
+        <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+          {clients.map((c, i) => {
+            const isBusy = busy === `cfg-${c.id}` || busy === `sch-${c.id}`;
+            const expanded = expandedId === c.id;
+            return (
+              <div
+                key={c.id}
+                style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a" }}
+              >
+                <div className="flex items-center gap-4 px-4 py-3 flex-wrap">
+                  <span className="font-medium text-sm" style={{ color: "#e2e8f0" }}>{c.name}</span>
+                  {canViewRevenue && (
+                    <span className="text-xs" style={{ color: "#94a3b8" }}>
+                      MRR {money(c.mrr)}
+                    </span>
+                  )}
+                  <span className="text-xs" style={{ color: "#64748b" }}>
+                    Paused {formatPausedAt(c.billing_paused_at)}
+                  </span>
+                  {c.billing_paused_note && (
+                    <span className="text-xs italic" style={{ color: "#475569" }}>
+                      &ldquo;{c.billing_paused_note}&rdquo;
+                    </span>
+                  )}
+                  <div className="ml-auto flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => onUnpause(c.id)}
+                      disabled={isBusy}
+                      className="text-xs font-semibold px-3 py-1.5 rounded"
+                      style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: isBusy ? 0.5 : 1 }}
+                    >
+                      Unpause
+                    </button>
+                    {canViewRevenue && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId(expanded ? null : c.id)}
+                        disabled={isBusy}
+                        className="text-xs font-semibold px-3 py-1.5 rounded"
+                        style={{ color: "#818cf8", background: "rgba(129,140,248,0.1)", opacity: isBusy ? 0.5 : 1 }}
+                      >
+                        {expanded ? "Close" : "Unpause & schedule"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {expanded && canViewRevenue && (
+                  <div className="px-4 pb-4">
+                    <ScheduleEditor
+                      client={c}
+                      busy={busy}
+                      submitLabel="Unpause & schedule billing"
+                      busyLabel="Saving…"
+                      onSchedule={(opts) => {
+                        onUnpauseAndSchedule(c, opts);
+                        setExpandedId(null);
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InactiveTable({
   clients, busy, canViewRevenue, onPatch, onPatchBilling, onDelete,
 }: {
