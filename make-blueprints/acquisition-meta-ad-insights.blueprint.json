@@ -1,0 +1,82 @@
+{
+  "name": "WM Acquisition - Meta Ad Insights Daily",
+  "flow": [
+    {
+      "id": 1,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompression": true
+      },
+      "mapper": {
+        "url": "https://graph.facebook.com/v20.0/act_REPLACE_WITH_WAIZ_META_ACCOUNT_ID/insights",
+        "serializeUrl": false,
+        "method": "GET",
+        "headers": [],
+        "qs": [
+          {
+            "name": "fields",
+            "value": "date_start,date_stop,account_id,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,ctr,cpc,cpm,actions,cost_per_action_type"
+          },
+          { "name": "level", "value": "ad" },
+          { "name": "time_increment", "value": "1" },
+          {
+            "name": "time_range",
+            "value": "{\"since\":\"{{formatDate(addDays(now; -1); \\\"YYYY-MM-DD\\\")}}\",\"until\":\"{{formatDate(addDays(now; -1); \\\"YYYY-MM-DD\\\")}}\"}"
+          },
+          { "name": "access_token", "value": "REPLACE_WITH_META_ACCESS_TOKEN" }
+        ],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "contentType": "application/json",
+        "data": ""
+      },
+      "metadata": {
+        "designer": { "x": 0, "y": 0, "name": "Fetch Waiz Meta Ad Insights" }
+      }
+    },
+    {
+      "id": 2,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompression": true
+      },
+      "mapper": {
+        "url": "https://YOUR_RAILWAY_APP_URL/api/acquisition/meta-ad-insights",
+        "serializeUrl": false,
+        "method": "POST",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET"
+          },
+          { "name": "Content-Type", "value": "application/json" }
+        ],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "contentType": "application/json",
+        "data": "{\"rows\":{{1.data}}}"
+      },
+      "metadata": {
+        "designer": { "x": 300, "y": 0, "name": "POST Acquisition Meta Insights" }
+      }
+    }
+  ],
+  "metadata": {
+    "instant": false,
+    "version": 1,
+    "notes": "Daily scheduler recommended before module 1. Single Waiz B2B ad account — no client map. Replaces acquisition-meta-spend-daily for full ad-level sync.",
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "sequential": true,
+      "confidential": true
+    },
+    "designer": { "orphans": [] },
+    "zone": "eu1.make.com"
+  }
+}

@@ -28,6 +28,7 @@ import ClientConversionsView from "./ClientConversionsView";
 import ClientHealthDashboard from "./ClientHealthDashboard";
 import DialAnalytics from "./DialAnalytics";
 import MediaBuyer from "./MediaBuyer";
+import AcquisitionMarketing from "./AcquisitionMarketing";
 import CeoDashboard from "./CeoDashboard";
 import AcquisitionSalesReps from "./AcquisitionSalesReps";
 import ResourcesLibrary from "./ResourcesLibrary";
@@ -87,6 +88,7 @@ const NAV_ICONS: Record<View, string> = {
   heatmaps:      "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   data_explorer: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
   acquisition_kpis: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+  acquisition_marketing: "M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z",
   acquisition:   "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6",
   acquisition_data_explorer: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
   agents:        "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
@@ -446,6 +448,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
     || isAgents
     || view === "dial_analytics"
     || view === "media_buyer"
+    || view === "acquisition_marketing"
     || view === "client_calls"
     || view === "admin_agent_payroll";
 
@@ -861,6 +864,10 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
               endDate={dateEnd}
               clientId={selectedClientId === "__live__" ? undefined : selectedClientId || undefined}
             />
+          )}
+
+          {view === "acquisition_marketing" && (
+            <AcquisitionMarketing startDate={dateStart} endDate={dateEnd} />
           )}
 
           {view === "ceo" && <CeoDashboard canViewRevenue={canViewRevenue} />}

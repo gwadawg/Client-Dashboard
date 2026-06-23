@@ -28,7 +28,8 @@ export type View =
   | "admin_automations"
   | "schedule"
   | "client_calls"
-  | "acquisition_sales_reps";
+  | "acquisition_sales_reps"
+  | "acquisition_marketing";
 
 /** @deprecated Legacy view keys — URL redirects map these to hub + tab. */
 export type LegacyView =
@@ -111,6 +112,7 @@ export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
   data_explorer: ["leads", "dials", "appointments", "speed_to_lead", "meta_ad_insights"],
   acquisition: [
     "acquisition",
+    "acquisition_marketing",
     "acquisition_funnel",
     "acquisition_team",
     "acquisition_setter_credit_queue",
@@ -213,6 +215,7 @@ export const NAV: NavItem[] = [
   { view: "data_explorer",      label: "Data Explorer",         group: "Clients"      },
   { view: "ceo",                label: "Business",              group: "Executive"    },
   { view: "acquisition_kpis",          label: "Acquisition KPIs",      group: "Acquisition"  },
+  { view: "acquisition_marketing",     label: "Marketing",             group: "Acquisition"  },
   { view: "acquisition",               label: "Acquisition",           group: "Acquisition"  },
   { view: "acquisition_data_explorer", label: "Acquisition Data",      group: "Acquisition"  },
   { view: "agents",             label: "Call Center Hub",       group: "Team"         },

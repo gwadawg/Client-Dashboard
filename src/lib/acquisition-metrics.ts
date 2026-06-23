@@ -53,7 +53,8 @@ export type AcquisitionCloseRow = {
 
 export type AcquisitionAdSpendRow = {
   insight_date: string;
-  amount_spent: number;
+  amount_spent?: number;
+  spend?: number;
 };
 
 export type NoShowBreakdown = {
@@ -148,7 +149,7 @@ export function calculateAcquisitionMetrics(input: AcquisitionMetricsInput): Acq
 
   const spend = adSpend
     .filter(r => inRange(r.insight_date, from, to))
-    .reduce((s, r) => s + Number(r.amount_spent ?? 0), 0);
+    .reduce((s, r) => s + Number(r.amount_spent ?? r.spend ?? 0), 0);
 
   const leadsInRange = leads.filter(l => inRange(l.created_at, from, to));
   const metaLeads = leadsInRange.filter(l => isMetaLeadSource(l.source));

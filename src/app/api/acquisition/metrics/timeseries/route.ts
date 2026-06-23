@@ -38,8 +38,8 @@ export async function GET(req: Request) {
       .neq('mapping_status', DISMISSED_CLOSE_STATUS)
       .gte('closed_at', `${from}T00:00:00.000Z`)
       .lte('closed_at', `${to}T23:59:59.999Z`),
-    ctx.service.from('acquisition_ad_insights')
-      .select('insight_date, amount_spent')
+    ctx.service.from('acquisition_meta_ad_insights')
+      .select('insight_date, spend')
       .gte('insight_date', from)
       .lte('insight_date', to),
   ]);

@@ -47,10 +47,11 @@ const COLUMNS: Record<Exclude<Props["type"], "closes">, { key: string; label: st
   ],
   ads: [
     { key: "insight_date", label: "Date" },
-    { key: "platform", label: "Platform" },
     { key: "adset_name", label: "Ad Set" },
     { key: "ad_name", label: "Ad" },
-    { key: "amount_spent", label: "Spend" },
+    { key: "spend", label: "Spend" },
+    { key: "impressions", label: "Impressions" },
+    { key: "clicks", label: "Clicks" },
   ],
   dials: [
     { key: "occurred_at", label: "When" },

@@ -15,7 +15,7 @@ const TABLE_MAP = {
   appointments: 'acquisition_appointments',
   offers: 'acquisition_offers',
   closes: 'acquisition_closes',
-  ads: 'acquisition_ad_insights',
+  ads: 'acquisition_meta_ad_insights',
   dials: 'acquisition_dials',
 } as const;
 

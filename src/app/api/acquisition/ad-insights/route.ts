@@ -39,24 +39,33 @@ export async function POST(req: NextRequest) {
   const date = insightDate(p);
   if (!date) return NextResponse.json({ error: 'date required as YYYY-MM-DD' }, { status: 400 });
 
+  const adset_name = str(p, 'adset_name') ?? str(p, 'adset') ?? '';
+  const ad_name = str(p, 'ad_name') ?? str(p, 'ad') ?? '';
+  const spend = num(p, 'amount_spent') || num(p, 'spend');
+  const adsetKey = `${adset_name}:${ad_name}`;
+
+  // Legacy thin webhook — upsert into full insights table with synthetic IDs.
   const row = {
     insight_date: date,
-    platform: str(p, 'platform') ?? str(p, 'source') ?? 'facebook',
-    adset_name: str(p, 'adset_name') ?? str(p, 'adset') ?? '',
-    ad_name: str(p, 'ad_name') ?? str(p, 'ad') ?? '',
-    amount_spent: num(p, 'amount_spent') || num(p, 'spend'),
-    reach: num(p, 'reach') || null,
-    impressions: num(p, 'impressions') || null,
+    account_id: str(p, 'account_id') ?? 'import',
+    campaign_id: str(p, 'campaign_id') ?? `legacy:${adsetKey}`,
+    campaign_name: str(p, 'campaign_name'),
+    adset_id: str(p, 'adset_id') ?? `legacy-adset:${adsetKey}`,
+    adset_name,
+    ad_id: str(p, 'ad_id') ?? `legacy-ad:${adsetKey}`,
+    ad_name,
+    spend,
+    impressions: Math.trunc(num(p, 'impressions')),
+    clicks: Math.trunc(num(p, 'unique_outbound_clicks') || num(p, 'clicks')),
     cpm: num(p, 'cpm') || null,
-    unique_outbound_clicks: num(p, 'unique_outbound_clicks') || null,
-    cost_per_outbound_click: num(p, 'cost_per_outbound_click') || null,
     raw: p,
+    updated_at: new Date().toISOString(),
   };
 
   const service = createServiceClient();
   const { data, error } = await service
-    .from('acquisition_ad_insights')
-    .upsert(row, { onConflict: 'insight_date,platform,adset_name,ad_name' })
+    .from('acquisition_meta_ad_insights')
+    .upsert(row, { onConflict: 'insight_date,account_id,campaign_id,adset_id,ad_id' })
     .select('id')
     .single();
 

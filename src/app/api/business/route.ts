@@ -81,15 +81,15 @@ export async function GET(req: Request) {
       .gte('closed_at', `${monthStart}T00:00:00.000Z`)
       .lte('closed_at', `${monthEnd}T23:59:59.999Z`),
     ctx.service
-      .from('acquisition_ad_insights')
-      .select('amount_spent')
+      .from('acquisition_meta_ad_insights')
+      .select('spend')
       .gte('insight_date', monthStart)
       .lte('insight_date', monthEnd),
   ]);
 
   const acqCloseCount = acqClosesRes.count ?? 0;
   const acqSpend = (acqSpendRes.data ?? []).reduce(
-    (s, r) => s + Number((r as { amount_spent: number }).amount_spent ?? 0),
+    (s, r) => s + Number((r as { spend: number }).spend ?? 0),
     0,
   );
   if (acqCloseCount > 0 && acqSpend > 0) {

@@ -90,7 +90,7 @@ export function calculateAcquisitionTimeseries(input: TimeseriesInput): Acquisit
   for (const s of adSpend) {
     const d = s.insight_date?.slice(0, 10);
     if (!d || !buckets.has(d)) continue;
-    buckets.get(d)!.ad_spend += Number(s.amount_spent ?? 0);
+    buckets.get(d)!.ad_spend += Number(s.amount_spent ?? s.spend ?? 0);
   }
 
   return dates.map(d => {
