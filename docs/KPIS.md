@@ -92,6 +92,8 @@ The main **Dashboard** view for RM clients shows these sections:
 5. **Conversions** — Proposals Made, Submissions, Funded Loans, and per-stage cost  
 6. **Trends** — Line charts for CPL, CPQL, and Cost per Conversation over the selected date range  
 
+The **Funnel Simulator** tab (`?view=kpi_simulator`) is a forward-looking calculator for RM prospects and clients: plug in spend, CPL, and stage conversion rates (or load from a selected RM client’s date range) to see projected funnel counts, cost metrics, KPI tier badges, and goal back-solve (“N funded loans → required spend”).
+
 Rate cards carry an info tooltip with their formula. Show Quality groups all appointment rates together so the true (net) show rate reads at a glance separate from the client-report rate.
 
 HE clients keep a minimal dashboard (leads, appointments + calling stats). **Booking Rate** on the HE overview uses **Total Leads** as the denominator (`Appointments Booked ÷ Total Leads`), not qualified leads. Other operational metrics (dials, show rate, etc.) remain in other nav views.

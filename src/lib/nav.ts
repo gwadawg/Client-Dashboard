@@ -12,6 +12,7 @@ export type HubView = "heatmaps" | "data_explorer" | "acquisition" | "acquisitio
 
 export type View =
   | "dashboard"
+  | "kpi_simulator"
   | "ceo"
   | "dial_analytics"
   | "media_buyer"
@@ -208,6 +209,7 @@ export const NAV_GROUPS = [
 
 export const NAV: NavItem[] = [
   { view: "dashboard",          label: "Client KPIs",           group: "Clients"      },
+  { view: "kpi_simulator",      label: "Funnel Simulator",      group: "Clients"      },
   { view: "dial_analytics",     label: "Dial Analytics",        group: "Clients"      },
   { view: "media_buyer",        label: "Media Buyer",           group: "Clients"      },
   { view: "client_health",      label: "Client Success",        group: "Clients"      },

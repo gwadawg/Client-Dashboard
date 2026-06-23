@@ -49,9 +49,19 @@ export type PermissionSubject = {
   allowedPermissions: AllowedPermissions;
 };
 
+/** Views that share access (e.g. simulator ↔ dashboard). */
+const VIEW_ALIASES: Record<string, string[]> = {
+  kpi_simulator: ["dashboard"],
+  dashboard: ["kpi_simulator"],
+};
+
 /** All keys that satisfy a permission check (hub ↔ legacy children). */
 export function keysThatGrant(key: string): string[] {
   const result = new Set<string>([key]);
+
+  for (const alias of VIEW_ALIASES[key] ?? []) {
+    result.add(alias);
+  }
 
   const hubChildren = HUB_LEGACY_CHILDREN[key as HubView];
   if (hubChildren) {
