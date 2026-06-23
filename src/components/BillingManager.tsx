@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import { useNavigateChurnOffboard } from "@/hooks/useNavigateChurnOffboard";
+import ViewHub from "@/components/nav/ViewHub";
+import PerformanceBilling from "@/components/billing/PerformanceBilling";
+import { isFixedBilling, isPerformanceBilling } from "@/lib/billing-model";
+import type { ClientBilling, RecordOpts, RecordedRow, ScheduleOpts, WorkRow } from "@/components/billing/billing-types";
 
 const STICKY_TH_BG = "#0a1628";
 
@@ -16,48 +20,7 @@ function stickyThStyle(bg = STICKY_TH_BG): React.CSSProperties {
   };
 }
 
-type Billing = {
-  id: string;
-  client_id: string;
-  billed_on: string;
-  due_date: string | null;
-  period_start: string | null;
-  period_end: string | null;
-  amount: number;
-  base_amount: number | null;
-  performance_amount: number | null;
-  late_fee: number | null;
-  discount: number | null;
-  amount_paid: number | null;
-  status: string;
-  paid_on: string | null;
-  method: string | null;
-  invoice_ref: string | null;
-  note: string | null;
-  created_at: string;
-};
-
-type ClientBilling = {
-  id: string;
-  name: string;
-  is_live: boolean | null;
-  lifecycle_status: string | null;
-  billing_paused: boolean | null;
-  billing_paused_at: string | null;
-  billing_paused_note: string | null;
-  mrr: number | null;
-  billing_type: string | null;
-  billing_day: number | null;
-  launch_date: string | null;
-  date_signed: string | null;
-  contract_end_date: string | null;
-  performance_terms: string | null;
-  next_billing_date: string | null;
-  next_billing_status: "upcoming" | "due_soon" | "overdue" | null;
-  suggested_next_date: string | null;
-  last_billing: Billing | null;
-  billings: Billing[];
-};
+type Billing = ClientBilling["billings"][number];
 
 // Status → color palette. 'scheduled' gets an indigo tone to distinguish
 // committed-but-not-yet-collected from issued invoices.
@@ -129,24 +92,6 @@ function recordedState(b: Billing): string {
   return (Number(b.amount_paid) || 0) > 0 ? "partial" : "pending";
 }
 
-type RecordOpts = {
-  base: number;
-  performance: number;
-  lateFee: number;
-  discount?: number;
-  billedOn: string;
-  dueDate: string;
-  method?: string;
-  note?: string;
-  markPaid?: boolean;
-};
-
-// SchedulePromptRow: active client with no open or scheduled billing in queue.
-// Renders as a "File next billing" prompt row in the Upcoming section.
-type SchedulePromptRow = { kind: "schedule_prompt"; client: ClientBilling };
-type RecordedRow       = { kind: "recorded";        client: ClientBilling; billing: Billing };
-type WorkRow = SchedulePromptRow | RecordedRow;
-
 function isActive(c: ClientBilling): boolean {
   return c.lifecycle_status === "active";
 }
@@ -168,6 +113,7 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
   const [showInactive, setShowInactive] = useState(false);
   const [showBillingPaused, setShowBillingPaused] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [billingTab, setBillingTab] = useState<"fixed" | "performance">("fixed");
   const [canViewRevenue, setCanViewRevenue] = useState(initialCanViewRevenue);
   const [statusChange, setStatusChange] = useState<{
     clientId: string;
@@ -353,6 +299,7 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     const paid: RecordedRow[] = [];
 
     for (const c of clients) {
+      if (!isFixedBilling(c.billing_model)) continue;
       if (isInBillingQueue(c)) {
         let hasOpenOrScheduled = false;
 
@@ -378,8 +325,8 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         if (!hasOpenOrScheduled) {
           upcoming.push({ kind: "schedule_prompt", client: c });
         }
-      } else {
-        // Inactive clients: only contribute to paid history.
+      } else if (isFixedBilling(c.billing_model)) {
+        // Inactive fixed clients: only contribute to paid history.
         for (const b of c.billings) {
           const state = recordedState(b);
           if (state === "paid" || state === "refunded") {
@@ -409,7 +356,21 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
   );
 
   const billingPaused = useMemo(
-    () => clients.filter(isBillingPaused).sort((a, b) => a.name.localeCompare(b.name)),
+    () => clients.filter(c => {
+      if (!isBillingPaused(c)) return false;
+      return billingTab === "performance"
+        ? isPerformanceBilling(c.billing_model)
+        : isFixedBilling(c.billing_model);
+    }).sort((a, b) => a.name.localeCompare(b.name)),
+    [clients, billingTab],
+  );
+
+  const fixedCount = useMemo(
+    () => clients.filter(c => isActive(c) && isFixedBilling(c.billing_model) && !c.billing_paused).length,
+    [clients],
+  );
+  const perfCount = useMemo(
+    () => clients.filter(c => isActive(c) && isPerformanceBilling(c.billing_model) && !c.billing_paused).length,
     [clients],
   );
 
@@ -421,8 +382,8 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Billing</h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            File each client&rsquo;s billing cycle when launched, then record payment when collected.
-            Only active clients appear in the queue — paused and churned clients are shown in the inactive panel below.
+            Fixed retainer clients bill on schedule; performance clients bill after report send and a 3-day objection window.
+            Only active clients appear in each queue — paused clients are in the panel below.
           </p>
         </div>
         <button
@@ -495,11 +456,21 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         />
       )}
 
-      {showImport && canViewRevenue && (
-        <RecordPastPaymentForm clients={clients} busy={busy} onRecord={recordBilling} />
+      {showImport && canViewRevenue && billingTab === "fixed" && (
+        <RecordPastPaymentForm clients={clients.filter(c => isFixedBilling(c.billing_model))} busy={busy} onRecord={recordBilling} />
       )}
 
-      <WorklistSection
+      <ViewHub
+        tabs={[
+          { key: "fixed", label: `Fixed retainer (${fixedCount})` },
+          { key: "performance", label: `Performance (${perfCount})` },
+        ]}
+        activeTab={billingTab}
+        onTabChange={k => setBillingTab(k as "fixed" | "performance")}
+      >
+        {billingTab === "fixed" ? (
+          <>
+            <WorklistSection
         title="Past Due"
         accent="#ef4444"
         emptyText="Nothing past due."
@@ -525,14 +496,13 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
 
       <PaidSection rows={paid} busy={busy} canViewRevenue={canViewRevenue} onPatch={patchBilling} onDelete={voidBilling} />
 
-      {/* Active client billing config */}
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
         <button
           onClick={() => setShowSetup(s => !s)}
           className="w-full flex items-center justify-between px-4 py-3 text-left"
           style={{ background: "#0a1628", color: "#cbd5e1" }}
         >
-          <span className="text-sm font-semibold">Active clients — billing configuration</span>
+          <span className="text-sm font-semibold">Fixed clients — billing configuration</span>
           <span className="text-xs" style={{ color: "#475569" }}>{showSetup ? "Hide" : "Show"}</span>
         </button>
         {showSetup && (
@@ -546,11 +516,29 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
               setStatusChange({ clientId, clientName, targetStatus: "paused" })
             }
             onRequestOffboard={clientId => navigateChurnOffboard(clientId)}
+            billingModelFilter="fixed"
           />
         )}
       </div>
+          </>
+        ) : (
+          <PerformanceBilling
+            clients={clients}
+            canViewRevenue={canViewRevenue}
+            busy={busy}
+            setBusy={setBusy}
+            onReloadClients={load}
+            onPatchClient={patchClient}
+            onPauseBilling={pauseClientBilling}
+            onRequestPause={(clientId, clientName) =>
+              setStatusChange({ clientId, clientName, targetStatus: "paused" })
+            }
+            onRequestOffboard={clientId => navigateChurnOffboard(clientId)}
+          />
+        )}
+      </ViewHub>
 
-      {/* Inactive clients */}
+      {/* Inactive clients — shared */}
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
         <button
           onClick={() => setShowInactive(s => !s)}
@@ -668,16 +656,6 @@ function WorklistSection({
     </div>
   );
 }
-
-type ScheduleOpts = {
-  base: number;
-  performance: number;
-  discount: number;
-  dueDate: string;
-  note?: string;
-  markPaid?: boolean;
-  method?: string;
-};
 
 function WorkRowView({
   row, striped, busy, canViewRevenue, onPatch, onDelete, onSchedule,
@@ -1303,6 +1281,7 @@ function PaidSection({
 
 function SetupTable({
   clients, busy, canViewRevenue, onPatch, onPauseBilling, onRequestPause, onRequestOffboard,
+  billingModelFilter = "fixed",
 }: {
   clients: ClientBilling[];
   busy: string | null;
@@ -1311,13 +1290,16 @@ function SetupTable({
   onPauseBilling: (client: ClientBilling) => void;
   onRequestPause: (clientId: string, clientName: string) => void;
   onRequestOffboard: (clientId: string) => void;
+  billingModelFilter?: "fixed" | "performance";
 }) {
-  const sorted = clients.filter(isInBillingQueue).sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = clients
+    .filter(c => isInBillingQueue(c) && (billingModelFilter === "fixed" ? isFixedBilling(c.billing_model) : isPerformanceBilling(c.billing_model)))
+    .sort((a, b) => a.name.localeCompare(b.name));
   const missingConfig = sorted.filter(c => !c.billing_day && !c.launch_date).length;
 
   const headers = canViewRevenue
-    ? ["Client", "Billing type", "Monthly $", "Billing day", "Launch date", "Suggested next", "Lifecycle"]
-    : ["Client", "Billing type", "Billing day", "Launch date", "Suggested next", "Lifecycle"];
+    ? ["Client", "Billing model", "Billing type", "Monthly $", "Billing day", "Launch date", "Suggested next", "Lifecycle"]
+    : ["Client", "Billing model", "Billing type", "Billing day", "Launch date", "Suggested next", "Lifecycle"];
 
   return (
     <div>
@@ -1349,6 +1331,18 @@ function SetupTable({
                 style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}
               >
                 <td className="px-4 py-2.5 font-medium" style={{ color: "#e2e8f0" }}>{c.name}</td>
+                <td className="px-4 py-2.5">
+                  <select
+                    value={c.billing_model ?? "fixed"}
+                    disabled={isBusy}
+                    onChange={e => onPatch(c.id, { billing_model: e.target.value })}
+                    className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer"
+                    style={fieldStyle()}
+                  >
+                    <option value="fixed">Fixed retainer</option>
+                    <option value="performance">Performance</option>
+                  </select>
+                </td>
                 <td className="px-4 py-2.5">
                   <select
                     value={c.billing_type ?? ""}

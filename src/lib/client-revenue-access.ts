@@ -3,7 +3,7 @@ const BILLING_MONEY_KEYS = [
   'amount_paid', 'passthrough_amount', 'processing_fee',
 ] as const;
 
-const CLIENT_MONEY_KEYS = ['mrr', 'daily_adspend'] as const;
+const CLIENT_MONEY_KEYS = ['mrr', 'daily_adspend', 'pay_per_show', 'pay_per_bailed'] as const;
 
 export function redactBillingRow<T extends Record<string, unknown>>(row: T): T {
   const out = { ...row } as Record<string, unknown>;

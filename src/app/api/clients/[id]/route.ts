@@ -8,6 +8,7 @@ import {
 } from '@/lib/client-feedback';
 import { deriveServiceProgram, normalizeSalesPackage } from '@/lib/offer-catalog';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
+import { normalizeBillingModel } from '@/lib/billing-model';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import { normalizeClientLeadSource } from '@/lib/client-lead-source';
@@ -148,7 +149,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const body = await req.json();
   const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
   const includeRevenue = canViewClientRevenue(subject);
-  const revenueFields = new Set(['mrr', 'daily_adspend']);
+  const revenueFields = new Set(['mrr', 'daily_adspend', 'pay_per_show', 'pay_per_bailed']);
   if (!includeRevenue && Object.keys(body).some(k => revenueFields.has(k))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -156,6 +157,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     'name', 'reporting_type', 'service_program', 'sales_package', 'offer',
     // Billing fields (editable from the Client Billing tab)
     'mrr', 'billing_type', 'billing_day', 'launch_date', 'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
+    'billing_model', 'pay_per_show', 'pay_per_bailed',
     // Lifecycle (pause/churn/reactivate) + performance pricing note.
     // billing_paused: billing-tab pause without changing lifecycle status.
     'lifecycle_status', 'churned_at', 'performance_terms', 'billing_paused', 'billing_paused_note',
@@ -168,7 +170,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // Per-client KPI band overrides (Client Success benchmark editor)
     'kpi_benchmarks',
   ];
-  const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend', 'billing_day']);
+  const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend', 'billing_day', 'pay_per_show', 'pay_per_bailed']);
   const booleanFields = new Set(['live_transfer_approved', 'billing_paused']);
   const updates: Record<string, unknown> = {};
   if ('states_licensed' in body) {
@@ -180,6 +182,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (k === 'churned_at') continue;
     if (!includeRevenue && revenueFields.has(k)) continue;
     if (k === 'reporting_type' || k === 'offer') updates[k] = normalizeReportingType(body[k]);
+    else if (k === 'billing_model') updates[k] = normalizeBillingModel(body[k]);
     else if (k === 'sales_package') updates[k] = body[k] ? normalizeSalesPackage(body[k]) : null;
     else if (k === 'service_program') {
       // service_program is derived — ignore direct edits unless sales_package not sent
