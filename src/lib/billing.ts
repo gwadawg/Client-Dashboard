@@ -33,7 +33,7 @@ export interface BillingAmounts {
   status?: string | null;
 }
 
-export type RecordedState = "paid" | "partial" | "overdue" | "pending" | "failed" | "refunded" | "voided";
+export type RecordedState = "scheduled" | "paid" | "partial" | "overdue" | "pending" | "failed" | "refunded" | "voided";
 
 /** Outstanding balance on a billing (never below zero). */
 export function balanceOf(b: { amount: number; amount_paid?: number | null }): number {
@@ -50,6 +50,9 @@ export function recordedState(
   b: BillingAmounts,
   today: Date = new Date(),
 ): RecordedState {
+  // Scheduled billings are explicitly committed future cycles — preserve the
+  // status regardless of due date so they never auto-convert to "overdue".
+  if (b.status === "scheduled") return "scheduled";
   if (b.status === "failed" || b.status === "refunded" || b.status === "voided") return b.status;
   const balance = balanceOf(b);
   const paid = Number(b.amount_paid) || 0;

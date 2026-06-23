@@ -77,20 +77,30 @@ export async function GET(req: Request) {
 
   const enriched = clients.map(c => {
     const rows = byClient.get(c.id) ?? [];
-    const lastBilling = (rows[0] as BillingRow | undefined) ?? null;
-    const nextBillingDate = computeNextBillingDate(c, lastBilling);
+
+    // For next_billing_date computation, use the most recent non-scheduled
+    // billing as the anchor so the suggested date reflects the last real payment
+    // cycle, not a scheduled (uncommitted) future one.
+    const lastRealBilling = (rows.find(r => r.status !== 'scheduled') as BillingRow | undefined) ?? null;
+    const nextBillingDate = computeNextBillingDate(c, lastRealBilling);
     const nextBillingStatus = deriveStatus(nextBillingDate, new Date());
+
+    // suggested_next_date: the recommended due date to pre-fill the "File
+    // billing" form.  Uses the same computation but is kept separate from
+    // next_billing_date so callers can distinguish the two purposes.
+    const suggestedNextDate = nextBillingDate;
 
     if (includeRevenue && c.is_live && typeof c.mrr === 'number') activeMrr += c.mrr;
 
     const clientRow = includeRevenue ? c : redactClientMoneyFields(c);
     const billingRows = includeRevenue ? rows : redactBillingRows(rows);
-    const lastRow = includeRevenue ? lastBilling : (lastBilling ? redactBillingRow(lastBilling as unknown as Record<string, unknown>) : null);
+    const lastRow = includeRevenue ? lastRealBilling : (lastRealBilling ? redactBillingRow(lastRealBilling as unknown as Record<string, unknown>) : null);
 
     return {
       ...clientRow,
       next_billing_date: nextBillingDate,
       next_billing_status: nextBillingStatus,
+      suggested_next_date: suggestedNextDate,
       last_billing: lastRow,
       billings: billingRows,
     };
@@ -148,11 +158,14 @@ export async function POST(req: Request) {
   const amount = base + performance + lateFee - discount;
 
   // Paid-ness: an explicit "paid" status (or markPaid) settles the full amount;
-  // otherwise derive paid/partial/pending from how much was collected.
+  // "scheduled" billings are future commitments — no amount is collected yet.
+  // Otherwise derive paid/partial/pending from how much was collected.
+  const EXPLICIT_STATUSES = new Set(['scheduled', 'paid', 'failed', 'refunded', 'voided']);
   const wantsPaid = body.status === 'paid' || body.markPaid === true;
-  const amountPaid = wantsPaid ? amount : Number(body.amount_paid) || 0;
+  const isScheduled = body.status === 'scheduled';
+  const amountPaid = (wantsPaid && !isScheduled) ? amount : (isScheduled ? 0 : Number(body.amount_paid) || 0);
   let status: string = body.status ?? 'pending';
-  if (!body.status) {
+  if (!body.status || !EXPLICIT_STATUSES.has(body.status)) {
     if (amount > 0 && amountPaid >= amount) status = 'paid';
     else if (amountPaid > 0) status = 'partial';
     else status = 'pending';
