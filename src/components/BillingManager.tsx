@@ -109,8 +109,6 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
   const [clients, setClients] = useState<ClientBilling[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-  const [showSetup, setShowSetup] = useState(true);
-  const [showInactive, setShowInactive] = useState(false);
   const [showBillingPaused, setShowBillingPaused] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [billingTab, setBillingTab] = useState<"fixed" | "performance">("fixed");
@@ -350,8 +348,13 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     return { pastDue, upcoming, paid };
   }, [clients]);
 
-  const inactive = useMemo(
-    () => clients.filter(c => !isActive(c)).sort((a, b) => a.name.localeCompare(b.name)),
+  const inactiveFixed = useMemo(
+    () => clients.filter(c => !isActive(c) && isFixedBilling(c.billing_model)).sort((a, b) => a.name.localeCompare(b.name)),
+    [clients],
+  );
+
+  const setupFixedCount = useMemo(
+    () => clients.filter(c => isInBillingQueue(c) && isFixedBilling(c.billing_model)).length,
     [clients],
   );
 
@@ -383,7 +386,7 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Billing</h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
             Fixed retainer clients bill on schedule; performance clients bill after report send and a 3-day objection window.
-            Only active clients appear in each queue — paused clients are in the panel below.
+            Use the sub-views on the Fixed retainer tab for paid history, paused/churned clients, and billing configuration.
           </p>
         </div>
         <button
@@ -469,58 +472,25 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         onTabChange={k => setBillingTab(k as "fixed" | "performance")}
       >
         {billingTab === "fixed" ? (
-          <>
-            <WorklistSection
-        title="Past Due"
-        accent="#ef4444"
-        emptyText="Nothing past due."
-        rows={pastDue}
-        busy={busy}
-        canViewRevenue={canViewRevenue}
-        onPatch={patchBilling}
-        onDelete={voidBilling}
-        onSchedule={scheduleBilling}
-      />
-
-      <WorklistSection
-        title="Upcoming"
-        accent="#f59e0b"
-        emptyText="No upcoming billings in the queue."
-        rows={upcoming}
-        busy={busy}
-        canViewRevenue={canViewRevenue}
-        onPatch={patchBilling}
-        onDelete={voidBilling}
-        onSchedule={scheduleBilling}
-      />
-
-      <PaidSection rows={paid} busy={busy} canViewRevenue={canViewRevenue} onPatch={patchBilling} onDelete={voidBilling} />
-
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <button
-          onClick={() => setShowSetup(s => !s)}
-          className="w-full flex items-center justify-between px-4 py-3 text-left"
-          style={{ background: "#0a1628", color: "#cbd5e1" }}
-        >
-          <span className="text-sm font-semibold">Fixed clients — billing configuration</span>
-          <span className="text-xs" style={{ color: "#475569" }}>{showSetup ? "Hide" : "Show"}</span>
-        </button>
-        {showSetup && (
-          <SetupTable
+          <FixedRetainerBilling
+            pastDue={pastDue}
+            upcoming={upcoming}
+            paid={paid}
+            inactiveFixed={inactiveFixed}
+            setupCount={setupFixedCount}
             clients={clients}
             busy={busy}
             canViewRevenue={canViewRevenue}
-            onPatch={patchClient}
+            onPatchBilling={patchBilling}
+            onDeleteBilling={voidBilling}
+            onSchedule={scheduleBilling}
+            onPatchClient={patchClient}
             onPauseBilling={pauseClientBilling}
             onRequestPause={(clientId, clientName) =>
               setStatusChange({ clientId, clientName, targetStatus: "paused" })
             }
             onRequestOffboard={clientId => navigateChurnOffboard(clientId)}
-            billingModelFilter="fixed"
           />
-        )}
-      </div>
-          </>
         ) : (
           <PerformanceBilling
             clients={clients}
@@ -538,31 +508,6 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         )}
       </ViewHub>
 
-      {/* Inactive clients — shared */}
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <button
-          onClick={() => setShowInactive(s => !s)}
-          className="w-full flex items-center justify-between px-4 py-3 text-left"
-          style={{ background: "#0a1628", color: "#cbd5e1" }}
-        >
-          <span className="text-sm font-semibold">
-            Paused / Churned clients{" "}
-            <span style={{ color: "#475569" }}>({inactive.length})</span>
-          </span>
-          <span className="text-xs" style={{ color: "#475569" }}>{showInactive ? "Hide" : "Show"}</span>
-        </button>
-        {showInactive && (
-          <InactiveTable
-            clients={inactive}
-            busy={busy}
-            canViewRevenue={canViewRevenue}
-            onPatch={patchClient}
-            onPatchBilling={patchBilling}
-            onDelete={voidBilling}
-          />
-        )}
-      </div>
-
       <StatusChangeModal
         open={!!statusChange}
         clientName={statusChange?.clientName ?? ""}
@@ -576,6 +521,135 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
+
+type FixedSubView = "queue" | "paid" | "inactive" | "setup";
+
+function FixedRetainerBilling({
+  pastDue,
+  upcoming,
+  paid,
+  inactiveFixed,
+  setupCount,
+  clients,
+  busy,
+  canViewRevenue,
+  onPatchBilling,
+  onDeleteBilling,
+  onSchedule,
+  onPatchClient,
+  onPauseBilling,
+  onRequestPause,
+  onRequestOffboard,
+}: {
+  pastDue: WorkRow[];
+  upcoming: WorkRow[];
+  paid: RecordedRow[];
+  inactiveFixed: ClientBilling[];
+  setupCount: number;
+  clients: ClientBilling[];
+  busy: string | null;
+  canViewRevenue: boolean;
+  onPatchBilling: (id: string, body: Record<string, unknown>) => void;
+  onDeleteBilling: (id: string) => void;
+  onSchedule: (client: ClientBilling, opts: ScheduleOpts) => void;
+  onPatchClient: (clientId: string, body: Record<string, unknown>) => void;
+  onPauseBilling: (client: ClientBilling) => void;
+  onRequestPause: (clientId: string, clientName: string) => void;
+  onRequestOffboard: (clientId: string) => void;
+}) {
+  const [subView, setSubView] = useState<FixedSubView>("queue");
+
+  const queueCount = pastDue.length + upcoming.length;
+
+  const subTabs = useMemo(() => {
+    const tabs = [{ key: "queue", label: `Queue (${queueCount})` }];
+    if (canViewRevenue) {
+      tabs.push({ key: "paid", label: `Paid (${paid.length})` });
+    }
+    tabs.push(
+      { key: "inactive", label: `Paused / churned (${inactiveFixed.length})` },
+      { key: "setup", label: `Billing configuration (${setupCount})` },
+    );
+    return tabs;
+  }, [queueCount, canViewRevenue, paid.length, inactiveFixed.length, setupCount]);
+
+  useEffect(() => {
+    if (subView === "paid" && !canViewRevenue) setSubView("queue");
+  }, [canViewRevenue, subView]);
+
+  return (
+    <ViewHub
+      tabs={subTabs}
+      activeTab={subView}
+      onTabChange={k => setSubView(k as FixedSubView)}
+    >
+      {subView === "queue" && (
+        <>
+          <WorklistSection
+            title="Past Due"
+            accent="#ef4444"
+            emptyText="Nothing past due."
+            rows={pastDue}
+            busy={busy}
+            canViewRevenue={canViewRevenue}
+            onPatch={onPatchBilling}
+            onDelete={onDeleteBilling}
+            onSchedule={onSchedule}
+          />
+          <WorklistSection
+            title="Upcoming"
+            accent="#f59e0b"
+            emptyText="No upcoming billings in the queue."
+            rows={upcoming}
+            busy={busy}
+            canViewRevenue={canViewRevenue}
+            onPatch={onPatchBilling}
+            onDelete={onDeleteBilling}
+            onSchedule={onSchedule}
+          />
+        </>
+      )}
+
+      {subView === "paid" && canViewRevenue && (
+        <PaidSection
+          rows={paid}
+          busy={busy}
+          canViewRevenue={canViewRevenue}
+          onPatch={onPatchBilling}
+          onDelete={onDeleteBilling}
+        />
+      )}
+
+      {subView === "inactive" && (
+        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+          <InactiveTable
+            clients={inactiveFixed}
+            busy={busy}
+            canViewRevenue={canViewRevenue}
+            onPatch={onPatchClient}
+            onPatchBilling={onPatchBilling}
+            onDelete={onDeleteBilling}
+          />
+        </div>
+      )}
+
+      {subView === "setup" && (
+        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+          <SetupTable
+            clients={clients}
+            busy={busy}
+            canViewRevenue={canViewRevenue}
+            onPatch={onPatchClient}
+            onPauseBilling={onPauseBilling}
+            onRequestPause={onRequestPause}
+            onRequestOffboard={onRequestOffboard}
+            billingModelFilter="fixed"
+          />
+        </div>
+      )}
+    </ViewHub>
+  );
+}
 
 function StatusBadge({ status }: { status: string }) {
   const s = BILLING_STATUS_STYLE[status] ?? BILLING_STATUS_STYLE.pending;
