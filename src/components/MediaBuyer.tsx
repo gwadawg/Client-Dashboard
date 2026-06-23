@@ -880,14 +880,36 @@ const EMPTY_FORM = {
   visual_notes: "",
 };
 
+type LibraryMetrics = {
+  cpl: number | null;
+  ctr: number | null;
+  cpc: number | null;
+};
+
+function MetricChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      className="rounded-lg px-2.5 py-1.5 min-w-0 flex-1"
+      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+    >
+      <p className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: "#64748b" }}>{label}</p>
+      <p className="text-sm font-semibold mt-0.5 truncate" style={{ color: "#e2e8f0" }}>{value}</p>
+    </div>
+  );
+}
+
 function AdLibrary({
+  startDate,
+  endDate,
+  clientId,
   libraryNav,
   onNavClear,
-}: {
+}: Props & {
   libraryNav: LibraryNav;
   onNavClear: () => void;
 }) {
   const [entries, setEntries] = useState<LibEntry[]>([]);
+  const [metricsById, setMetricsById] = useState<Map<string, LibraryMetrics>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<typeof EMPTY_FORM | null>(null);
@@ -919,15 +941,32 @@ function AdLibrary({
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch("/api/ad-library")
-      .then(async (r) => {
-        if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load");
-        return r.json();
+    setError(null);
+    const perfParams = new URLSearchParams({ start_date: startDate, end_date: endDate });
+    if (clientId) perfParams.set("client_id", clientId);
+    Promise.all([
+      fetch("/api/ad-library").then(async (r) => {
+        if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load library");
+        return r.json() as Promise<LibEntry[]>;
+      }),
+      fetch(`/api/media-buyer?${perfParams}`).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load metrics");
+        return r.json() as Promise<{ ads?: AdRow[] }>;
+      }),
+    ])
+      .then(([libraryData, perfData]) => {
+        setEntries(libraryData.map((e) => ({ ...e, aliases: e.aliases ?? [] })));
+        const next = new Map<string, LibraryMetrics>();
+        for (const ad of perfData.ads ?? []) {
+          const libId = ad.library?.id;
+          if (!libId) continue;
+          next.set(libId, { cpl: ad.cpl, ctr: ad.ctr, cpc: ad.cpc });
+        }
+        setMetricsById(next);
       })
-      .then((data: LibEntry[]) => setEntries(data.map((e) => ({ ...e, aliases: e.aliases ?? [] }))))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [startDate, endDate, clientId]);
 
   useEffect(() => {
     load();
@@ -1038,7 +1077,10 @@ function AdLibrary({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs" style={{ color: "#64748b" }}>
+          CPL / CTR / CPC use the dashboard date range ({startDate} → {endDate}).
+        </p>
         <button
           onClick={() => {
             setFormError(null);
@@ -1056,11 +1098,12 @@ function AdLibrary({
           No ads in the library yet. Add one with its ad name and a Google Drive link.
         </p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {entries.map((e) => {
             const thumb = driveThumb(e);
             const allNames = [e.ad_name, ...(e.aliases ?? []).map((a) => a.alias_name)];
             const isHighlighted = highlightId === e.id;
+            const metrics = metricsById.get(e.id);
             return (
               <div
                 key={e.id}
@@ -1072,91 +1115,118 @@ function AdLibrary({
                   boxShadow: isHighlighted ? "0 0 0 2px rgba(245,158,11,0.25)" : undefined,
                 }}
               >
-                <div className="relative aspect-video flex items-center justify-center" style={{ background: "#050c18" }}>
+                <div className="p-4 flex gap-3 flex-1">
                   {thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={thumb} alt={e.ad_name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <svg className="w-10 h-10" fill="none" stroke="#1e293b" strokeWidth={1.5} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  )}
-                  <div className="absolute top-2 left-2">
-                    <StatusBadge status={e.status} />
+                    <button
+                      type="button"
+                      onClick={() => openEditForm(e)}
+                      className="shrink-0 w-16 h-16 rounded-lg overflow-hidden"
+                      style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.06)" }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={thumb} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </button>
+                  ) : null}
+                  <div className="min-w-0 flex-1 flex flex-col">
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditForm(e)}
+                        className="text-left min-w-0"
+                      >
+                        <p className="font-semibold text-sm leading-snug truncate" style={{ color: "#e2e8f0" }} title={e.ad_name}>
+                          {e.ad_name}
+                        </p>
+                      </button>
+                      <StatusBadge status={e.status} />
+                    </div>
+                    {allNames.length > 1 ? (
+                      <div className="mt-1.5">
+                        <button
+                          type="button"
+                          className="text-[11px] underline"
+                          style={{ color: "#94a3b8" }}
+                          onClick={() => setExpandedVariants(expandedVariants === e.id ? null : e.id)}
+                        >
+                          {allNames.length} linked names {expandedVariants === e.id ? "▲" : "▼"}
+                        </button>
+                        {expandedVariants === e.id ? (
+                          <ul className="mt-1 space-y-0.5">
+                            {allNames.map((name) => (
+                              <li key={name} className="text-[11px] truncate" style={{ color: "#64748b" }}>
+                                {name}
+                                {name === e.ad_name ? " (primary)" : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {(e.ad_format || e.product || (e.knowledge_capture_status && e.knowledge_capture_status !== "none")) ? (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {e.ad_format ? (
+                          <ClassBadge label={AD_FORMAT_LABELS[e.ad_format] ?? e.ad_format} color="#60a5fa" />
+                        ) : null}
+                        {e.product ? (
+                          <ClassBadge label={PRODUCT_LABELS[e.product] ?? e.product} color="#a78bfa" />
+                        ) : null}
+                        {e.knowledge_capture_status && e.knowledge_capture_status !== "none" ? (
+                          <span
+                            className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+                            style={{
+                              background: e.knowledge_capture_status === "processed" ? "rgba(52,211,153,0.12)" : "rgba(245,158,11,0.12)",
+                              color: e.knowledge_capture_status === "processed" ? "#34d399" : "#fbbf24",
+                            }}
+                          >
+                            KB {e.knowledge_capture_status.replace("_", " ")}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <div className="flex gap-2 mt-3">
+                      <MetricChip label="CPL" value={money(metrics?.cpl)} />
+                      <MetricChip label="CTR" value={pct(metrics?.ctr)} />
+                      <MetricChip label="CPC" value={money(metrics?.cpc)} />
+                    </div>
                   </div>
                 </div>
-                <div className="p-4 flex-1 flex flex-col">
-                  <p className="font-semibold text-sm" style={{ color: "#e2e8f0" }}>{e.ad_name}</p>
-                  {allNames.length > 1 ? (
-                    <div className="mt-2">
-                      <button
-                        type="button"
-                        className="text-[11px] underline"
-                        style={{ color: "#94a3b8" }}
-                        onClick={() => setExpandedVariants(expandedVariants === e.id ? null : e.id)}
-                      >
-                        {allNames.length} linked ad names {expandedVariants === e.id ? "▲" : "▼"}
-                      </button>
-                      {expandedVariants === e.id ? (
-                        <ul className="mt-1 space-y-0.5">
-                          {allNames.map((name) => (
-                            <li key={name} className="text-[11px] truncate" style={{ color: "#64748b" }}>
-                              {name}
-                              {name === e.ad_name ? " (primary)" : ""}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
+                <div
+                  className="flex items-center gap-3 px-4 py-2.5 flex-wrap"
+                  style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.15)" }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => openEditForm(e)}
+                    className="text-xs font-medium"
+                    style={{ color: "#e2e8f0" }}
+                  >
+                    Open
+                  </button>
+                  {e.drive_url ? (
+                    <a href={e.drive_url} target="_blank" rel="noreferrer" className="text-xs underline" style={{ color: "#60a5fa" }}>
+                      Creative
+                    </a>
                   ) : null}
-                  {(e.ad_format || e.product) ? (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {e.ad_format ? (
-                        <ClassBadge label={AD_FORMAT_LABELS[e.ad_format] ?? e.ad_format} color="#60a5fa" />
-                      ) : null}
-                      {e.product ? (
-                        <ClassBadge label={PRODUCT_LABELS[e.product] ?? e.product} color="#a78bfa" />
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {e.summary ? (
-                    <p className="text-xs mt-2 line-clamp-3 whitespace-pre-wrap" style={{ color: "#94a3b8" }}>{e.summary}</p>
-                  ) : null}
-                  {e.knowledge_capture_status && e.knowledge_capture_status !== "none" ? (
-                    <p className="text-[10px] mt-2 uppercase tracking-wide" style={{ color: e.knowledge_capture_status === "processed" ? "#34d399" : "#fbbf24" }}>
-                      OS KB: {e.knowledge_capture_status.replace("_", " ")}
-                    </p>
-                  ) : null}
-                  {e.visual_notes ? (
-                    <p className="text-[11px] mt-2 line-clamp-2 whitespace-pre-wrap" style={{ color: "#64748b" }}>Notes: {e.visual_notes}</p>
-                  ) : null}
-                  <div className="flex items-center gap-3 mt-3 pt-3 flex-wrap" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                    {e.drive_url ? (
-                      <a href={e.drive_url} target="_blank" rel="noreferrer" className="text-xs underline" style={{ color: "#60a5fa" }}>
-                        Open creative
-                      </a>
-                    ) : null}
-                    {e.knowledge_capture_status !== "processed" ? (
-                      <button
-                        type="button"
-                        onClick={() => queueForKb(e)}
-                        className="text-xs"
-                        style={{ color: "#fbbf24" }}
-                      >
-                        Queue for OS KB
-                      </button>
-                    ) : null}
+                  {e.knowledge_capture_status !== "processed" ? (
                     <button
-                      onClick={() => openEditForm(e)}
-                      className="text-xs ml-auto"
-                      style={{ color: "#94a3b8" }}
+                      type="button"
+                      onClick={() => queueForKb(e)}
+                      className="text-xs"
+                      style={{ color: "#fbbf24" }}
                     >
-                      Edit
+                      Queue for OS KB
                     </button>
-                    <button onClick={() => remove(e.id)} className="text-xs" style={{ color: "#f87171" }}>
-                      Delete
-                    </button>
-                  </div>
+                  ) : null}
+                  <button
+                    onClick={() => openEditForm(e)}
+                    className="text-xs ml-auto"
+                    style={{ color: "#94a3b8" }}
+                  >
+                    Edit
+                  </button>
+                  <button onClick={() => remove(e.id)} className="text-xs" style={{ color: "#f87171" }}>
+                    Delete
+                  </button>
                 </div>
               </div>
             );
@@ -1167,13 +1237,43 @@ function AdLibrary({
       {form ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setForm(null)}>
           <div
-            className="rounded-xl w-full max-w-lg p-5 space-y-3 max-h-[90vh] overflow-y-auto"
+            className="rounded-xl w-full max-w-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto"
             style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.1)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
-              {form.id ? "Edit Ad" : "Add Ad"}
-            </h3>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
+                  {form.id ? form.ad_name || "Ad details" : "Add Ad"}
+                </h3>
+                {form.id ? (
+                  <p className="text-xs mt-1" style={{ color: "#64748b" }}>
+                    Script, visual notes, and classification — full overview lives here.
+                  </p>
+                ) : null}
+              </div>
+              {form.id && form.drive_url ? (
+                <a
+                  href={form.drive_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold"
+                  style={{ background: "rgba(96,165,250,0.12)", color: "#60a5fa" }}
+                >
+                  Open creative
+                </a>
+              ) : null}
+            </div>
+            {form.id ? (
+              <div className="flex gap-2">
+                {(["CPL", "CTR", "CPC"] as const).map((label) => {
+                  const m = metricsById.get(form.id);
+                  const value =
+                    label === "CPL" ? money(m?.cpl) : label === "CTR" ? pct(m?.ctr) : money(m?.cpc);
+                  return <MetricChip key={label} label={label} value={value} />;
+                })}
+              </div>
+            ) : null}
             <Field label="Ad name (primary — canonical name for this creative)">
               <input
                 value={form.ad_name}
@@ -1283,12 +1383,12 @@ function AdLibrary({
                 placeholder="https://drive.google.com/file/d/…"
               />
             </Field>
-            <Field label="Script / copy + visual aspects">
+            <Field label="Ad overview — script / copy + visual aspects">
               <textarea
                 value={form.summary}
                 onChange={(e) => setForm({ ...form, summary: e.target.value })}
-                rows={4}
-                className="w-full px-3 py-2 rounded-lg text-sm"
+                rows={8}
+                className="w-full px-3 py-2 rounded-lg text-sm font-mono leading-relaxed"
                 style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
                 placeholder="Full script, hook, offer, on-screen text, talent, pacing, colors, format details…"
               />
@@ -1385,7 +1485,13 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
           onViewInLibrary={handleViewInLibrary}
         />
       ) : (
-        <AdLibrary libraryNav={libraryNav} onNavClear={() => setLibraryNav(null)} />
+        <AdLibrary
+          startDate={startDate}
+          endDate={endDate}
+          clientId={clientId}
+          libraryNav={libraryNav}
+          onNavClear={() => setLibraryNav(null)}
+        />
       )}
     </div>
   );
