@@ -101,6 +101,14 @@ function isInBillingQueue(c: ClientBilling): boolean {
   return isActive(c) && !c.billing_paused;
 }
 
+/** Has an explicit billing schedule anchor (matches Billing configuration warnings). */
+function isBillingConfigured(c: ClientBilling): boolean {
+  if (typeof c.billing_day === "number" && c.billing_day >= 1 && c.billing_day <= 31) {
+    return true;
+  }
+  return !!(c.launch_date?.trim());
+}
+
 function isBillingPaused(c: ClientBilling): boolean {
   return isActive(c) && !!c.billing_paused;
 }
@@ -290,7 +298,8 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
   // been issued yet.
   //
   // Active clients with no open or scheduled billing get a SchedulePromptRow in
-  // Upcoming — a "File next billing" entry that lets you commit the next cycle.
+  // Upcoming — but only once billing day or launch date is set so unconfigured
+  // roster entries stay in Billing configuration until they're ready to file.
   const { pastDue, upcoming, paid } = useMemo(() => {
     const pastDue: WorkRow[] = [];
     const upcoming: WorkRow[] = [];
@@ -320,7 +329,7 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
           }
         }
 
-        if (!hasOpenOrScheduled) {
+        if (!hasOpenOrScheduled && isBillingConfigured(c)) {
           upcoming.push({ kind: "schedule_prompt", client: c });
         }
       } else if (isFixedBilling(c.billing_model)) {
@@ -1379,7 +1388,7 @@ function SetupTable({
     <div>
       {missingConfig > 0 && (
         <p className="text-xs px-4 py-2" style={{ color: "#f59e0b", background: "rgba(245,158,11,0.06)" }}>
-          {missingConfig} active client{missingConfig === 1 ? "" : "s"} have no billing day or launch date — set one below so billing cycles can be suggested.
+          {missingConfig} active client{missingConfig === 1 ? "" : "s"} have no billing day or launch date — set one below before they appear in the Upcoming queue.
         </p>
       )}
       <table className="w-full text-sm">
