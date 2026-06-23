@@ -399,6 +399,12 @@ create table if not exists ad_library (
   ),
   constraint ad_library_product_check check (
     product is null or product in ('reverse', 'dscr', 'broad_forward')
+  ),
+  knowledge_capture_status text not null default 'none',
+  captured_at timestamptz,
+  os_refs text[] not null default '{}',
+  constraint ad_library_knowledge_capture_status_check check (
+    knowledge_capture_status in ('none', 'pending', 'processed', 'needs_review', 'skipped')
   )
 );
 

@@ -116,6 +116,9 @@ type LibEntry = {
   visual_notes: string | null;
   drive_url: string | null;
   thumbnail_url: string | null;
+  knowledge_capture_status?: string | null;
+  captured_at?: string | null;
+  os_refs?: string[] | null;
   created_at: string;
   updated_at: string;
   aliases: LibraryAlias[];
@@ -1012,6 +1015,24 @@ function AdLibrary({
     load();
   }
 
+  async function queueForKb(entry: LibEntry) {
+    if (!entry.summary?.trim()) {
+      alert("Add a summary before queuing for the OS knowledge base.");
+      openEditForm(entry);
+      return;
+    }
+    const res = await fetch("/api/ad-library/intelligence", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: entry.id, knowledge_capture_status: "pending" }),
+    });
+    if (!res.ok) {
+      alert((await res.json()).error ?? "Failed to queue for KB");
+      return;
+    }
+    load();
+  }
+
   if (loading) return <p style={{ color: "#475569" }} className="text-sm py-10 text-center">Loading library…</p>;
   if (error) return <p style={{ color: "#f87171" }} className="text-sm py-10 text-center">{error}</p>;
 
@@ -1101,14 +1122,29 @@ function AdLibrary({
                   {e.summary ? (
                     <p className="text-xs mt-2 line-clamp-3 whitespace-pre-wrap" style={{ color: "#94a3b8" }}>{e.summary}</p>
                   ) : null}
+                  {e.knowledge_capture_status && e.knowledge_capture_status !== "none" ? (
+                    <p className="text-[10px] mt-2 uppercase tracking-wide" style={{ color: e.knowledge_capture_status === "processed" ? "#34d399" : "#fbbf24" }}>
+                      OS KB: {e.knowledge_capture_status.replace("_", " ")}
+                    </p>
+                  ) : null}
                   {e.visual_notes ? (
                     <p className="text-[11px] mt-2 line-clamp-2 whitespace-pre-wrap" style={{ color: "#64748b" }}>Notes: {e.visual_notes}</p>
                   ) : null}
-                  <div className="flex items-center gap-3 mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="flex items-center gap-3 mt-3 pt-3 flex-wrap" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                     {e.drive_url ? (
                       <a href={e.drive_url} target="_blank" rel="noreferrer" className="text-xs underline" style={{ color: "#60a5fa" }}>
                         Open creative
                       </a>
+                    ) : null}
+                    {e.knowledge_capture_status !== "processed" ? (
+                      <button
+                        type="button"
+                        onClick={() => queueForKb(e)}
+                        className="text-xs"
+                        style={{ color: "#fbbf24" }}
+                      >
+                        Queue for OS KB
+                      </button>
                     ) : null}
                     <button
                       onClick={() => openEditForm(e)}
