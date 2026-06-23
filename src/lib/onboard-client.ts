@@ -13,6 +13,7 @@ import {
 } from '@/lib/clickup';
 import { insertFormSubmission } from '@/lib/form-submissions';
 import { linkAcquisitionCloseFromClient } from '@/lib/acquisition-ingest';
+import { normalizeClientLeadSource } from '@/lib/client-lead-source';
 
 const ONBOARD_FIELDS =
   'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, ghl_contact_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, created_at';
@@ -104,7 +105,7 @@ export function parseOnboardPayload(body: OnboardPayload) {
     brokerage_name: trimString(body.brokerage_name),
     ghl_location_id: trimString(body.ghl_location_id) ?? trimString(body.location_id),
     ghl_subaccount_url: trimString(body.ghl_subaccount_url),
-    source: trimString(body.source),
+    source: normalizeClientLeadSource(trimString(body.source)),
     slack_id: trimString(body.slack_id) ?? trimString(body.slackId),
     lifecycle_status: lifecycleStatus,
     is_live: syncIsLiveWithLifecycle(lifecycleStatus),

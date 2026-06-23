@@ -11,6 +11,7 @@ import {
 import { replayPendingForClientId } from '@/lib/pending-events';
 import { getFormProgressForClients } from '@/lib/form-submissions';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
+import { normalizeClientLeadSource } from '@/lib/client-lead-source';
 
 const DETAIL_FIELDS =
   'id, name, is_live, reporting_type, service_program, sales_package, offer, share_token, created_at, lifecycle_status, mrr, daily_adspend, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id';
@@ -109,7 +110,7 @@ export async function POST(req: Request) {
   const optional = [
     'is_live', 'lifecycle_status', 'mrr', 'billing_type', 'billing_day', 'launch_date',
     'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
-    'performance_terms', 'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'states_licensed', 'timezone',
+    'performance_terms', 'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'states_licensed', 'timezone', 'source',
   ] as const;
   for (const k of optional) {
     if (!(k in body)) continue;
@@ -119,6 +120,7 @@ export async function POST(req: Request) {
       continue;
     }
     if (numericFields.has(k)) insert[k] = body[k] === '' || body[k] === null ? null : Number(body[k]);
+    else if (k === 'source') insert[k] = normalizeClientLeadSource(body[k]);
     else insert[k] = body[k] === '' ? null : body[k];
   }
   const lifecycle = (insert.lifecycle_status as string) ?? 'new_account';

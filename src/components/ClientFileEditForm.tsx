@@ -7,6 +7,8 @@ import ReportingTypeBadge, { ReportingTypeSelectOptions } from "@/components/Rep
 import { normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import { getReportingTypeLabel } from "@/lib/reporting-types";
 import { toDateInputValue } from "@/lib/client-dates";
+import ClientLeadSourceSelect from "@/components/ClientLeadSourceSelect";
+import { normalizeClientLeadSource } from "@/lib/client-lead-source";
 
 export type EditableClient = {
   name: string;
@@ -86,7 +88,7 @@ export function clientToDraft(c: EditableClient): Draft {
     phone: c.phone ?? "",
     reporting_type: normalizeReportingType(c.reporting_type),
     clickup_task_id: c.clickup_task_id ?? "",
-    source: c.source ?? "",
+    source: normalizeClientLeadSource(c.source) ?? "",
     website: c.website ?? "",
     brokerage_name: c.brokerage_name ?? "",
     nmls: c.nmls ?? "",
@@ -117,7 +119,7 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     phone: draft.phone.trim() || null,
     reporting_type: draft.reporting_type,
     clickup_task_id: draft.clickup_task_id.trim() || null,
-    source: draft.source.trim() || null,
+    source: normalizeClientLeadSource(draft.source),
     website: draft.website.trim() || null,
     brokerage_name: draft.brokerage_name.trim() || null,
     nmls: draft.nmls.trim() || null,
@@ -149,7 +151,7 @@ export function countMissingFields(c: EditableClient | null): number {
     !c.primary_contact_name && !c.primary_contact,
     !c.email && !c.billing_email,
     !c.phone,
-    !c.source,
+    !normalizeClientLeadSource(c.source),
     !c.website,
     !c.brokerage_name,
     !c.nmls,
@@ -221,7 +223,17 @@ export default function ClientFileEditForm({
           }}>
             <ReportingTypeSelectOptions />
           </SelectField>
-          <Field label="Lead source" value={draft.source} onChange={v => patch("source", v)} highlightEmpty />
+          <label className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider" style={{ color: !draft.source ? "#f59e0b" : "#475569" }}>
+              Lead source{!draft.source ? " · missing" : ""}
+            </span>
+            <ClientLeadSourceSelect
+              value={draft.source}
+              disabled={busy}
+              highlightEmpty
+              onChange={v => patch("source", v)}
+            />
+          </label>
           <Field label="Website" value={draft.website} onChange={v => patch("website", v)} highlightEmpty />
           <Field label="Brokerage" value={draft.brokerage_name} onChange={v => patch("brokerage_name", v)} highlightEmpty />
           <Field label="NMLS" value={draft.nmls} onChange={v => patch("nmls", v)} highlightEmpty />

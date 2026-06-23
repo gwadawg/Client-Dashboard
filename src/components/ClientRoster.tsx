@@ -17,6 +17,7 @@ import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import { syncIsLiveWithLifecycle } from "@/lib/lifecycle-sync";
 import { clientNeedsGhlMapping } from "@/lib/client-ghl-mapping";
 import { DEFAULT_REPORTING_TYPE, normalizeReportingType, usesCallCenterKpiLayout, type ReportingType } from "@/lib/kpi-layouts";
+import ClientLeadSourceSelect from "@/components/ClientLeadSourceSelect";
 import { REPORTING_TYPE_META, REPORTING_TYPES } from "@/lib/reporting-types";
 import { normalizeSalesPackage } from "@/lib/offer-catalog";
 import ReportingTypeBadge, { ReportingTypeSelectOptions, SalesPackageBadge } from "@/components/ReportingTypeBadge";
@@ -1257,6 +1258,7 @@ function AddClientForm({
   const [contractTerm, setContractTerm] = useState("");
   const [contractEnd, setContractEnd] = useState("");
   const [performanceTerms, setPerformanceTerms] = useState("");
+  const [leadSource, setLeadSource] = useState("");
 
   const isBusy = busy === "create";
   const blocked = !!duplicateWarning;
@@ -1294,6 +1296,7 @@ function AddClientForm({
       contract_term_months: contractTerm,
       contract_end_date: contractEnd,
       performance_terms: performanceTerms,
+      source: leadSource || null,
     });
   }
 
@@ -1342,6 +1345,9 @@ function AddClientForm({
             <option value="active">Active</option>
             <option value="new_account">New account</option>
           </select>
+        </Field>
+        <Field label="Lead source">
+          <ClientLeadSourceSelect value={leadSource} onChange={setLeadSource} />
         </Field>
         <Field label="Billing type">
           <select value={billingType} onChange={e => setBillingType(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none cursor-pointer" style={fieldStyle()}>

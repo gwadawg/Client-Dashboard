@@ -10,6 +10,7 @@ import { deriveServiceProgram, normalizeSalesPackage } from '@/lib/offer-catalog
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
+import { normalizeClientLeadSource } from '@/lib/client-lead-source';
 import {
   canViewClientRevenue,
   redactBillingRows,
@@ -192,6 +193,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     else if (k === 'clickup_task_id') {
       const raw = typeof body[k] === 'string' ? body[k].trim() : '';
       updates[k] = raw || null;
+    }
+    else if (k === 'source') {
+      if (body[k] === '' || body[k] == null) {
+        updates[k] = null;
+      } else if (typeof body[k] !== 'string') {
+        return NextResponse.json({ error: 'source must be Cold, Meta, Referral, or null' }, { status: 400 });
+      } else {
+        const normalized = normalizeClientLeadSource(body[k]);
+        if (!normalized) {
+          return NextResponse.json(
+            { error: 'source must be Cold, Meta, or Referral' },
+            { status: 400 },
+          );
+        }
+        updates[k] = normalized;
+      }
     }
     else if (k === 'kpi_benchmarks') updates[k] = body[k] ?? null; // object or null, stored as-is
     else if (booleanFields.has(k)) updates[k] = body[k] === true || body[k] === 'yes';

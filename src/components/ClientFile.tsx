@@ -33,6 +33,7 @@ import {
 import ReportingTypeBadge, { ServiceProgramBadge } from "@/components/ReportingTypeBadge";
 import { getReportingTypeLabel } from "@/lib/reporting-types";
 import { getServiceProgramLabel } from "@/lib/service-program";
+import { clientLeadSourceLabel } from "@/lib/client-lead-source";
 import { formatStatesLicensed } from "@/lib/us-states";
 import { timezoneLabel } from "@/lib/us-timezones";
 import ClientContactsSection from "@/components/ClientContactsSection";
@@ -820,7 +821,7 @@ export default function ClientFile({
                     </a>
                   ) : null}
                 />
-                <Detail label="Lead source" value={client?.source} missing={!client?.source} />
+                <Detail label="Lead source" value={clientLeadSourceLabel(client?.source)} missing={!client?.source} />
                 <Detail label="Website" value={client?.website} missing={!client?.website} />
                 <Detail label="Brokerage" value={client?.brokerage_name} missing={!client?.brokerage_name} />
                 <Detail label="NMLS" value={client?.nmls} missing={!client?.nmls} />
