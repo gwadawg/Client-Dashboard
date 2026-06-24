@@ -11,7 +11,14 @@ import {
 /** How spend and lead volume are linked in the UI. */
 export type CostAnchor = 'spend_cpl' | 'spend_leads';
 
+/**
+ * conversation — default. Closes = conversations × close rate (people the LO spoke with).
+ * pipeline — optional. Proposals → submissions → funded with separate stage rates.
+ */
+export type FunnelMode = 'conversation' | 'pipeline';
+
 export type SimulatorInputs = {
+  funnel_mode: FunnelMode;
   cost_anchor: CostAnchor;
   ad_spend: number;
   /** Used when cost_anchor = spend_cpl (leads derived as spend ÷ cpl). */
@@ -25,11 +32,13 @@ export type SimulatorInputs = {
   live_transfer_pct: number;
   /** Share of qualified leads the client claims (parallel path). */
   claimed_pct: number;
-  /** Conversations → proposals. */
+  /** Conversation mode: funded closes ÷ conversations (people spoken with). */
+  conversation_close_rate_pct: number;
+  /** Pipeline mode: conversations → proposals. */
   proposal_rate_pct: number;
-  /** Proposals → submissions. */
+  /** Pipeline mode: proposals → submissions. */
   submission_rate_pct: number;
-  /** Submissions → funded. */
+  /** Pipeline mode: submissions → funded. */
   funded_rate_pct: number;
   avg_commission: number;
 };
@@ -53,10 +62,12 @@ export type SimulatorRates = {
   net_show_rate_pct: number;
   conversation_rate_pct: number;
   conversation_yield: number;
+  conversation_close_rate_pct: number;
   proposal_rate_pct: number;
   submission_rate_pct: number;
   funded_rate_pct: number;
-  close_rate_pct: number;
+  /** End-to-end: funded ÷ conversations (always computed when conversations > 0). */
+  close_rate_from_conversations_pct: number;
 };
 
 export type SimulatorCosts = {
@@ -191,6 +202,24 @@ function pctRate(value: number): number {
   return Math.max(0, Math.min(100, value)) / 100;
 }
 
+function computeDownstreamCounts(
+  inputs: SimulatorInputs,
+  conversations: number,
+): Pick<SimulatorCounts, 'proposals_made' | 'submissions_made' | 'funded_loans'> {
+  if (inputs.funnel_mode === 'conversation') {
+    const funded_loans = conversations * pctRate(inputs.conversation_close_rate_pct);
+    return { proposals_made: 0, submissions_made: 0, funded_loans };
+  }
+
+  const proposalRate = pctRate(inputs.proposal_rate_pct);
+  const submissionRate = pctRate(inputs.submission_rate_pct);
+  const fundedRate = pctRate(inputs.funded_rate_pct);
+  const proposals_made = conversations * proposalRate;
+  const submissions_made = proposals_made * submissionRate;
+  const funded_loans = submissions_made * fundedRate;
+  return { proposals_made, submissions_made, funded_loans };
+}
+
 /** Forward simulation: assumptions → funnel counts, rates, costs, tiers. */
 export function simulateFunnel(inputs: SimulatorInputs): SimulatorResult {
   const { ad_spend, total_leads } = resolveLeadsAndSpend(inputs);
@@ -200,9 +229,6 @@ export function simulateFunnel(inputs: SimulatorInputs): SimulatorResult {
   const showRate = pctRate(inputs.net_show_rate_pct);
   const ltRate = pctRate(inputs.live_transfer_pct);
   const claimedRate = pctRate(inputs.claimed_pct);
-  const proposalRate = pctRate(inputs.proposal_rate_pct);
-  const submissionRate = pctRate(inputs.submission_rate_pct);
-  const fundedRate = pctRate(inputs.funded_rate_pct);
 
   const qualified_leads = total_leads * qualRate;
   const booked_appointments = qualified_leads * bookingRate;
@@ -210,9 +236,9 @@ export function simulateFunnel(inputs: SimulatorInputs): SimulatorResult {
   const live_transfers = qualified_leads * ltRate;
   const claimed = qualified_leads * claimedRate;
   const conversations = shows + live_transfers + claimed;
-  const proposals_made = conversations * proposalRate;
-  const submissions_made = proposals_made * submissionRate;
-  const funded_loans = submissions_made * fundedRate;
+
+  const downstream = computeDownstreamCounts(inputs, conversations);
+  const { proposals_made, submissions_made, funded_loans } = downstream;
 
   const counts: SimulatorCounts = {
     total_leads,
@@ -230,7 +256,8 @@ export function simulateFunnel(inputs: SimulatorInputs): SimulatorResult {
   const conversation_rate_pct =
     qualified_leads > 0 ? (conversations / qualified_leads) * 100 : 0;
   const conversation_yield = qualified_leads > 0 ? conversations / qualified_leads : 0;
-  const close_rate_pct = proposals_made > 0 ? (funded_loans / proposals_made) * 100 : 0;
+  const close_rate_from_conversations_pct =
+    conversations > 0 ? (funded_loans / conversations) * 100 : 0;
 
   const costs: SimulatorCosts = {
     cpl: total_leads > 0 ? ad_spend / total_leads : 0,
@@ -254,11 +281,16 @@ export function simulateFunnel(inputs: SimulatorInputs): SimulatorResult {
       ? ((booked_appointments + live_transfers + claimed) / qualified_leads) * 100
       : 0;
 
+  const closeRateForGrade =
+    inputs.funnel_mode === 'conversation'
+      ? inputs.conversation_close_rate_pct
+      : close_rate_from_conversations_pct;
+
   const grades: KpiGrade[] = [
     grade('lead_to_qualified', inputs.lead_to_qual_pct, pct(inputs.lead_to_qual_pct), total_leads),
     grade('hand_raise_rate', hand_raise_rate, pct(hand_raise_rate), qualified_leads),
     grade('show_rate', inputs.net_show_rate_pct, pct(inputs.net_show_rate_pct), shows + booked_appointments * (1 - showRate)),
-    grade('close_rate', close_rate_pct, pct(close_rate_pct), proposals_made),
+    grade('close_rate', closeRateForGrade, pct(closeRateForGrade), conversations),
     grade('cpl', costs.cpl, money(costs.cpl), total_leads),
     grade('cpql', costs.cpql, money(costs.cpql), qualified_leads),
     grade('cps', costs.cp_conversation, money(costs.cp_conversation), conversations),
@@ -273,10 +305,11 @@ export function simulateFunnel(inputs: SimulatorInputs): SimulatorResult {
       net_show_rate_pct: inputs.net_show_rate_pct,
       conversation_rate_pct,
       conversation_yield,
+      conversation_close_rate_pct: inputs.conversation_close_rate_pct,
       proposal_rate_pct: inputs.proposal_rate_pct,
       submission_rate_pct: inputs.submission_rate_pct,
       funded_rate_pct: inputs.funded_rate_pct,
-      close_rate_pct,
+      close_rate_from_conversations_pct,
     },
     costs,
     ad_spend,
@@ -297,7 +330,6 @@ function bandMidpoint(key: KpiKey, preset: WaizPreset): number {
     if (higherIsBetter) return ((bands.critical ?? 0) + (bands.below ?? 0)) / 2;
     return ((bands.below ?? 0) + (bands.critical ?? 0)) / 2;
   }
-  // at_kpi — midpoint of "at" band
   if (higherIsBetter) {
     return ((bands.below ?? 0) + (bands.at ?? 0)) / 2;
   }
@@ -310,6 +342,7 @@ export function defaultSimulatorInputs(): SimulatorInputs {
 
 export function applyWaizPreset(preset: WaizPreset): SimulatorInputs {
   return {
+    funnel_mode: 'conversation',
     cost_anchor: 'spend_cpl',
     ad_spend: 5000,
     cpl: bandMidpoint('cpl', preset === 'above' ? 'above' : preset === 'below' ? 'below' : 'at_kpi'),
@@ -319,6 +352,7 @@ export function applyWaizPreset(preset: WaizPreset): SimulatorInputs {
     net_show_rate_pct: bandMidpoint('show_rate', preset),
     live_transfer_pct: 3,
     claimed_pct: 2,
+    conversation_close_rate_pct: bandMidpoint('close_rate', preset),
     proposal_rate_pct: 55,
     submission_rate_pct: 65,
     funded_rate_pct: bandMidpoint('close_rate', preset),
@@ -329,6 +363,8 @@ export function applyWaizPreset(preset: WaizPreset): SimulatorInputs {
 /** Map live dashboard metrics into simulator starting assumptions. */
 export function metricsToSimulatorInputs(metrics: MetricsResult): SimulatorInputs {
   const conversations = metrics.live_transfers + metrics.claimed + metrics.shows;
+  const conversationCloseRate =
+    conversations > 0 ? (metrics.funded_loans / conversations) * 100 : bandMidpoint('close_rate', 'at_kpi');
   const proposalRate =
     conversations > 0 ? (metrics.proposals_made / conversations) * 100 : 55;
   const submissionRate =
@@ -342,6 +378,7 @@ export function metricsToSimulatorInputs(metrics: MetricsResult): SimulatorInput
     metrics.qualified_leads > 0 ? (metrics.claimed / metrics.qualified_leads) * 100 : 0;
 
   return {
+    funnel_mode: 'conversation',
     cost_anchor: 'spend_cpl',
     ad_spend: metrics.ad_spend || 5000,
     cpl: metrics.cpl > 0 ? metrics.cpl : 15,
@@ -351,6 +388,7 @@ export function metricsToSimulatorInputs(metrics: MetricsResult): SimulatorInput
     net_show_rate_pct: metrics.net_show_pct,
     live_transfer_pct: ltPct,
     claimed_pct: claimedPct,
+    conversation_close_rate_pct: conversationCloseRate,
     proposal_rate_pct: proposalRate,
     submission_rate_pct: submissionRate,
     funded_rate_pct: fundedRate,
@@ -363,7 +401,6 @@ function conversationPathMix(forward: SimulatorResult): { showShare: number; ltS
   if (conversations <= 0) {
     return { showShare: 0.85, ltShare: 0.1, claimedShare: 0.05 };
   }
-  const remainder = Math.max(0, conversations - shows);
   const parallel = live_transfers + claimed;
   return {
     showShare: shows / conversations,
@@ -372,7 +409,27 @@ function conversationPathMix(forward: SimulatorResult): { showShare: number; ltS
   };
 }
 
-/** Reverse-engineer upstream volume and spend for a funded-loan target. */
+function solveConversationsNeeded(
+  targetFunded: number,
+  inputs: SimulatorInputs,
+): number | null {
+  if (inputs.funnel_mode === 'conversation') {
+    const closeRate = pctRate(inputs.conversation_close_rate_pct);
+    if (closeRate <= 0) return null;
+    return targetFunded / closeRate;
+  }
+
+  const fundedRate = pctRate(inputs.funded_rate_pct);
+  const submissionRate = pctRate(inputs.submission_rate_pct);
+  const proposalRate = pctRate(inputs.proposal_rate_pct);
+  if (fundedRate <= 0 || submissionRate <= 0 || proposalRate <= 0) return null;
+
+  const submissions_made = targetFunded / fundedRate;
+  const proposals_made = submissions_made / submissionRate;
+  return proposals_made / proposalRate;
+}
+
+/** Reverse-engineer upstream volume and spend for a close/funded target. */
 export function solveForTargetFunded(
   targetFunded: number,
   inputs: SimulatorInputs,
@@ -382,27 +439,21 @@ export function solveForTargetFunded(
   if (target <= 0) return null;
 
   const base = forward ?? simulateFunnel(inputs);
-  const fundedRate = pctRate(inputs.funded_rate_pct);
-  const submissionRate = pctRate(inputs.submission_rate_pct);
-  const proposalRate = pctRate(inputs.proposal_rate_pct);
+  const conversations = solveConversationsNeeded(target, inputs);
+  if (conversations == null) return null;
+
   const showRate = pctRate(inputs.net_show_rate_pct);
   const bookingRate = pctRate(inputs.booking_rate_pct);
   const qualRate = pctRate(inputs.lead_to_qual_pct);
   const ltRate = pctRate(inputs.live_transfer_pct);
   const claimedRate = pctRate(inputs.claimed_pct);
-
-  if (fundedRate <= 0 || submissionRate <= 0 || proposalRate <= 0 || qualRate <= 0) return null;
-
-  const submissions_made = target / fundedRate;
-  const proposals_made = submissions_made / submissionRate;
-  const conversations = proposals_made / proposalRate;
+  if (qualRate <= 0) return null;
 
   const mix = conversationPathMix(base);
   const shows = conversations * mix.showShare;
   const parallel = conversations - shows;
   const live_transfers = parallel * mix.ltShare;
   const claimed = parallel * mix.claimedShare;
-
   const booked_appointments = showRate > 0 ? shows / showRate : 0;
 
   const qualifiedFromBooked = bookingRate > 0 ? booked_appointments / bookingRate : 0;
@@ -414,6 +465,8 @@ export function solveForTargetFunded(
   const { cpl } = resolveLeadsAndSpend(inputs);
   const ad_spend = total_leads * cpl;
 
+  const downstream = computeDownstreamCounts(inputs, conversations);
+
   const required = {
     total_leads,
     qualified_leads,
@@ -422,8 +475,8 @@ export function solveForTargetFunded(
     live_transfers,
     claimed,
     conversations,
-    proposals_made,
-    submissions_made,
+    proposals_made: downstream.proposals_made,
+    submissions_made: downstream.submissions_made,
     funded_loans: target,
     ad_spend,
   };
@@ -452,10 +505,14 @@ export function solveForTargetFunded(
   };
 }
 
-const LEVER_FIELDS: { field: keyof SimulatorInputs; label: string; kpiKey: KpiKey }[] = [
+const CORE_LEVER_FIELDS: { field: keyof SimulatorInputs; label: string; kpiKey: KpiKey }[] = [
   { field: 'lead_to_qual_pct', label: 'Lead-to-Qualified %', kpiKey: 'lead_to_qualified' },
   { field: 'booking_rate_pct', label: 'Booking Rate', kpiKey: 'hand_raise_rate' },
   { field: 'net_show_rate_pct', label: 'Net Show Rate', kpiKey: 'show_rate' },
+  { field: 'conversation_close_rate_pct', label: 'Close Rate (÷ conversations)', kpiKey: 'close_rate' },
+];
+
+const PIPELINE_LEVER_FIELDS: { field: keyof SimulatorInputs; label: string; kpiKey: KpiKey }[] = [
   { field: 'proposal_rate_pct', label: 'Proposal Rate', kpiKey: 'close_rate' },
   { field: 'submission_rate_pct', label: 'Submission Rate', kpiKey: 'close_rate' },
   { field: 'funded_rate_pct', label: 'Funded Rate', kpiKey: 'close_rate' },
@@ -463,13 +520,16 @@ const LEVER_FIELDS: { field: keyof SimulatorInputs; label: string; kpiKey: KpiKe
 
 function findFastestLever(inputs: SimulatorInputs, base: SimulatorResult): FastestLever | null {
   const currentFunded = base.counts.funded_loans;
+  const levers =
+    inputs.funnel_mode === 'pipeline'
+      ? [...CORE_LEVER_FIELDS.filter(l => l.field !== 'conversation_close_rate_pct'), ...PIPELINE_LEVER_FIELDS]
+      : CORE_LEVER_FIELDS;
+
   let best: FastestLever | null = null;
 
-  for (const lever of LEVER_FIELDS) {
+  for (const lever of levers) {
     const spec = DEFAULT_KPI_BANDS[lever.kpiKey];
-    const atValue = spec.higherIsBetter
-      ? (spec.bands.at ?? spec.bands.below ?? 0)
-      : (spec.bands.at ?? spec.bands.below ?? 0);
+    const atValue = spec.bands.at ?? spec.bands.below ?? 0;
 
     const currentValue = inputs[lever.field] as number;
     if (typeof currentValue !== 'number') continue;
@@ -494,6 +554,18 @@ function findFastestLever(inputs: SimulatorInputs, base: SimulatorResult): Faste
   return best;
 }
 
+function normalizeDecodedInputs(parsed: Partial<SimulatorInputs>): SimulatorInputs {
+  const defaults = defaultSimulatorInputs();
+  const merged = { ...defaults, ...parsed };
+
+  if (!merged.funnel_mode) merged.funnel_mode = 'conversation';
+  if (merged.conversation_close_rate_pct == null || merged.conversation_close_rate_pct <= 0) {
+    merged.conversation_close_rate_pct = bandMidpoint('close_rate', 'at_kpi');
+  }
+
+  return merged as SimulatorInputs;
+}
+
 /** Serialize simulator state for URL sharing. */
 export function encodeSimulatorState(inputs: SimulatorInputs): string {
   return btoa(JSON.stringify(inputs));
@@ -501,9 +573,9 @@ export function encodeSimulatorState(inputs: SimulatorInputs): string {
 
 export function decodeSimulatorState(encoded: string): SimulatorInputs | null {
   try {
-    const parsed = JSON.parse(atob(encoded)) as SimulatorInputs;
+    const parsed = JSON.parse(atob(encoded)) as Partial<SimulatorInputs>;
     if (typeof parsed.ad_spend !== 'number') return null;
-    return parsed;
+    return normalizeDecodedInputs(parsed);
   } catch {
     return null;
   }
