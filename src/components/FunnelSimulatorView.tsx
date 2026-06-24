@@ -82,6 +82,21 @@ type RateField = {
   step?: number;
 };
 
+type GoalTableKey =
+  | "ad_spend"
+  | "total_leads"
+  | "qualified_leads"
+  | "conversations"
+  | "proposals_made"
+  | "submissions_made"
+  | "funded_loans";
+
+type GoalTableRow = {
+  label: string;
+  key: GoalTableKey;
+  fmt: "money" | "int" | "decimal";
+};
+
 const CORE_RATE_FIELDS: RateField[] = [
   { key: "lead_to_qual_pct", label: "Lead → Qualified", hint: "Qualified ÷ Total Leads", max: 100 },
   { key: "booking_rate_pct", label: "Booking Rate", hint: "Booked ÷ Qualified", max: 80 },
@@ -299,23 +314,23 @@ export default function FunnelSimulatorView({
     return [...CORE_RATE_FIELDS, ...PIPELINE_RATE_FIELDS];
   }, [isConversationMode]);
 
-  const goalTableRows = useMemo(() => {
-    const base = [
-      { label: "Ad spend", key: "ad_spend" as const, fmt: "money" as const },
-      { label: "Leads", key: "total_leads" as const, fmt: "int" as const },
-      { label: "Qualified", key: "qualified_leads" as const, fmt: "int" as const },
-      { label: "Conversations", key: "conversations" as const, fmt: "int" as const },
+  const goalTableRows = useMemo((): GoalTableRow[] => {
+    const base: GoalTableRow[] = [
+      { label: "Ad spend", key: "ad_spend", fmt: "money" },
+      { label: "Leads", key: "total_leads", fmt: "int" },
+      { label: "Qualified", key: "qualified_leads", fmt: "int" },
+      { label: "Conversations", key: "conversations", fmt: "int" },
     ];
     if (!isConversationMode) {
       base.push(
-        { label: "Proposals", key: "proposals_made" as const, fmt: "int" as const },
-        { label: "Submissions", key: "submissions_made" as const, fmt: "int" as const },
+        { label: "Proposals", key: "proposals_made", fmt: "int" },
+        { label: "Submissions", key: "submissions_made", fmt: "int" },
       );
     }
     base.push({
       label: isConversationMode ? "Closes" : "Funded",
-      key: "funded_loans" as const,
-      fmt: "decimal" as const,
+      key: "funded_loans",
+      fmt: "decimal",
     });
     return base;
   }, [isConversationMode]);
