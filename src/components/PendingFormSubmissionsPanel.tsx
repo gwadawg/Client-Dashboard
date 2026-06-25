@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { dismissRosterPanel, isRosterPanelDismissed } from "@/lib/roster-panel-dismiss";
+
+const PANEL_KEY = "pending-onboarding-forms";
 
 type PendingSubmission = {
   id: string;
@@ -28,14 +31,17 @@ export default function PendingFormSubmissionsPanel({ onResolved }: { onResolved
   const [loading, setLoading] = useState(true);
   const [assignTo, setAssignTo] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
 
   const reload = useCallback(async () => {
     const res = await fetch("/api/form-submissions/pending");
     const d = await res.json().catch(() => ({}));
     if (res.ok) {
-      setTotal(d.total ?? 0);
+      const nextTotal = d.total ?? 0;
+      setTotal(nextTotal);
       setSubmissions(d.submissions ?? []);
       setClients(d.clients ?? []);
+      setDismissed(isRosterPanelDismissed(PANEL_KEY, nextTotal));
     }
     setLoading(false);
   }, []);
@@ -66,20 +72,37 @@ export default function PendingFormSubmissionsPanel({ onResolved }: { onResolved
   }
 
   if (loading) return null;
-  if (total === 0) return null;
+  if (total === 0 || dismissed) return null;
+
+  function closePanel() {
+    dismissRosterPanel(PANEL_KEY, total);
+    setDismissed(true);
+  }
 
   return (
     <div
       className="rounded-xl p-4 space-y-3"
       style={{ background: "#1a1208", border: "1px solid rgba(245,158,11,0.35)" }}
     >
-      <div>
-        <h3 className="text-sm font-semibold" style={{ color: "#fbbf24" }}>
-          Unmapped onboarding forms ({total})
-        </h3>
-        <p className="text-xs mt-1" style={{ color: "#a8a29e" }}>
-          Client submitted the onboarding form but we couldn&apos;t match email/phone to exactly one account. Assign to the correct client or create a new folder.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold" style={{ color: "#fbbf24" }}>
+            Unmapped onboarding forms ({total})
+          </h3>
+          <p className="text-xs mt-1" style={{ color: "#a8a29e" }}>
+            Client submitted the onboarding form but we couldn&apos;t match email/phone to exactly one account. Assign to the correct client or create a new folder.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={closePanel}
+          className="shrink-0 w-7 h-7 rounded-lg text-sm leading-none"
+          style={{ color: "#94a3b8", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+          title="Hide until new unmapped forms arrive"
+          aria-label="Hide unmapped onboarding forms panel"
+        >
+          ✕
+        </button>
       </div>
       <div className="space-y-2">
         {submissions.map(s => {

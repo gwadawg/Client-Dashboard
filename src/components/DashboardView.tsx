@@ -709,7 +709,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
         {/* Content */}
         <main
           className={`flex-1 min-h-0 p-6 md:p-8 flex flex-col ${
-            view === "admin_clients" || view === "admin_billing" ? "overflow-hidden" : "overflow-auto"
+            view === "admin_billing" ? "overflow-hidden" : "overflow-auto"
           }`}
           style={{ background: "#080f1e" }}
         >
@@ -968,9 +968,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
           {/* ── Admin ── */}
           {view === "admin_agents"  && <AgentAdmin />}
           {view === "admin_clients" && (
-            <div className="flex-1 min-h-0 flex flex-col">
               <ClientRoster canViewRevenue={canViewRevenue} />
-            </div>
           )}
           {view === "admin_billing" && (
             <div className="flex-1 min-h-0 flex flex-col overflow-auto">
