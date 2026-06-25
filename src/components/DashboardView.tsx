@@ -27,6 +27,7 @@ import ConversionFunnel from "./ConversionFunnel";
 import ClientConversionsView from "./ClientConversionsView";
 import FunnelSimulatorView from "./FunnelSimulatorView";
 import ClientHealthDashboard from "./ClientHealthDashboard";
+import StateLooker from "./StateLooker";
 import DialAnalytics from "./DialAnalytics";
 import MediaBuyer from "./MediaBuyer";
 import AcquisitionMarketing from "./AcquisitionMarketing";
@@ -90,6 +91,7 @@ const NAV_ICONS: Record<View, string> = {
   client_health:    "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
   heatmaps:      "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   data_explorer: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
+  state_looker:  "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z",
   acquisition_kpis: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
   acquisition_marketing: "M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z",
   acquisition:   "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6",
@@ -947,6 +949,8 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
           )}
 
           {view === "client_health" && <ClientHealthDashboard />}
+
+          {view === "state_looker" && <StateLooker />}
 
           {firstVisibleView && view === "kpi_simulator" && (
             <FunnelSimulatorView

@@ -52,7 +52,8 @@ export type PermissionSubject = {
 /** Views that share access (e.g. simulator ↔ dashboard). */
 const VIEW_ALIASES: Record<string, string[]> = {
   kpi_simulator: ["dashboard"],
-  dashboard: ["kpi_simulator"],
+  dashboard: ["kpi_simulator", "state_looker"],
+  state_looker: ["dashboard"],
 };
 
 /** All keys that satisfy a permission check (hub ↔ legacy children). */
