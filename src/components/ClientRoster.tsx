@@ -8,6 +8,8 @@ import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
 import PendingEventsPanel from "@/components/PendingEventsPanel";
 import PendingFormSubmissionsPanel from "@/components/PendingFormSubmissionsPanel";
+import FormSubmissionsTab from "@/components/FormSubmissionsTab";
+import ViewHub from "@/components/nav/ViewHub";
 import Link from "next/link";
 import { churnFormHref, isChurnOffboardEligible } from "@/lib/internal-forms";
 import { FormProgressStrip } from "@/components/ClientFormsSection";
@@ -401,6 +403,26 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     return saved === "cs" || saved === "media" ? saved : "full";
   });
   const [collapsedAccounts, setCollapsedAccounts] = useState<Set<string>>(() => new Set());
+  const [sectionTab, setSectionTab] = useState<"clients" | "forms">(() => {
+    if (typeof window === "undefined") return "clients";
+    return window.localStorage.getItem("rosterSectionTab") === "forms" ? "forms" : "clients";
+  });
+  const [unmappedCount, setUnmappedCount] = useState(0);
+
+  function changeSectionTab(tab: "clients" | "forms") {
+    setSectionTab(tab);
+    window.localStorage.setItem("rosterSectionTab", tab);
+  }
+
+  async function refreshUnmappedCount() {
+    const res = await fetch("/api/form-submissions/pending");
+    const d = await res.json().catch(() => ({}));
+    if (res.ok) setUnmappedCount(d.total ?? 0);
+  }
+
+  useEffect(() => {
+    refreshUnmappedCount();
+  }, []);
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
@@ -440,6 +462,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     setClients(d.clients ?? []);
     if (typeof d.can_view_revenue === "boolean") setShowRevenue(d.can_view_revenue);
     else if (typeof d.can_view_total_paid === "boolean") setShowRevenue(d.can_view_total_paid);
+    void refreshUnmappedCount();
   }
 
   async function patchClient(id: string, body: Record<string, unknown>) {
@@ -709,28 +732,39 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
           >
             Churn offboarding
           </Link>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
-            style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)" }}
-          >
-            + Add client
-          </button>
+          {sectionTab === "clients" && (
+            <button
+              onClick={() => setShowAdd(true)}
+              className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
+              style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)" }}
+            >
+              + Add client
+            </button>
+          )}
         </div>
       </div>
 
-      {showAdd && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
-          style={{ background: "rgba(2,6,15,0.6)" }}
-          onClick={() => setShowAdd(false)}
-        >
-          <div className="w-full max-w-3xl" onClick={e => e.stopPropagation()}>
-            <AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} onCancel={() => setShowAdd(false)} />
-          </div>
-        </div>
-      )}
-
+      <ViewHub
+        tabs={[
+          { key: "clients", label: "Clients" },
+          {
+            key: "forms",
+            label: unmappedCount > 0 ? `Form submissions (${unmappedCount})` : "Form submissions",
+          },
+        ]}
+        activeTab={sectionTab}
+        onTabChange={key => changeSectionTab(key as "clients" | "forms")}
+      >
+        {sectionTab === "forms" ? (
+          <FormSubmissionsTab
+            onOpenClient={(id, name) => openClientFile(id, name)}
+            onResolved={() => {
+              void reload();
+              void refreshUnmappedCount();
+            }}
+          />
+        ) : (
+          <>
       <div className="shrink-0 empty:hidden"><PendingFormSubmissionsPanel onResolved={reload} /></div>
 
       <div className="shrink-0 empty:hidden"><PendingEventsPanel onReplayed={reload} /></div>
@@ -972,6 +1006,21 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+          </>
+        )}
+      </ViewHub>
+
+      {showAdd && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
+          style={{ background: "rgba(2,6,15,0.6)" }}
+          onClick={() => setShowAdd(false)}
+        >
+          <div className="w-full max-w-3xl" onClick={e => e.stopPropagation()}>
+            <AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} onCancel={() => setShowAdd(false)} />
           </div>
         </div>
       )}

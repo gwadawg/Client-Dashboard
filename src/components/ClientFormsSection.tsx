@@ -129,7 +129,13 @@ function humanizeResponses(formType: FormType, responses: Record<string, unknown
     .map(([k, v]) => ({ label: k.replace(/_/g, " "), value: formatValue(k, v) }));
 }
 
-export default function ClientFormsSection({ submissions }: { submissions: FormSubmissionSummary[] }) {
+export default function ClientFormsSection({
+  submissions,
+  alwaysExpanded = false,
+}: {
+  submissions: FormSubmissionSummary[];
+  alwaysExpanded?: boolean;
+}) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   if (submissions.length === 0) {
@@ -143,8 +149,26 @@ export default function ClientFormsSection({ submissions }: { submissions: FormS
   return (
     <div className="space-y-2">
       {submissions.map(s => {
-        const isOpen = expanded === s.id;
+        const isOpen = alwaysExpanded || expanded === s.id;
         const rows = humanizeResponses(s.form_type, s.responses ?? {});
+        if (alwaysExpanded) {
+          return (
+            <div key={s.id} className="space-y-2">
+              {rows.map(row => (
+                row.value === "" && row.section ? (
+                  <p key={row.label} className="text-xs font-semibold pt-3" style={{ color: "#94a3b8" }}>
+                    {row.label}
+                  </p>
+                ) : (
+                  <div key={`${row.section ?? ""}-${row.label}`} className="flex gap-3 text-xs pt-2">
+                    <span className="w-36 flex-shrink-0" style={{ color: "#64748b" }}>{row.label}</span>
+                    <span style={{ color: "#cbd5e1" }}>{row.value}</span>
+                  </div>
+                )
+              ))}
+            </div>
+          );
+        }
         return (
           <div
             key={s.id}

@@ -14,6 +14,14 @@ export const FORM_TYPE_LABELS: Record<FormType, string> = {
   churn: 'Churn / Offboarding',
 };
 
+export const FORM_STATUS_LABELS: Record<FormStatus, string> = {
+  draft: 'Draft',
+  submitted: 'Submitted',
+  unmapped: 'Unmapped',
+  applied: 'Applied',
+  dismissed: 'Dismissed',
+};
+
 export type FormSubmissionRow = {
   id: string;
   client_id: string | null;
@@ -146,6 +154,65 @@ export async function getLatestSubmissionsByClient(
     if (!out[row.form_type]) out[row.form_type] = row;
   }
   return out;
+}
+
+export type FormSubmissionListRow = FormSubmissionRow & {
+  client_name: string | null;
+};
+
+export async function countUnmappedOnboarding(service: SupabaseClient): Promise<number> {
+  const { count, error } = await service
+    .from('client_form_submissions')
+    .select('*', { count: 'exact', head: true })
+    .eq('form_type', 'onboarding')
+    .eq('status', 'unmapped');
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+export async function listUnmappedOnboardingSubmissions(
+  service: SupabaseClient,
+): Promise<FormSubmissionRow[]> {
+  const { data, error } = await service
+    .from('client_form_submissions')
+    .select(FORM_SUBMISSION_FIELDS)
+    .eq('form_type', 'onboarding')
+    .eq('status', 'unmapped')
+    .order('submitted_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as FormSubmissionRow[];
+}
+
+export async function listFormSubmissions(
+  service: SupabaseClient,
+  opts?: {
+    form_type?: FormType;
+    status?: FormStatus;
+    include_dismissed?: boolean;
+    limit?: number;
+  },
+): Promise<FormSubmissionListRow[]> {
+  let query = service
+    .from('client_form_submissions')
+    .select(`${FORM_SUBMISSION_FIELDS}, clients(name)`)
+    .order('submitted_at', { ascending: false })
+    .limit(opts?.limit ?? 300);
+
+  if (opts?.form_type) query = query.eq('form_type', opts.form_type);
+  if (opts?.status) query = query.eq('status', opts.status);
+  else if (!opts?.include_dismissed) query = query.neq('status', 'dismissed');
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map(row => {
+    const clients = row.clients as { name?: string } | null;
+    const { clients: _clients, ...rest } = row;
+    return {
+      ...(rest as FormSubmissionRow),
+      client_name: clients?.name ?? null,
+    };
+  });
 }
 
 export async function listFormSubmissionsForClient(

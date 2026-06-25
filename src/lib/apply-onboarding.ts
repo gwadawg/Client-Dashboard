@@ -181,6 +181,43 @@ export async function applyPendingOnboardingToClient(
   return updatedSub as FormSubmissionRow;
 }
 
+export async function createClientAndApplyPendingOnboarding(
+  service: SupabaseClient,
+  submissionId: string,
+  submittedBy: string | null,
+): Promise<{ client: { id: string; name: string }; submission: FormSubmissionRow }> {
+  const { data: row, error } = await service
+    .from('client_form_submissions')
+    .select('*')
+    .eq('id', submissionId)
+    .eq('form_type', 'onboarding')
+    .eq('status', 'unmapped')
+    .single();
+  if (error || !row) throw new Error('Submission not found or already resolved');
+
+  const responses = (row.responses ?? {}) as Record<string, unknown>;
+  const input = parseOnboardingFormFields(responses);
+  const clientName =
+    input.brokerage_name.trim() ||
+    input.legal_business_name.trim() ||
+    input.email.split('@')[0] ||
+    'New client';
+
+  const { data: client, error: insertErr } = await service
+    .from('clients')
+    .insert({
+      name: clientName,
+      lifecycle_status: 'onboarding',
+      is_live: syncIsLiveWithLifecycle('onboarding'),
+    })
+    .select('id, name')
+    .single();
+  if (insertErr) throw new Error(insertErr.message);
+
+  const submission = await applyPendingOnboardingToClient(service, submissionId, client.id, submittedBy);
+  return { client: client as { id: string; name: string }, submission };
+}
+
 export async function insertOnboardingContacts(
   service: SupabaseClient,
   clientId: string,
