@@ -708,8 +708,12 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
 
         {/* Content */}
         <main
-          className={`flex-1 min-h-0 p-6 md:p-8 flex flex-col ${
-            view === "admin_billing" ? "overflow-hidden" : "overflow-auto"
+          className={`flex-1 min-h-0 flex flex-col ${
+            view === "admin_billing"
+              ? "overflow-hidden p-6 md:p-8"
+              : view === "admin_clients"
+                ? "overflow-auto px-6 md:px-8 pb-6 md:pb-8 pt-0"
+                : "overflow-auto p-6 md:p-8"
           }`}
           style={{ background: "#080f1e" }}
         >

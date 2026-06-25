@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
 import AddClientOfferModal from "@/components/AddClientOfferModal";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
@@ -218,7 +218,7 @@ function tenureLabel(c: Client): { text: string; title: string; muted: boolean }
   return { text: "—", title: "No launch or signed date on file", muted: true };
 }
 
-function RosterColumnHead({ columns, stickyTop = 0 }: { columns: ColumnKey[]; stickyTop?: number }) {
+function RosterColumnHead({ columns }: { columns: ColumnKey[] }) {
   const headers = ["Client", "Status", ...columns.map(k => COLUMN_DEFS[k].header), ""];
   return (
     <thead>
@@ -226,9 +226,8 @@ function RosterColumnHead({ columns, stickyTop = 0 }: { columns: ColumnKey[]; st
         {headers.map((h, i) => (
           <th
             key={i}
-            className={`sticky z-20 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${i === headers.length - 1 ? "text-right" : "text-left"}`}
+            className={`px-3 py-2.5 text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${i === headers.length - 1 ? "text-right" : "text-left"}`}
             style={{
-              top: stickyTop,
               color: "#475569",
               background: "#0a1628",
               boxShadow: "0 1px 0 rgba(255,255,255,0.06)",
@@ -409,8 +408,6 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     return window.localStorage.getItem("rosterSectionTab") === "forms" ? "forms" : "clients";
   });
   const [unmappedCount, setUnmappedCount] = useState(0);
-  const rosterFilterRef = useRef<HTMLDivElement>(null);
-  const [rosterFilterHeight, setRosterFilterHeight] = useState(0);
 
   function changeSectionTab(tab: "clients" | "forms") {
     setSectionTab(tab);
@@ -426,16 +423,6 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   useEffect(() => {
     refreshUnmappedCount();
   }, []);
-
-  useEffect(() => {
-    const el = rosterFilterRef.current;
-    if (!el) return;
-    const measure = () => setRosterFilterHeight(el.offsetHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [sectionTab, rosterView, offerFilter, packageFilter, statusFilter, query, clients.length]);
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
@@ -712,7 +699,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 pt-6 md:pt-8">
       <div className="shrink-0 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-2">
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Roster</h2>
@@ -793,19 +780,18 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
           {loadError ? "Client list unavailable." : "No clients yet. Add one above."}
         </div>
       ) : (
-        <div
-          className="rounded-xl"
-          style={{ border: "1px solid rgba(255,255,255,0.06)" }}
-        >
+        <div style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
           <div
-            ref={rosterFilterRef}
-            className="sticky top-0 z-30 flex flex-col"
+            className="sticky top-0 z-30 -mx-6 md:-mx-8 px-6 md:px-8"
             style={{
-              background: "#0a1628",
+              background: "#080f1e",
               borderBottom: "1px solid rgba(255,255,255,0.06)",
-              boxShadow: "0 4px 24px rgba(2,6,15,0.45)",
             }}
           >
+            <div
+              className="flex flex-col"
+              style={{ background: "#0a1628" }}
+            >
           <div
             className="flex items-center gap-3 flex-wrap px-3 py-2.5"
           >
@@ -948,11 +934,12 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 : `Showing ${matchTotal} ${matchTotal === 1 ? "client" : "clients"}${q ? ` matching “${query.trim()}”` : ""}.`}
             </p>
           )}
+            </div>
           </div>
 
           <div style={{ background: "#080f1e" }}>
             <table className="text-sm w-full min-w-[720px] border-separate border-spacing-0">
-              <RosterColumnHead columns={columns} stickyTop={rosterFilterHeight} />
+              <RosterColumnHead columns={columns} />
               <tbody>
                 {visibleSections.map(section => {
                   const sectionAccounts = grouped[section.key];
