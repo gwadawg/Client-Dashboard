@@ -12,9 +12,10 @@ import { replayPendingForClientId } from '@/lib/pending-events';
 import { getFormProgressForClients } from '@/lib/form-submissions';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import { normalizeClientLeadSource } from '@/lib/client-lead-source';
+import { ensureAccountGroupForNewClient } from '@/lib/client-account-groups';
 
 const DETAIL_FIELDS =
-  'id, name, is_live, reporting_type, service_program, sales_package, offer, share_token, created_at, lifecycle_status, mrr, daily_adspend, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id';
+  'id, name, is_live, reporting_type, service_program, sales_package, offer, share_token, created_at, lifecycle_status, mrr, daily_adspend, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id, account_group_id, engagement_kind';
 
 // GET is intentionally open to any authenticated user: the client list powers
 // the global client-filter dropdown on nearly every tab, so it is a shared
@@ -75,8 +76,30 @@ export async function GET(req: Request) {
     form_progress: formProgress[c.id] ?? {},
   }));
 
+  const groupIds = [...new Set((clientsRes.data ?? []).map(c => c.account_group_id).filter(Boolean))] as string[];
+  let accountGroups: Record<string, { id: string; display_name: string; primary_email: string | null }> = {};
+  if (groupIds.length) {
+    const { data: groups, error: groupsErr } = await ctx.service
+      .from('client_account_groups')
+      .select('id, display_name, primary_email')
+      .in('id', groupIds);
+    if (groupsErr) return NextResponse.json({ error: groupsErr.message }, { status: 500 });
+    accountGroups = Object.fromEntries((groups ?? []).map(g => [g.id, g]));
+  }
+
+  const clientsEnriched = clientsWithProgress.map(c => ({
+    ...c,
+    account_display_name: c.account_group_id
+      ? accountGroups[c.account_group_id as string]?.display_name ?? null
+      : null,
+    account_primary_email: c.account_group_id
+      ? accountGroups[c.account_group_id as string]?.primary_email ?? null
+      : null,
+  }));
+
   return NextResponse.json({
-    clients: clientsWithProgress,
+    clients: clientsEnriched,
+    account_groups: accountGroups,
     can_view_revenue: includeRevenue,
     can_view_total_paid: includeRevenue,
   });
@@ -145,6 +168,20 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+
+    const accountLink = await ensureAccountGroupForNewClient(ctx.service, {
+      name: insert.name as string,
+      primary_contact_name: (insert.primary_contact_name as string | null) ?? null,
+      primary_contact: (insert.primary_contact as string | null) ?? null,
+      email: (insert.email as string | null) ?? null,
+      account_group_id: body.account_group_id ?? null,
+      origin_client_id: body.origin_client_id ?? null,
+      engagement_kind: body.engagement_kind,
+      reporting_type: normalizeReportingType(insert.reporting_type),
+    });
+    insert.account_group_id = accountLink.account_group_id;
+    insert.engagement_kind = accountLink.engagement_kind;
+    if (accountLink.origin_client_id) insert.origin_client_id = accountLink.origin_client_id;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: message }, { status: 500 });

@@ -22,6 +22,7 @@ export type Billing = {
 export type ClientBilling = {
   id: string;
   name: string;
+  reporting_type?: string | null;
   is_live: boolean | null;
   lifecycle_status: string | null;
   billing_paused: boolean | null;

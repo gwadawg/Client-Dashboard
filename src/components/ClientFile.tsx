@@ -46,6 +46,7 @@ import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import ClientInterventionHistory from "@/components/ClientInterventionHistory";
+import ClientAccountOffersPanel from "@/components/ClientAccountOffersPanel";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import type { ClientContact } from "@/lib/client-contacts";
@@ -224,17 +225,25 @@ export default function ClientFile({
   fallbackName,
   onClose,
   onUpdated,
+  onSwitchClient,
+  onOfferCreated,
   scrollToNotes = false,
   scrollToCalls = false,
   openCheckinForm = false,
+  openKickoff = false,
+  openAddOffer = false,
 }: {
   clientId: string;
   fallbackName: string;
   onClose: () => void;
   onUpdated?: () => void;
+  onSwitchClient?: (id: string, name: string) => void;
+  onOfferCreated?: (id: string, name: string) => void;
   scrollToNotes?: boolean;
   scrollToCalls?: boolean;
   openCheckinForm?: boolean;
+  openKickoff?: boolean;
+  openAddOffer?: boolean;
 }) {
   const [client, setClient] = useState<FileClient | null>(null);
   const [billings, setBillings] = useState<FileBilling[]>([]);
@@ -274,7 +283,7 @@ export default function ClientFile({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [statusChange, setStatusChange] = useState<{ targetStatus: string; pendingBody: Record<string, unknown> } | null>(null);
-  const [showKickoff, setShowKickoff] = useState(false);
+  const [showKickoff, setShowKickoff] = useState(openKickoff);
   const [showLaunch, setShowLaunch] = useState(false);
   const [showOffboard, setShowOffboard] = useState(false);
 
@@ -721,6 +730,23 @@ export default function ClientFile({
           </div>
         ) : (
           <div className="px-6 py-5 space-y-7">
+            <ClientAccountOffersPanel
+              clientId={clientId}
+              canViewRevenue={canViewRevenue}
+              defaultShowAdd={openAddOffer}
+              onSwitchClient={(id, siblingName) => {
+                if (onSwitchClient) onSwitchClient(id, siblingName);
+              }}
+              onOfferAdded={(id, siblingName) => {
+                if (onOfferCreated) onOfferCreated(id, siblingName);
+                else {
+                  onSwitchClient?.(id, siblingName);
+                  setShowKickoff(true);
+                }
+                onUpdated?.();
+              }}
+            />
+
             {(kickoffPending || isKickoffLifecycle(client?.lifecycle_status)) && (
               <div
                 className="rounded-lg px-4 py-3 flex items-start justify-between gap-4 flex-wrap"

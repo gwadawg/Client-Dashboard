@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
+import AddClientOfferModal from "@/components/AddClientOfferModal";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
@@ -29,6 +30,12 @@ import {
   type ClientKpiBenchmarks,
   type KpiKey,
 } from "@/lib/client-health";
+import {
+  countRosterAccounts,
+  groupClientsIntoAccounts,
+  rosterAccountDisplayName,
+  type RosterAccountGroup,
+} from "@/lib/roster-account-groups";
 
 type DataSummary = {
   events: number;
@@ -68,6 +75,10 @@ type Client = {
   kpi_benchmarks_note?: string | null;
   clickup_task_id?: string | null;
   ghl_location_id?: string | null;
+  account_group_id?: string | null;
+  account_display_name?: string | null;
+  account_primary_email?: string | null;
+  engagement_kind?: string | null;
   total_paid?: number;
   form_progress?: Partial<Record<"new_client" | "onboarding" | "kickoff" | "launch", boolean>>;
 };
@@ -269,17 +280,43 @@ function clientSectionKey(c: Client): SectionKey {
   return "active";
 }
 
-function groupClientsBySection(clients: Client[]): Record<SectionKey, Client[]> {
-  const groups = Object.fromEntries(ROSTER_SECTIONS.map(s => [s.key, [] as Client[]])) as Record<SectionKey, Client[]>;
-  for (const c of clients) {
-    groups[clientSectionKey(c)].push(c);
+const LIFECYCLE_PRIORITY: Record<string, number> = {
+  active: 5,
+  onboarding: 4,
+  new_account: 3,
+  paused: 2,
+  off_boarding: 1,
+  churned: 0,
+};
+
+function accountSectionKey(group: RosterAccountGroup): SectionKey {
+  let bestPri = -1;
+  let best: SectionKey = "active";
+  for (const c of group.offers) {
+    const section = clientSectionKey(c as Client);
+    const pri = LIFECYCLE_PRIORITY[c.lifecycle_status ?? "active"] ?? 0;
+    if (pri > bestPri) {
+      bestPri = pri;
+      best = section;
+    }
+  }
+  return best;
+}
+
+function groupAccountsBySection(groups: RosterAccountGroup[]): Record<SectionKey, RosterAccountGroup[]> {
+  const result = Object.fromEntries(ROSTER_SECTIONS.map(s => [s.key, [] as RosterAccountGroup[]])) as Record<
+    SectionKey,
+    RosterAccountGroup[]
+  >;
+  for (const g of groups) {
+    result[accountSectionKey(g)].push(g);
   }
   for (const section of ROSTER_SECTIONS) {
-    groups[section.key].sort((a, b) =>
-      (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" }),
+    result[section.key].sort((a, b) =>
+      rosterAccountDisplayName(a).localeCompare(rosterAccountDisplayName(b), undefined, { sensitivity: "base" }),
     );
   }
-  return groups;
+  return result;
 }
 
 function formatDate(iso: string | null | undefined): string {
@@ -303,6 +340,7 @@ function clientMatchesQuery(c: Client, q: string): boolean {
     c.name,
     c.primary_contact_name,
     c.primary_contact,
+    c.account_display_name,
     c.clickup_task_id,
     ...(c.states_licensed ?? []),
   ]
@@ -331,7 +369,21 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [benchmarksFor, setBenchmarksFor] = useState<string | null>(null);
-  const [fileFor, setFileFor] = useState<{ id: string; name: string; scrollToNotes?: boolean; scrollToCalls?: boolean; openCheckinForm?: boolean } | null>(null);
+  const [fileFor, setFileFor] = useState<{
+    id: string;
+    name: string;
+    scrollToNotes?: boolean;
+    scrollToCalls?: boolean;
+    openCheckinForm?: boolean;
+    openKickoff?: boolean;
+    openAddOffer?: boolean;
+  } | null>(null);
+  const [addOfferFor, setAddOfferFor] = useState<{
+    originClientId: string;
+    accountDisplayName: string;
+    existingReportingTypes: string[];
+    accountGroupId?: string;
+  } | null>(null);
   const [kickoffFor, setKickoffFor] = useState<{ id: string; name: string } | null>(null);
   const [launchFor, setLaunchFor] = useState<{ id: string; name: string } | null>(null);
   const [offboardFor, setOffboardFor] = useState<{ id: string; name: string } | null>(null);
@@ -348,6 +400,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     const saved = window.localStorage.getItem("rosterView");
     return saved === "cs" || saved === "media" ? saved : "full";
   });
+  const [collapsedAccounts, setCollapsedAccounts] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     fetch("/api/clients?detail=1")
@@ -518,11 +571,109 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     if (!q) return true;
     return clientMatchesQuery(c, q);
   });
-  const grouped = groupClientsBySection(matched);
-  const counts = groupClientsBySection(clients);
+  const grouped = groupAccountsBySection(groupClientsIntoAccounts(matched));
+  const accountTotal = countRosterAccounts(clients);
+  const counts = groupAccountsBySection(groupClientsIntoAccounts(clients));
   const isFiltering = q.length > 0 || statusFilter !== "all" || offerFilter !== "all" || packageFilter !== "all";
   const visibleSections = ROSTER_SECTIONS.filter(s => statusFilter === "all" || s.key === statusFilter);
   const matchTotal = visibleSections.reduce((n, s) => n + grouped[s.key].length, 0);
+
+  function toggleAccountExpanded(accountGroupId: string) {
+    setCollapsedAccounts(prev => {
+      const next = new Set(prev);
+      if (next.has(accountGroupId)) next.delete(accountGroupId);
+      else next.add(accountGroupId);
+      return next;
+    });
+  }
+
+  function openClientFile(
+    id: string,
+    name: string,
+    opts?: {
+      openKickoff?: boolean;
+      openAddOffer?: boolean;
+      scrollToNotes?: boolean;
+      scrollToCalls?: boolean;
+      openCheckinForm?: boolean;
+    },
+  ) {
+    setFileFor({ id, name, ...opts });
+  }
+
+  function openAddOfferModal(ctx: {
+    originClientId: string;
+    accountDisplayName: string;
+    existingReportingTypes: string[];
+    accountGroupId?: string;
+  }) {
+    setAddOfferFor(ctx);
+  }
+
+  async function handleOfferCreated(id: string, name: string, accountGroupId?: string) {
+    setAddOfferFor(null);
+    if (accountGroupId) {
+      setCollapsedAccounts(prev => {
+        const next = new Set(prev);
+        next.delete(accountGroupId);
+        return next;
+      });
+    }
+    await reload();
+    openClientFile(id, name, { openKickoff: true });
+  }
+
+  function renderClientRow(
+    c: Client,
+    opts: {
+      key: string;
+      striped: boolean;
+      variant: "standalone" | "subaccount";
+    },
+  ) {
+    return (
+      <ClientRow
+        key={opts.key}
+        client={c}
+        variant={opts.variant}
+        allClients={clients}
+        columns={columns}
+        colSpan={colSpan}
+        striped={opts.striped}
+        busy={busy === c.id}
+        confirmingDelete={confirmDelete === c.id}
+        deleteSummary={confirmDelete === c.id ? deleteSummary : null}
+        mergeTargetId={mergeTargetId}
+        onMergeTargetChange={setMergeTargetId}
+        benchmarksOpen={benchmarksFor === c.id}
+        actionsOpen={actionsFor === c.id}
+        onToggleActions={() => setActionsFor(prev => (prev === c.id ? null : c.id))}
+        onRequestStatusChange={target => requestStatusChange(c, target)}
+        onPatch={patchClient}
+        onOpenFile={() => openClientFile(c.id, c.name)}
+        onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
+        onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
+        onOpenOffboard={() => setOffboardFor({ id: c.id, name: c.name })}
+        onOpenNotes={() => openClientFile(c.id, c.name, { scrollToNotes: true })}
+        onOpenCalls={() => openClientFile(c.id, c.name, { scrollToCalls: true })}
+        onLogCheckin={() => openClientFile(c.id, c.name, { scrollToCalls: true, openCheckinForm: true })}
+        onAddOffer={() =>
+          openAddOfferModal({
+            originClientId: c.id,
+            accountDisplayName:
+              c.account_display_name || c.primary_contact_name || c.primary_contact || c.name,
+            existingReportingTypes: c.reporting_type ? [c.reporting_type] : [],
+            accountGroupId: c.account_group_id ?? undefined,
+          })
+        }
+        onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
+        onAskDelete={() => askDelete(c)}
+        onCancelDelete={cancelDelete}
+        onMerge={() => handleMerge(c.id)}
+        onDelete={() => handleDelete(c.id)}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 min-h-0 flex-1 h-full">
@@ -544,9 +695,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 className="absolute left-0 top-7 z-30 w-80 rounded-xl p-4 text-xs leading-relaxed shadow-xl"
                 style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.12)", color: "#94a3b8" }}
               >
-                <p>Clients are grouped by lifecycle status. The <strong style={{ color: "#cbd5e1" }}>sub-account name</strong> must match the GHL location name — that is how leads map in. The <strong style={{ color: "#cbd5e1" }}>client name</strong> is the person or business contact.</p>
-                <p className="mt-2">Only <strong style={{ color: "#cbd5e1" }}>Active</strong> (launched) clients feed dashboard reporting and the &ldquo;Live Clients&rdquo; filter. New account, onboarding, paused, off-boarding, and churned clients are offline until launch.</p>
-                <p className="mt-2">Open a client&rsquo;s file to edit details, log calls/notes, or run kick-off, launch, and offboarding. If you see duplicates, merge into the file you want to keep — do not delete a row that has reporting data.</p>
+                <p>One row per <strong style={{ color: "#cbd5e1" }}>client (LO)</strong>. Accounts with multiple GHL subaccounts expand to show each offer below. The <strong style={{ color: "#cbd5e1" }}>sub-account name</strong> must match the GHL location name — that is how leads map in.</p>
+                <p className="mt-2">Only <strong style={{ color: "#cbd5e1" }}>Active</strong> (launched) clients feed dashboard reporting and the &ldquo;Live Clients&rdquo; filter. Open a subaccount&rsquo;s file for billing, kick-off, and GHL mapping per offer.</p>
               </div>
             )}
           </div>
@@ -615,7 +765,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
               <input
                 value={query}
                 onChange={e => setQuery(e.target.value)}
-                placeholder="Search by sub-account, contact, state, or ClickUp ID…"
+                placeholder="Search by client, sub-account, state, or ClickUp ID…"
                 className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none"
                 style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
               />
@@ -634,7 +784,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
             <div className="flex items-center gap-1.5 flex-wrap">
               {([{ key: "all", label: "All" }, ...ROSTER_SECTIONS] as const).map(opt => {
                 const isAll = opt.key === "all";
-                const count = isAll ? clients.length : counts[opt.key as SectionKey].length;
+                const count = isAll ? accountTotal : counts[opt.key as SectionKey].length;
                 const active = statusFilter === opt.key;
                 const accent = isAll ? "#94a3b8" : SECTION_ACCENT[opt.key as SectionKey];
                 return (
@@ -670,7 +820,9 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
               {REPORTING_TYPES.map(type => {
                 const active = offerFilter === type;
                 const meta = REPORTING_TYPE_META[type];
-                const count = clients.filter(c => normalizeReportingType(c.reporting_type) === type).length;
+                const count = countRosterAccounts(
+                  clients.filter(c => normalizeReportingType(c.reporting_type) === type),
+                );
                 return (
                   <button
                     key={type}
@@ -747,56 +899,73 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
               <RosterColumnHead columns={columns} />
               <tbody>
                 {visibleSections.map(section => {
-                  const sectionClients = grouped[section.key];
-                  if (isFiltering && sectionClients.length === 0) return null;
+                  const sectionAccounts = grouped[section.key];
+                  if (isFiltering && sectionAccounts.length === 0) return null;
                   const accent = SECTION_ACCENT[section.key];
                   return (
                     <Fragment key={section.key}>
                       <RosterSectionRow
                         label={section.label}
-                        count={sectionClients.length}
+                        count={sectionAccounts.length}
                         accent={accent}
                         colSpan={colSpan}
                       />
-                      {sectionClients.length === 0 ? (
+                      {sectionAccounts.length === 0 ? (
                         <tr className="bg-[#080f1e]">
                           <td colSpan={colSpan} className="px-4 py-6 text-center text-sm" style={{ color: "#334155" }}>
                             No clients in this group
                           </td>
                         </tr>
                       ) : (
-                        sectionClients.map((c, i) => (
-                          <ClientRow
-                            key={c.id}
-                            client={c}
-                            allClients={clients}
-                            columns={columns}
-                            colSpan={colSpan}
-                            striped={i % 2 === 0}
-                            busy={busy === c.id}
-                            confirmingDelete={confirmDelete === c.id}
-                            deleteSummary={confirmDelete === c.id ? deleteSummary : null}
-                            mergeTargetId={mergeTargetId}
-                            onMergeTargetChange={setMergeTargetId}
-                            benchmarksOpen={benchmarksFor === c.id}
-                            actionsOpen={actionsFor === c.id}
-                            onToggleActions={() => setActionsFor(prev => (prev === c.id ? null : c.id))}
-                            onRequestStatusChange={target => requestStatusChange(c, target)}
-                            onPatch={patchClient}
-                            onOpenFile={() => setFileFor({ id: c.id, name: c.name })}
-                            onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
-                            onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
-                            onOpenOffboard={() => setOffboardFor({ id: c.id, name: c.name })}
-                            onOpenNotes={() => setFileFor({ id: c.id, name: c.name, scrollToNotes: true })}
-                            onOpenCalls={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true })}
-                            onLogCheckin={() => setFileFor({ id: c.id, name: c.name, scrollToCalls: true, openCheckinForm: true })}
-                            onToggleBenchmarks={() => setBenchmarksFor(prev => (prev === c.id ? null : c.id))}
-                            onAskDelete={() => askDelete(c)}
-                            onCancelDelete={cancelDelete}
-                            onMerge={() => handleMerge(c.id)}
-                            onDelete={() => handleDelete(c.id)}
-                          />
-                        ))
+                        sectionAccounts.map((group, i) => {
+                          if (group.offers.length === 1) {
+                            return renderClientRow(group.offers[0] as Client, {
+                              key: group.offers[0].id,
+                              striped: i % 2 === 0,
+                              variant: "standalone",
+                            });
+                          }
+                          const expanded = isFiltering || !collapsedAccounts.has(group.accountGroupId);
+                          const combinedMrr = showRevenue
+                            ? group.offers.reduce((sum, o) => sum + (typeof o.mrr === "number" ? o.mrr : 0), 0)
+                            : null;
+                          return (
+                            <Fragment key={group.accountGroupId}>
+                              <AccountGroupHeaderRow
+                                group={group}
+                                expanded={expanded}
+                                striped={i % 2 === 0}
+                                colSpan={colSpan}
+                                showRevenue={showRevenue}
+                                combinedMrr={combinedMrr}
+                                onToggle={() => toggleAccountExpanded(group.accountGroupId)}
+                                onOpenPrimary={() => {
+                                  const primary = group.offers[0] as Client;
+                                  openClientFile(primary.id, primary.name);
+                                }}
+                                onAddOffer={() => {
+                                  const primary = group.offers[0] as Client;
+                                  openAddOfferModal({
+                                    originClientId: primary.id,
+                                    accountDisplayName: rosterAccountDisplayName(group),
+                                    existingReportingTypes: group.offers
+                                      .map(o => o.reporting_type)
+                                      .filter(Boolean) as string[],
+                                    accountGroupId: group.accountGroupId,
+                                  });
+                                }}
+                              />
+                              {expanded &&
+                                group.offers.map((c, j) =>
+                                  renderClientRow(c as Client, {
+                                    key: c.id,
+                                    striped: j % 2 === 0,
+                                    variant: "subaccount",
+                                  }),
+                                )}
+                            </Fragment>
+                          );
+                        })
                       )}
                     </Fragment>
                   );
@@ -843,30 +1012,131 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         />
       )}
 
+      {addOfferFor && (
+        <AddClientOfferModal
+          originClientId={addOfferFor.originClientId}
+          accountDisplayName={addOfferFor.accountDisplayName}
+          existingReportingTypes={addOfferFor.existingReportingTypes}
+          canViewRevenue={showRevenue}
+          onClose={() => setAddOfferFor(null)}
+          onCreated={({ id, name }) => void handleOfferCreated(id, name, addOfferFor.accountGroupId)}
+        />
+      )}
+
       {fileFor && (
         <ClientFile
-          key={`${fileFor.id}-${fileFor.openCheckinForm ? "checkin" : fileFor.scrollToCalls ? "calls" : fileFor.scrollToNotes ? "notes" : "file"}`}
+          key={`${fileFor.id}-${fileFor.openCheckinForm ? "checkin" : fileFor.scrollToCalls ? "calls" : fileFor.scrollToNotes ? "notes" : "file"}-${fileFor.openKickoff ? "kickoff" : ""}-${fileFor.openAddOffer ? "addoffer" : ""}`}
           clientId={fileFor.id}
           fallbackName={fileFor.name}
           scrollToNotes={fileFor.scrollToNotes}
           scrollToCalls={fileFor.scrollToCalls}
           openCheckinForm={fileFor.openCheckinForm}
+          openKickoff={fileFor.openKickoff}
+          openAddOffer={fileFor.openAddOffer}
           onClose={() => setFileFor(null)}
           onUpdated={reload}
+          onSwitchClient={(id, name) => openClientFile(id, name)}
+          onOfferCreated={(id, name) => void handleOfferCreated(id, name, clients.find(c => c.id === fileFor.id)?.account_group_id ?? undefined)}
         />
       )}
     </div>
   );
 }
 
+function AccountGroupHeaderRow({
+  group,
+  expanded,
+  striped,
+  colSpan,
+  showRevenue,
+  combinedMrr,
+  onToggle,
+  onOpenPrimary,
+  onAddOffer,
+}: {
+  group: RosterAccountGroup;
+  expanded: boolean;
+  striped: boolean;
+  colSpan: number;
+  showRevenue: boolean;
+  combinedMrr: number | null;
+  onToggle: () => void;
+  onOpenPrimary: () => void;
+  onAddOffer: () => void;
+}) {
+  const name = rosterAccountDisplayName(group);
+  const offerTypes = [...new Set(group.offers.map(o => normalizeReportingType(o.reporting_type)))];
+  const rowBg = striped ? "bg-[#0b1424]" : "bg-[#080f1e]";
+
+  return (
+    <tr className={`${rowBg} border-t border-white/[0.05]`} style={{ background: striped ? "#0b1424" : "#080f1e" }}>
+      <td colSpan={colSpan - 1} className="px-3 py-2.5 align-middle">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="text-xs font-semibold w-6 h-6 rounded flex items-center justify-center shrink-0"
+            style={{ color: "#94a3b8", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+            aria-expanded={expanded}
+            title={expanded ? "Collapse subaccounts" : "Expand subaccounts"}
+          >
+            {expanded ? "▾" : "▸"}
+          </button>
+          <span className="text-sm font-semibold truncate" style={{ color: "#e2e8f0" }} title={name}>
+            {name}
+          </span>
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded shrink-0"
+            style={{ color: "#38bdf8", background: "rgba(56,189,248,0.12)" }}
+          >
+            {group.offers.length} subaccounts
+          </span>
+          {offerTypes.map(rt => (
+            <ReportingTypeBadge key={rt} value={rt} size="sm" />
+          ))}
+          {group.primaryEmail && (
+            <span className="text-xs truncate" style={{ color: "#64748b" }}>{group.primaryEmail}</span>
+          )}
+          {showRevenue && combinedMrr != null && combinedMrr > 0 && (
+            <span className="text-xs" style={{ color: "#94a3b8" }}>{moneyShort(combinedMrr)} MRR total</span>
+          )}
+        </div>
+      </td>
+      <td className="px-3 py-2 text-right whitespace-nowrap">
+        <span className="inline-flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onAddOffer}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+            style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)" }}
+            title="Add another offer / subaccount"
+          >
+            + Offer
+          </button>
+          <button
+            type="button"
+            onClick={onOpenPrimary}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+            style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.25)" }}
+            title="Open client file"
+          >
+            Open
+          </button>
+        </span>
+      </td>
+    </tr>
+  );
+}
+
 function ClientRow({
-  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange,   columns, colSpan, benchmarksOpen, actionsOpen, onToggleActions, onRequestStatusChange, onPatch, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete,
+  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange,   columns, colSpan, benchmarksOpen, actionsOpen, onToggleActions, onRequestStatusChange, onPatch, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onAddOffer, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete, variant = "standalone",
 }: {
   client: Client;
   allClients: Client[];
   columns: ColumnKey[];
   colSpan: number;
   striped: boolean;
+  variant?: "standalone" | "subaccount";
   busy: boolean;
   confirmingDelete: boolean;
   deleteSummary: { id: string; name: string; summary: DataSummary } | null;
@@ -884,6 +1154,7 @@ function ClientRow({
   onOpenNotes: () => void;
   onOpenCalls: () => void;
   onLogCheckin: () => void;
+  onAddOffer: () => void;
   onToggleBenchmarks: () => void;
   onAskDelete: () => void;
   onCancelDelete: () => void;
@@ -891,8 +1162,9 @@ function ClientRow({
   onDelete: () => void;
 }) {
   const c = client;
+  const isSubaccount = variant === "subaccount";
   const rowBg = striped ? "bg-[#0b1424]" : "bg-[#080f1e]";
-  const cell = "px-3 py-2.5 align-middle";
+  const cell = `px-3 py-2.5 align-middle${isSubaccount ? " pl-10" : ""}`;
   const clientName = c.primary_contact_name ?? c.primary_contact ?? "";
   const hasOverrides = !!c.kpi_benchmarks && Object.keys(c.kpi_benchmarks).length > 0;
   const stale = benchmarksStale(c);
@@ -908,15 +1180,24 @@ function ClientRow({
 
   return (
     <>
-    <tr className={`${rowBg} border-t border-white/[0.05] transition-colors hover:bg-[#0f1c30]`}>
+    <tr className={`${rowBg} border-t border-white/[0.05] transition-colors hover:bg-[#0f1c30]`} style={isSubaccount ? { background: "#060d1a" } : undefined}>
       <td className={cell}>
         <div className="flex flex-col gap-0.5 min-w-0">
             <span className="flex items-center gap-2 min-w-0">
+            {isSubaccount && (
+              <span className="text-[10px] uppercase tracking-wide shrink-0" style={{ color: "#475569" }}>↳</span>
+            )}
             <ReportingTypeBadge value={c.reporting_type} />
             <SalesPackageBadge value={c.sales_package} />
-            <span className="text-sm font-medium truncate max-w-[16rem]" style={{ color: clientName ? "#e2e8f0" : "#475569" }} title={clientName || "No client name set"}>
-              {clientName || "Unnamed client"}
-            </span>
+            {isSubaccount ? (
+              <span className="text-sm font-medium truncate max-w-[16rem]" style={{ color: "#e2e8f0" }} title={`GHL sub-account: ${c.name ?? "—"}`}>
+                {c.name || "—"}
+              </span>
+            ) : (
+              <span className="text-sm font-medium truncate max-w-[16rem]" style={{ color: clientName ? "#e2e8f0" : "#475569" }} title={clientName || "No client name set"}>
+                {clientName || "Unnamed client"}
+              </span>
+            )}
             {needsGhlMapping && (
               <span
                 className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded shrink-0"
@@ -927,9 +1208,16 @@ function ClientRow({
               </span>
             )}
           </span>
-          <span className="text-xs truncate max-w-[18rem]" style={{ color: "#64748b" }} title={`GHL sub-account: ${c.name ?? "—"}`}>
-            {c.name || "—"}
-          </span>
+          {!isSubaccount && (
+            <span className="text-xs truncate max-w-[18rem]" style={{ color: "#64748b" }} title={`GHL sub-account: ${c.name ?? "—"}`}>
+              {c.name || "—"}
+            </span>
+          )}
+          {isSubaccount && c.engagement_kind && c.engagement_kind !== "initial" && (
+            <span className="text-[10px] uppercase tracking-wide" style={{ color: "#64748b" }}>
+              {c.engagement_kind === "cross_sell" ? "Cross-sell" : "Upsell"}
+            </span>
+          )}
         </div>
       </td>
       <td className={cell}>
@@ -1041,6 +1329,9 @@ function ClientRow({
             {showOffboardAction && (
               <ActionButton onClick={onOpenOffboard} color="#f87171" title="Open churn offboarding form">Offboard</ActionButton>
             )}
+            <ActionButton onClick={onAddOffer} color="#22c55e" title="Add another product offer / GHL subaccount">
+              + Offer
+            </ActionButton>
             <span className="inline-block w-px h-4" style={{ background: "rgba(255,255,255,0.1)" }} aria-hidden />
             <ActionButton onClick={onLogCheckin} color="#38bdf8" title="Log a client check-in call">Check-in</ActionButton>
             <ActionButton onClick={onOpenCalls} color="#f59e0b" title="Add or view account calls">Calls</ActionButton>

@@ -52,8 +52,26 @@ export async function assignClientToClose(
     .maybeSingle();
   if (conflict) throw new Error('That client is already linked to another close');
 
+  const { data: targetClient, error: targetErr } = await service
+    .from('clients')
+    .select('id, reporting_type')
+    .eq('id', clientId)
+    .single();
+  if (targetErr || !targetClient) throw new Error('Client not found');
+
+  if (close.reporting_type && targetClient.reporting_type) {
+    const closeType = normalizeReportingType(close.reporting_type);
+    const clientType = normalizeReportingType(targetClient.reporting_type);
+    if (closeType !== clientType) {
+      throw new Error(
+        `This close is for ${closeType} but the selected client is ${clientType}. ` +
+          'Use "Add offer to account" in the Client File to create a new subaccount row instead.',
+      );
+    }
+  }
+
   const clientPatch: Record<string, unknown> = {};
-  if (close.reporting_type) {
+  if (close.reporting_type && !targetClient.reporting_type) {
     clientPatch.reporting_type = close.reporting_type;
     clientPatch.offer = close.reporting_type;
   }

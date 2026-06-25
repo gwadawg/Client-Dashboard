@@ -44,6 +44,7 @@ import {
   normalizeReportingType,
   type ReportingType,
 } from "@/lib/kpi-layouts";
+import { REPORTING_TYPES } from "@/lib/reporting-types";
 import {
   NAV,
   NAV_GROUPS,
@@ -276,6 +277,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
   const [hubTab, setHubTab] = useState<string | null>(() => parseUrlView(searchParams).tab);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [offerScope, setOfferScope] = useState("");
   const [preset, setPreset] = useState<DatePreset>("this_month");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -368,22 +370,27 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
 
   useEffect(() => {
     setDashboardSubView("main");
-  }, [selectedClientId, preset, customStart, customEnd]);
+  }, [selectedClientId, offerScope, preset, customStart, customEnd]);
+
+  const appendDashboardMetricsParams = (params: URLSearchParams) => {
+    if (selectedClientId === "__live__") params.set("live_only", "true");
+    else if (selectedClientId) params.set("client_id", selectedClientId);
+    else if (offerScope) params.set("reporting_type", offerScope);
+  };
 
   useEffect(() => {
     if (view !== "dashboard" && view !== "kpi_simulator") return;
     const { start, end } = preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
     queueMicrotask(() => setMetricsLoading(true));
     const params = new URLSearchParams();
-    if (selectedClientId === "__live__") params.set("live_only", "true");
-    else if (selectedClientId) params.set("client_id", selectedClientId);
+    appendDashboardMetricsParams(params);
     if (start) params.set("start_date", start);
     if (end) params.set("end_date", end);
     fetch(`/api/metrics?${params}`)
       .then(r => r.json())
       .then(d => { setMetrics(d); setMetricsLoading(false); })
       .catch(() => setMetricsLoading(false));
-  }, [view, selectedClientId, preset, customStart, customEnd]);
+  }, [view, selectedClientId, offerScope, preset, customStart, customEnd]);
 
   // Previous-period comparison: fetch the equal-length window immediately before
   // the current range so each KPI card can show a vs-prev delta.
@@ -393,15 +400,14 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
     const prev = previousRange(start, end);
     if (!prev) { setPrevMetrics(null); return; }
     const params = new URLSearchParams();
-    if (selectedClientId === "__live__") params.set("live_only", "true");
-    else if (selectedClientId) params.set("client_id", selectedClientId);
+    appendDashboardMetricsParams(params);
     params.set("start_date", prev.start);
     params.set("end_date", prev.end);
     fetch(`/api/metrics?${params}`)
       .then(r => r.json())
       .then(d => setPrevMetrics(d))
       .catch(() => setPrevMetrics(null));
-  }, [view, compare, selectedClientId, preset, customStart, customEnd]);
+  }, [view, compare, selectedClientId, offerScope, preset, customStart, customEnd]);
 
   // Per-card sparklines: pull the daily/weekly KPI timeline and map each series
   // onto the metric key its card uses. Skipped for unbounded (all-time) ranges.
@@ -410,13 +416,12 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
     const { start, end } = preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
     if (!start || !end) { setSparkMap(null); return; }
     const params = new URLSearchParams({ start_date: start, end_date: end });
-    if (selectedClientId === "__live__") params.set("live_only", "true");
-    else if (selectedClientId) params.set("client_id", selectedClientId);
+    appendDashboardMetricsParams(params);
     fetch(`/api/metrics/trends?${params}`)
       .then(r => r.json())
       .then(d => setSparkMap(buildSparkMap(d.kpiSeries ?? [])))
       .catch(() => setSparkMap(null));
-  }, [view, selectedClientId, preset, customStart, customEnd]);
+  }, [view, selectedClientId, offerScope, preset, customStart, customEnd]);
 
   // Past-due, un-dispositioned appointment backlog. Deliberately keyed only on
   // the client selection (not the date preset) so it stays a running total.
@@ -639,7 +644,23 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
           {showDateFilters && (view === "admin_agent_payroll" || !view.startsWith("admin_")) && (
             <>
               {(view === "dashboard" || view === "kpi_simulator" || view === "dial_analytics" || view === "media_buyer") && (
+                <>
                 <ClientSelect value={selectedClientId} onChange={setSelectedClientId} clients={clients} />
+                {view === "dashboard" && !selectedClientId && (
+                  <select
+                    value={offerScope}
+                    onChange={e => setOfferScope(e.target.value)}
+                    className="px-3 py-2 rounded-lg text-sm font-medium"
+                    style={{ background: "#0f2040", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.12)" }}
+                    title="Filter metrics by product vertical"
+                  >
+                    <option value="">All offers</option>
+                    {REPORTING_TYPES.map(rt => (
+                      <option key={rt} value={rt}>{rt}</option>
+                    ))}
+                  </select>
+                )}
+                </>
               )}
 
               {view === "dashboard" && preset !== "all_time" && (

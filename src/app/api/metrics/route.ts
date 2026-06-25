@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { calculateMetrics } from '@/lib/metrics';
 import { fetchCombinedSpendForMetrics } from '@/lib/spend';
-import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
+import {
+  getClientIdsByReportingType,
+  getLiveClientIds,
+  intersectClientFilters,
+  liveClientFilter,
+} from '@/lib/db-helpers';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -14,12 +19,17 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const client_id = searchParams.get('client_id');
   const live_only = searchParams.get('live_only') === 'true';
+  const reporting_type = searchParams.get('reporting_type');
   const start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
 
-  let liveClientIds: string[] | null = null;
+  let scopedClientIds: string[] | null = null;
   if (live_only && !client_id) {
-    liveClientIds = await getLiveClientIds(ctx.service);
+    scopedClientIds = await getLiveClientIds(ctx.service);
+  }
+  if (reporting_type && !client_id) {
+    const offerIds = await getClientIdsByReportingType(ctx.service, reporting_type);
+    scopedClientIds = intersectClientFilters(scopedClientIds, offerIds);
   }
 
   let eventsQuery = ctx.service
@@ -27,7 +37,7 @@ export async function GET(req: Request) {
     .select('client_id, event_type, ghl_contact_id, lead_phone, lead_email, lead_name, phone_number_used, agent_name, occurred_at, occurred_at_has_time, lead_created_at, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state');
 
   if (client_id) eventsQuery = eventsQuery.eq('client_id', client_id);
-  else if (liveClientIds) eventsQuery = eventsQuery.in('client_id', liveClientFilter(liveClientIds));
+  else if (scopedClientIds) eventsQuery = eventsQuery.in('client_id', liveClientFilter(scopedClientIds));
   if (start_date) eventsQuery = eventsQuery.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsQuery = eventsQuery.lte('occurred_at', `${end_date}T23:59:59.999Z`);
   eventsQuery = eventsQuery.limit(100000);
@@ -37,7 +47,7 @@ export async function GET(req: Request) {
       eventsQuery,
       fetchCombinedSpendForMetrics(ctx.service, {
         client_id,
-        client_ids: liveClientIds,
+        client_ids: scopedClientIds,
         start_date,
         end_date,
       }).then(

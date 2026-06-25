@@ -5,6 +5,7 @@ import StatusChangeModal from "@/components/StatusChangeModal";
 import { useNavigateChurnOffboard } from "@/hooks/useNavigateChurnOffboard";
 import ViewHub from "@/components/nav/ViewHub";
 import PerformanceBilling from "@/components/billing/PerformanceBilling";
+import ReportingTypeBadge from "@/components/ReportingTypeBadge";
 import { isFixedBilling, isPerformanceBilling } from "@/lib/billing-model";
 import type { ClientBilling, RecordOpts, RecordedRow, ScheduleOpts, WorkRow } from "@/components/billing/billing-types";
 
@@ -686,8 +687,8 @@ function WorklistSection({
   onSchedule: (client: ClientBilling, opts: ScheduleOpts) => void;
 }) {
   const headers = canViewRevenue
-    ? ["Client", "Amount", "Paid", "Balance", "Due date", "When", "Status", "Action"]
-    : ["Client", "Due date", "When", "Status", "Action"];
+    ? ["Client", "Offer", "Amount", "Paid", "Balance", "Due date", "When", "Status", "Action"]
+    : ["Client", "Offer", "Due date", "When", "Status", "Action"];
   const colSpan = headers.length;
 
   return (
@@ -752,7 +753,7 @@ function WorkRowView({
   onSchedule: (client: ClientBilling, opts: ScheduleOpts) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const colSpan = canViewRevenue ? 8 : 5;
+  const colSpan = canViewRevenue ? 9 : 6;
 
   // Schedule-prompt rows get a subtly different background to signal "no
   // billing filed yet" without being alarming.
@@ -793,6 +794,14 @@ function WorkRowView({
             <div className="text-xs mt-0.5" style={{ color: "#475569" }}>
               No billing filed for this cycle
             </div>
+          )}
+        </td>
+
+        <td className="px-4 py-3">
+          {row.client.reporting_type ? (
+            <ReportingTypeBadge value={row.client.reporting_type} size="sm" />
+          ) : (
+            <span style={{ color: "#475569" }}>—</span>
           )}
         </td>
 
