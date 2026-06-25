@@ -745,6 +745,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
       </div>
 
       <ViewHub
+        fill
         tabs={[
           { key: "clients", label: "Clients" },
           {
@@ -764,7 +765,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
             }}
           />
         ) : (
-          <>
+          <div className="flex flex-col flex-1 min-h-0 gap-6 min-w-0 overflow-hidden">
       <div className="shrink-0 empty:hidden"><PendingFormSubmissionsPanel onResolved={reload} /></div>
 
       <div className="shrink-0 empty:hidden"><PendingEventsPanel onReplayed={reload} /></div>
@@ -1009,7 +1010,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
           </div>
         </div>
       )}
-          </>
+          </div>
         )}
       </ViewHub>
 

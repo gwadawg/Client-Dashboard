@@ -7,12 +7,14 @@ type Props = {
   activeTab: string;
   onTabChange: (key: string) => void;
   children: React.ReactNode;
+  /** When true, children fill remaining height and can scroll internally (e.g. Client Roster). */
+  fill?: boolean;
 };
 
-export default function ViewHub({ tabs, activeTab, onTabChange, children }: Props) {
+export default function ViewHub({ tabs, activeTab, onTabChange, children, fill = false }: Props) {
   return (
-    <div className="space-y-6">
-      <div className="overflow-x-auto -mx-1 px-1 pb-1">
+    <div className={fill ? "flex flex-col flex-1 min-h-0 gap-6 min-w-0" : "space-y-6"}>
+      <div className="shrink-0 overflow-x-auto -mx-1 px-1 pb-1">
         <div
           className="inline-flex p-1 rounded-full ring-1 ring-white/10"
           style={{ background: "rgba(255,255,255,0.04)" }}
@@ -41,7 +43,9 @@ export default function ViewHub({ tabs, activeTab, onTabChange, children }: Prop
           })}
         </div>
       </div>
-      <div>{children}</div>
+      <div className={fill ? "flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden" : undefined}>
+        {children}
+      </div>
     </div>
   );
 }
