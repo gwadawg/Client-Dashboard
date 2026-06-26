@@ -737,6 +737,41 @@ create table if not exists client_calls (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 14b2. Team Calls (coaching / team call library)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists team_calls (
+  id               uuid primary key default gen_random_uuid(),
+  title            text not null,
+  call_type        text not null,
+  called_at        timestamptz not null,
+  participants     text,
+  recording_url    text,
+  transcript       text,
+  summary          text,
+  highlights       jsonb not null default '[]',
+  highlights_text  text,
+  tags             text[] not null default '{}',
+  duration_seconds int,
+  deleted_at       timestamptz,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  created_by       uuid references auth.users(id) on delete set null,
+  updated_by       uuid references auth.users(id) on delete set null,
+  search_vector    tsvector generated always as (
+    to_tsvector('english',
+      coalesce(title, '') || ' ' ||
+      coalesce(transcript, '') || ' ' ||
+      coalesce(summary, '') || ' ' ||
+      coalesce(participants, '') || ' ' ||
+      coalesce(highlights_text, '')
+    )
+  ) stored,
+  constraint team_calls_type_check check (
+    call_type in ('coaching', 'team_meeting', 'role_play', 'training', '1on1', 'sales_review', 'other')
+  )
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 14c. Client Notes (append-only ongoing feedback)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists client_notes (
@@ -1113,6 +1148,10 @@ create table if not exists billing_reminder_log (
 );
 create index if not exists billing_reminder_log_date on billing_reminder_log(reminder_date desc);
 create index if not exists client_calls_search on client_calls using gin(search_vector);
+create index if not exists team_calls_search on team_calls using gin(search_vector);
+create index if not exists team_calls_tags on team_calls using gin(tags);
+create index if not exists team_calls_called_at on team_calls(called_at desc);
+create index if not exists team_calls_call_type on team_calls(call_type);
 create index if not exists client_notes_search on client_notes using gin(search_vector);
 
 -- Unmapped webhook events (arrived before sub-account name existed in roster)

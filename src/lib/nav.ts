@@ -20,6 +20,7 @@ export type View =
   | "state_looker"
   | HubView
   | "resources"
+  | "call_library"
   | "admin_agents"
   | "admin_clients"
   | "admin_billing"
@@ -224,6 +225,7 @@ export const NAV: NavItem[] = [
   { view: "acquisition_data_explorer", label: "Acquisition Data",      group: "Acquisition"  },
   { view: "agents",             label: "Call Center Hub",       group: "Team"         },
   { view: "resources",          label: "Resource Library",      group: "Team"         },
+  { view: "call_library",       label: "Call Library",          group: "Team"         },
   { view: "schedule",           label: "Power Dialer Schedule", group: "Team"         },
   { view: "admin_agents",       label: "Agent Roster",          group: "Admin"        },
   { view: "admin_clients",      label: "Client Roster",         group: "Admin"        },
