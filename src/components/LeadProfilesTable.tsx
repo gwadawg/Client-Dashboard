@@ -66,6 +66,22 @@ type LeadProfile = {
   timeline: TimelineItem[];
 };
 
+type UnmappedContact = LeadProfile & {
+  first_activity: string;
+  last_activity: string;
+  event_count: number;
+  event_types: Record<string, number>;
+};
+
+type MappingSummary = {
+  leads_in_period: number;
+  unmapped_contacts: number;
+  unmapped_events: number;
+  unmapped_by_type: Record<string, number>;
+};
+
+type TableView = "leads" | "unmapped";
+
 type Props = {
   clients: Client[];
   startDate: string;
@@ -109,9 +125,80 @@ function fmtPhone(phone: string | null) {
   return phone;
 }
 
-function ghlContactUrl(row: LeadProfile): string | null {
+function ghlContactUrl(row: Pick<LeadProfile, "ghl_location_id" | "ghl_contact_id">): string | null {
   if (!row.ghl_location_id || !row.ghl_contact_id) return null;
   return `https://app.gohighlevel.com/v2/location/${row.ghl_location_id}/contacts/detail/${row.ghl_contact_id}`;
+}
+
+function formatUnmappedTypes(byType: Record<string, number>): string {
+  return Object.entries(byType)
+    .sort((a, b) => b[1] - a[1])
+    .map(([type, count]) => `${count} ${EVENT_LABELS[type] ?? type}`)
+    .join(" · ");
+}
+
+function MappingBanner({
+  summary,
+  view,
+  onViewChange,
+}: {
+  summary: MappingSummary;
+  view: TableView;
+  onViewChange: (view: TableView) => void;
+}) {
+  if (summary.unmapped_contacts === 0) return null;
+
+  return (
+    <div
+      className="rounded-xl px-4 py-3 space-y-3"
+      style={{ background: "#422006", border: "1px solid rgba(251, 191, 36, 0.25)" }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <p className="text-sm font-semibold" style={{ color: "#fde68a" }}>
+            Unmapped activity detected
+          </p>
+          <p className="text-xs leading-relaxed max-w-3xl" style={{ color: "#fcd34d" }}>
+            {summary.unmapped_contacts.toLocaleString()} contact
+            {summary.unmapped_contacts === 1 ? "" : "s"} had{" "}
+            {summary.unmapped_events.toLocaleString()} event
+            {summary.unmapped_events === 1 ? "" : "s"} in this range with no matching{" "}
+            <code className="text-[11px]">lead</code> event on record. These are excluded from the
+            lead count ({summary.leads_in_period.toLocaleString()}) so it matches the dashboard.
+          </p>
+          {Object.keys(summary.unmapped_by_type).length > 0 && (
+            <p className="text-xs" style={{ color: "#fbbf24" }}>
+              {formatUnmappedTypes(summary.unmapped_by_type)}
+            </p>
+          )}
+        </div>
+        <div className="flex rounded-lg overflow-hidden shrink-0" style={{ border: "1px solid rgba(251, 191, 36, 0.3)" }}>
+          <button
+            type="button"
+            onClick={() => onViewChange("leads")}
+            className="px-3 py-1.5 text-xs font-semibold transition-colors"
+            style={{
+              background: view === "leads" ? "#f59e0b" : "transparent",
+              color: view === "leads" ? "#1c1917" : "#fde68a",
+            }}
+          >
+            Leads ({summary.leads_in_period.toLocaleString()})
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewChange("unmapped")}
+            className="px-3 py-1.5 text-xs font-semibold transition-colors"
+            style={{
+              background: view === "unmapped" ? "#f59e0b" : "transparent",
+              color: view === "unmapped" ? "#1c1917" : "#fde68a",
+            }}
+          >
+            Unmapped ({summary.unmapped_contacts.toLocaleString()})
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function csvEscape(s: string): string {
@@ -269,7 +356,7 @@ function TimelineRow({ item }: { item: TimelineItem }) {
 }
 
 export default function LeadProfilesTable({ clients: allClients, startDate, endDate }: Props) {
-  const [rows, setRows] = useState<LeadProfile[]>([]);
+  const [rows, setRows] = useState<(LeadProfile | UnmappedContact)[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -279,6 +366,8 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
   const [conversionFilter, setConversionFilter] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [tableView, setTableView] = useState<TableView>("leads");
+  const [mappingSummary, setMappingSummary] = useState<MappingSummary | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -288,16 +377,16 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
   useEffect(() => {
     setPage(1);
     setExpanded(new Set());
-  }, [clientFilter, startDate, endDate, conversionFilter, debouncedSearch]);
+  }, [clientFilter, startDate, endDate, conversionFilter, debouncedSearch, tableView]);
 
   useEffect(() => {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page) });
+    const params = new URLSearchParams({ page: String(page), view: tableView });
     if (clientFilter === "__live__") params.set("live_only", "true");
     else if (clientFilter) params.set("client_id", clientFilter);
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
-    if (conversionFilter) params.set("conversion_event", conversionFilter);
+    if (conversionFilter && tableView === "leads") params.set("conversion_event", conversionFilter);
     if (debouncedSearch) params.set("search", debouncedSearch);
 
     fetch(`/api/raw/leads?${params}`)
@@ -306,10 +395,18 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         setRows(d.rows ?? []);
         setTotal(d.total ?? 0);
         setCapped(!!d.capped);
+        setMappingSummary(d.mapping_summary ?? null);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [clientFilter, page, startDate, endDate, conversionFilter, debouncedSearch]);
+  }, [clientFilter, page, startDate, endDate, conversionFilter, debouncedSearch, tableView]);
+
+  function handleViewChange(next: TableView) {
+    setTableView(next);
+  }
+
+  const isUnmappedView = tableView === "unmapped";
+  const leadCount = mappingSummary?.leads_in_period ?? (isUnmappedView ? 0 : total);
 
   const totalPages = Math.ceil(total / 50);
 
@@ -324,6 +421,9 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
 
   return (
     <div className="space-y-4">
+      {mappingSummary && (
+        <MappingBanner summary={mappingSummary} view={tableView} onViewChange={handleViewChange} />
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <select
           value={clientFilter}
@@ -378,7 +478,8 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         <select
           value={conversionFilter}
           onChange={(e) => setConversionFilter(e.target.value)}
-          className="px-4 py-2 rounded-lg text-sm font-medium outline-none"
+          disabled={isUnmappedView}
+          className="px-4 py-2 rounded-lg text-sm font-medium outline-none disabled:opacity-40"
           style={{
             background: "#0f2040",
             border: "1px solid rgba(255,255,255,0.12)",
@@ -392,13 +493,15 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
           <option value="loan_funded">Has Funded Loan</option>
         </select>
         <span className="text-sm" style={{ color: "#334155" }}>
-          {total.toLocaleString()} leads
+          {isUnmappedView
+            ? `${total.toLocaleString()} unmapped contact${total === 1 ? "" : "s"}`
+            : `${leadCount.toLocaleString()} leads`}
           {debouncedSearch && <span style={{ color: "#475569" }}> · searching all dates</span>}
         </span>
         <button
           type="button"
-          disabled={loading || rows.length === 0}
-          onClick={() => downloadLeadsPageCsv(rows, page)}
+          disabled={loading || rows.length === 0 || isUnmappedView}
+          onClick={() => downloadLeadsPageCsv(rows as LeadProfile[], page)}
           className="px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40 transition-colors"
           style={{
             background: "#0f2040",
@@ -415,14 +518,16 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         )}
       </div>
       <p className="text-xs leading-relaxed max-w-3xl" style={{ color: "#475569" }}>
-        One row per lead (contact). Columns show identity, loan/property and borrower ages from your webhook payload, flags, and activity counts. Search by name, phone, or email to jump to a lead (ignores the date range). Use date and client filters to browse, then page through the list. Scroll sideways on smaller screens. Expand a row for the full event timeline.
+        {isUnmappedView
+          ? "Contacts with dial, claim, or appointment activity in this range but no lead event on record anywhere. Expand a row to inspect the orphaned events — usually a missing GHL lead webhook or a legacy contact being power-dialed."
+          : "One row per lead event in the selected date range (matches dashboard Total Leads). Activity columns count dials, appointments, and outcomes in the same range. Search by name, phone, or email to jump to a lead (ignores the date range). Expand a row for the full event timeline."}
       </p>
 
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
         <table className="w-full text-sm min-w-[1100px]">
           <thead>
             <tr style={{ background: "#050c18" }}>
-              {["", "Client", "Name", "Flags", "Source", "Activity", "Loan amt", "Prop. value", "LTV", "B1 age", "B2 age", "Phone", "Email", "Created", "Contact"].map((h) => (
+              {["", "Client", "Name", "Flags", "Source", "Activity", "Loan amt", "Prop. value", "LTV", "B1 age", "B2 age", "Phone", "Email", isUnmappedView ? "Last activity" : "Created", "Contact"].map((h) => (
                 <th
                   key={h || "expand"}
                   className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
@@ -443,13 +548,14 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={15} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
-                  No leads in this range
+                  {isUnmappedView ? "No unmapped activity in this range" : "No leads in this range"}
                 </td>
               </tr>
             ) : (
               rows.map((row, i) => {
                 const open = expanded.has(row.contact_key);
                 const c = row.counts;
+                const unmapped = isUnmappedView ? (row as UnmappedContact) : null;
                 return (
                   <Fragment key={row.contact_key}>
                     <tr
@@ -471,12 +577,23 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1">
-                          <Flag on={row.is_qualified} label="Q" color="#22c55e" />
-                          <Flag on={row.is_hot} label="Hot" color="#ef4444" />
-                          <Flag on={row.is_out_of_state} label="OOS" color="#a78bfa" />
-                          <Flag on={row.has_proposal_made} label="Proposal" color="#38bdf8" />
-                          <Flag on={row.has_submission_made} label="Submission" color="#f59e0b" />
-                          <Flag on={row.has_loan_funded} label="Funded" color="#22c55e" />
+                          {isUnmappedView ? (
+                            <span
+                              className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                              style={{ background: "#422006", color: "#fbbf24", border: "1px solid rgba(251, 191, 36, 0.35)" }}
+                            >
+                              No lead event
+                            </span>
+                          ) : (
+                            <>
+                              <Flag on={row.is_qualified} label="Q" color="#22c55e" />
+                              <Flag on={row.is_hot} label="Hot" color="#ef4444" />
+                              <Flag on={row.is_out_of_state} label="OOS" color="#a78bfa" />
+                              <Flag on={row.has_proposal_made} label="Proposal" color="#38bdf8" />
+                              <Flag on={row.has_submission_made} label="Submission" color="#f59e0b" />
+                              <Flag on={row.has_loan_funded} label="Funded" color="#22c55e" />
+                            </>
+                          )}
                         </div>
                       </td>
                       <td
@@ -527,7 +644,9 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
                         {row.lead_email ?? "—"}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-xs" style={{ color: "#64748b" }}>
-                        {fmtDate(row.created_at, false)}
+                        {isUnmappedView && unmapped
+                          ? fmtDate(unmapped.last_activity, false)
+                          : fmtDate(row.created_at, false)}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
                         {(() => {

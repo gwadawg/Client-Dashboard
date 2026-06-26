@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission, type AuthContext } from '@/lib/api-auth';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import { buildContactKey, eventPhone } from '@/lib/contact-key';
 
@@ -115,6 +115,117 @@ type LeadProfile = {
   counts: LeadCounts;
   timeline: TimelineItem[];
 };
+
+type UnmappedContact = {
+  contact_key: string;
+  client_id: string;
+  client_name: string;
+  lead_name: string | null;
+  lead_phone: string | null;
+  lead_email: string | null;
+  ghl_contact_id: string | null;
+  ghl_location_id: string | null;
+  first_activity: string;
+  last_activity: string;
+  event_count: number;
+  event_types: Record<string, number>;
+  counts: LeadCounts;
+  timeline: TimelineItem[];
+};
+
+type MappingSummary = {
+  leads_in_period: number;
+  unmapped_contacts: number;
+  unmapped_events: number;
+  unmapped_by_type: Record<string, number>;
+};
+
+type LeadIdentityRow = {
+  client_id: string;
+  ghl_contact_id: string | null;
+  lead_phone: string | null;
+  phone_number_used: string | null;
+};
+
+function rowContactKey(row: Pick<EventRow, 'client_id' | 'ghl_contact_id' | 'lead_phone' | 'phone_number_used'>): string {
+  return buildContactKey(row.client_id, eventPhone(row), row.ghl_contact_id);
+}
+
+/** Contact keys that have at least one lead event on record (any date). */
+async function loadContactKeysWithLeadEvents(
+  service: AuthContext['service'],
+  clientIds: string[],
+): Promise<Set<string>> {
+  const keys = new Set<string>();
+  if (clientIds.length === 0) return keys;
+
+  const chunk = 1000;
+  for (let from = 0; from < 50_000; from += chunk) {
+    const { data, error } = await service
+      .from('events')
+      .select('client_id, ghl_contact_id, lead_phone, phone_number_used')
+      .eq('event_type', 'lead')
+      .in('client_id', clientIds)
+      .range(from, from + chunk - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    for (const row of data as LeadIdentityRow[]) {
+      keys.add(rowContactKey(row));
+    }
+    if (data.length < chunk) break;
+  }
+  return keys;
+}
+
+function buildUnmappedContact(profile: LeadProfile): UnmappedContact {
+  const eventTypes: Record<string, number> = {};
+  let firstActivity = profile.created_at;
+  let lastActivity = profile.created_at;
+  for (const item of profile.timeline) {
+    eventTypes[item.event_type] = (eventTypes[item.event_type] ?? 0) + 1;
+    if (new Date(item.occurred_at).getTime() < new Date(firstActivity).getTime()) {
+      firstActivity = item.occurred_at;
+    }
+    if (new Date(item.occurred_at).getTime() > new Date(lastActivity).getTime()) {
+      lastActivity = item.occurred_at;
+    }
+  }
+  return {
+    contact_key: profile.contact_key,
+    client_id: profile.client_id,
+    client_name: profile.client_name,
+    lead_name: profile.lead_name,
+    lead_phone: profile.lead_phone,
+    lead_email: profile.lead_email,
+    ghl_contact_id: profile.ghl_contact_id,
+    ghl_location_id: profile.ghl_location_id,
+    first_activity: firstActivity,
+    last_activity: lastActivity,
+    event_count: profile.timeline.length,
+    event_types: eventTypes,
+    counts: profile.counts,
+    timeline: profile.timeline,
+  };
+}
+
+function summarizeUnmapped(unmapped: UnmappedContact[]): Pick<
+  MappingSummary,
+  'unmapped_contacts' | 'unmapped_events' | 'unmapped_by_type'
+> {
+  const unmapped_by_type: Record<string, number> = {};
+  let unmapped_events = 0;
+  for (const contact of unmapped) {
+    unmapped_events += contact.event_count;
+    for (const [type, count] of Object.entries(contact.event_types)) {
+      unmapped_by_type[type] = (unmapped_by_type[type] ?? 0) + count;
+    }
+  }
+  return {
+    unmapped_contacts: unmapped.length,
+    unmapped_events,
+    unmapped_by_type,
+  };
+}
 
 const PROPOSAL_EVENT_TYPES = new Set(['proposal_made', 'proposal_sent']);
 const SUBMISSION_EVENT_TYPES = new Set(['submission_made', 'loan_processing']);
@@ -361,6 +472,7 @@ export async function GET(req: Request) {
   const start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
   const conversion_event = searchParams.get('conversion_event');
+  const view = searchParams.get('view') === 'unmapped' ? 'unmapped' : 'leads';
   const search = searchParams.get('search')?.trim();
   const safeSearch = search ? search.replace(/[,()*]/g, ' ').trim() : '';
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
@@ -394,7 +506,7 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const rows = (data ?? []) as unknown as EventRow[];
-  const profiles = new Map<string, LeadProfile>();
+  const profiles = new Map<string, LeadProfile & { has_lead_in_period: boolean }>();
 
   for (const row of rows) {
     const phone = eventPhone(row);
@@ -425,12 +537,15 @@ export async function GET(req: Request) {
         ghl_location_id: clientRecord(row.clients)?.ghl_location_id ?? null,
         counts: emptyCounts(),
         timeline: [],
+        has_lead_in_period: false,
       });
     }
 
     const profile = profiles.get(key)!;
     profile.timeline.push(toTimelineItem(row));
-    bumpCounts(profile.counts, row.event_type, row);
+    if (row.event_type !== 'lead') {
+      bumpCounts(profile.counts, row.event_type, row);
+    }
     if (PROPOSAL_EVENT_TYPES.has(row.event_type)) profile.has_proposal_made = true;
     if (SUBMISSION_EVENT_TYPES.has(row.event_type)) profile.has_submission_made = true;
     if (FUNDED_EVENT_TYPES.has(row.event_type)) profile.has_loan_funded = true;
@@ -444,6 +559,7 @@ export async function GET(req: Request) {
     }
 
     if (row.event_type === 'lead') {
+      profile.has_lead_in_period = true;
       if (row.is_qualified === true) profile.is_qualified = true;
       if (row.is_hot === true) profile.is_hot = true;
       if (row.is_out_of_state === true) profile.is_out_of_state = true;
@@ -471,29 +587,75 @@ export async function GET(req: Request) {
     profile.timeline.sort(
       (a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime(),
     );
+    if (profile.has_lead_in_period) {
+      const leadTimes = profile.timeline
+        .filter((t) => t.event_type === 'lead')
+        .map((t) => t.occurred_at);
+      if (leadTimes.length > 0) {
+        profile.created_at = leadTimes.reduce((earliest, ts) =>
+          new Date(ts).getTime() < new Date(earliest).getTime() ? ts : earliest,
+        );
+      }
+    }
   }
 
-  let sorted = Array.from(profiles.values()).sort(
+  const leadProfiles = Array.from(profiles.values()).filter((p) => p.has_lead_in_period);
+  const orphanCandidates = Array.from(profiles.values()).filter(
+    (p) => !p.has_lead_in_period && p.timeline.some((t) => t.event_type !== 'lead'),
+  );
+
+  let unmappedContacts: UnmappedContact[] = [];
+  if (orphanCandidates.length > 0) {
+    const clientIds = Array.from(new Set(orphanCandidates.map((p) => p.client_id)));
+    const keysWithLeadEver = await loadContactKeysWithLeadEvents(ctx.service, clientIds);
+    unmappedContacts = orphanCandidates
+      .filter((p) => !keysWithLeadEver.has(p.contact_key))
+      .map((p) => buildUnmappedContact(p))
+      .sort(
+        (a, b) => new Date(b.last_activity).getTime() - new Date(a.last_activity).getTime(),
+      );
+  }
+
+  const mappingSummary: MappingSummary = {
+    leads_in_period: leadProfiles.length,
+    unmapped_contacts: unmappedContacts.length,
+    unmapped_events: 0,
+    unmapped_by_type: {},
+  };
+  const unmappedStats = summarizeUnmapped(unmappedContacts);
+  mappingSummary.unmapped_contacts = unmappedStats.unmapped_contacts;
+  mappingSummary.unmapped_events = unmappedStats.unmapped_events;
+  mappingSummary.unmapped_by_type = unmappedStats.unmapped_by_type;
+
+  let sortedLeads = leadProfiles.sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
 
   if (conversion_event === 'proposal_made') {
-    sorted = sorted.filter((p) => p.has_proposal_made);
+    sortedLeads = sortedLeads.filter((p) => p.has_proposal_made);
   } else if (conversion_event === 'submission_made') {
-    sorted = sorted.filter((p) => p.has_submission_made);
+    sortedLeads = sortedLeads.filter((p) => p.has_submission_made);
   } else if (conversion_event === 'loan_funded') {
-    sorted = sorted.filter((p) => p.has_loan_funded);
+    sortedLeads = sortedLeads.filter((p) => p.has_loan_funded);
   }
 
-  const total = sorted.length;
+  const activeRows = view === 'unmapped' ? unmappedContacts : sortedLeads;
+  const total = activeRows.length;
   const offset = (page - 1) * PAGE_SIZE;
-  const pageRows = sorted.slice(offset, offset + PAGE_SIZE);
+  const pageRows = activeRows.slice(offset, offset + PAGE_SIZE);
+
+  const stripInternal = (p: LeadProfile & { has_lead_in_period?: boolean }) => {
+    const { has_lead_in_period: _ignored, ...rest } = p;
+    return rest;
+  };
 
   return NextResponse.json({
-    rows: pageRows,
+    rows: view === 'unmapped' ? pageRows : (pageRows as (LeadProfile & { has_lead_in_period?: boolean })[]).map(stripInternal),
     total,
     page,
     page_size: PAGE_SIZE,
+    view,
+    mapping_summary: mappingSummary,
     events_loaded: rows.length,
     capped: rows.length >= MAX_EVENTS,
   });
