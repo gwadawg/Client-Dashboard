@@ -14,6 +14,7 @@ import {
 import { insertFormSubmission } from '@/lib/form-submissions';
 import { linkAcquisitionCloseFromClient } from '@/lib/acquisition-ingest';
 import { normalizeClientLeadSource } from '@/lib/client-lead-source';
+import { ensureAccountGroupForNewClient } from '@/lib/client-account-groups';
 
 const ONBOARD_FIELDS =
   'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, ghl_contact_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, created_at';
@@ -375,6 +376,19 @@ export async function onboardClient(
         `Client already exists as "${match?.name}". Re-send the form to update that record, or set sub_account_name when the GHL sub-account is ready.`,
       );
     }
+
+    const accountLink = await ensureAccountGroupForNewClient(service, {
+      name: parsed.name,
+      primary_contact_name: parsed.primary_contact_name,
+      primary_contact: parsed.primary_contact_name,
+      email: parsed.email,
+      account_group_id: trimString(body.account_group_id),
+      origin_client_id: trimString(body.origin_client_id),
+      reporting_type: parsed.reporting_type,
+    });
+    record.account_group_id = accountLink.account_group_id;
+    record.engagement_kind = accountLink.engagement_kind;
+    if (accountLink.origin_client_id) record.origin_client_id = accountLink.origin_client_id;
 
     const { data, error } = await service
       .from('clients')
