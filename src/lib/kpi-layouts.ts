@@ -72,6 +72,8 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
     title: "Appointments",
     variant: "grid",
     gridClassName: DEFAULT_GRID,
+    footnote:
+      "Hand Raise Rate counts every intent path — booked appointments, live transfers, and client-claimed — so accounts that live-transfer heavily aren't misread on booking rate alone.",
     cards: [
       { label: "Appointments Booked", metric: "booked_appointments", format: "int", hint: "Count of appointments booked in this range." },
       {
@@ -79,6 +81,13 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
         metric: "appt_booking_rate",
         format: "pct",
         hint: "Appointments Booked ÷ Qualified Leads.",
+      },
+      {
+        label: "Hand Raise Rate",
+        metric: "hand_raise_rate",
+        format: "pct",
+        accent: true,
+        hint: "(Appointments Booked + Live Transfers + Claimed) ÷ Qualified Leads. Every path where a lead signals intent to move forward.",
       },
       {
         label: "Appts To Take Place",

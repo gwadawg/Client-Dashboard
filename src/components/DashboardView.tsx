@@ -132,6 +132,7 @@ function buildSparkMap(series: KpiTimelineBucket[]): SparkMap {
     show_pct: series.map(b => b.show_rate),
     net_show_pct: series.map(b => b.net_show_rate),
     appt_booking_rate: series.map(b => b.booking_rate),
+    hand_raise_rate: series.map(b => b.hand_raise_rate),
     lead_booking_rate: series.map(b => b.lead_booking_rate),
     conversation_rate: series.map(b => b.conversation_rate),
     ad_spend: series.map(b => b.spend),
