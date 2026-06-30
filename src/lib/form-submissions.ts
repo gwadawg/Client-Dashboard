@@ -38,6 +38,26 @@ export type FormSubmissionRow = {
 export const FORM_SUBMISSION_FIELDS =
   'id, client_id, form_type, status, submitted_by, match_email, match_phone, responses, applied_patch, submitted_at';
 
+/** Historical imports — must not block live launch/churn workflows. */
+export function isBackfillFormSubmission(row: {
+  submitted_by?: string | null;
+  responses?: Record<string, unknown> | null;
+  applied_patch?: Record<string, unknown> | null;
+}): boolean {
+  if (row.submitted_by === 'backfill') return true;
+  if (row.responses?.backfill === true) return true;
+  if (row.applied_patch?.backfill === true) return true;
+  return false;
+}
+
+export function isOperationalFormSubmission(row: {
+  submitted_by?: string | null;
+  responses?: Record<string, unknown> | null;
+  applied_patch?: Record<string, unknown> | null;
+}): boolean {
+  return !isBackfillFormSubmission(row);
+}
+
 export function normalizePhoneForMatch(phone: string | null | undefined): string | null {
   if (!phone) return null;
   const digits = phone.replace(/\D/g, '');

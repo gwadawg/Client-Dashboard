@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { CLIENT_CALL_FIELDS } from '@/lib/client-calls';
-import { insertFormSubmission } from '@/lib/form-submissions';
+import { insertFormSubmission, isBackfillFormSubmission } from '@/lib/form-submissions';
 import { isKickoffIncomplete } from '@/lib/kickoff';
 import {
   getLaunchChecklistConfig,
@@ -160,13 +160,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .single(),
     ctx.service
       .from('client_form_submissions')
-      .select('id, submitted_at, responses')
+      .select('id, submitted_at, submitted_by, responses, applied_patch')
       .eq('client_id', clientId)
       .eq('form_type', 'launch')
       .eq('status', 'applied')
       .order('submitted_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+      .limit(5),
     ctx.service
       .from('client_calls')
       .select('id, recording_url')
@@ -187,11 +186,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const formProfile = profileFromClient(clientRes.data);
   const kickoffIncomplete = isKickoffIncomplete(clientRes.data, onboardingCallRes.data);
   const defaultUser = assignableUsers.find(u => u.id === ctx.userId);
+  const operationalLaunch = (launchSubRes.data ?? []).find(
+    row => !isBackfillFormSubmission(row),
+  );
 
   return NextResponse.json({
     client: clientRes.data,
     kickoff_complete: !kickoffIncomplete,
-    already_launched: !!launchSubRes.data,
+    already_launched: !!operationalLaunch,
     default_launch_date: clientRes.data.launch_date ?? new Date().toISOString().slice(0, 10),
     form_profile: formProfile,
     checklist_config: getLaunchChecklistConfig(formProfile),
@@ -217,12 +219,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .single(),
     ctx.service
       .from('client_form_submissions')
-      .select('id')
+      .select('id, submitted_by, responses, applied_patch')
       .eq('client_id', clientId)
       .eq('form_type', 'launch')
       .eq('status', 'applied')
-      .limit(1)
-      .maybeSingle(),
+      .limit(5),
     ctx.service
       .from('client_calls')
       .select('id, recording_url')
@@ -247,7 +248,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const validationError = validateLaunchDraft(draft, formProfile, assignableUsers);
   if (validationError) return validationError;
 
-  if (launchSubRes.data) {
+  const operationalLaunch = (launchSubRes.data ?? []).find(
+    row => !isBackfillFormSubmission(row),
+  );
+  if (operationalLaunch) {
     return NextResponse.json({ error: 'This client already has a completed launch checklist' }, { status: 409 });
   }
 
