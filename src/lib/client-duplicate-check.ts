@@ -29,6 +29,38 @@ function trimOrNull(v: string | null | undefined): string | null {
   return s || null;
 }
 
+/** When editing one offer row, sibling rows in the same account group are expected duplicates. */
+async function resolveExcludedClientIds(
+  service: SupabaseClient,
+  excludeId: string | null,
+): Promise<Set<string>> {
+  const excluded = new Set<string>();
+  if (!excludeId) return excluded;
+
+  excluded.add(excludeId);
+
+  const { data: client, error } = await service
+    .from('clients')
+    .select('account_group_id')
+    .eq('id', excludeId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+
+  const groupId = client?.account_group_id;
+  if (!groupId) return excluded;
+
+  const { data: siblings, error: siblingErr } = await service
+    .from('clients')
+    .select('id')
+    .eq('account_group_id', groupId);
+  if (siblingErr) throw new Error(siblingErr.message);
+
+  for (const sibling of siblings ?? []) {
+    excluded.add(sibling.id);
+  }
+  return excluded;
+}
+
 export async function findClientConflicts(
   service: SupabaseClient,
   input: ConflictInput,
@@ -38,6 +70,7 @@ export async function findClientConflicts(
   const ghlLocationId = trimOrNull(input.ghl_location_id);
   const personName = trimOrNull(input.primary_contact_name);
   const excludeId = trimOrNull(input.excludeId);
+  const excludedIds = await resolveExcludedClientIds(service, excludeId);
 
   const { data: clients, error } = await service
     .from('clients')
@@ -48,14 +81,14 @@ export async function findClientConflicts(
   const seen = new Set<string>();
 
   function add(conflict: ClientConflict) {
-    if (excludeId && conflict.id === excludeId) return;
+    if (excludedIds.has(conflict.id)) return;
     if (seen.has(conflict.id)) return;
     seen.add(conflict.id);
     conflicts.push(conflict);
   }
 
   for (const c of clients ?? []) {
-    if (excludeId && c.id === excludeId) continue;
+    if (excludedIds.has(c.id)) continue;
 
     if (ghlLocationId && c.ghl_location_id === ghlLocationId) {
       add({ ...c, reason: 'ghl_location_id' });
