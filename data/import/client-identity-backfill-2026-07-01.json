@@ -1,0 +1,150 @@
+{
+  "mode": "apply",
+  "at": "2026-07-01T04:33:08.160Z",
+  "clusters": 3,
+  "links": 3,
+  "plans": [
+    {
+      "canonical": {
+        "id": "ab658b68-c7db-4377-9a7e-497ab5095d20",
+        "name": "Peter Escaross DSCR"
+      },
+      "members": [
+        {
+          "id": "a2dc32f6-ebc4-488a-a10a-c1e3c4689325",
+          "name": "Peter Escaross - Call Center",
+          "reporting_type": "CALL_CENTER",
+          "nmls": null,
+          "email": "skymarketingllc0@gmail.com",
+          "phone": "+1 714 334 8796"
+        },
+        {
+          "id": "ab658b68-c7db-4377-9a7e-497ab5095d20",
+          "name": "Peter Escaross DSCR",
+          "reporting_type": "DSCR",
+          "nmls": "1686929",
+          "email": "skymarketingllc0@gmail.com",
+          "phone": "+1 714 334 8796"
+        }
+      ],
+      "links": [
+        {
+          "id": "a2dc32f6-ebc4-488a-a10a-c1e3c4689325",
+          "name": "Peter Escaross - Call Center",
+          "reporting_type": "CALL_CENTER",
+          "identity_client_id": "ab658b68-c7db-4377-9a7e-497ab5095d20"
+        }
+      ],
+      "identity_fields_to_sync": [
+        "primary_contact_name",
+        "primary_contact",
+        "email",
+        "billing_email",
+        "phone",
+        "source",
+        "website",
+        "brokerage_name",
+        "nmls",
+        "state",
+        "zip_code",
+        "states_licensed",
+        "timezone",
+        "contact_role",
+        "biography"
+      ]
+    },
+    {
+      "canonical": {
+        "id": "eb31a4ae-faee-4e46-a37d-ecc2b3eae5c1",
+        "name": "Jesse Beard"
+      },
+      "members": [
+        {
+          "id": "eb31a4ae-faee-4e46-a37d-ecc2b3eae5c1",
+          "name": "Jesse Beard",
+          "reporting_type": "CALL_CENTER",
+          "nmls": "1404863",
+          "email": "jbeard@westcapitallending.com",
+          "phone": "+1 707 365 3032"
+        },
+        {
+          "id": "8b59b62a-76ec-4bad-b019-93366194f96a",
+          "name": "Jesse Beard's Office",
+          "reporting_type": "RM",
+          "nmls": null,
+          "email": null,
+          "phone": null
+        }
+      ],
+      "links": [
+        {
+          "id": "8b59b62a-76ec-4bad-b019-93366194f96a",
+          "name": "Jesse Beard's Office",
+          "reporting_type": "RM",
+          "identity_client_id": "eb31a4ae-faee-4e46-a37d-ecc2b3eae5c1"
+        }
+      ],
+      "identity_fields_to_sync": [
+        "email",
+        "billing_email",
+        "phone",
+        "source",
+        "nmls",
+        "state",
+        "city",
+        "zip_code",
+        "street_address",
+        "states_licensed",
+        "legal_business_name",
+        "business_type"
+      ]
+    },
+    {
+      "canonical": {
+        "id": "7e192f03-a382-4bcb-aacc-742075219794",
+        "name": "Ali Sahrai's Office"
+      },
+      "members": [
+        {
+          "id": "7e192f03-a382-4bcb-aacc-742075219794",
+          "name": "Ali Sahrai's Office",
+          "reporting_type": "RM",
+          "nmls": "1823316",
+          "email": null,
+          "phone": "+1 425 351 3612"
+        },
+        {
+          "id": "eb3ea51e-86cf-4af0-887d-e7ff0981c7af",
+          "name": "Ali DSCR Expert",
+          "reporting_type": "DSCR",
+          "nmls": null,
+          "email": null,
+          "phone": "4253513612"
+        }
+      ],
+      "links": [
+        {
+          "id": "eb3ea51e-86cf-4af0-887d-e7ff0981c7af",
+          "name": "Ali DSCR Expert",
+          "reporting_type": "DSCR",
+          "identity_client_id": "7e192f03-a382-4bcb-aacc-742075219794"
+        }
+      ],
+      "identity_fields_to_sync": [
+        "primary_contact_name",
+        "primary_contact",
+        "phone",
+        "source",
+        "nmls",
+        "states_licensed",
+        "timezone"
+      ]
+    }
+  ],
+  "applied": [
+    "a2dc32f6-ebc4-488a-a10a-c1e3c4689325",
+    "8b59b62a-76ec-4bad-b019-93366194f96a",
+    "eb3ea51e-86cf-4af0-887d-e7ff0981c7af"
+  ],
+  "errors": []
+}

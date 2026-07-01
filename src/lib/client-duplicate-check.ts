@@ -22,6 +22,8 @@ type ConflictInput = {
   ghl_location_id?: string | null;
   primary_contact_name?: string | null;
   excludeId?: string | null;
+  /** When adding a linked offer row, allow siblings that share this identity. */
+  linkedIdentityClientId?: string | null;
 };
 
 function trimOrNull(v: string | null | undefined): string | null {
@@ -70,12 +72,18 @@ export async function findClientConflicts(
   const ghlLocationId = trimOrNull(input.ghl_location_id);
   const personName = trimOrNull(input.primary_contact_name);
   const excludeId = trimOrNull(input.excludeId);
+  const linkedIdentityClientId = trimOrNull(input.linkedIdentityClientId);
   const excludedIds = await resolveExcludedClientIds(service, excludeId);
 
   const { data: clients, error } = await service
     .from('clients')
-    .select('id, name, primary_contact_name, email, ghl_location_id');
+    .select('id, name, primary_contact_name, email, ghl_location_id, identity_client_id');
   if (error) throw new Error(error.message);
+
+  function isLinkedSibling(c: { id: string; identity_client_id?: string | null }): boolean {
+    if (!linkedIdentityClientId) return false;
+    return c.id === linkedIdentityClientId || c.identity_client_id === linkedIdentityClientId;
+  }
 
   const conflicts: ClientConflict[] = [];
   const seen = new Set<string>();
@@ -89,6 +97,7 @@ export async function findClientConflicts(
 
   for (const c of clients ?? []) {
     if (excludedIds.has(c.id)) continue;
+    if (isLinkedSibling(c)) continue;
 
     if (ghlLocationId && c.ghl_location_id === ghlLocationId) {
       add({ ...c, reason: 'ghl_location_id' });

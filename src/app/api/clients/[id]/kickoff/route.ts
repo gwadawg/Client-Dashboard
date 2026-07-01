@@ -20,6 +20,7 @@ import {
   isKickoffIncomplete,
   kickoffDraftFromClient,
   kickoffExtraFieldsFromDraft,
+  kickoffIdentitySlice,
   type KickoffClient,
   type KickoffDraft,
 } from '@/lib/kickoff';
@@ -32,6 +33,13 @@ import {
 } from '@/lib/client-duplicate-check';
 import { replayPendingForClientId } from '@/lib/pending-events';
 import { clientNeedsGhlMapping } from '@/lib/client-ghl-mapping';
+import {
+  identityFieldsFromPatch,
+  isKickoffIdentityFieldComplete,
+  loadClientIdentityGroup,
+  propagateIdentityFields,
+  withIdentityProfile,
+} from '@/lib/client-identity';
 
 function optionalText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -142,6 +150,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 
   const rawClient = clientRes.data as KickoffClient;
+  const identityGroup = await loadClientIdentityGroup(ctx.service, id);
+  const mergedClient = identityGroup
+    ? (withIdentityProfile(rawClient, identityGroup.identity) as KickoffClient)
+    : rawClient;
   const verticalConfirmed = isClientVerticalConfirmed({
     reporting_type: rawClient.reporting_type,
     offer: rawClient.offer,
@@ -150,19 +162,29 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   });
 
   const client = includeRevenue
-    ? rawClient
-    : (redactClientMoneyFields(rawClient) as KickoffClient);
+    ? mergedClient
+    : (redactClientMoneyFields(mergedClient) as KickoffClient);
 
   const formProfile = getOnboardingFormProfile(client.reporting_type, client.service_program);
+  const identityDraft = kickoffDraftFromClient(
+    client,
+    onboardingCall?.recording_url ?? '',
+    verticalConfirmed,
+    onboardingCall?.transcript ?? '',
+  );
+  const identityComplete = isKickoffIdentityFieldComplete(kickoffIdentitySlice(identityDraft));
 
   return NextResponse.json({
     client,
     onboarding_call: onboardingCall,
-    kickoff_complete: !isKickoffIncomplete(client, onboardingCall),
+    kickoff_complete: !isKickoffIncomplete(mergedClient, onboardingCall),
     can_view_revenue: includeRevenue,
     vertical_confirmed: verticalConfirmed,
     form_profile: formProfile,
     kickoff_config: getKickoffConfig(formProfile, includeRevenue),
+    identity_client_id: identityGroup?.identity_client_id ?? id,
+    identity_complete: identityComplete,
+    related_offers: identityGroup?.offers ?? [],
   });
 }
 
@@ -264,6 +286,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     brokerage_name: optionalText(body.brokerage_name),
     timezone: optionalText(body.timezone),
   };
+
+  const identityPatch = identityFieldsFromPatch(updates);
+  const identityGroup = await loadClientIdentityGroup(ctx.service, clientId);
+  if (identityGroup && Object.keys(identityPatch).length) {
+    await propagateIdentityFields(ctx.service, identityGroup.identity_client_id, identityPatch);
+  }
 
   if (isKickoffFieldVisible('appointment_settings', formProfile, includeRevenue)) {
     updates.appointment_settings = optionalText(body.appointment_settings);
@@ -403,5 +431,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     vertical_confirmed: verticalConfirmed,
     form_profile: formProfile,
     kickoff_config: getKickoffConfig(formProfile, includeRevenue),
+    identity_client_id: identityGroup?.identity_client_id ?? clientId,
+    identity_complete: isKickoffIdentityFieldComplete(kickoffIdentitySlice(draft)),
+    related_offers: identityGroup?.offers ?? [],
   });
 }

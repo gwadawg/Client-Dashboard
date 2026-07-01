@@ -44,7 +44,8 @@ Catalog definitions (labels, GHL aliases, active flag): **Admin → Offer Catalo
 ## UI
 
 - **Client Roster:** Product badge + Sales package badge; filters for both
-- **Client File:** edit Product only; package set at close
+- **Client File:** Shared **Client profile** (contact, NMLS, licenses, location) plus **This offer** (GHL sub-account, vertical, lifecycle). Multiple offers for the same LO link via `identity_client_id`.
+- **Kick-off form:** Skips the shared "Confirm Information" block when identity is already on file from a linked offer; still collects offer-specific setup (GHL sub-account, ad spend, PM/CC notes).
 - **Closer form:** Product + Sales package (no separate service tier)
 - **Acquisition KPIs:** offer scope uses catalog `is_downsell` (Skool/Bootcamp vs Core/Mid)
 

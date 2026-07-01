@@ -4,6 +4,10 @@ import type { ReportingType } from '@/lib/reporting-types';
 import { deriveServiceProgram, normalizeSalesPackage } from '@/lib/offer-catalog';
 import { findClientConflicts } from '@/lib/client-duplicate-check';
 import { clientNamesMatch } from '@/lib/client-name-match';
+import {
+  findIdentityClientForNewOffer,
+  resolveIdentityClientId,
+} from '@/lib/client-identity';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import {
   createClickUpTask,
@@ -354,21 +358,75 @@ export async function onboardClient(
   let created: boolean;
 
   if (existing) {
-    const { data, error } = await service
+    const { data: existingFull, error: existingErr } = await service
       .from('clients')
-      .update(record)
+      .select('id, name, reporting_type, ghl_location_id, identity_client_id')
       .eq('id', existing.id)
-      .select(ONBOARD_FIELDS)
       .single();
-    if (error) throw new Error(error.message);
-    client = data as Record<string, unknown>;
-    created = false;
+    if (existingErr) throw new Error(existingErr.message);
+
+    const sameVertical =
+      normalizeReportingType(existingFull.reporting_type) === parsed.reporting_type;
+    const sameSubName = clientNamesMatch(existingFull.name, parsed.name);
+    const sameGhl =
+      !!parsed.ghl_location_id &&
+      !!existingFull.ghl_location_id &&
+      existingFull.ghl_location_id === parsed.ghl_location_id;
+
+    if (sameVertical && (sameSubName || sameGhl || !parsed.ghl_location_id)) {
+      const { data, error } = await service
+        .from('clients')
+        .update(record)
+        .eq('id', existing.id)
+        .select(ONBOARD_FIELDS)
+        .single();
+      if (error) throw new Error(error.message);
+      client = data as Record<string, unknown>;
+      created = false;
+    } else {
+      const identityClientId = resolveIdentityClientId(existingFull);
+      record.identity_client_id = identityClientId;
+
+      const conflicts = await findClientConflicts(service, {
+        name: parsed.name,
+        email: parsed.email,
+        ghl_location_id: parsed.ghl_location_id,
+        primary_contact_name: parsed.primary_contact_name,
+        linkedIdentityClientId: identityClientId,
+      });
+      if (conflicts.blocked) {
+        const match = conflicts.conflicts[0];
+        throw new Error(
+          `Client already exists as "${match?.name}". Link this offer to the existing identity or set a unique GHL sub-account name.`,
+        );
+      }
+
+      const { data, error } = await service
+        .from('clients')
+        .insert(record)
+        .select(ONBOARD_FIELDS)
+        .single();
+      if (error) throw new Error(error.message);
+      client = data as Record<string, unknown>;
+      created = true;
+    }
   } else {
+    const identityClientId = await findIdentityClientForNewOffer(service, {
+      nmls: parsed.nmls,
+      email: parsed.email,
+      phone: parsed.phone,
+      primary_contact_name: parsed.primary_contact_name,
+    });
+    if (identityClientId) {
+      record.identity_client_id = identityClientId;
+    }
+
     const conflicts = await findClientConflicts(service, {
       name: parsed.name,
       email: parsed.email,
       ghl_location_id: parsed.ghl_location_id,
       primary_contact_name: parsed.primary_contact_name,
+      linkedIdentityClientId: identityClientId,
     });
     if (conflicts.blocked) {
       const match = conflicts.conflicts[0];

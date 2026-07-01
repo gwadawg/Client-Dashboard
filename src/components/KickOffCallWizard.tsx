@@ -13,15 +13,18 @@ import {
   countKickoffFieldsOnFile,
   getKickoffConfig,
   isKickoffFieldVisible,
+  isKickoffIdentityFieldComplete,
   isKickoffSetupResolved,
   kickoffDraftFromClient,
   kickoffDraftToBody,
   kickoffFieldHadValue,
   kickoffFieldsMatch,
+  kickoffIdentitySlice,
   type KickoffClient,
   type KickoffConfig,
   type KickoffDraft,
 } from "@/lib/kickoff";
+import type { RelatedOfferSummary } from "@/lib/client-identity";
 import {
   getReportingTypeLabel,
   REPORTING_TYPE_META,
@@ -85,6 +88,8 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
   const [kickoffComplete, setKickoffComplete] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [showVerticalPicker, setShowVerticalPicker] = useState(false);
+  const [identityComplete, setIdentityComplete] = useState(false);
+  const [relatedOffers, setRelatedOffers] = useState<RelatedOfferSummary[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,6 +115,8 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
       setInitialSnapshot(nextDraft);
       setKickoffComplete(!!data.kickoff_complete);
       setShowVerticalPicker(!verticalConfirmed);
+      setIdentityComplete(!!data.identity_complete || isKickoffIdentityFieldComplete(kickoffIdentitySlice(nextDraft)));
+      setRelatedOffers(Array.isArray(data.related_offers) ? data.related_offers : []);
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -213,6 +220,8 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
     setInitialSnapshot(refreshed);
     setKickoffComplete(!!data.kickoff_complete);
     setShowVerticalPicker(!data.vertical_confirmed);
+    setIdentityComplete(!!data.identity_complete || isKickoffIdentityFieldComplete(kickoffIdentitySlice(refreshed)));
+    setRelatedOffers(Array.isArray(data.related_offers) ? data.related_offers : []);
     setSaving(false);
     if (saveMode === "complete") {
       onCompleted?.();
@@ -411,7 +420,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
 
             {setupResolved && (
               <>
-                {onFileCount > 0 && (
+                {onFileCount > 0 && !identityComplete && (
                   <div
                     className="rounded-lg px-4 py-3 text-sm"
                     style={{
@@ -424,6 +433,25 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                   </div>
                 )}
 
+                {identityComplete && (
+                  <div
+                    className="rounded-lg px-4 py-3 text-sm"
+                    style={{
+                      color: shareMode ? "#1e40af" : "#93c5fd",
+                      background: shareMode ? "#eff6ff" : "rgba(59,130,246,0.08)",
+                      border: shareMode ? "1px solid #bfdbfe" : "1px solid rgba(59,130,246,0.25)",
+                    }}
+                  >
+                    <strong>Contact profile already on file</strong>
+                    {relatedOffers.length > 1 ? (
+                      <> — phone, NMLS, licenses, and timezone are shared across {relatedOffers.length} offers for this client. Update them in the client file if anything changed.</>
+                    ) : (
+                      <> — phone, NMLS, licenses, and timezone are already saved. Update them in the client file if anything changed.</>
+                    )}
+                  </div>
+                )}
+
+                {!identityComplete && (
                 <Section title="Confirm Information" shareMode={shareMode}>
                   <div className="space-y-4">
                     {visible("phone") && (
@@ -461,6 +489,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                     )}
                   </div>
                 </Section>
+                )}
 
                 {(visible("appointment_settings") || visible("daily_adspend") || visible("facebook_page_name") || visible("phone_notifications") || visible("phone_live_transfer")) && (
                   <Section title="Get Information" shareMode={shareMode}>

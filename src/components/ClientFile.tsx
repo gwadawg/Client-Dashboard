@@ -286,6 +286,7 @@ export default function ClientFile({
   const [showKickoff, setShowKickoff] = useState(openKickoff);
   const [showLaunch, setShowLaunch] = useState(false);
   const [showOffboard, setShowOffboard] = useState(false);
+  const [offerRow, setOfferRow] = useState<{ name: string; reporting_type: string | null } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -298,6 +299,7 @@ export default function ClientFile({
           setError(d.error);
         } else {
           setClient(d.client ?? null);
+          setOfferRow(d.offer ? { name: d.offer.name, reporting_type: d.offer.reporting_type ?? null } : null);
           setBillings(d.billings ?? []);
           setStatusHistory(d.status_history ?? []);
           setNotes(d.notes ?? []);
@@ -799,13 +801,29 @@ export default function ClientFile({
 
             {activeTab === "overview" && (
             <div className="space-y-7">
-            <Section title="Overview">
+
+            <Section title="Client profile">
+              <p className="text-xs mb-3" style={{ color: "#64748b" }}>
+                Shared across all offers for this loan officer. Edits here update every linked offer row.
+              </p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
-                <Detail label="Sub-account name" value={client?.name} />
                 <Detail label="Client name" value={client?.primary_contact_name || client?.primary_contact} missing={!client?.primary_contact_name && !client?.primary_contact} />
                 <Detail label="Email" value={client?.email} missing={!client?.email} />
                 <Detail label="Billing email" value={client?.billing_email} missing={!client?.billing_email} />
                 <Detail label="Phone" value={client?.phone} missing={!client?.phone} />
+                <Detail label="Lead source" value={clientLeadSourceLabel(client?.source)} missing={!client?.source} />
+                <Detail label="Website" value={client?.website} missing={!client?.website} />
+                <Detail label="Brokerage" value={client?.brokerage_name} missing={!client?.brokerage_name} />
+                <Detail label="NMLS" value={client?.nmls} missing={!client?.nmls} />
+                <Detail label="State" value={client?.state} missing={!client?.state} />
+                <Detail label="Licensed in" value={formatStatesLicensed(client?.states_licensed)} wide missing={!client?.states_licensed?.length} />
+                <Detail label="Timezone" value={timezoneLabel(client?.timezone)} missing={!client?.timezone} />
+              </div>
+            </Section>
+
+            <Section title="This offer">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
+                <Detail label="GHL sub-account name" value={offerRow?.name ?? client?.name} />
                 <Detail
                   label="Client vertical"
                   value={client?.reporting_type ? (
@@ -847,13 +865,6 @@ export default function ClientFile({
                     </a>
                   ) : null}
                 />
-                <Detail label="Lead source" value={clientLeadSourceLabel(client?.source)} missing={!client?.source} />
-                <Detail label="Website" value={client?.website} missing={!client?.website} />
-                <Detail label="Brokerage" value={client?.brokerage_name} missing={!client?.brokerage_name} />
-                <Detail label="NMLS" value={client?.nmls} missing={!client?.nmls} />
-                <Detail label="State" value={client?.state} missing={!client?.state} />
-                <Detail label="Licensed in" value={formatStatesLicensed(client?.states_licensed)} wide missing={!client?.states_licensed?.length} />
-                <Detail label="Timezone" value={timezoneLabel(client?.timezone)} missing={!client?.timezone} />
               </div>
             </Section>
 

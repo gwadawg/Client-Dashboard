@@ -25,6 +25,12 @@ import {
 import { replayPendingForClientId } from '@/lib/pending-events';
 import { CLIENT_CONTACT_FIELDS } from '@/lib/client-contacts';
 import { parseClientDatePatch } from '@/lib/client-dates';
+import {
+  identityFieldsFromPatch,
+  loadClientIdentityGroup,
+  propagateIdentityFields,
+  withIdentityProfile,
+} from '@/lib/client-identity';
 
 const STATUS_HISTORY_FIELDS =
   'id, previous_status, new_status, reason_code, note, mrr_at_change, changed_at, changed_by, source, related_call_id';
@@ -33,7 +39,7 @@ const CLIENT_NOTES_FIELDS =
   'id, note_type, reason_code, body, created_at, created_by, updated_at, related_call_id';
 
 const FILE_CLIENT_FIELDS =
-  'id, name, is_live, reporting_type, service_program, sales_package, offer, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, clickup_task_id, created_at, churned_at';
+  'id, name, identity_client_id, is_live, reporting_type, service_program, sales_package, offer, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, clickup_task_id, created_at, churned_at';
 
 const FILE_BILLING_FIELDS =
   'id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, passthrough_amount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, created_at';
@@ -105,7 +111,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
   const includeRevenue = canViewClientRevenue(subject);
-  const client = includeRevenue ? clientRes.data : redactClientMoneyFields(clientRes.data);
+  const rawClient = clientRes.data;
+  const identityGroup = await loadClientIdentityGroup(ctx.service, id);
+  const mergedClient = identityGroup
+    ? withIdentityProfile(rawClient, identityGroup.identity)
+    : rawClient;
+  const client = includeRevenue ? mergedClient : redactClientMoneyFields(mergedClient);
   const billings = includeRevenue ? (billingsRes.data ?? []) : redactBillingRows(billingsRes.data);
   const statusHistory = historyRes.data ?? [];
   const notes = notesRes.data ?? [];
@@ -121,6 +132,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   return NextResponse.json({
     client,
+    offer: rawClient,
+    related_offers: identityGroup?.offers ?? [],
+    identity_client_id: identityGroup?.identity_client_id ?? id,
     billings,
     status_history: statusHistory,
     notes: notes.map((n: { created_by?: string | null }) => ({
@@ -164,6 +178,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // Identity / contact (Client Roster + Client File editor)
     'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'ghl_location_id', 'clickup_task_id',
     'phone', 'source', 'website', 'brokerage_name', 'nmls', 'state', 'states_licensed', 'timezone',
+    'identity_client_id',
     // Kick-off / ops fields
     'phone_live_transfer', 'phone_notifications', 'live_transfer_approved',
     'contact_role', 'appointment_settings', 'facebook_page_name',
@@ -395,6 +410,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const identityPatch = identityFieldsFromPatch(updates);
+  const identityGroup = await loadClientIdentityGroup(ctx.service, id);
+  if (identityGroup && Object.keys(identityPatch).length) {
+    try {
+      await propagateIdentityFields(ctx.service, identityGroup.identity_client_id, identityPatch);
+    } catch (e) {
+      console.error('[clients] identity propagate failed', e);
+    }
+  }
+
   // Enrich the trigger-created history row when lifecycle changes with feedback.
   if (lifecycleIsChanging) {
     const { data: historyRows, error: historyError } = await ctx.service
@@ -451,6 +476,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const client = includeRevenue ? data : redactClientMoneyFields(data);
+  const mergedClient = identityGroup
+    ? withIdentityProfile(data, identityGroup.identity)
+    : data;
 
   let pending_replay = { replayed: 0, skipped: 0, failed: 0, errors: [] as string[] };
   if ('name' in updates || 'ghl_location_id' in updates) {
@@ -461,5 +489,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
   }
 
-  return NextResponse.json({ client, pending_replay });
+  return NextResponse.json({
+    client: includeRevenue ? mergedClient : redactClientMoneyFields(mergedClient),
+    offer: data,
+    related_offers: identityGroup?.offers ?? [],
+    identity_client_id: identityGroup?.identity_client_id ?? id,
+    pending_replay,
+  });
 }

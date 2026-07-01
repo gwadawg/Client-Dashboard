@@ -1,6 +1,13 @@
 // Kick-off call workflow: fields, completion checks, and role options.
 
+import {
+  isKickoffIdentityFieldComplete,
+  KICKOFF_IDENTITY_FIELD_KEYS,
+  type KickoffIdentityFieldKey,
+} from '@/lib/client-identity';
 import { clientNeedsGhlMapping } from '@/lib/client-ghl-mapping';
+
+export { isKickoffIdentityFieldComplete, KICKOFF_IDENTITY_FIELD_KEYS, type KickoffIdentityFieldKey };
 import {
   getOnboardingFormProfile,
   type OnboardingFormProfile,
@@ -363,6 +370,17 @@ export function kickoffDraftToBody(
   Object.assign(body, kickoffExtraFieldsFromDraft(profile, draft));
 
   return body;
+}
+
+export function kickoffIdentitySlice(draft: KickoffDraft): Record<KickoffIdentityFieldKey, unknown> {
+  return {
+    phone: draft.phone,
+    contact_role: draft.contact_role,
+    states_licensed: draft.states_licensed,
+    nmls: draft.nmls,
+    brokerage_name: draft.brokerage_name,
+    timezone: draft.timezone,
+  };
 }
 
 export function isKickoffSetupResolved(draft: KickoffDraft): boolean {

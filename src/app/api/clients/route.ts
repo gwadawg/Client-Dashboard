@@ -4,10 +4,8 @@ import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { normalizeServiceProgram, serviceProgramApplies } from '@/lib/service-program';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 import { canViewClientRevenue, redactClientMoneyFields } from '@/lib/client-revenue-access';
-import {
-  findClientConflicts,
-  formatClientConflictMessage,
-} from '@/lib/client-duplicate-check';
+import { findClientConflicts, formatClientConflictMessage } from '@/lib/client-duplicate-check';
+import { findIdentityClientForNewOffer } from '@/lib/client-identity';
 import { replayPendingForClientId } from '@/lib/pending-events';
 import { getFormProgressForClients } from '@/lib/form-submissions';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
@@ -134,6 +132,7 @@ export async function POST(req: Request) {
     'is_live', 'lifecycle_status', 'mrr', 'billing_type', 'billing_day', 'launch_date',
     'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
     'performance_terms', 'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'states_licensed', 'timezone', 'source',
+    'website', 'brokerage_name', 'nmls', 'phone', 'identity_client_id',
   ] as const;
   for (const k of optional) {
     if (!(k in body)) continue;
@@ -155,12 +154,26 @@ export async function POST(req: Request) {
     insert.billing_email = synced;
   }
 
+  const linkedIdentityClientId =
+    typeof body.identity_client_id === 'string' && body.identity_client_id.trim()
+      ? body.identity_client_id.trim()
+      : await findIdentityClientForNewOffer(ctx.service, {
+          nmls: (insert.nmls as string | null) ?? null,
+          email: (insert.email as string | null) ?? null,
+          phone: (insert.phone as string | null) ?? null,
+          primary_contact_name: (insert.primary_contact_name as string | null) ?? null,
+        });
+  if (linkedIdentityClientId) {
+    insert.identity_client_id = linkedIdentityClientId;
+  }
+
   try {
     const conflicts = await findClientConflicts(ctx.service, {
       name: insert.name as string,
       email: (insert.email as string | null) ?? null,
       primary_contact_name: (insert.primary_contact_name as string | null) ?? null,
       ghl_location_id: (insert.ghl_location_id as string | null) ?? null,
+      linkedIdentityClientId,
     });
     if (conflicts.blocked) {
       return NextResponse.json(
