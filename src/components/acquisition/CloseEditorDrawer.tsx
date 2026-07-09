@@ -17,7 +17,7 @@ type LeadOffer = {
   offered_by: string | null;
   setter_name: string | null;
 };
-type LeadSearchRow = { id: string; lead_name: string | null; email: string | null; phone: string | null };
+type LeadSearchRow = { lead_id: string; lead_name: string | null; email: string | null; phone: string | null };
 
 type CloseDetail = {
   id: string;
@@ -367,14 +367,14 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
                   {leadResults.length > 0 && (
                     <ul className="mt-1 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
                       {leadResults.map(row => (
-                        <li key={row.id}>
+                        <li key={row.lead_id}>
                           <button
                             type="button"
                             className="w-full text-left px-3 py-2 text-xs hover:bg-white/5"
                             style={{ color: "#cbd5e1" }}
                             onClick={() => {
-                              setLeadId(row.id);
-                              setLeadLabel(row.lead_name ?? row.email ?? row.phone ?? row.id);
+                              setLeadId(row.lead_id);
+                              setLeadLabel(row.lead_name ?? row.email ?? row.phone ?? row.lead_id);
                               setLeadSearch("");
                               setLeadResults([]);
                             }}

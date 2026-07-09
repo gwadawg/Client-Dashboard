@@ -6,7 +6,7 @@ import { acquisitionLeadFileUrl } from "@/lib/acquisition-appointment-enriched";
 import { acquisitionLeadSourceLabel } from "@/lib/acquisition-lead-source";
 
 type LeadSearchRow = {
-  id: string;
+  lead_id: string;
   lead_name: string | null;
   email: string | null;
   phone: string | null;
@@ -219,13 +219,13 @@ export default function AppointmentLinkDrawer({ row, onClose, onLinked }: Props)
             {leadResults.length > 0 && (
               <ul className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
                 {leadResults.map(lead => (
-                  <li key={lead.id}>
+                  <li key={lead.lead_id}>
                     <button
                       type="button"
                       disabled={!!busy}
                       className="w-full text-left px-3 py-2.5 text-xs hover:bg-white/5 disabled:opacity-50"
                       style={{ color: "#cbd5e1" }}
-                      onClick={() => runAction("link_lead", lead.id)}
+                      onClick={() => runAction("link_lead", lead.lead_id)}
                     >
                       <div className="font-medium">{lead.lead_name ?? "Unnamed"}</div>
                       <div style={{ color: "#64748b" }}>
