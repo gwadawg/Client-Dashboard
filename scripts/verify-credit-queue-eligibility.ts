@@ -20,7 +20,7 @@ assert.equal(
 );
 assert.equal(
   isCreditQueueEligibleEvent('appointment_booked', LEGACY_AI_CREDIT_CALENDAR_NAME, null),
-  true,
+  false,
 );
 assert.equal(
   isCreditQueueEligibleEvent('appointment_booked', LEGACY_AI_CREDIT_CALENDAR_NAME, '#N/A'),
@@ -28,15 +28,14 @@ assert.equal(
 );
 assert.equal(
   isCreditQueueEligibleEvent('appointment_booked', 'AI Booking Calendar', 'Luka Faccini'),
-  true,
+  false,
 );
-assert.equal(isCreditQueueEligibleEvent('appointment_booked', 'AI Booking Calendar'), true);
+assert.equal(isCreditQueueEligibleEvent('appointment_booked', 'AI Booking Calendar'), false);
 
 const filter = creditQueueEventOrFilter();
 assert.match(filter, /event_type\.eq\.live_transfer/);
 assert.match(filter, /Call Center Booking Calendar/);
-assert.match(filter, /AI Booking Calendar/);
-assert.match(filter, /agent_name\.isdistinct/);
+assert.doesNotMatch(filter, /AI Booking Calendar/);
 
 assert.match(creditQueueUncreditedAgentOrFilter(), /#N\/A/);
 

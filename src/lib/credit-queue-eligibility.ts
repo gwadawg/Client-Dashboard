@@ -4,16 +4,10 @@ export const AI_BOOKED_CONTACT_TAG = 'ai-booked';
 /** Setter / call-center bookings — ongoing credit path. */
 export const CALL_CENTER_CREDIT_CALENDAR_NAME = 'Call Center Booking Calendar';
 
-/**
- * Legacy path: reps sometimes booked on the AI calendar before the setter calendar was enforced.
- * Still eligible for agent credit (especially uncredited rows).
- */
+/** Conversation AI calendar — excluded from the agent credit queue. */
 export const LEGACY_AI_CREDIT_CALENDAR_NAME = 'AI Booking Calendar';
 
-export const CREDIT_QUEUE_CALENDAR_NAMES = [
-  CALL_CENTER_CREDIT_CALENDAR_NAME,
-  LEGACY_AI_CREDIT_CALENDAR_NAME,
-] as const;
+export const CREDIT_QUEUE_CALENDAR_NAMES = [CALL_CENTER_CREDIT_CALENDAR_NAME] as const;
 
 export const CREDIT_QUEUE_BOOKING_EVENT_TYPES = ['appointment_booked', 'callback_booked'] as const;
 
@@ -74,11 +68,11 @@ export function needsAgentCredit(agentName: string | null | undefined): boolean 
   return UNCREDITED_AGENT_PLACEHOLDERS.has(trimmed.toLowerCase());
 }
 
-/** Credit queue: live transfers + Call Center / legacy AI calendar bookings. */
+/** Credit queue: live transfers + Call Center Booking Calendar appointments/callbacks only. */
 export function isCreditQueueEligibleEvent(
   eventType: string,
   calendarName: string | null | undefined,
-  agentName?: string | null,
+  _agentName?: string | null,
 ): boolean {
   if (eventType === 'live_transfer') return true;
   if (
@@ -89,11 +83,7 @@ export function isCreditQueueEligibleEvent(
   }
 
   const cal = calendarName?.trim().toLowerCase();
-  if (cal === CALL_CENTER_CREDIT_CALENDAR_NAME.toLowerCase()) return true;
-  if (cal === LEGACY_AI_CREDIT_CALENDAR_NAME.toLowerCase()) {
-    return !UNCREDITED_AGENT_PLACEHOLDERS.has(agentName?.trim().toLowerCase() ?? '');
-  }
-  return false;
+  return cal === CALL_CENTER_CREDIT_CALENDAR_NAME.toLowerCase();
 }
 
 function postgrestQuoted(value: string): string {
@@ -105,12 +95,9 @@ function postgrestQuoted(value: string): string {
 export function creditQueueEventOrFilter(): string {
   const bookingTypes = CREDIT_QUEUE_BOOKING_EVENT_TYPES.join(',');
   const ccCalendar = postgrestQuoted(CALL_CENTER_CREDIT_CALENDAR_NAME);
-  const aiCalendar = postgrestQuoted(LEGACY_AI_CREDIT_CALENDAR_NAME);
   return [
     'event_type.eq.live_transfer',
     `and(event_type.in.(${bookingTypes}),calendar_name.eq.${ccCalendar})`,
-    // Legacy AI calendar: #N/A = Conversation AI; null/empty = rep bookings needing credit.
-    `and(event_type.in.(${bookingTypes}),calendar_name.eq.${aiCalendar},agent_name.isdistinct."#N/A")`,
   ].join(',');
 }
 

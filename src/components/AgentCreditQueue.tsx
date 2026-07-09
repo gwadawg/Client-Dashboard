@@ -158,7 +158,7 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Agent Credit Queue</h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            Assign agent credit for live transfers, Call Center Booking Calendar appointments, and legacy AI-calendar bookings reps made before the setter calendar rollout. Client-side claimed conversations stay separate.
+            Assign agent credit for live transfers and Call Center Booking Calendar appointments. AI Booking Calendar rows are excluded.
           </p>
         </div>
 
@@ -235,7 +235,7 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#050c18" }}>
-              {["Client", "Lead", "Phone", "Event Time", "Scheduled Time", "Calendar", "Type", "Agent", ""].map(label => (
+              {["Client", "Lead", "Phone", "Event Time", "Appointment Date", "Calendar", "Type", "Agent", ""].map(label => (
                 <th key={label} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
                   style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                   {label}
