@@ -993,6 +993,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
               startDate={dateStart}
               endDate={dateEnd}
               onGoToCreditQueue={() => goToView("agents", "credit_queue")}
+              onGoToAcquisitionCreditQueue={() => goToView("acquisition", "credit_queue")}
             />
           )}
           {view === "schedule"      && <SetterSchedule clients={clients} />}

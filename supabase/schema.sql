@@ -301,11 +301,17 @@ create table if not exists agents (
   id                    uuid primary key default gen_random_uuid(),
   name                  text not null,
   phone                 text not null unique,
+  pay_type              text not null default 'call_rep',
   base_salary           numeric(10,2) not null default 0,
+  monthly_bonus         numeric(10,2) not null default 0,
+  base_salary_prorate_days int,
   pay_per_booking       numeric(10,2) not null default 0,
   pay_per_show          numeric(10,2) not null default 0,
   pay_per_live_transfer numeric(10,2) not null default 0,
-  created_at            timestamptz default now()
+  pay_per_qualified_demo numeric(10,2) not null default 0,
+  pay_per_close         numeric(10,2) not null default 0,
+  created_at            timestamptz default now(),
+  constraint agents_pay_type_check check (pay_type in ('call_rep', 'b2b_setter'))
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -360,13 +366,18 @@ create table if not exists events (
   is_hot          boolean,
   is_out_of_state boolean,
 
+  -- Manual DQ (meaningful when event_type = 'manual_dq')
+  dq_reason       text,
+  lead_event_id   uuid references events(id) on delete set null,
+
   constraint events_event_type_check check (
     event_type in (
       'dial', 'lead', 'appointment_booked', 'appointment_cancelled', 'show', 'no_show', 'callback_booked',
       'live_transfer', 'proposal_sent', 'loan_processing', 'closed',
       'proposal_made', 'submission_made', 'loan_funded',
       'out_of_state_lead',
-      'lo_bailed', 'lo_audit', 'claimed'
+      'lo_bailed', 'lo_audit', 'claimed',
+      'manual_dq'
     )
   )
 );
@@ -389,6 +400,18 @@ alter table events add column if not exists lead_source text;
 
 -- True when GHL contact had the ai-booked tag at webhook time (excluded from agent credit queue).
 alter table events add column if not exists is_ai_booked boolean;
+
+-- Manual DQ: setter disqualifies a lead that passed automated filters.
+alter table events add column if not exists dq_reason text;
+alter table events add column if not exists lead_event_id uuid references events(id) on delete set null;
+
+create index if not exists events_lead_event_id_idx
+  on events (lead_event_id)
+  where lead_event_id is not null;
+
+create index if not exists events_manual_dq_contact_idx
+  on events (client_id, ghl_contact_id, occurred_at desc)
+  where event_type = 'manual_dq';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 5. Meta Ad Insights (daily ad-level reporting from Meta Ads — sole spend source)

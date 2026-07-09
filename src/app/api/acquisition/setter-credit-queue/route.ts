@@ -87,7 +87,7 @@ export async function GET(req: Request) {
 
   const [{ data: rows, error, count }, { data: reps }, { data: userData }] = await Promise.all([
     query,
-    ctx.service.from('sales_reps').select('name').eq('is_active', true).order('name'),
+    ctx.service.from('agents').select('name').eq('pay_type', 'b2b_setter').order('name'),
     ctx.service.auth.admin.getUserById(ctx.userId),
   ]);
 

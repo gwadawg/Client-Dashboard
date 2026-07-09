@@ -1,7 +1,9 @@
 import { buildRosterMatcher } from '@/lib/agent-roster';
+import { computeFixedPay, type PendingDisposition } from '@/lib/payroll-common';
 
 export type AgentPayRates = {
   base_salary: number;
+  monthly_bonus: number;
   pay_per_booking: number;
   pay_per_show: number;
   pay_per_live_transfer: number;
@@ -11,6 +13,10 @@ export type RosterAgentWithPay = {
   id: string;
   name: string;
   phone: string;
+  pay_type?: string;
+  base_salary_prorate_days?: number | null;
+  pay_per_qualified_demo?: number;
+  pay_per_close?: number;
 } & AgentPayRates;
 
 export type CommissionLineItem = {
@@ -28,14 +34,37 @@ export type AgentCommissionRow = {
   agent_name: string;
   rates: AgentPayRates;
   counts: { bookings: number; shows: number; live_transfers: number };
-  amounts: { base: number; bookings: number; shows: number; live_transfers: number; total: number };
+  amounts: {
+    base: number;
+    bonus: number;
+    bookings: number;
+    shows: number;
+    live_transfers: number;
+    total: number;
+  };
   line_items: CommissionLineItem[];
+  pending_disposition: PendingDisposition;
 };
 
 export type CommissionReport = {
   period: { startDate: string; endDate: string };
   unassigned: { bookings: number; shows: number; live_transfers: number };
   agents: AgentCommissionRow[];
+};
+
+export type UnifiedPayrollReport = {
+  period: { startDate: string; endDate: string };
+  summary: {
+    call_reps_total: number;
+    b2b_setters_total: number;
+    grand_total: number;
+    call_rep_count: number;
+    b2b_setter_count: number;
+  };
+  call_reps: CommissionReport;
+  b2b_setters: import('@/lib/b2b-setter-commissions').B2BSetterCommissionReport;
+  /** @deprecated Use call_reps.agents */
+  agents?: AgentCommissionRow[];
 };
 
 type EventRow = {
@@ -70,20 +99,35 @@ function inDateRange(dateStr: string | null, startDate: string, endDate: string)
   return dateStr >= startDate && dateStr <= endDate;
 }
 
-function emptyAccumulator(agent: RosterAgentWithPay): AgentCommissionRow {
+function emptyAccumulator(agent: RosterAgentWithPay, periodStart: string): AgentCommissionRow {
   const rates: AgentPayRates = {
     base_salary: toNum(agent.base_salary),
+    monthly_bonus: toNum(agent.monthly_bonus),
     pay_per_booking: toNum(agent.pay_per_booking),
     pay_per_show: toNum(agent.pay_per_show),
     pay_per_live_transfer: toNum(agent.pay_per_live_transfer),
   };
+  const fixed = computeFixedPay(
+    rates.base_salary,
+    rates.monthly_bonus,
+    agent.base_salary_prorate_days,
+    periodStart,
+  );
   return {
     agent_id: agent.id,
     agent_name: agent.name,
     rates,
     counts: { bookings: 0, shows: 0, live_transfers: 0 },
-    amounts: { base: rates.base_salary, bookings: 0, shows: 0, live_transfers: 0, total: rates.base_salary },
+    amounts: {
+      base: fixed.base,
+      bonus: fixed.bonus,
+      bookings: 0,
+      shows: 0,
+      live_transfers: 0,
+      total: fixed.base + fixed.bonus,
+    },
     line_items: [],
+    pending_disposition: { count: 0, items: [] },
   };
 }
 
@@ -92,16 +136,29 @@ function finalizeRow(row: AgentCommissionRow): AgentCommissionRow {
   const bookingsAmt = counts.bookings * rates.pay_per_booking;
   const showsAmt = counts.shows * rates.pay_per_show;
   const transfersAmt = counts.live_transfers * rates.pay_per_live_transfer;
-  const total = rates.base_salary + bookingsAmt + showsAmt + transfersAmt;
+  const total = row.amounts.base + row.amounts.bonus + bookingsAmt + showsAmt + transfersAmt;
   row.line_items.sort((a, b) => a.date.localeCompare(b.date) || a.type.localeCompare(b.type));
   row.amounts = {
-    base: rates.base_salary,
+    ...row.amounts,
     bookings: bookingsAmt,
     shows: showsAmt,
     live_transfers: transfersAmt,
     total,
   };
   return row;
+}
+
+export function attachCallRepPendingDisposition(
+  rows: AgentCommissionRow[],
+  pendingByAgentId: Map<string, import('@/lib/payroll-common').PendingDispositionItem[]>,
+): AgentCommissionRow[] {
+  return rows.map(row => {
+    const items = pendingByAgentId.get(row.agent_id) ?? [];
+    return {
+      ...row,
+      pending_disposition: { count: items.length, items },
+    };
+  });
 }
 
 export function buildCommissionReport(
@@ -118,7 +175,7 @@ export function buildCommissionReport(
 
   const agentByName = new Map<string, AgentCommissionRow>();
   for (const agent of roster) {
-    agentByName.set(agent.name, emptyAccumulator(agent));
+    agentByName.set(agent.name, emptyAccumulator(agent, startDate));
   }
 
   for (const row of bookingAndTransferEvents) {
@@ -191,11 +248,13 @@ export function buildCommissionReport(
 
   const agents = [...agentByName.values()]
     .map(finalizeRow)
-    .filter(a =>
-      a.counts.bookings > 0 ||
-      a.counts.shows > 0 ||
-      a.counts.live_transfers > 0 ||
-      a.rates.base_salary > 0,
+    .filter(
+      a =>
+        a.counts.bookings > 0 ||
+        a.counts.shows > 0 ||
+        a.counts.live_transfers > 0 ||
+        a.rates.base_salary > 0 ||
+        a.rates.monthly_bonus > 0,
     )
     .sort((a, b) => b.amounts.total - a.amounts.total);
 
