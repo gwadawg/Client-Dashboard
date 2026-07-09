@@ -169,6 +169,26 @@ export async function getAcquisitionContact(contactId: string): Promise<GhlConta
   return (data as { contact?: GhlContact }).contact ?? (data as GhlContact);
 }
 
+/** Search contacts in the acquisition location (POST /contacts/search). */
+export async function searchAcquisitionContacts(
+  query: string,
+  pageLimit = 10,
+): Promise<GhlContact[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const data = await ghlRequest<{ contacts?: GhlContact[] }>('POST', '/contacts/search', {
+    body: {
+      locationId: GHL_ACQUISITION_LOCATION_ID,
+      page: 1,
+      pageLimit,
+      query: trimmed,
+    },
+  });
+
+  return data.contacts ?? [];
+}
+
 export async function updateAcquisitionContactCustomFields(
   contactId: string,
   fields: GhlCustomFieldInput[],

@@ -5,6 +5,7 @@ import {
   normalizeAcquisitionAppointmentStatus,
   setAcquisitionAppointmentStatus,
 } from '@/lib/acquisition-appointments';
+import { linkAcquisitionAppointmentToLead } from '@/lib/acquisition-appointment-link';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -91,7 +92,7 @@ export async function PATCH(req: Request) {
   const denied = requirePermission(ctx, 'acquisition');
   if (denied) return denied;
 
-  let payload: { appointment_id?: string; status?: string };
+  let payload: { appointment_id?: string; status?: string; lead_id?: string };
   try {
     payload = await req.json();
   } catch {
@@ -103,7 +104,32 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'appointment_id is required' }, { status: 400 });
   }
 
-  const status = normalizeAcquisitionAppointmentStatus(payload.status);
+  const leadId = payload.lead_id?.trim();
+  const statusRaw = payload.status;
+
+  if (leadId) {
+    const linkResult = await linkAcquisitionAppointmentToLead(ctx.service, appointmentId, leadId);
+    if ('error' in linkResult) {
+      return NextResponse.json({ error: linkResult.error }, { status: 400 });
+    }
+    if (!statusRaw) {
+      return NextResponse.json({
+        ok: true,
+        appointment_id: appointmentId,
+        lead_id: linkResult.lead_id,
+        ghl_contact_id: linkResult.ghl_contact_id,
+      });
+    }
+  }
+
+  if (!statusRaw) {
+    return NextResponse.json(
+      { error: 'Provide status and/or lead_id to update' },
+      { status: 400 },
+    );
+  }
+
+  const status = normalizeAcquisitionAppointmentStatus(statusRaw);
   if (!status) {
     return NextResponse.json(
       {
