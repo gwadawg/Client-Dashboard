@@ -4,6 +4,7 @@ import {
   creditQueueEventOrFilter,
   creditQueueUncreditedAgentOrFilter,
 } from '@/lib/credit-queue-eligibility';
+import { resolveEmployeeForUser } from '@/lib/employee-user-link';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 
 type CreditQueueStatus = 'uncredited' | 'credited' | 'all';
@@ -65,12 +66,18 @@ export async function GET(req: Request) {
 
   const [{ data: rows, error, count }, { data: agents, error: agentsError }, { data: userData }] = await Promise.all([
     query,
-    ctx.service.from('agents').select('id, name, phone').order('name'),
+    ctx.service.from('agents').select('id, name, phone, user_id, email').order('name'),
     ctx.service.auth.admin.getUserById(ctx.userId),
   ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (agentsError) return NextResponse.json({ error: agentsError.message }, { status: 500 });
+
+  const linkedEmployee = resolveEmployeeForUser(
+    agents ?? [],
+    ctx.userId,
+    userData.user?.email ?? null,
+  );
 
   return NextResponse.json({
     rows,
@@ -79,6 +86,7 @@ export async function GET(req: Request) {
     currentUser: {
       id: ctx.userId,
       email: userData.user?.email ?? null,
+      employee_name: linkedEmployee?.name ?? null,
     },
   });
 }

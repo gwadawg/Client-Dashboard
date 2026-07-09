@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { buildDemoCreditFormUrlForAppointment } from '@/lib/acquisition-setter-notify';
+import { resolveEmployeeForUser } from '@/lib/employee-user-link';
 
 type QueueStatus = 'pending' | 'credited' | 'all';
 
@@ -87,14 +88,15 @@ export async function GET(req: Request) {
 
   const [{ data: rows, error, count }, { data: reps }, { data: userData }] = await Promise.all([
     query,
-    ctx.service.from('agents').select('name').eq('pay_type', 'b2b_setter').order('name'),
+    ctx.service.from('agents').select('id, name, phone, user_id, email, pay_type').eq('pay_type', 'b2b_setter').order('name'),
     ctx.service.auth.admin.getUserById(ctx.userId),
   ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const userEmail = userData?.user?.email ?? null;
-  const inferredName = inferSetterName(userEmail, reps ?? []);
+  const linked = resolveEmployeeForUser(reps ?? [], ctx.userId, userEmail);
+  const inferredName = linked?.name ?? inferSetterName(userEmail, reps ?? []);
 
   let mapped = await Promise.all(
     ((rows ?? []) as AppointmentRow[]).map(async row => {

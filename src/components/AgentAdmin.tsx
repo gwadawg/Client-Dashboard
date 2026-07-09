@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type PayType = "call_rep" | "b2b_setter";
+import {
+  EMPLOYEE_POSITIONS,
+  isCommissionPosition,
+  isSalariedPosition,
+  POSITION_LABELS,
+  positionAccent,
+  type EmployeePosition,
+} from "@/lib/employee-positions";
+import type { TeamRosterRow } from "@/lib/team-roster-api";
 
 type PayRates = {
   base_salary: number;
@@ -14,18 +21,16 @@ type PayRates = {
   pay_per_close: number;
 };
 
-type Agent = {
-  id: string;
-  phone: string;
-  name: string;
-  pay_type: PayType;
-  created_at: string;
-} & PayRates;
+type Agent = TeamRosterRow;
+
+type AvailableUser = { id: string; email: string };
 
 type EditState = {
   phone: string;
   name: string;
-  pay_type: PayType;
+  email: string;
+  pay_type: EmployeePosition;
+  user_id: string;
 } & PayRates;
 
 const emptyPay: PayRates = {
@@ -38,19 +43,33 @@ const emptyPay: PayRates = {
   pay_per_close: 0,
 };
 
-const PAY_TYPE_LABELS: Record<PayType, string> = {
-  call_rep: "Call Rep",
-  b2b_setter: "B2B Setter",
-};
+const FILTER_OPTIONS = ["all", ...EMPLOYEE_POSITIONS] as const;
+type FilterKey = (typeof FILTER_OPTIONS)[number];
 
 export default function AgentAdmin() {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
-  const [filter, setFilter] = useState<"all" | PayType>("all");
-  const [newAgent, setNewAgent] = useState<EditState>({ phone: "", name: "", pay_type: "call_rep", ...emptyPay });
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [newAgent, setNewAgent] = useState<EditState>({
+    phone: "",
+    name: "",
+    email: "",
+    pay_type: "call_rep",
+    user_id: "",
+    ...emptyPay,
+  });
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<EditState>({ phone: "", name: "", pay_type: "call_rep", ...emptyPay });
+  const [editState, setEditState] = useState<EditState>({
+    phone: "",
+    name: "",
+    email: "",
+    pay_type: "call_rep",
+    user_id: "",
+    ...emptyPay,
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -58,7 +77,11 @@ export default function AgentAdmin() {
     setLoading(true);
     fetch("/api/agents")
       .then(r => r.json())
-      .then(d => { setAgents(d.agents ?? []); setLoading(false); })
+      .then(d => {
+        setAgents(d.agents ?? []);
+        setAvailableUsers(d.available_users ?? []);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }
 
@@ -68,7 +91,9 @@ export default function AgentAdmin() {
     return {
       phone: a.phone,
       name: a.name,
-      pay_type: a.pay_type ?? "call_rep",
+      email: a.email ?? "",
+      pay_type: (a.pay_type as EmployeePosition) ?? "call_rep",
+      user_id: a.user_id ?? "",
       base_salary: Number(a.base_salary) || 0,
       monthly_bonus: Number(a.monthly_bonus) || 0,
       pay_per_booking: Number(a.pay_per_booking) || 0,
@@ -79,6 +104,14 @@ export default function AgentAdmin() {
     };
   }
 
+  function payloadFromEdit(state: EditState) {
+    return {
+      ...state,
+      user_id: state.user_id || null,
+      email: state.email || null,
+    };
+  }
+
   async function handleAdd() {
     if (!newAgent.phone.trim() || !newAgent.name.trim()) return;
     setSaving(true);
@@ -86,12 +119,12 @@ export default function AgentAdmin() {
     const res = await fetch("/api/agents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newAgent),
+      body: JSON.stringify(payloadFromEdit(newAgent)),
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { setError(data.error ?? "Failed to add agent"); return; }
-    setNewAgent({ phone: "", name: "", pay_type: "call_rep", ...emptyPay });
+    if (!res.ok) { setError(data.error ?? "Failed to add team member"); return; }
+    setNewAgent({ phone: "", name: "", email: "", pay_type: "call_rep", user_id: "", ...emptyPay });
     setAdding(false);
     load();
   }
@@ -103,23 +136,25 @@ export default function AgentAdmin() {
     const res = await fetch(`/api/agents/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(editState),
+      body: JSON.stringify(payloadFromEdit(editState)),
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { setError(data.error ?? "Failed to update agent"); return; }
+    if (!res.ok) { setError(data.error ?? "Failed to update team member"); return; }
     setEditingId(null);
     load();
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Remove ${name} from the agent roster?`)) return;
+    if (!confirm(`Remove ${name} from the team roster?`)) return;
     const res = await fetch(`/api/agents/${id}`, { method: "DELETE" });
-    if (!res.ok) { setError("Failed to delete agent"); return; }
+    if (!res.ok) { setError("Failed to delete team member"); return; }
+    if (selectedId === id) setSelectedId(null);
     load();
   }
 
-  const filtered = filter === "all" ? agents : agents.filter(a => (a.pay_type ?? "call_rep") === filter);
+  const filtered = filter === "all" ? agents : agents.filter(a => a.pay_type === filter);
+  const selected = agents.find(a => a.id === selectedId) ?? null;
 
   const inputStyle = {
     background: "#0a1628",
@@ -134,12 +169,23 @@ export default function AgentAdmin() {
 
   const payInputStyle = { ...inputStyle, width: "5rem" } as React.CSSProperties;
 
+  function userOptionsForEdit(currentUserId: string | null) {
+    const opts = [...availableUsers];
+    if (currentUserId) {
+      const linked = agents.find(a => a.user_id === currentUserId);
+      if (linked?.linked_user_email && !opts.some(u => u.id === currentUserId)) {
+        opts.unshift({ id: currentUserId, email: linked.linked_user_email });
+      }
+    }
+    return opts;
+  }
+
   function PayFields({
     payType,
     values,
     onChange,
   }: {
-    payType: PayType;
+    payType: EmployeePosition;
     values: PayRates;
     onChange: (patch: Partial<PayRates>) => void;
   }) {
@@ -156,7 +202,10 @@ export default function AgentAdmin() {
       ["pay_per_qualified_demo", "$/qualified demo"],
       ["pay_per_close", "$/close"],
     ];
-    const fields = [...common, ...(payType === "b2b_setter" ? b2b : callRep)];
+
+    let fields = [...common];
+    if (payType === "b2b_setter") fields = [...fields, ...b2b];
+    else if (payType === "call_rep") fields = [...fields, ...callRep];
 
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
@@ -173,41 +222,65 @@ export default function AgentAdmin() {
             />
           </div>
         ))}
+        {isSalariedPosition(payType) && (
+          <p className="col-span-full text-xs" style={{ color: "#64748b" }}>
+            Salaried positions use base + monthly bonus only on Team Payroll.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  function UserLinkField({
+    value,
+    currentUserId,
+    onChange,
+  }: {
+    value: string;
+    currentUserId: string | null;
+    onChange: (userId: string) => void;
+  }) {
+    return (
+      <div>
+        <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Dashboard login</label>
+        <select style={inputStyle} value={value} onChange={e => onChange(e.target.value)}>
+          <option value="">No login linked</option>
+          {userOptionsForEdit(currentUserId).map(u => (
+            <option key={u.id} value={u.id}>{u.email}</option>
+          ))}
+        </select>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 max-w-6xl">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Employee Roster</h2>
-          <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            Unified roster for call reps and B2B setters — pay rates feed the Agent Payroll dashboard
+          <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Team Roster</h2>
+          <p className="text-sm mt-0.5 max-w-2xl" style={{ color: "#475569" }}>
+            One record per team member — position, pay rates, and optional dashboard login. Mirrors Client Roster for internal staff.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {(["all", "call_rep", "b2b_setter"] as const).map(f => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setFilter(f)}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-              style={{
-                background: filter === f ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.05)",
-                color: filter === f ? "#fbbf24" : "#64748b",
-              }}
-            >
-              {f === "all" ? "All" : PAY_TYPE_LABELS[f]}
-            </button>
-          ))}
+          <select
+            value={filter}
+            onChange={e => setFilter(e.target.value as FilterKey)}
+            className="rounded-lg px-3 py-2 text-xs font-semibold"
+            style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+          >
+            <option value="all">All positions</option>
+            {EMPLOYEE_POSITIONS.map(p => (
+              <option key={p} value={p}>{POSITION_LABELS[p]}</option>
+            ))}
+          </select>
           {!adding && (
             <button
               onClick={() => { setAdding(true); setError(""); }}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
+              className="px-4 py-2 rounded-lg text-sm font-semibold"
               style={{ background: "#f59e0b", color: "#fff" }}
             >
-              Add Employee
+              Add team member
             </button>
           )}
         </div>
@@ -221,149 +294,177 @@ export default function AgentAdmin() {
 
       {adding && (
         <div className="rounded-xl p-4 space-y-3" style={{ background: "#0a1628", border: "1px solid rgba(245,158,11,0.25)" }}>
-          <p className="text-sm font-semibold" style={{ color: "#f59e0b" }}>New Employee</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <p className="text-sm font-semibold" style={{ color: "#f59e0b" }}>New team member</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Pay Type</label>
-              <select
-                style={inputStyle}
-                value={newAgent.pay_type}
-                onChange={e => setNewAgent(s => ({ ...s, pay_type: e.target.value as PayType }))}
-              >
-                <option value="call_rep">Call Rep</option>
-                <option value="b2b_setter">B2B Setter</option>
+              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Position</label>
+              <select style={inputStyle} value={newAgent.pay_type}
+                onChange={e => setNewAgent(s => ({ ...s, pay_type: e.target.value as EmployeePosition }))}>
+                {EMPLOYEE_POSITIONS.map(p => (
+                  <option key={p} value={p}>{POSITION_LABELS[p]}</option>
+                ))}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Phone / ID</label>
-              <input
-                style={inputStyle}
-                placeholder="ex: 1 or b2b-john"
-                value={newAgent.phone}
-                onChange={e => setNewAgent(s => ({ ...s, phone: e.target.value }))}
-              />
+              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Name</label>
+              <input style={inputStyle} value={newAgent.name} onChange={e => setNewAgent(s => ({ ...s, name: e.target.value }))} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Name</label>
-              <input
-                style={inputStyle}
-                placeholder="Jane Smith"
-                value={newAgent.name}
-                onChange={e => setNewAgent(s => ({ ...s, name: e.target.value }))}
-                onKeyDown={e => { if (e.key === "Enter") handleAdd(); }}
-              />
+              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Phone / ID</label>
+              <input style={inputStyle} value={newAgent.phone} onChange={e => setNewAgent(s => ({ ...s, phone: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Work email</label>
+              <input style={inputStyle} value={newAgent.email} onChange={e => setNewAgent(s => ({ ...s, email: e.target.value }))} placeholder="optional" />
             </div>
           </div>
+          <UserLinkField value={newAgent.user_id} currentUserId={null} onChange={id => setNewAgent(s => ({ ...s, user_id: id }))} />
           <PayFields payType={newAgent.pay_type} values={newAgent} onChange={patch => setNewAgent(s => ({ ...s, ...patch }))} />
           <div className="flex gap-2 justify-end">
-            <button onClick={() => { setAdding(false); setError(""); setNewAgent({ phone: "", name: "", pay_type: "call_rep", ...emptyPay }); }}
-              className="px-4 py-2 rounded-lg text-sm font-medium"
-              style={{ background: "rgba(255,255,255,0.05)", color: "#64748b" }}>
-              Cancel
-            </button>
+            <button onClick={() => { setAdding(false); setNewAgent({ phone: "", name: "", email: "", pay_type: "call_rep", user_id: "", ...emptyPay }); }}
+              className="px-4 py-2 rounded-lg text-sm" style={{ background: "rgba(255,255,255,0.05)", color: "#64748b" }}>Cancel</button>
             <button onClick={handleAdd} disabled={saving || !newAgent.phone || !newAgent.name}
               className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
-              style={{ background: "#f59e0b", color: "#fff" }}>
-              {saving ? "Saving…" : "Save Employee"}
-            </button>
+              style={{ background: "#f59e0b", color: "#fff" }}>{saving ? "Saving…" : "Save"}</button>
           </div>
         </div>
       )}
 
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: "#050c18" }}>
-              {["Type", "Name", "Phone", "Base", "Bonus", "Rates", "Added", ""].map(h => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={8} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>Loading…</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
-                No employees yet — add your first employee above
-              </td></tr>
-            ) : filtered.map((a, i) => (
-              <tr key={a.id} style={{ borderTop: "1px solid rgba(255,255,255,0.03)", background: i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent" }}>
-                {editingId === a.id ? (
-                  <td colSpan={8} className="px-4 py-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Pay Type</label>
-                        <select style={inputStyle} value={editState.pay_type}
-                          onChange={e => setEditState(s => ({ ...s, pay_type: e.target.value as PayType }))}>
-                          <option value="call_rep">Call Rep</option>
-                          <option value="b2b_setter">B2B Setter</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Name</label>
-                        <input style={inputStyle} value={editState.name} onChange={e => setEditState(s => ({ ...s, name: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Phone / ID</label>
-                        <input style={inputStyle} value={editState.phone} onChange={e => setEditState(s => ({ ...s, phone: e.target.value }))} />
-                      </div>
-                    </div>
-                    <PayFields payType={editState.pay_type} values={editState} onChange={patch => setEditState(s => ({ ...s, ...patch }))} />
-                    <div className="flex items-center gap-2 justify-end mt-3">
-                      <button onClick={() => setEditingId(null)} className="text-xs px-3 py-1.5 rounded-lg"
-                        style={{ background: "rgba(255,255,255,0.05)", color: "#64748b" }}>Cancel</button>
-                      <button onClick={() => handleUpdate(a.id)} disabled={saving}
-                        className="text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40"
-                        style={{ background: "#f59e0b", color: "#fff" }}>Save</button>
-                    </div>
-                  </td>
-                ) : (
-                  <>
-                    <td className="px-4 py-3">
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded"
-                        style={{
-                          background: (a.pay_type ?? "call_rep") === "b2b_setter" ? "rgba(245,158,11,0.15)" : "rgba(96,165,250,0.15)",
-                          color: (a.pay_type ?? "call_rep") === "b2b_setter" ? "#fbbf24" : "#60a5fa",
-                        }}>
-                        {PAY_TYPE_LABELS[a.pay_type ?? "call_rep"]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{a.name}</td>
-                    <td className="px-4 py-3 font-mono text-xs" style={{ color: "#64748b" }}>{a.phone}</td>
-                    <td className="px-4 py-3 text-xs tabular-nums" style={{ color: "#94a3b8" }}>{Number(a.base_salary) || 0}</td>
-                    <td className="px-4 py-3 text-xs tabular-nums" style={{ color: "#94a3b8" }}>{Number(a.monthly_bonus) || 0}</td>
-                    <td className="px-4 py-3 text-xs" style={{ color: "#64748b" }}>
-                      {(a.pay_type ?? "call_rep") === "b2b_setter"
-                        ? `$${a.pay_per_qualified_demo}/demo · $${a.pay_per_close}/close`
-                        : `$${a.pay_per_booking}/bk · $${a.pay_per_show}/show · $${a.pay_per_live_transfer}/xfer`}
-                    </td>
-                    <td className="px-4 py-3" style={{ color: "#334155" }}>
-                      {new Date(a.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 justify-end">
-                        <button onClick={() => { setEditingId(a.id); setEditState(agentToEdit(a)); setError(""); }}
-                          className="text-xs px-3 py-1.5 rounded-lg"
-                          style={{ background: "rgba(255,255,255,0.05)", color: "#64748b" }}>
-                          Edit
-                        </button>
-                        <button onClick={() => handleDelete(a.id, a.name)}
-                          className="text-xs px-3 py-1.5 rounded-lg"
-                          style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}>
-                          Remove
-                        </button>
-                      </div>
-                    </td>
-                  </>
-                )}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <div className="lg:col-span-3 rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: "#050c18" }}>
+                {["Position", "Name", "Login", "Base", "Bonus", ""].map(h => (
+                  <th key={h || "actions"} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: "#64748b" }}>Loading…</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: "#64748b" }}>No team members yet</td></tr>
+              ) : filtered.map((a, i) => (
+                <tr
+                  key={a.id}
+                  onClick={() => setSelectedId(a.id)}
+                  className="cursor-pointer"
+                  style={{
+                    borderTop: "1px solid rgba(255,255,255,0.03)",
+                    background: selectedId === a.id ? "rgba(245,158,11,0.08)" : i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent",
+                  }}
+                >
+                  <td className="px-4 py-3">
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded"
+                      style={{ background: `${positionAccent(a.pay_type as EmployeePosition)}22`, color: positionAccent(a.pay_type as EmployeePosition) }}>
+                      {POSITION_LABELS[a.pay_type as EmployeePosition] ?? a.pay_type}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{a.name}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: a.linked_user_email ? "#94a3b8" : "#475569" }}>
+                    {a.linked_user_email ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-xs tabular-nums" style={{ color: "#94a3b8" }}>{Number(a.base_salary) || 0}</td>
+                  <td className="px-4 py-3 text-xs tabular-nums" style={{ color: "#94a3b8" }}>{Number(a.monthly_bonus) || 0}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); setEditingId(a.id); setEditState(agentToEdit(a)); setError(""); }}
+                      className="text-xs px-2 py-1 rounded"
+                      style={{ background: "rgba(255,255,255,0.05)", color: "#94a3b8" }}
+                    >Edit</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="lg:col-span-2 rounded-xl p-4 space-y-3" style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.06)" }}>
+          {!selected ? (
+            <p className="text-sm py-8 text-center" style={{ color: "#475569" }}>Select a team member to view their file</p>
+          ) : (
+            <>
+              <div>
+                <p className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>{selected.name}</p>
+                <p className="text-xs mt-1" style={{ color: positionAccent(selected.pay_type as EmployeePosition) }}>
+                  {POSITION_LABELS[selected.pay_type as EmployeePosition]}
+                </p>
+              </div>
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between gap-2"><dt style={{ color: "#64748b" }}>Phone / ID</dt><dd style={{ color: "#e2e8f0" }}>{selected.phone}</dd></div>
+                <div className="flex justify-between gap-2"><dt style={{ color: "#64748b" }}>Email</dt><dd style={{ color: "#e2e8f0" }}>{selected.email || "—"}</dd></div>
+                <div className="flex justify-between gap-2"><dt style={{ color: "#64748b" }}>Login</dt><dd style={{ color: "#e2e8f0" }}>{selected.linked_user_email || "Not linked"}</dd></div>
+                <div className="flex justify-between gap-2"><dt style={{ color: "#64748b" }}>Base</dt><dd className="tabular-nums" style={{ color: "#e2e8f0" }}>${Number(selected.base_salary) || 0}</dd></div>
+                <div className="flex justify-between gap-2"><dt style={{ color: "#64748b" }}>Bonus</dt><dd className="tabular-nums" style={{ color: "#e2e8f0" }}>${Number(selected.monthly_bonus) || 0}</dd></div>
+              </dl>
+              {isCommissionPosition(selected.pay_type as EmployeePosition) && (
+                <p className="text-xs pt-2" style={{ color: "#64748b", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  {selected.pay_type === "b2b_setter"
+                    ? `Commission: $${selected.pay_per_qualified_demo}/demo · $${selected.pay_per_close}/close`
+                    : `Commission: $${selected.pay_per_booking}/bk · $${selected.pay_per_show}/show · $${selected.pay_per_live_transfer}/xfer`}
+                </p>
+              )}
+              {selected.user_id && (
+                <p className="text-xs" style={{ color: "#64748b" }}>
+                  Manage dashboard permissions under Admin → Users for {selected.linked_user_email}.
+                </p>
+              )}
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => { setEditingId(selected.id); setEditState(agentToEdit(selected)); }}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                  style={{ background: "#f59e0b", color: "#fff" }}>Edit profile</button>
+                <button type="button" onClick={() => handleDelete(selected.id, selected.name)}
+                  className="text-xs px-3 py-1.5 rounded-lg"
+                  style={{ background: "rgba(239,68,68,0.1)", color: "#f87171" }}>Remove</button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
+
+      {editingId && (
+        <div className="rounded-xl p-4 space-y-3" style={{ background: "#0a1628", border: "1px solid rgba(96,165,250,0.25)" }}>
+          <p className="text-sm font-semibold" style={{ color: "#60a5fa" }}>Edit {editState.name}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Position</label>
+              <select style={inputStyle} value={editState.pay_type}
+                onChange={e => setEditState(s => ({ ...s, pay_type: e.target.value as EmployeePosition }))}>
+                {EMPLOYEE_POSITIONS.map(p => (
+                  <option key={p} value={p}>{POSITION_LABELS[p]}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Name</label>
+              <input style={inputStyle} value={editState.name} onChange={e => setEditState(s => ({ ...s, name: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Phone / ID</label>
+              <input style={inputStyle} value={editState.phone} onChange={e => setEditState(s => ({ ...s, phone: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Work email</label>
+              <input style={inputStyle} value={editState.email} onChange={e => setEditState(s => ({ ...s, email: e.target.value }))} />
+            </div>
+          </div>
+          <UserLinkField
+            value={editState.user_id}
+            currentUserId={editState.user_id || null}
+            onChange={id => setEditState(s => ({ ...s, user_id: id }))}
+          />
+          <PayFields payType={editState.pay_type} values={editState} onChange={patch => setEditState(s => ({ ...s, ...patch }))} />
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setEditingId(null)} className="px-4 py-2 rounded-lg text-sm" style={{ color: "#64748b" }}>Cancel</button>
+            <button onClick={() => handleUpdate(editingId)} disabled={saving}
+              className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+              style={{ background: "#f59e0b", color: "#fff" }}>{saving ? "Saving…" : "Save changes"}</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

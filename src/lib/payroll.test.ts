@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { buildCommissionReport } from './agent-commissions';
 import { buildB2BSetterCommissionReport } from './b2b-setter-commissions';
+import { buildSalariedCommissionReport } from './salaried-commissions';
 import { computeFixedPay } from './payroll-common';
 import { bucketCallRepPendingDisposition } from './payroll-pending-disposition';
 
@@ -104,6 +105,22 @@ describe('buildB2BSetterCommissionReport', () => {
     assert.equal(report.agents[0].counts.qualified_demos, 1);
     assert.equal(report.agents[0].counts.closes, 1);
     assert.equal(report.agents[0].amounts.total, 675);
+  });
+});
+
+describe('buildSalariedCommissionReport', () => {
+  it('includes salaried employees with base or bonus only', () => {
+    const report = buildSalariedCommissionReport(
+      [
+        { id: 'e1', name: 'Alex', phone: 'alex', pay_type: 'admin', base_salary: 4000, monthly_bonus: 500 },
+        { id: 'e2', name: 'Sam', phone: 'sam', pay_type: 'media_buyer', base_salary: 0, monthly_bonus: 0 },
+      ],
+      '2026-05-01',
+      '2026-05-31',
+    );
+    assert.equal(report.agents.length, 1);
+    assert.equal(report.agents[0].agent_name, 'Alex');
+    assert.equal(report.agents[0].amounts.total, 4500);
   });
 });
 

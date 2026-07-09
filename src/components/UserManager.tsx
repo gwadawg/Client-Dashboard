@@ -8,6 +8,13 @@ import {
   ALL_PERMISSION_KEYS,
   type PermissionDef,
 } from "@/lib/permissions";
+import { POSITION_LABELS, type EmployeePosition } from "@/lib/employee-positions";
+
+type UserEmployee = {
+  id: string;
+  name: string;
+  pay_type: EmployeePosition;
+};
 
 type User = {
   id: string;
@@ -16,6 +23,7 @@ type User = {
   is_admin: boolean;
   allowed_permissions: string[] | null;
   created_at: string;
+  employee: UserEmployee | null;
 };
 
 type Viewer = { id: string; isOwner: boolean; isAdmin: boolean };
@@ -277,8 +285,15 @@ export default function UserManager() {
       <div>
         <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>User Management</h2>
         <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-          Add and manage dashboard users
+          Dashboard logins and permissions. Link users to team members under Admin → Team Roster for position and pay.
         </p>
+      </div>
+
+      <div
+        className="rounded-xl px-4 py-3 text-sm"
+        style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#fbbf24" }}
+      >
+        Position, base salary, and commission rates are managed in <strong>Team Roster</strong>, not here. Use this page for login access only.
       </div>
 
       {/* Add User */}
@@ -345,6 +360,17 @@ export default function UserManager() {
                       {u.allowed_permissions === null
                         ? "All access"
                         : `${u.allowed_permissions.length} of ${ALL_PERMISSION_KEYS.length}`}
+                    </span>
+                  )}
+                  {u.employee ? (
+                    <span className="text-xs px-1.5 py-0.5 rounded font-medium"
+                      style={{ background: "rgba(96,165,250,0.12)", color: "#93c5fd" }}>
+                      {u.employee.name} · {POSITION_LABELS[u.employee.pay_type] ?? u.employee.pay_type}
+                    </span>
+                  ) : (
+                    <span className="text-xs px-1.5 py-0.5 rounded font-medium"
+                      style={{ background: "rgba(255,255,255,0.03)", color: "#475569" }}>
+                      No team link
                     </span>
                   )}
                 </div>

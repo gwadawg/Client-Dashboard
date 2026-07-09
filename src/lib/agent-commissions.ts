@@ -57,12 +57,15 @@ export type UnifiedPayrollReport = {
   summary: {
     call_reps_total: number;
     b2b_setters_total: number;
+    salaried_total: number;
     grand_total: number;
     call_rep_count: number;
     b2b_setter_count: number;
+    salaried_count: number;
   };
   call_reps: CommissionReport;
   b2b_setters: import('@/lib/b2b-setter-commissions').B2BSetterCommissionReport;
+  salaried: import('@/lib/salaried-commissions').SalariedCommissionReport;
   /** @deprecated Use call_reps.agents */
   agents?: AgentCommissionRow[];
 };

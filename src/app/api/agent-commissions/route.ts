@@ -15,11 +15,21 @@ import {
 } from '@/lib/b2b-setter-commissions';
 import { computeFixedPay, type PendingDispositionItem } from '@/lib/payroll-common';
 import {
+  attachSalariedPending,
+  buildSalariedCommissionReport,
+  type RosterSalariedEmployee,
+} from '@/lib/salaried-commissions';
+import {
   bucketB2BSetterPendingDisposition,
   bucketCallRepPendingDisposition,
   CREDIT_QUEUE_OR_FILTER,
   CREDIT_QUEUE_UNCREDITED_FILTER,
 } from '@/lib/payroll-pending-disposition';
+import {
+  isSalariedPosition,
+  normalizeEmployeePosition,
+  type EmployeePosition,
+} from '@/lib/employee-positions';
 
 const EVENT_FIELDS =
   'id, client_id, event_type, agent_name, occurred_at, scheduled_at, lead_name, lead_phone, raw, calendar_name';
@@ -105,9 +115,9 @@ export async function GET(req: Request) {
   if (pendingB2BError) return NextResponse.json({ error: pendingB2BError.message }, { status: 500 });
 
   const allRoster = (roster ?? []) as RosterAgentWithPay[];
-  const callRepRoster = allRoster.filter(a => (a.pay_type ?? 'call_rep') === 'call_rep');
+  const callRepRoster = allRoster.filter(a => normalizeEmployeePosition(a.pay_type) === 'call_rep');
   const b2bRoster: RosterB2BSetterWithPay[] = allRoster
-    .filter(a => a.pay_type === 'b2b_setter')
+    .filter(a => normalizeEmployeePosition(a.pay_type) === 'b2b_setter')
     .map(a => ({
       id: a.id,
       name: a.name,
@@ -116,6 +126,18 @@ export async function GET(req: Request) {
       monthly_bonus: Number(a.monthly_bonus) || 0,
       pay_per_qualified_demo: Number(a.pay_per_qualified_demo) || 0,
       pay_per_close: Number(a.pay_per_close) || 0,
+      base_salary_prorate_days: a.base_salary_prorate_days,
+    }));
+
+  const salariedRoster: RosterSalariedEmployee[] = allRoster
+    .filter(a => isSalariedPosition(normalizeEmployeePosition(a.pay_type)))
+    .map(a => ({
+      id: a.id,
+      name: a.name,
+      phone: a.phone,
+      pay_type: normalizeEmployeePosition(a.pay_type) as EmployeePosition,
+      base_salary: Number(a.base_salary) || 0,
+      monthly_bonus: Number(a.monthly_bonus) || 0,
       base_salary_prorate_days: a.base_salary_prorate_days,
     }));
 
@@ -180,20 +202,30 @@ export async function GET(req: Request) {
     ),
   };
 
+  let salaried = buildSalariedCommissionReport(salariedRoster, startDate, endDate);
+  salaried = {
+    ...salaried,
+    agents: attachSalariedPending(salaried.agents, new Map(), salariedRoster, startDate),
+  };
+
   const callRepsTotal = callReps.agents.reduce((s, a) => s + a.amounts.total, 0);
   const b2bSettersTotal = b2bSetters.agents.reduce((s, a) => s + a.amounts.total, 0);
+  const salariedTotal = salaried.agents.reduce((s, a) => s + a.amounts.total, 0);
 
   const report: UnifiedPayrollReport = {
     period: { startDate, endDate },
     summary: {
       call_reps_total: callRepsTotal,
       b2b_setters_total: b2bSettersTotal,
-      grand_total: callRepsTotal + b2bSettersTotal,
+      salaried_total: salariedTotal,
+      grand_total: callRepsTotal + b2bSettersTotal + salariedTotal,
       call_rep_count: callReps.agents.length,
       b2b_setter_count: b2bSetters.agents.length,
+      salaried_count: salaried.agents.length,
     },
     call_reps: callReps,
     b2b_setters: b2bSetters,
+    salaried,
     agents: callReps.agents,
   };
 

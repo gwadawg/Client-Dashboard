@@ -301,6 +301,8 @@ create table if not exists agents (
   id                    uuid primary key default gen_random_uuid(),
   name                  text not null,
   phone                 text not null unique,
+  email                 text,
+  user_id               uuid references auth.users(id) on delete set null,
   pay_type              text not null default 'call_rep',
   base_salary           numeric(10,2) not null default 0,
   monthly_bonus         numeric(10,2) not null default 0,
@@ -311,8 +313,12 @@ create table if not exists agents (
   pay_per_qualified_demo numeric(10,2) not null default 0,
   pay_per_close         numeric(10,2) not null default 0,
   created_at            timestamptz default now(),
-  constraint agents_pay_type_check check (pay_type in ('call_rep', 'b2b_setter'))
+  constraint agents_pay_type_check check (
+    pay_type in ('call_rep', 'b2b_setter', 'admin', 'media_buyer', 'operations', 'other')
+  )
 );
+
+create unique index if not exists agents_user_id_key on agents (user_id) where user_id is not null;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4. Events (all GHL events: dials, leads, bookings, shows, no-shows, callbacks)

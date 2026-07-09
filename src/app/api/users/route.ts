@@ -34,6 +34,16 @@ export async function GET() {
   const { data: profiles } = await ctx.service
     .from('profiles')
     .select('id, is_owner, is_admin, allowed_permissions');
+
+  const { data: linkedEmployees } = await ctx.service
+    .from('agents')
+    .select('id, name, pay_type, user_id')
+    .not('user_id', 'is', null);
+
+  const employeeByUserId = Object.fromEntries(
+    (linkedEmployees ?? []).map(e => [e.user_id as string, e]),
+  );
+
   const profileMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p]));
 
   const users = data.users.map(u => ({
@@ -43,6 +53,13 @@ export async function GET() {
     is_admin: profileMap[u.id]?.is_admin ?? false,
     allowed_permissions: (profileMap[u.id]?.allowed_permissions ?? null) as string[] | null,
     created_at: u.created_at,
+    employee: employeeByUserId[u.id]
+      ? {
+          id: employeeByUserId[u.id].id,
+          name: employeeByUserId[u.id].name,
+          pay_type: employeeByUserId[u.id].pay_type,
+        }
+      : null,
   }));
 
   return NextResponse.json({

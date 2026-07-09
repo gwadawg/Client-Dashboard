@@ -1,9 +1,10 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useState } from "react";
-import type { AgentCommissionRow } from "@/lib/agent-commissions";
+import type { AgentCommissionRow, UnifiedPayrollReport } from "@/lib/agent-commissions";
 import type { B2BSetterCommissionRow } from "@/lib/b2b-setter-commissions";
-import type { UnifiedPayrollReport } from "@/lib/agent-commissions";
+import type { SalariedCommissionRow } from "@/lib/salaried-commissions";
+import { POSITION_LABELS } from "@/lib/employee-positions";
 
 type Props = {
   preset: string;
@@ -86,10 +87,11 @@ function KpiStrip({ report }: { report: UnifiedPayrollReport }) {
     { label: "Grand Total", value: report.summary.grand_total, accent: "#22c55e" },
     { label: "Call Reps", value: report.summary.call_reps_total, sub: `${report.summary.call_rep_count} employees`, accent: "#60a5fa" },
     { label: "B2B Setters", value: report.summary.b2b_setters_total, sub: `${report.summary.b2b_setter_count} employees`, accent: "#fbbf24" },
+    { label: "Salaried", value: report.summary.salaried_total, sub: `${report.summary.salaried_count} employees`, accent: "#a78bfa" },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {cards.map(card => (
         <div
           key={card.label}
@@ -139,6 +141,9 @@ export default function AgentPayrollReport({
           for (const a of d.b2b_setters?.agents ?? []) {
             drafts[a.agent_id] = b2bRowToDraft(a);
           }
+          for (const a of d.salaried?.agents ?? []) {
+            drafts[a.agent_id] = salariedRowToDraft(a);
+          }
           setRateDrafts(drafts);
         }
         setLoading(false);
@@ -172,6 +177,18 @@ export default function AgentPayrollReport({
       pay_per_live_transfer: 0,
       pay_per_qualified_demo: a.rates.pay_per_qualified_demo,
       pay_per_close: a.rates.pay_per_close,
+    };
+  }
+
+  function salariedRowToDraft(a: SalariedCommissionRow): RateDraft {
+    return {
+      base_salary: a.rates.base_salary,
+      monthly_bonus: a.rates.monthly_bonus,
+      pay_per_booking: 0,
+      pay_per_show: 0,
+      pay_per_live_transfer: 0,
+      pay_per_qualified_demo: 0,
+      pay_per_close: 0,
     };
   }
 
@@ -262,6 +279,30 @@ export default function AgentPayrollReport({
         String(a.amounts.total),
       ]);
     }
+    for (const a of report.salaried.agents) {
+      rows.push([
+        POSITION_LABELS[a.position] ?? a.position,
+        a.agent_name,
+        String(a.rates.base_salary),
+        String(a.rates.monthly_bonus),
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        String(a.amounts.base),
+        String(a.amounts.bonus),
+        "",
+        "",
+        "",
+        "",
+        "",
+        String(a.amounts.total),
+      ]);
+    }
 
     downloadCsv(
       `agent-payroll-summary-${stamp}.csv`,
@@ -325,9 +366,17 @@ export default function AgentPayrollReport({
     (report?.b2b_setters.unassigned.qualified_demos ?? 0) +
     (report?.b2b_setters.unassigned.closes ?? 0);
 
-  function ratesDirty(agentId: string, agent: AgentCommissionRow | B2BSetterCommissionRow, kind: "call_rep" | "b2b") {
+  function ratesDirty(
+    agentId: string,
+    agent: AgentCommissionRow | B2BSetterCommissionRow | SalariedCommissionRow,
+    kind: "call_rep" | "b2b" | "salaried",
+  ) {
     const draft = rateDrafts[agentId];
     if (!draft) return false;
+    if (kind === "salaried") {
+      const a = agent as SalariedCommissionRow;
+      return draft.base_salary !== a.rates.base_salary || draft.monthly_bonus !== a.rates.monthly_bonus;
+    }
     if (kind === "call_rep") {
       const a = agent as AgentCommissionRow;
       return (
@@ -351,9 +400,9 @@ export default function AgentPayrollReport({
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Agent Payroll</h2>
+          <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Team Payroll</h2>
           <p className="text-sm mt-0.5 max-w-2xl" style={{ color: "#475569" }}>
-            Unified payroll for call reps and B2B setters. Base + monthly bonus + plan-specific commissions.
+            Unified payroll for all team positions — commission roles plus salaried staff (base + monthly bonus).
           </p>
           {report && (
             <p className="text-xs mt-1" style={{ color: "#64748b" }}>
@@ -365,7 +414,12 @@ export default function AgentPayrollReport({
           <button
             type="button"
             onClick={downloadSummary}
-            disabled={!report || (report.call_reps.agents.length === 0 && report.b2b_setters.agents.length === 0)}
+            disabled={
+              !report ||
+              (report.call_reps.agents.length === 0 &&
+                report.b2b_setters.agents.length === 0 &&
+                report.salaried.agents.length === 0)
+            }
             className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
             style={{ background: "rgba(255,255,255,0.06)", color: "#e2e8f0" }}
           >
@@ -583,6 +637,111 @@ export default function AgentPayrollReport({
                 </tr>
               )}
             </PayrollTable>
+          </section>
+
+          {/* ── Salaried Section ── */}
+          <section className="space-y-3 animate-[fadeIn_0.6s_ease-out]">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#a78bfa" }}>
+                Salaried
+              </h3>
+              <p className="text-xs mt-0.5" style={{ color: "#475569" }}>
+                Admin, media buyer, operations, and other salaried roles — base + monthly bonus only
+              </p>
+            </div>
+
+            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(167,139,250,0.15)" }}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ background: "#050c18" }}>
+                      {["Employee", "Position", "Base $", "Bonus $", "Base", "Bonus", "Total", ""].map(h => (
+                        <th
+                          key={h || "actions"}
+                          className={`px-3 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${h === "Employee" || h === "Position" ? "text-left" : "text-right"}`}
+                          style={{ color: "#475569", borderBottom: "1px solid rgba(167,139,250,0.2)" }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.salaried.agents.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-12 text-center text-sm" style={{ color: "#64748b" }}>
+                          No salaried team members with base or bonus in this period.
+                        </td>
+                      </tr>
+                    ) : report.salaried.agents.map((agent, i) => {
+                      const draft = rateDrafts[agent.agent_id] ?? salariedRowToDraft(agent);
+                      const dirty = ratesDirty(agent.agent_id, agent, "salaried");
+                      return (
+                        <tr
+                          key={agent.agent_id}
+                          style={{
+                            borderTop: "1px solid rgba(255,255,255,0.03)",
+                            background: i % 2 === 0 ? "rgba(167,139,250,0.03)" : "transparent",
+                          }}
+                        >
+                          <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>
+                            {agent.agent_name}
+                          </td>
+                          <td className="px-3 py-2.5 text-xs" style={{ color: "#c4b5fd" }}>
+                            {POSITION_LABELS[agent.position] ?? agent.position}
+                          </td>
+                          {(["base_salary", "monthly_bonus"] as const).map(key => (
+                            <td key={key} className="px-2 py-2.5 text-right">
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.01}
+                                style={rateInputStyle}
+                                value={draft[key]}
+                                onChange={e => updateDraft(agent.agent_id, key, e.target.value)}
+                              />
+                            </td>
+                          ))}
+                          <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>
+                            {fmtMoney(agent.amounts.base)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>
+                            {fmtMoney(agent.amounts.bonus)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#22c55e" }}>
+                            {fmtMoney(agent.amounts.total)}
+                          </td>
+                          <td className="px-2 py-2.5 text-right">
+                            {dirty && (
+                              <button
+                                type="button"
+                                onClick={() => saveRates(agent.agent_id)}
+                                disabled={savingId === agent.agent_id}
+                                className="text-xs font-semibold px-2 py-1 rounded disabled:opacity-40"
+                                style={{ background: "#f59e0b", color: "#fff" }}
+                              >
+                                {savingId === agent.agent_id ? "…" : "Save"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {report.salaried.agents.length > 0 && (
+                      <tr style={{ borderTop: "2px solid rgba(167,139,250,0.2)", background: "#050c18" }}>
+                        <td colSpan={6} className="px-4 py-3 text-right text-sm font-semibold" style={{ color: "#94a3b8" }}>
+                          Salaried Subtotal
+                        </td>
+                        <td className="px-3 py-3 text-right text-sm font-bold tabular-nums" style={{ color: "#a78bfa" }}>
+                          {fmtMoney(report.summary.salaried_total)}
+                        </td>
+                        <td />
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </section>
         </>
       )}

@@ -1,30 +1,33 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission, requirePermission } from '@/lib/api-auth';
-
-const ROSTER_SELECT =
-  'id, phone, name, pay_type, base_salary, monthly_bonus, base_salary_prorate_days, pay_per_booking, pay_per_show, pay_per_live_transfer, pay_per_qualified_demo, pay_per_close, created_at';
-
-const PAY_FIELDS = [
-  'base_salary',
-  'monthly_bonus',
-  'base_salary_prorate_days',
-  'pay_per_booking',
-  'pay_per_show',
-  'pay_per_live_transfer',
-  'pay_per_qualified_demo',
-  'pay_per_close',
-] as const;
-
+import {
+  enrichTeamRoster,
+  loadAuthUserEmailMap,
+  parseTeamInsert,
+  TEAM_ROSTER_SELECT,
+} from '@/lib/team-roster-api';
 export async function GET() {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requireAnyPermission(ctx, ['admin_agents', 'schedule', 'admin_agent_payroll']);
+  const denied = requireAnyPermission(ctx, ['admin_agents', 'schedule', 'admin_agent_payroll', 'admin_users']);
   if (denied) return denied;
 
-  const { data, error } = await ctx.service.from('agents').select(ROSTER_SELECT).order('name');
+  const [{ data, error }, userEmails] = await Promise.all([
+    ctx.service.from('agents').select(TEAM_ROSTER_SELECT).order('name'),
+    loadAuthUserEmailMap(ctx),
+  ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ agents: data });
+
+  const agents = enrichTeamRoster(data ?? [], userEmails);
+  const linkedUserIds = new Set(agents.map(a => a.user_id).filter(Boolean));
+
+  return NextResponse.json({
+    agents,
+    available_users: [...userEmails.entries()]
+      .filter(([id]) => !linkedUserIds.has(id))
+      .map(([id, email]) => ({ id, email })),
+  });
 }
 
 export async function POST(req: Request) {
@@ -37,17 +40,10 @@ export async function POST(req: Request) {
   const { phone, name } = body;
   if (!phone || !name) return NextResponse.json({ error: 'phone and name are required' }, { status: 400 });
 
-  const insert: Record<string, unknown> = {
-    phone: phone.trim(),
-    name: name.trim(),
-    pay_type: body.pay_type === 'b2b_setter' ? 'b2b_setter' : 'call_rep',
-  };
+  const insert = parseTeamInsert(body);
+  if (!insert.pay_type) insert.pay_type = 'call_rep';
 
-  for (const key of PAY_FIELDS) {
-    if (body[key] != null && body[key] !== '') insert[key] = Number(body[key]) || 0;
-  }
-
-  const { data, error } = await ctx.service.from('agents').insert(insert).select(ROSTER_SELECT).single();
+  const { data, error } = await ctx.service.from('agents').insert(insert).select(TEAM_ROSTER_SELECT).single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ agent: data });

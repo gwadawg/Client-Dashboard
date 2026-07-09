@@ -1,4 +1,4 @@
-export type PayType = 'call_rep' | 'b2b_setter';
+export type PayType = import('@/lib/employee-positions').EmployeePosition;
 
 export type PendingDispositionItem = {
   id: string;

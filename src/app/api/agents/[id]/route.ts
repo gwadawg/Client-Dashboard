@@ -1,19 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission, requirePermission } from '@/lib/api-auth';
-
-const ROSTER_SELECT =
-  'id, phone, name, pay_type, base_salary, monthly_bonus, base_salary_prorate_days, pay_per_booking, pay_per_show, pay_per_live_transfer, pay_per_qualified_demo, pay_per_close, created_at';
-
-const PAY_FIELDS = [
-  'base_salary',
-  'monthly_bonus',
-  'base_salary_prorate_days',
-  'pay_per_booking',
-  'pay_per_show',
-  'pay_per_live_transfer',
-  'pay_per_qualified_demo',
-  'pay_per_close',
-] as const;
+import { parseTeamInsert, TEAM_ROSTER_SELECT } from '@/lib/team-roster-api';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
@@ -23,14 +10,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params;
   const body = await req.json();
-  const { phone, name } = body;
-  const updates: Record<string, string | number> = {};
-  if (phone) updates.phone = phone.trim();
-  if (name) updates.name = name.trim();
-  if (body.pay_type === 'call_rep' || body.pay_type === 'b2b_setter') updates.pay_type = body.pay_type;
-  for (const key of PAY_FIELDS) {
-    if (body[key] != null && body[key] !== '') updates[key] = Number(body[key]) || 0;
-  }
+  const updates = parseTeamInsert(body);
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'no fields to update' }, { status: 400 });
   }
@@ -39,7 +20,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .from('agents')
     .update(updates)
     .eq('id', id)
-    .select(ROSTER_SELECT)
+    .select(TEAM_ROSTER_SELECT)
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ agent: data });
