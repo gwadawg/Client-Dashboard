@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission, requireClientRevenue } from '@/lib/api-auth';
-import { applyActiveCloseFilters } from '@/lib/acquisition-close-filter';
+import { DISMISSED_CLOSE_STATUS } from '@/lib/acquisition-close-filter';
 import { VOIDED_BILLING_STATUS } from '@/lib/billing-query';
 import {
   computeBusinessMetrics,
@@ -76,11 +76,11 @@ export async function GET(req: Request) {
   const monthEnd = monthEndDate.toISOString().slice(0, 10);
 
   const [acqClosesRes, acqSpendRes] = await Promise.all([
-    applyActiveCloseFilters(
-      ctx.service
-        .from('acquisition_closes')
-        .select('id', { count: 'exact', head: true }),
-    )
+    ctx.service
+      .from('acquisition_closes')
+      .select('id', { count: 'exact', head: true })
+      .neq('mapping_status', DISMISSED_CLOSE_STATUS)
+      .is('deleted_at', null)
       .gte('closed_at', `${monthStart}T00:00:00.000Z`)
       .lte('closed_at', `${monthEnd}T23:59:59.999Z`),
     ctx.service
