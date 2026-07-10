@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import type { AgentCommissionRow } from "@/lib/agent-commissions";
 import type { B2BSetterCommissionRow } from "@/lib/b2b-setter-commissions";
 import type { SalariedCommissionRow } from "@/lib/salaried-commissions";
 import { POSITION_LABELS } from "@/lib/employee-positions";
-import type { PayrollEmployeeHistoryRow } from "@/lib/payroll-runs";
 
 export type EmployeePayrollView = {
   agent_id: string;
@@ -82,7 +80,7 @@ function AmountBreakdown({ view }: { view: EmployeePayrollView }) {
 
 function LineItemsTable({ view }: { view: EmployeePayrollView }) {
   const { row, section } = view;
-  const items = ('line_items' in row ? row.line_items : []) as {
+  const items = ("line_items" in row ? row.line_items : []) as {
     event_id: string;
     date: string;
     type: string;
@@ -116,7 +114,7 @@ function LineItemsTable({ view }: { view: EmployeePayrollView }) {
               <td className="px-3 py-2">{labels[item.type] ?? item.type}</td>
               <td className="px-3 py-2 text-slate-200">{item.lead_name ?? "—"}</td>
               <td className="px-3 py-2 font-mono text-slate-500">{item.lead_phone ?? "—"}</td>
-              {showClient && <td className="px-3 py-2 text-slate-400">{"client_name" in item ? item.client_name ?? "—" : "—"}</td>}
+              {showClient && <td className="px-3 py-2 text-slate-400">{item.client_name ?? "—"}</td>}
               <td className="px-3 py-2 text-right tabular-nums text-emerald-400">{fmtMoney(item.unit_pay)}</td>
             </tr>
           ))}
@@ -126,6 +124,7 @@ function LineItemsTable({ view }: { view: EmployeePayrollView }) {
   );
 }
 
+/** Month-close review drawer — current period line items only (history lives on Team Roster). */
 export default function PayrollEmployeeDetail({
   view,
   onClose,
@@ -133,26 +132,6 @@ export default function PayrollEmployeeDetail({
   view: EmployeePayrollView | null;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<"detail" | "history">("detail");
-  const [history, setHistory] = useState<PayrollEmployeeHistoryRow[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-
-  useEffect(() => {
-    if (!view) return;
-    setTab("detail");
-    setHistory([]);
-  }, [view?.agent_id, view?.periodLabel]);
-
-  useEffect(() => {
-    if (!view || tab !== "history") return;
-    setHistoryLoading(true);
-    fetch(`/api/payroll-runs/employee/${view.agent_id}`)
-      .then(r => r.json())
-      .then(d => setHistory(d.history ?? []))
-      .catch(() => setHistory([]))
-      .finally(() => setHistoryLoading(false));
-  }, [view, tab]);
-
   if (!view) return null;
 
   return (
@@ -173,58 +152,20 @@ export default function PayrollEmployeeDetail({
           <button type="button" onClick={onClose} className="text-slate-500 hover:text-slate-300 text-xl leading-none px-2">×</button>
         </div>
 
-        <div className="px-6 pt-4 flex gap-2">
-          {(["detail", "history"] as const).map(t => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className="px-4 py-2 rounded-lg text-sm font-semibold"
-              style={tab === t
-                ? { background: "rgba(245,158,11,0.15)", color: "#fbbf24" }
-                : { background: "rgba(255,255,255,0.04)", color: "#94a3b8" }}
-            >
-              {t === "detail" ? "This period" : "Pay history"}
-            </button>
-          ))}
-        </div>
-
         <div className="px-6 py-5 space-y-6">
-          {tab === "detail" ? (
-            <>
-              <AmountBreakdown view={view} />
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Line items</h4>
-                <LineItemsTable view={view} />
-              </div>
-              {view.row.pending_disposition?.count > 0 && (
-                <div className="rounded-lg px-4 py-3 text-sm" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#fbbf24" }}>
-                  {view.row.pending_disposition.count} unclaimed item(s) were noted at finalize time but excluded from pay.
-                </div>
-              )}
-            </>
-          ) : historyLoading ? (
-            <p className="text-sm text-slate-500">Loading pay history…</p>
-          ) : history.length === 0 ? (
-            <p className="text-sm text-slate-500">No finalized pay history yet for this employee.</p>
-          ) : (
-            <div className="space-y-3">
-              {history.map(h => (
-                <div key={h.payroll_run_id} className="rounded-xl px-4 py-3" style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="flex justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-slate-200">{h.start_date.slice(0, 7)}</p>
-                      <p className="text-xs text-slate-500">{h.start_date} → {h.end_date}</p>
-                    </div>
-                    <p className="font-bold tabular-nums text-emerald-400">{fmtMoney(h.total_pay)}</p>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-2">
-                    {h.line_items.length} line item{h.line_items.length === 1 ? "" : "s"} · Finalized {new Date(h.finalized_at).toLocaleDateString()}
-                  </p>
-                </div>
-              ))}
+          <AmountBreakdown view={view} />
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Line items</h4>
+            <LineItemsTable view={view} />
+          </div>
+          {!view.readOnly && view.row.pending_disposition?.count > 0 && (
+            <div className="rounded-lg px-4 py-3 text-sm" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#fbbf24" }}>
+              {view.row.pending_disposition.count} unclaimed item(s) need disposition before finalize — excluded from pay until credited.
             </div>
           )}
+          <p className="text-xs" style={{ color: "#64748b" }}>
+            Past pay runs for this employee are under Admin → Team Roster → their file → Pay history.
+          </p>
         </div>
       </div>
     </div>

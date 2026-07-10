@@ -12,22 +12,13 @@ import {
 } from "@/lib/payroll-period";
 import type { PayrollRunListItem } from "@/lib/payroll-runs";
 import PayrollEmployeeDetail, { type EmployeePayrollView } from "./PayrollEmployeeDetail";
-import PayrollItemizedModal from "./PayrollItemizedModal";
 
 type Props = {
   onGoToCreditQueue?: () => void;
   onGoToAcquisitionCreditQueue?: () => void;
 };
 
-type RateDraft = {
-  base_salary: number;
-  monthly_bonus: number;
-  pay_per_booking: number;
-  pay_per_show: number;
-  pay_per_live_transfer: number;
-  pay_per_qualified_demo: number;
-  pay_per_close: number;
-};
+type PageTab = "month" | "runs";
 
 function csvEscape(s: string): string {
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -61,17 +52,19 @@ const B2B_TYPE_LABELS: Record<string, string> = {
   close: "Close",
 };
 
-const rateInputStyle: React.CSSProperties = {
-  background: "#0a1628",
-  border: "1px solid rgba(255,255,255,0.12)",
-  color: "#e2e8f0",
-  borderRadius: "0.375rem",
-  padding: "0.25rem 0.5rem",
+const rateCellStyle: React.CSSProperties = {
+  color: "#94a3b8",
   fontSize: "0.75rem",
-  outline: "none",
-  width: "4.5rem",
-  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
 };
+
+function RateCell({ value }: { value: number }) {
+  return (
+    <td className="px-2 py-2.5 text-right" style={rateCellStyle}>
+      {value}
+    </td>
+  );
+}
 
 function PendingBadge({ count }: { count: number }) {
   if (count <= 0) return null;
@@ -112,42 +105,6 @@ function KpiStrip({ report }: { report: UnifiedPayrollReport }) {
   );
 }
 
-function rowToDraft(a: AgentCommissionRow): RateDraft {
-  return {
-    base_salary: a.rates.base_salary,
-    monthly_bonus: a.rates.monthly_bonus,
-    pay_per_booking: a.rates.pay_per_booking,
-    pay_per_show: a.rates.pay_per_show,
-    pay_per_live_transfer: a.rates.pay_per_live_transfer,
-    pay_per_qualified_demo: 0,
-    pay_per_close: 0,
-  };
-}
-
-function b2bRowToDraft(a: B2BSetterCommissionRow): RateDraft {
-  return {
-    base_salary: a.rates.base_salary,
-    monthly_bonus: a.rates.monthly_bonus,
-    pay_per_booking: 0,
-    pay_per_show: 0,
-    pay_per_live_transfer: 0,
-    pay_per_qualified_demo: a.rates.pay_per_qualified_demo,
-    pay_per_close: a.rates.pay_per_close,
-  };
-}
-
-function salariedRowToDraft(a: SalariedCommissionRow): RateDraft {
-  return {
-    base_salary: a.rates.base_salary,
-    monthly_bonus: a.rates.monthly_bonus,
-    pay_per_booking: 0,
-    pay_per_show: 0,
-    pay_per_live_transfer: 0,
-    pay_per_qualified_demo: 0,
-    pay_per_close: 0,
-  };
-}
-
 export default function AgentPayrollReport({
   onGoToCreditQueue,
   onGoToAcquisitionCreditQueue,
@@ -156,6 +113,7 @@ export default function AgentPayrollReport({
   const [periodMonth, setPeriodMonth] = useState(currentPeriodMonth);
   const bounds = useMemo(() => monthBounds(periodMonth), [periodMonth]);
 
+  const [pageTab, setPageTab] = useState<PageTab>("month");
   const [report, setReport] = useState<UnifiedPayrollReport | null>(null);
   const [finalizedRuns, setFinalizedRuns] = useState<PayrollRunListItem[]>([]);
   const [isFinalized, setIsFinalized] = useState(false);
@@ -164,19 +122,7 @@ export default function AgentPayrollReport({
   const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [rateDrafts, setRateDrafts] = useState<Record<string, RateDraft>>({});
-  const [showItemized, setShowItemized] = useState(false);
   const [employeeView, setEmployeeView] = useState<EmployeePayrollView | null>(null);
-
-  const applyReport = useCallback((d: UnifiedPayrollReport) => {
-    setReport(d);
-    const drafts: Record<string, RateDraft> = {};
-    for (const a of d.call_reps?.agents ?? []) drafts[a.agent_id] = rowToDraft(a);
-    for (const a of d.b2b_setters?.agents ?? []) drafts[a.agent_id] = b2bRowToDraft(a);
-    for (const a of d.salaried?.agents ?? []) drafts[a.agent_id] = salariedRowToDraft(a);
-    setRateDrafts(drafts);
-  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -192,7 +138,7 @@ export default function AgentPayrollReport({
         const detailRes = await fetch(`/api/payroll-runs/${periodMonth}`);
         const detail = await detailRes.json();
         if (!detailRes.ok) throw new Error(detail.error ?? "Failed to load finalized payroll");
-        applyReport(detail.run.report);
+        setReport(detail.run.report);
         setIsFinalized(true);
         setFinalizedMeta({
           at: detail.run.finalized_at,
@@ -206,7 +152,7 @@ export default function AgentPayrollReport({
         const liveRes = await fetch(`/api/agent-commissions?${params}`);
         const live = await liveRes.json();
         if (!liveRes.ok) throw new Error(live.error ?? "Failed to load payroll");
-        applyReport(live);
+        setReport(live);
         setIsFinalized(false);
         setFinalizedMeta(null);
       }
@@ -216,7 +162,7 @@ export default function AgentPayrollReport({
     } finally {
       setLoading(false);
     }
-  }, [periodMonth, bounds.startDate, bounds.endDate, applyReport]);
+  }, [periodMonth, bounds.startDate, bounds.endDate]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -263,32 +209,6 @@ export default function AgentPayrollReport({
       else next.add(id);
       return next;
     });
-  }
-
-  async function saveRates(agentId: string) {
-    if (isFinalized) return;
-    const rates = rateDrafts[agentId];
-    if (!rates) return;
-    setSavingId(agentId);
-    const res = await fetch(`/api/agents/${agentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(rates),
-    });
-    setSavingId(null);
-    if (!res.ok) {
-      const d = await res.json();
-      setError(d.error ?? "Failed to save pay rates");
-      return;
-    }
-    load();
-  }
-
-  function updateDraft(agentId: string, key: keyof RateDraft, value: string) {
-    setRateDrafts(prev => ({
-      ...prev,
-      [agentId]: { ...prev[agentId], [key]: Number(value) || 0 },
-    }));
   }
 
   function downloadSummary() {
@@ -431,43 +351,13 @@ export default function AgentPayrollReport({
     (report?.b2b_setters.unassigned.qualified_demos ?? 0) +
     (report?.b2b_setters.unassigned.closes ?? 0);
 
-  function ratesDirty(
-    agentId: string,
-    agent: AgentCommissionRow | B2BSetterCommissionRow | SalariedCommissionRow,
-    kind: "call_rep" | "b2b" | "salaried",
-  ) {
-    const draft = rateDrafts[agentId];
-    if (!draft) return false;
-    if (kind === "salaried") {
-      const a = agent as SalariedCommissionRow;
-      return draft.base_salary !== a.rates.base_salary || draft.monthly_bonus !== a.rates.monthly_bonus;
-    }
-    if (kind === "call_rep") {
-      const a = agent as AgentCommissionRow;
-      return (
-        draft.base_salary !== a.rates.base_salary ||
-        draft.monthly_bonus !== a.rates.monthly_bonus ||
-        draft.pay_per_booking !== a.rates.pay_per_booking ||
-        draft.pay_per_show !== a.rates.pay_per_show ||
-        draft.pay_per_live_transfer !== a.rates.pay_per_live_transfer
-      );
-    }
-    const a = agent as B2BSetterCommissionRow;
-    return (
-      draft.base_salary !== a.rates.base_salary ||
-      draft.monthly_bonus !== a.rates.monthly_bonus ||
-      draft.pay_per_qualified_demo !== a.rates.pay_per_qualified_demo ||
-      draft.pay_per_close !== a.rates.pay_per_close
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Team Payroll</h2>
           <p className="text-sm mt-0.5 max-w-2xl" style={{ color: "#475569" }}>
-            Monthly payroll (1st–last day). Review live data, then finalize to lock historical pay records.
+            Close each month here. Pay rates and employee pay history live under Team Roster.
           </p>
           {report && (
             <p className="text-xs mt-1" style={{ color: "#64748b" }}>
@@ -482,67 +372,90 @@ export default function AgentPayrollReport({
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={periodMonth}
-            onChange={e => setPeriodMonth(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm font-medium"
-            style={{ background: "#0f2040", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.12)" }}
-          >
-            {monthOptions.map(m => (
-              <option key={m.periodMonth} value={m.periodMonth}>
-                {m.label}{finalizedRuns.some(r => r.period_month.startsWith(m.periodMonth)) ? " ✓" : ""}
-              </option>
-            ))}
-          </select>
-          {!isFinalized && (
-            <button
-              type="button"
-              onClick={handleFinalize}
-              disabled={finalizing || loading || !report}
-              className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
-              style={{ background: "#22c55e", color: "#fff" }}
-            >
-              {finalizing ? "Submitting…" : "Finalize & Submit"}
-            </button>
+          {pageTab === "month" && (
+            <>
+              <select
+                value={periodMonth}
+                onChange={e => { setPeriodMonth(e.target.value); setPageTab("month"); }}
+                className="px-3 py-2 rounded-lg text-sm font-medium"
+                style={{ background: "#0f2040", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.12)" }}
+              >
+                {monthOptions.map(m => (
+                  <option key={m.periodMonth} value={m.periodMonth}>
+                    {m.label}{finalizedRuns.some(r => r.period_month.startsWith(m.periodMonth)) ? " ✓" : ""}
+                  </option>
+                ))}
+              </select>
+              {!isFinalized && (
+                <button
+                  type="button"
+                  onClick={handleFinalize}
+                  disabled={finalizing || loading || !report}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+                  style={{ background: "#22c55e", color: "#fff" }}
+                >
+                  {finalizing ? "Submitting…" : "Finalize & Submit"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={downloadSummary}
+                disabled={
+                  !report ||
+                  (report.call_reps.agents.length === 0 &&
+                    report.b2b_setters.agents.length === 0 &&
+                    report.salaried.agents.length === 0)
+                }
+                className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+                style={{ background: "rgba(255,255,255,0.06)", color: "#e2e8f0" }}
+              >
+                Summary CSV
+              </button>
+              <button
+                type="button"
+                onClick={downloadDetail}
+                disabled={
+                  !report?.call_reps.agents.some(a => a.line_items.length > 0) &&
+                  !report?.b2b_setters.agents.some(a => a.line_items.length > 0)
+                }
+                className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+                style={{ background: "rgba(255,255,255,0.06)", color: "#e2e8f0" }}
+              >
+                Detail CSV
+              </button>
+            </>
           )}
-          <button
-            type="button"
-            onClick={() => setShowItemized(true)}
-            disabled={!report}
-            className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
-            style={{ background: "rgba(96,165,250,0.15)", color: "#93c5fd", border: "1px solid rgba(96,165,250,0.25)" }}
-          >
-            Itemized Report
-          </button>
-          <button
-            type="button"
-            onClick={downloadSummary}
-            disabled={
-              !report ||
-              (report.call_reps.agents.length === 0 &&
-                report.b2b_setters.agents.length === 0 &&
-                report.salaried.agents.length === 0)
-            }
-            className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
-            style={{ background: "rgba(255,255,255,0.06)", color: "#e2e8f0" }}
-          >
-            Download Summary CSV
-          </button>
-          <button
-            type="button"
-            onClick={downloadDetail}
-            disabled={
-              !report?.call_reps.agents.some(a => a.line_items.length > 0) &&
-              !report?.b2b_setters.agents.some(a => a.line_items.length > 0)
-            }
-            className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
-            style={{ background: "rgba(255,255,255,0.06)", color: "#e2e8f0" }}
-          >
-            Download Detail CSV
-          </button>
         </div>
       </div>
 
+      <div className="flex gap-2 border-b pb-1" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        {([
+          ["month", "Current month"],
+          ["runs", "Pay runs"],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setPageTab(key)}
+            className="px-4 py-2 rounded-t-lg text-sm font-semibold"
+            style={pageTab === key
+              ? { background: "rgba(245,158,11,0.12)", color: "#fbbf24", borderBottom: "2px solid #f59e0b" }
+              : { color: "#64748b" }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {pageTab === "runs" && (
+        <PayRunsTable
+          runs={finalizedRuns}
+          onSelectMonth={pm => { setPeriodMonth(pm); setPageTab("month"); }}
+        />
+      )}
+
+      {pageTab === "month" && (
+        <>
       {error && (
         <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
           {error}
@@ -553,29 +466,13 @@ export default function AgentPayrollReport({
 
       {isFinalized && (
         <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", color: "#86efac" }}>
-          This month is finalized — viewing locked historical data. Select another month or use Itemized Report to review line items.
+          This month is finalized — locked snapshot. Use View detail on each row, or Team Roster for per-employee pay history.
         </div>
       )}
 
-      {finalizedRuns.length > 0 && (
-        <div className="rounded-xl px-4 py-3" style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#64748b" }}>Payroll history</p>
-          <div className="flex flex-wrap gap-2">
-            {finalizedRuns.slice(0, 12).map(run => (
-              <button
-                key={run.id}
-                type="button"
-                onClick={() => setPeriodMonth(run.period_month.slice(0, 7))}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium"
-                style={{
-                  background: run.period_month.startsWith(periodMonth) ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.04)",
-                  color: run.period_month.startsWith(periodMonth) ? "#fbbf24" : "#94a3b8",
-                }}
-              >
-                {run.period_month.slice(0, 7)} · {fmtMoney(run.summary.grand_total)}
-              </button>
-            ))}
-          </div>
+      {!isFinalized && (
+        <div className="rounded-xl px-4 py-3 text-xs" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)", color: "#94a3b8" }}>
+          Pay rates are managed in Team Roster. After finalize, each employee&apos;s pay history appears on their roster file.
         </div>
       )}
 
@@ -596,7 +493,7 @@ export default function AgentPayrollReport({
                   Base + bonus + (bookings × rate) + (shows × rate) + (live transfers × rate)
                 </p>
               </div>
-              {callRepUnassigned > 0 && (
+              {callRepUnassigned > 0 && !isFinalized && (
                 <div className="px-3 py-2 rounded-lg text-xs flex items-center gap-2"
                   style={{ background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.2)", color: "#93c5fd" }}>
                   <span>{callRepUnassigned} unassigned — excluded from pay</span>
@@ -616,9 +513,8 @@ export default function AgentPayrollReport({
               hasRows={report.call_reps.agents.length > 0}
             >
               {report.call_reps.agents.map((agent, i) => {
-                const draft = rateDrafts[agent.agent_id] ?? rowToDraft(agent);
                 const isOpen = expanded.has(agent.agent_id);
-                const dirty = ratesDirty(agent.agent_id, agent, "call_rep");
+                const r = agent.rates;
 
                 return (
                   <Fragment key={agent.agent_id}>
@@ -630,23 +526,21 @@ export default function AgentPayrollReport({
                       </td>
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>
                         {agent.agent_name}
-                        <PendingBadge count={agent.pending_disposition.count} />
+                        {!isFinalized && <PendingBadge count={agent.pending_disposition.count} />}
                         <button
                           type="button"
                           onClick={() => openEmployeeReview("call_rep", agent)}
                           className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded"
                           style={{ background: "rgba(96,165,250,0.12)", color: "#93c5fd" }}
                         >
-                          Review
+                          View detail
                         </button>
                       </td>
-                      {(["base_salary", "monthly_bonus", "pay_per_booking", "pay_per_show", "pay_per_live_transfer"] as const).map(key => (
-                        <td key={key} className="px-2 py-2.5 text-right">
-                          <input type="number" min={0} step={0.01} style={rateInputStyle} value={draft[key]}
-                            disabled={isFinalized}
-                            onChange={e => updateDraft(agent.agent_id, key, e.target.value)} />
-                        </td>
-                      ))}
+                      <RateCell value={r.base_salary} />
+                      <RateCell value={r.monthly_bonus} />
+                      <RateCell value={r.pay_per_booking} />
+                      <RateCell value={r.pay_per_show} />
+                      <RateCell value={r.pay_per_live_transfer} />
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#94a3b8" }}>{agent.counts.bookings}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#94a3b8" }}>{agent.counts.shows}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#94a3b8" }}>{agent.counts.live_transfers}</td>
@@ -656,21 +550,12 @@ export default function AgentPayrollReport({
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>{fmtMoney(agent.amounts.shows)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>{fmtMoney(agent.amounts.live_transfers)}</td>
                       <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#22c55e" }}>{fmtMoney(agent.amounts.total)}</td>
-                      <td className="px-2 py-2.5 text-right">
-                        {dirty && !isFinalized && (
-                          <button type="button" onClick={() => saveRates(agent.agent_id)} disabled={savingId === agent.agent_id}
-                            className="text-xs font-semibold px-2 py-1 rounded disabled:opacity-40"
-                            style={{ background: "#f59e0b", color: "#fff" }}>
-                            {savingId === agent.agent_id ? "…" : "Save"}
-                          </button>
-                        )}
-                      </td>
                     </tr>
                     {isOpen && (
-                      <LineItemsRow colSpan={17} items={agent.line_items} labels={CALL_REP_TYPE_LABELS} showClient />
+                      <LineItemsRow colSpan={16} items={agent.line_items} labels={CALL_REP_TYPE_LABELS} showClient />
                     )}
-                    {isOpen && agent.pending_disposition.count > 0 && (
-                      <PendingItemsRow colSpan={17} items={agent.pending_disposition.items} />
+                    {isOpen && !isFinalized && agent.pending_disposition.count > 0 && (
+                      <PendingItemsRow colSpan={16} items={agent.pending_disposition.items} />
                     )}
                   </Fragment>
                 );
@@ -681,7 +566,6 @@ export default function AgentPayrollReport({
                   <td className="px-3 py-3 text-right text-sm font-bold tabular-nums" style={{ color: "#60a5fa" }}>
                     {fmtMoney(report.summary.call_reps_total)}
                   </td>
-                  <td />
                 </tr>
               )}
             </PayrollTable>
@@ -698,7 +582,7 @@ export default function AgentPayrollReport({
                   Base + bonus + (qualified demos × rate) + (closes × rate)
                 </p>
               </div>
-              {b2bUnassigned > 0 && (
+              {b2bUnassigned > 0 && !isFinalized && (
                 <div className="px-3 py-2 rounded-lg text-xs flex items-center gap-2"
                   style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#fbbf24" }}>
                   <span>{b2bUnassigned} unassigned demos/closes — excluded from pay</span>
@@ -719,9 +603,8 @@ export default function AgentPayrollReport({
               b2b
             >
               {report.b2b_setters.agents.map((agent, i) => {
-                const draft = rateDrafts[agent.agent_id] ?? b2bRowToDraft(agent);
                 const isOpen = expanded.has(agent.agent_id);
-                const dirty = ratesDirty(agent.agent_id, agent, "b2b");
+                const r = agent.rates;
 
                 return (
                   <Fragment key={agent.agent_id}>
@@ -733,23 +616,20 @@ export default function AgentPayrollReport({
                       </td>
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>
                         {agent.agent_name}
-                        <PendingBadge count={agent.pending_disposition.count} />
+                        {!isFinalized && <PendingBadge count={agent.pending_disposition.count} />}
                         <button
                           type="button"
                           onClick={() => openEmployeeReview("b2b_setter", agent)}
                           className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded"
                           style={{ background: "rgba(245,158,11,0.12)", color: "#fbbf24" }}
                         >
-                          Review
+                          View detail
                         </button>
                       </td>
-                      {(["base_salary", "monthly_bonus", "pay_per_qualified_demo", "pay_per_close"] as const).map(key => (
-                        <td key={key} className="px-2 py-2.5 text-right">
-                          <input type="number" min={0} step={0.01} style={rateInputStyle} value={draft[key]}
-                            disabled={isFinalized}
-                            onChange={e => updateDraft(agent.agent_id, key, e.target.value)} />
-                        </td>
-                      ))}
+                      <RateCell value={r.base_salary} />
+                      <RateCell value={r.monthly_bonus} />
+                      <RateCell value={r.pay_per_qualified_demo} />
+                      <RateCell value={r.pay_per_close} />
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#94a3b8" }}>{agent.counts.qualified_demos}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#94a3b8" }}>{agent.counts.closes}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>{fmtMoney(agent.amounts.base)}</td>
@@ -757,21 +637,12 @@ export default function AgentPayrollReport({
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>{fmtMoney(agent.amounts.qualified_demos)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>{fmtMoney(agent.amounts.closes)}</td>
                       <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#22c55e" }}>{fmtMoney(agent.amounts.total)}</td>
-                      <td className="px-2 py-2.5 text-right">
-                        {dirty && !isFinalized && (
-                          <button type="button" onClick={() => saveRates(agent.agent_id)} disabled={savingId === agent.agent_id}
-                            className="text-xs font-semibold px-2 py-1 rounded disabled:opacity-40"
-                            style={{ background: "#f59e0b", color: "#fff" }}>
-                            {savingId === agent.agent_id ? "…" : "Save"}
-                          </button>
-                        )}
-                      </td>
                     </tr>
                     {isOpen && (
-                      <LineItemsRow colSpan={14} items={agent.line_items} labels={B2B_TYPE_LABELS} />
+                      <LineItemsRow colSpan={13} items={agent.line_items} labels={B2B_TYPE_LABELS} />
                     )}
-                    {isOpen && agent.pending_disposition.count > 0 && (
-                      <PendingItemsRow colSpan={14} items={agent.pending_disposition.items} />
+                    {isOpen && !isFinalized && agent.pending_disposition.count > 0 && (
+                      <PendingItemsRow colSpan={13} items={agent.pending_disposition.items} />
                     )}
                   </Fragment>
                 );
@@ -782,7 +653,6 @@ export default function AgentPayrollReport({
                   <td className="px-3 py-3 text-right text-sm font-bold tabular-nums" style={{ color: "#fbbf24" }}>
                     {fmtMoney(report.summary.b2b_setters_total)}
                   </td>
-                  <td />
                 </tr>
               )}
             </PayrollTable>
@@ -804,7 +674,7 @@ export default function AgentPayrollReport({
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ background: "#050c18" }}>
-                      {["Employee", "Position", "Base $", "Bonus $", "Base", "Bonus", "Total", ""].map(h => (
+                      {["Employee", "Position", "Base $", "Bonus $", "Base", "Bonus", "Total"].map(h => (
                         <th
                           key={h || "actions"}
                           className={`px-3 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${h === "Employee" || h === "Position" ? "text-left" : "text-right"}`}
@@ -818,13 +688,12 @@ export default function AgentPayrollReport({
                   <tbody>
                     {report.salaried.agents.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-4 py-12 text-center text-sm" style={{ color: "#64748b" }}>
+                        <td colSpan={7} className="px-4 py-12 text-center text-sm" style={{ color: "#64748b" }}>
                           No salaried team members with base or bonus in this period.
                         </td>
                       </tr>
                     ) : report.salaried.agents.map((agent, i) => {
-                      const draft = rateDrafts[agent.agent_id] ?? salariedRowToDraft(agent);
-                      const dirty = ratesDirty(agent.agent_id, agent, "salaried");
+                      const r = agent.rates;
                       return (
                         <tr
                           key={agent.agent_id}
@@ -841,25 +710,14 @@ export default function AgentPayrollReport({
                               className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded"
                               style={{ background: "rgba(167,139,250,0.12)", color: "#c4b5fd" }}
                             >
-                              Review
+                              View detail
                             </button>
                           </td>
                           <td className="px-3 py-2.5 text-xs" style={{ color: "#c4b5fd" }}>
                             {POSITION_LABELS[agent.position] ?? agent.position}
                           </td>
-                          {(["base_salary", "monthly_bonus"] as const).map(key => (
-                            <td key={key} className="px-2 py-2.5 text-right">
-                              <input
-                                type="number"
-                                min={0}
-                                step={0.01}
-                                style={rateInputStyle}
-                                value={draft[key]}
-                                disabled={isFinalized}
-                                onChange={e => updateDraft(agent.agent_id, key, e.target.value)}
-                              />
-                            </td>
-                          ))}
+                          <RateCell value={r.base_salary} />
+                          <RateCell value={r.monthly_bonus} />
                           <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>
                             {fmtMoney(agent.amounts.base)}
                           </td>
@@ -868,19 +726,6 @@ export default function AgentPayrollReport({
                           </td>
                           <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#22c55e" }}>
                             {fmtMoney(agent.amounts.total)}
-                          </td>
-                          <td className="px-2 py-2.5 text-right">
-                            {dirty && !isFinalized && (
-                              <button
-                                type="button"
-                                onClick={() => saveRates(agent.agent_id)}
-                                disabled={savingId === agent.agent_id}
-                                className="text-xs font-semibold px-2 py-1 rounded disabled:opacity-40"
-                                style={{ background: "#f59e0b", color: "#fff" }}
-                              >
-                                {savingId === agent.agent_id ? "…" : "Save"}
-                              </button>
-                            )}
                           </td>
                         </tr>
                       );
@@ -893,7 +738,6 @@ export default function AgentPayrollReport({
                         <td className="px-3 py-3 text-right text-sm font-bold tabular-nums" style={{ color: "#a78bfa" }}>
                           {fmtMoney(report.summary.salaried_total)}
                         </td>
-                        <td />
                       </tr>
                     )}
                   </tbody>
@@ -901,6 +745,8 @@ export default function AgentPayrollReport({
               </div>
             </div>
           </section>
+        </>
+      )}
         </>
       )}
 
@@ -911,20 +757,85 @@ export default function AgentPayrollReport({
         }
       `}</style>
 
-      {showItemized && report && (
-        <PayrollItemizedModal
-          report={report}
-          periodLabel={bounds.label}
-          readOnly={isFinalized}
-          onClose={() => setShowItemized(false)}
-          onReviewEmployee={view => {
-            setShowItemized(false);
-            setEmployeeView(view);
-          }}
-        />
-      )}
-
       <PayrollEmployeeDetail view={employeeView} onClose={() => setEmployeeView(null)} />
+    </div>
+  );
+}
+
+function PayRunsTable({
+  runs,
+  onSelectMonth,
+}: {
+  runs: PayrollRunListItem[];
+  onSelectMonth: (periodMonth: string) => void;
+}) {
+  if (runs.length === 0) {
+    return (
+      <div className="rounded-xl px-6 py-12 text-center" style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <p className="text-sm font-medium" style={{ color: "#94a3b8" }}>No finalized pay runs yet</p>
+        <p className="text-xs mt-1" style={{ color: "#64748b" }}>
+          Finalize a month from the Current month tab to create your first pay run.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: "#050c18" }}>
+              {["Month", "Grand total", "Employees", "Finalized", "By", ""].map(h => (
+                <th
+                  key={h || "action"}
+                  className={`px-4 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${h === "Month" || h === "By" ? "text-left" : h === "" ? "text-right" : "text-right"}`}
+                  style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map((run, i) => {
+              const pm = run.period_month.slice(0, 7);
+              const label = monthBounds(pm).label;
+              const finalizedAt = new Date(run.finalized_at).toLocaleString();
+              const by = run.finalized_by_email ?? "—";
+              return (
+                <tr
+                  key={run.id}
+                  style={{
+                    borderTop: "1px solid rgba(255,255,255,0.03)",
+                    background: i % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent",
+                  }}
+                >
+                  <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{label}</td>
+                  <td className="px-4 py-3 text-right font-semibold tabular-nums" style={{ color: "#22c55e" }}>
+                    {fmtMoney(run.summary.grand_total)}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums" style={{ color: "#94a3b8" }}>
+                    {run.summary.employee_count}
+                  </td>
+                  <td className="px-4 py-3 text-xs" style={{ color: "#94a3b8" }}>{finalizedAt}</td>
+                  <td className="px-4 py-3 text-xs truncate max-w-[180px]" style={{ color: "#64748b" }} title={by}>{by}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => onSelectMonth(pm)}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                      style={{ background: "rgba(245,158,11,0.12)", color: "#fbbf24" }}
+                    >
+                      Open
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -942,8 +853,8 @@ function PayrollTable({
   b2b?: boolean;
   children: React.ReactNode;
 }) {
-  const callRepHeaders = ["", "Employee", "Base $", "Bonus $", "$/Booking", "$/Show", "$/Transfer", "Bk", "Show", "Xfer", "Base", "Bonus", "Booking", "Show", "Transfer", "Total", ""];
-  const b2bHeaders = ["", "Employee", "Base $", "Bonus $", "$/Demo", "$/Close", "Demos", "Closes", "Base", "Bonus", "Demo", "Close", "Total", ""];
+  const callRepHeaders = ["", "Employee", "Base $", "Bonus $", "$/Booking", "$/Show", "$/Transfer", "Bk", "Show", "Xfer", "Base", "Bonus", "Booking", "Show", "Transfer", "Total"];
+  const b2bHeaders = ["", "Employee", "Base $", "Bonus $", "$/Demo", "$/Close", "Demos", "Closes", "Base", "Bonus", "Demo", "Close", "Total"];
 
   const headers = b2b ? b2bHeaders : callRepHeaders;
 

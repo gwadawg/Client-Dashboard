@@ -10,6 +10,7 @@ import {
   type EmployeePosition,
 } from "@/lib/employee-positions";
 import type { TeamRosterRow } from "@/lib/team-roster-api";
+import EmployeePayHistory from "./EmployeePayHistory";
 
 type PayRates = {
   base_salary: number;
@@ -382,7 +383,7 @@ export default function AgentAdmin() {
           </table>
         </div>
 
-        <div className="lg:col-span-2 rounded-xl p-4 space-y-3" style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="lg:col-span-2 rounded-xl p-4 space-y-3 max-h-[calc(100vh-12rem)] overflow-y-auto" style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.06)" }}>
           {!selected ? (
             <p className="text-sm py-8 text-center" style={{ color: "#475569" }}>Select a team member to view their file</p>
           ) : (
@@ -412,6 +413,9 @@ export default function AgentAdmin() {
                   Manage dashboard permissions under Admin → Users for {selected.linked_user_email}.
                 </p>
               )}
+              <div className="pt-3 mt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                <EmployeePayHistory agentId={selected.id} compact />
+              </div>
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => { setEditingId(selected.id); setEditState(agentToEdit(selected)); }}
                   className="text-xs px-3 py-1.5 rounded-lg font-semibold"
