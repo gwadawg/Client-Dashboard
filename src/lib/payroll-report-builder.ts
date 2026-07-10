@@ -29,6 +29,7 @@ import {
   CREDIT_QUEUE_OR_FILTER,
   CREDIT_QUEUE_UNCREDITED_FILTER,
 } from '@/lib/payroll-pending-disposition';
+import { applyActiveCloseFilters } from '@/lib/acquisition-close-filter';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
@@ -82,9 +83,9 @@ export async function buildUnifiedPayrollReport(
       .or(
         `and(scheduled_at.gte.${startDate}T00:00:00.000Z,scheduled_at.lte.${endDate}T23:59:59.999Z),scheduled_at.is.null`,
       ),
-    service
-      .from('acquisition_closes')
-      .select('id, lead_id, closed_at, setter_name')
+    applyActiveCloseFilters(
+      service.from('acquisition_closes').select('id, lead_id, closed_at, setter_name'),
+    )
       .gte('closed_at', `${startDate}T00:00:00.000Z`)
       .lte('closed_at', `${endDate}T23:59:59.999Z`),
     service

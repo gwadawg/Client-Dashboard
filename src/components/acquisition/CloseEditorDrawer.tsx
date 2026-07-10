@@ -227,7 +227,7 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
 
   async function excludeFromReporting() {
     if (!closeId) return;
-    if (!confirm("Remove this close from acquisition reporting? The record stays in the database for audit.")) return;
+    if (!confirm("Remove this close from reporting? Links to client, lead, and offer will be cleared. You can restore or permanently delete it from the Excluded filter.")) return;
     setSaving(true);
     setError(null);
     try {
@@ -261,6 +261,27 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Restore failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function permanentlyDelete() {
+    if (!closeId) return;
+    if (!confirm("Permanently delete this close? It will be archived in the database but removed from all views.")) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/acquisition/pending-closes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", close_id: closeId }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setSaving(false);
     }
@@ -325,8 +346,8 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
               className="rounded-lg p-3 text-xs"
               style={{ background: "rgba(100,116,139,0.15)", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.06)" }}
             >
-              This close is excluded from acquisition reporting (close counts, cash, CAC, setter/closer stats).
-              Restore it to include again.
+              This close is excluded from acquisition reporting and unlinked from client, lead, and offer records.
+              Restore to re-link from the saved snapshot, or delete permanently to archive it.
             </div>
           )}
 
@@ -552,15 +573,26 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
                   </button>
                 )}
                 {isExcluded ? (
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={restoreToReporting}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
-                    style={{ background: "#38bdf8", color: "#0f172a" }}
-                  >
-                    {saving ? "Restoring…" : "Restore to reporting"}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={restoreToReporting}
+                      className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+                      style={{ background: "#38bdf8", color: "#0f172a" }}
+                    >
+                      {saving ? "Restoring…" : "Restore to reporting"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={permanentlyDelete}
+                      className="px-3 py-2 rounded-lg text-xs disabled:opacity-50"
+                      style={{ color: "#f87171" }}
+                    >
+                      Delete permanently
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"

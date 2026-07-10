@@ -545,6 +545,7 @@ async function finalizeClose(
     .eq('lead_id', leadId)
     .eq('mapping_status', 'pending_client')
     .is('client_id', null)
+    .is('deleted_at', null)
     .maybeSingle();
 
   const row = {
@@ -565,6 +566,8 @@ async function finalizeClose(
     .from('acquisition_closes')
     .select('id')
     .eq('client_id', clientId)
+    .is('deleted_at', null)
+    .neq('mapping_status', 'dismissed')
     .maybeSingle();
 
   if (existing) {

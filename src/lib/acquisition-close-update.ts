@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeSalesPackage } from '@/lib/offer-catalog';
 import { deriveServiceProgram } from '@/lib/offer-catalog';
 import { normalizeReportingType } from '@/lib/reporting-types';
+import { excludeAcquisitionClose } from '@/lib/acquisition-close-lifecycle';
 
 export type PatchCloseInput = {
   lead_id?: string | null;
@@ -49,6 +50,8 @@ export async function assignClientToClose(
     .select('id')
     .eq('client_id', clientId)
     .neq('id', closeId)
+    .is('deleted_at', null)
+    .neq('mapping_status', 'dismissed')
     .maybeSingle();
   if (conflict) throw new Error('That client is already linked to another close');
 
@@ -173,7 +176,9 @@ export async function patchAcquisitionClose(
     );
   }
   if (input.setter_name !== undefined) closePatch.setter_name = str(input.setter_name);
-  if (input.mapping_status) closePatch.mapping_status = input.mapping_status;
+  if (input.mapping_status && input.mapping_status !== 'dismissed') {
+    closePatch.mapping_status = input.mapping_status;
+  }
 
   const nextClientId =
     input.client_id !== undefined ? input.client_id : (existing.client_id as string | null);
@@ -226,7 +231,7 @@ export async function patchAcquisitionClose(
   if (clientChanging && nextClientId) {
     await assignClientToClose(service, closeId, nextClientId);
   } else if (input.mapping_status === 'dismissed') {
-    // already applied above
+    await excludeAcquisitionClose(service, closeId);
   } else if (input.mapping_status === 'pending_client' && !nextClientId) {
   } else if (input.client_id === null && input.client_id !== undefined) {
     await service

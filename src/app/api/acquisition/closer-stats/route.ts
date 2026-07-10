@@ -40,6 +40,7 @@ export async function GET(req: Request) {
     ctx.service.from('acquisition_closes')
       .select('id, lead_id, closed_at, offer_type, cash_collected, call_id, mapping_status')
       .neq('mapping_status', DISMISSED_CLOSE_STATUS)
+      .is('deleted_at', null)
       .gte('closed_at', `${from}T00:00:00.000Z`)
       .lte('closed_at', `${to}T23:59:59.999Z`),
   ]);

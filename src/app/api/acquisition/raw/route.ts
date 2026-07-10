@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
 
   if (type === 'closes') {
     const filter = (req.nextUrl.searchParams.get('filter') ?? 'all') as CloseFilterMode;
-    const query = applyDateRange(
+    let query = applyDateRange(
       ctx.service
         .from('acquisition_closes')
         .select(RAW_CLOSE_SELECT, { count: 'exact' })
@@ -77,6 +77,12 @@ export async function GET(req: NextRequest) {
       from,
       to,
     );
+    if (filter === 'excluded') {
+      query = query.eq('mapping_status', 'dismissed');
+    } else {
+      query = query.neq('mapping_status', 'dismissed');
+    }
+    query = query.is('deleted_at', null);
     const { data, error, count } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     const enriched = await enrichClosesWithCompleteness(ctx.service, (data ?? []) as Record<string, unknown>[]);

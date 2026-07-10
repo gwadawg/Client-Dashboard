@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
-import { DISMISSED_CLOSE_STATUS } from '@/lib/acquisition-close-filter';
+import { applyActiveCloseFilters } from '@/lib/acquisition-close-filter';
 import { calculateAcquisitionMetrics, type OfferScope } from '@/lib/acquisition-metrics';
 
 export async function GET(req: NextRequest) {
@@ -39,9 +39,10 @@ export async function GET(req: NextRequest) {
       .select('id, lead_id, appointment_id, offered_at, offer_type, is_closed, cash_collected, setter_name')
       .gte('offered_at', `${from}T00:00:00.000Z`)
       .lte('offered_at', `${to}T23:59:59.999Z`),
-    ctx.service.from('acquisition_closes')
-      .select('id, lead_id, closed_at, offer_type, cash_collected, mapping_status')
-      .neq('mapping_status', DISMISSED_CLOSE_STATUS)
+    applyActiveCloseFilters(
+      ctx.service.from('acquisition_closes')
+        .select('id, lead_id, closed_at, offer_type, cash_collected, mapping_status')
+    )
       .gte('closed_at', `${from}T00:00:00.000Z`)
       .lte('closed_at', `${to}T23:59:59.999Z`),
     ctx.service.from('acquisition_meta_ad_insights')

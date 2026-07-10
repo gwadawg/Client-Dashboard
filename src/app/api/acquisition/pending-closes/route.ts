@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { assignClientToClose } from '@/lib/acquisition-close-update';
+import {
+  deleteAcquisitionClose,
+  excludeAcquisitionClose,
+  restoreAcquisitionClose,
+} from '@/lib/acquisition-close-lifecycle';
 export async function GET() {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -14,6 +19,7 @@ export async function GET() {
     )
     .eq('mapping_status', 'pending_client')
     .is('client_id', null)
+    .is('deleted_at', null)
     .order('closed_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -45,11 +51,7 @@ export async function POST(req: Request) {
 
   try {
     if (action === 'dismiss') {
-      const { error } = await ctx.service
-        .from('acquisition_closes')
-        .update({ mapping_status: 'dismissed' })
-        .eq('id', closeId);
-      if (error) throw new Error(error.message);
+      await excludeAcquisitionClose(ctx.service, closeId);
       return NextResponse.json({ success: true });
     }
 
@@ -70,22 +72,12 @@ export async function POST(req: Request) {
     }
 
     if (action === 'restore') {
-      const { data: close, error: closeErr } = await ctx.service
-        .from('acquisition_closes')
-        .select('client_id')
-        .eq('id', closeId)
-        .single();
-      if (closeErr || !close) {
-        return NextResponse.json({ error: 'Close not found' }, { status: 404 });
-      }
+      await restoreAcquisitionClose(ctx.service, closeId);
+      return NextResponse.json({ success: true });
+    }
 
-      const { error } = await ctx.service
-        .from('acquisition_closes')
-        .update({
-          mapping_status: close.client_id ? 'mapped' : 'pending_client',
-        })
-        .eq('id', closeId);
-      if (error) throw new Error(error.message);
+    if (action === 'delete') {
+      await deleteAcquisitionClose(ctx.service, closeId);
       return NextResponse.json({ success: true });
     }
 

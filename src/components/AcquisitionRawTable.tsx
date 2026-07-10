@@ -180,8 +180,13 @@ export default function AcquisitionRawTable({ type, startDate, endDate }: Props)
   const [editingCloseId, setEditingCloseId] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
 
-  async function postCloseAction(closeId: string, action: "dismiss" | "restore") {
-    const label = action === "dismiss" ? "Remove this close from acquisition reporting?" : "Restore this close to reporting?";
+  async function postCloseAction(closeId: string, action: "dismiss" | "restore" | "delete") {
+    const label =
+      action === "dismiss"
+        ? "Remove this close from reporting? Links to client, lead, and offer will be cleared. You can restore or permanently delete it from the Excluded filter."
+        : action === "delete"
+          ? "Permanently delete this close? It will be archived in the database but removed from all views."
+          : "Restore this close to reporting and re-link its saved associations?";
     if (!confirm(label)) return;
     setActionId(closeId);
     try {
@@ -315,15 +320,26 @@ export default function AcquisitionRawTable({ type, startDate, endDate }: Props)
                               Edit
                             </button>
                             {isExcluded ? (
-                              <button
-                                type="button"
-                                disabled={busy}
-                                onClick={() => postCloseAction(closeId, "restore")}
-                                className="px-2.5 py-1 rounded text-[11px] font-medium disabled:opacity-50"
-                                style={{ color: "#94a3b8" }}
-                              >
-                                {busy ? "…" : "Restore"}
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => postCloseAction(closeId, "restore")}
+                                  className="px-2.5 py-1 rounded text-[11px] font-medium disabled:opacity-50"
+                                  style={{ color: "#94a3b8" }}
+                                >
+                                  {busy ? "…" : "Restore"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => postCloseAction(closeId, "delete")}
+                                  className="px-2.5 py-1 rounded text-[11px] font-medium disabled:opacity-50"
+                                  style={{ color: "#f87171" }}
+                                >
+                                  {busy ? "…" : "Delete"}
+                                </button>
+                              </>
                             ) : (
                               <button
                                 type="button"

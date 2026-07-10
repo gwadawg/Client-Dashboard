@@ -4,6 +4,7 @@ import {
   buildAcquisitionEventRows,
   toAcquisitionMetaRows,
 } from '@/lib/acquisition-ad-performance';
+import { applyActiveCloseFilters } from '@/lib/acquisition-close-filter';
 import {
   AdLibraryResolver,
   aggregateAdPerformance,
@@ -65,7 +66,7 @@ export async function GET(req: Request) {
   let metaQuery = ctx.service.from('acquisition_meta_ad_insights').select(META_SELECT);
   let leadsQuery = ctx.service.from('acquisition_leads').select(LEAD_SELECT);
   let apptsQuery = ctx.service.from('acquisition_appointments').select(APPT_SELECT);
-  let closesQuery = ctx.service.from('acquisition_closes').select(CLOSE_SELECT);
+  let closesQuery = applyActiveCloseFilters(ctx.service.from('acquisition_closes').select(CLOSE_SELECT));
 
   if (start_date) {
     metaQuery = metaQuery.gte('insight_date', start_date);

@@ -106,6 +106,8 @@ type CloseRow = {
   client_id: string | null;
   cash_collected: number | null;
   mapping_status?: string | null;
+  deleted_at?: string | null;
+  raw?: Record<string, unknown> | null;
 };
 
 type DialRow = {
@@ -374,8 +376,11 @@ export function buildAcquisitionLeadProfile(
   }
 
   for (const close of closes) {
+    if (close.deleted_at) continue;
     const dismissed = close.mapping_status === 'dismissed';
     const pending = close.mapping_status === 'pending_client';
+    const snapshot = (close.raw as { dismissed_snapshot?: { client_name?: string | null } } | null)
+      ?.dismissed_snapshot;
     timeline.push({
       id: `close-${close.id}`,
       event_type: dismissed ? 'close_dismissed' : 'client_closed',
@@ -384,14 +389,14 @@ export function buildAcquisitionLeadProfile(
         close.offer_type,
         close.close_source,
         dismissed
-          ? 'downsell / not on roster'
+          ? 'excluded from reporting'
           : pending
             ? 'pending roster link'
             : close.client_id
               ? 'mapped to client'
               : null,
+        snapshot?.client_name ? `was ${snapshot.client_name}` : null,
         close.cash_collected != null ? `$${close.cash_collected}` : null,
-        close.offer_id ? `offer ${close.offer_id.slice(0, 8)}…` : null,
       ]),
       recording_url: null,
       transcript_url: null,
