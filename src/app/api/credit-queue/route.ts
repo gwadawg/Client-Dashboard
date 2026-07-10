@@ -38,7 +38,7 @@ export async function GET(req: Request) {
   let query = ctx.service
     .from('events')
     .select(
-      'id, client_id, event_type, occurred_at, scheduled_at, calendar_name, lead_name, lead_phone, agent_name, clients(name)',
+      'id, client_id, event_type, occurred_at, scheduled_at, calendar_name, lead_name, lead_phone, agent_name, ghl_contact_id, clients(name, ghl_location_id)',
       { count: 'exact' }
     )
     .or(creditQueueEventOrFilter())

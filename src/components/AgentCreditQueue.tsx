@@ -15,7 +15,8 @@ type CreditEvent = {
   lead_name: string | null;
   lead_phone: string | null;
   agent_name: string | null;
-  clients: { name: string } | null;
+  ghl_contact_id: string | null;
+  clients: { name: string; ghl_location_id: string | null } | null;
 };
 
 type Props = {
@@ -43,6 +44,13 @@ function formatDate(value: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function ghlContactUrl(row: CreditEvent): string | null {
+  const locationId = row.clients?.ghl_location_id;
+  const contactId = row.ghl_contact_id;
+  if (!locationId || !contactId) return null;
+  return `https://app.gohighlevel.com/v2/location/${locationId}/contacts/detail/${contactId}`;
 }
 
 function inferAgentName(agents: Agent[], email: string | null) {
@@ -235,7 +243,7 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#050c18" }}>
-              {["Client", "Lead", "Phone", "Event Time", "Appointment Date", "Calendar", "Type", "Agent", ""].map(label => (
+              {["Client", "Lead", "Phone", "Event Time", "Appointment Date", "Calendar", "Type", "Agent", "Lead File", ""].map(label => (
                 <th key={label} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
                   style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                   {label}
@@ -245,12 +253,14 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>Loading...</td></tr>
+              <tr><td colSpan={10} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>Loading...</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={9} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
+              <tr><td colSpan={10} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
                 {status === "uncredited" ? "No events need agent credit" : "No credited events"}
               </td></tr>
-            ) : rows.map((row, i) => (
+            ) : rows.map((row, i) => {
+              const ghlUrl = ghlContactUrl(row);
+              return (
               <tr key={row.id} style={{ borderTop: "1px solid rgba(255,255,255,0.03)", background: i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent" }}>
                 <td className="px-4 py-3 whitespace-nowrap" style={{ color: "#e2e8f0" }}>{row.clients?.name ?? "-"}</td>
                 <td className="px-4 py-3 whitespace-nowrap" style={{ color: "#94a3b8" }}>{row.lead_name ?? "-"}</td>
@@ -260,6 +270,21 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
                 <td className="px-4 py-3 whitespace-nowrap" style={{ color: "#94a3b8" }}>{row.calendar_name ?? "-"}</td>
                 <td className="px-4 py-3 whitespace-nowrap" style={{ color: "#f59e0b" }}>{EVENT_LABELS[row.event_type] ?? row.event_type}</td>
                 <td className="px-4 py-3 whitespace-nowrap" style={{ color: row.agent_name ? "#e2e8f0" : "#334155" }}>{row.agent_name || "Unassigned"}</td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {ghlUrl ? (
+                    <a
+                      href={ghlUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                      style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#60a5fa" }}
+                    >
+                      Open in GHL ↗
+                    </a>
+                  ) : (
+                    <span className="text-xs" style={{ color: "#334155" }}>—</span>
+                  )}
+                </td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <div className="flex items-center gap-2 justify-end">
                     <button
@@ -283,7 +308,8 @@ export default function AgentCreditQueue({ clients, startDate, endDate }: Props)
                   </div>
                 </td>
               </tr>
-            ))}
+            );
+            })}
           </tbody>
         </table>
       </div>
