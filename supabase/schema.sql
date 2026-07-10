@@ -1312,6 +1312,7 @@ create table if not exists payroll_run_employees (
   pending_disposition jsonb,
   submitted_at        timestamptz,
   submitted_by        uuid references auth.users(id) on delete set null,
+  line_item_exclusions jsonb not null default '[]'::jsonb,
   unique (payroll_run_id, agent_id)
 );
 

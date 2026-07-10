@@ -43,6 +43,7 @@ export type PayrollSubmittedEmployee = {
   counts: Record<string, number>;
   rates: Record<string, number>;
   line_items: unknown[];
+  line_item_exclusions?: import('@/lib/payroll-line-item-duplicates').LineItemExclusion[];
   pending_disposition: { count: number; items: unknown[] } | null;
   row: AgentCommissionRow | B2BSetterCommissionRow | SalariedCommissionRow;
 };
@@ -62,6 +63,7 @@ export type PayrollEmployeeHistoryRow = {
   rates: Record<string, number>;
   line_items: unknown[];
   pending_disposition: { count: number; items: unknown[] } | null;
+  line_item_exclusions?: import('@/lib/payroll-line-item-duplicates').LineItemExclusion[];
   finalized_at: string;
   submitted_at?: string | null;
 };

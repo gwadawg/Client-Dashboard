@@ -219,6 +219,7 @@ export default function AgentPayrollReport({
     section: EmployeePayrollView["section"],
     row: AgentCommissionRow | B2BSetterCommissionRow | SalariedCommissionRow,
   ) {
+    const submittedRecord = submittedEmployees.find(s => s.agent_id === row.agent_id);
     setEmployeeView({
       agent_id: row.agent_id,
       agent_name: row.agent_name,
@@ -229,6 +230,7 @@ export default function AgentPayrollReport({
       startDate: bounds.startDate,
       endDate: bounds.endDate,
       isSubmitted: submittedAgentIds.has(row.agent_id),
+      lineItemExclusions: submittedRecord?.line_item_exclusions ?? [],
       readOnly: isPeriodClosed,
     });
   }

@@ -17,7 +17,10 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: 'periodMonth must be YYYY-MM' }, { status: 400 });
   }
 
-  let body: { section?: 'call_rep' | 'b2b_setter' | 'salaried' };
+  let body: {
+    section?: 'call_rep' | 'b2b_setter' | 'salaried';
+    line_item_exclusions?: { event_id: string; reason: string }[];
+  };
   try {
     body = await req.json();
   } catch {
@@ -35,6 +38,7 @@ export async function POST(req: Request, { params }: Params) {
       agentId,
       body.section,
       ctx.userId,
+      body.line_item_exclusions ?? [],
     );
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {

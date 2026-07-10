@@ -1,7 +1,13 @@
+import type { AgentCommissionRow } from '@/lib/agent-commissions';
+import type { B2BSetterCommissionRow } from '@/lib/b2b-setter-commissions';
 import type { createServiceClient } from '@/lib/supabase';
 import type { UnifiedPayrollReport } from '@/lib/agent-commissions';
 import { monthBounds } from '@/lib/payroll-period';
 import { buildUnifiedPayrollReport } from '@/lib/payroll-report-builder';
+import {
+  applyPayrollExclusions,
+  type LineItemExclusion,
+} from '@/lib/payroll-line-item-duplicates';
 import {
   buildRunSummary,
   employeeRowFromDb,
@@ -23,6 +29,7 @@ type DbEmployeeRow = {
   counts: Record<string, number>;
   rates: Record<string, number>;
   line_items: unknown[];
+  line_item_exclusions?: import('@/lib/payroll-line-item-duplicates').LineItemExclusion[];
   pending_disposition: { count: number; items: unknown[] } | null;
   submitted_at: string | null;
   submitted_by: string | null;
@@ -120,7 +127,7 @@ export async function loadSubmittedEmployees(
   const { data, error } = await service
     .from('payroll_run_employees')
     .select(
-      'agent_id, agent_name, pay_type, section, total_pay, amounts, counts, rates, line_items, pending_disposition, submitted_at, submitted_by',
+      'agent_id, agent_name, pay_type, section, total_pay, amounts, counts, rates, line_items, line_item_exclusions, pending_disposition, submitted_at, submitted_by',
     )
     .eq('payroll_run_id', payrollRunId)
     .not('submitted_at', 'is', null)
@@ -142,6 +149,7 @@ export async function loadSubmittedEmployees(
       counts: row.counts as Record<string, number>,
       rates: row.rates as Record<string, number>,
       line_items: row.line_items ?? [],
+      line_item_exclusions: (row.line_item_exclusions ?? []) as import('@/lib/payroll-line-item-duplicates').LineItemExclusion[],
       pending_disposition: row.pending_disposition as PayrollSubmittedEmployee['pending_disposition'],
       row: employeeRow,
     };
@@ -154,6 +162,7 @@ export async function submitEmployeePayroll(
   agentId: string,
   section: 'call_rep' | 'b2b_setter' | 'salaried',
   userId: string,
+  lineItemExclusions: LineItemExclusion[] = [],
 ): Promise<{ closed: boolean; submitted_count: number; employee_count: number }> {
   const { startDate, endDate } = monthBounds(periodMonth);
   const built = await buildUnifiedPayrollReport(service, startDate, endDate);
@@ -166,6 +175,11 @@ export async function submitEmployeePayroll(
   }
 
   const row = snapshot.row;
+  const adjusted =
+    section === 'salaried'
+      ? { counts: {}, amounts: row.amounts, total_pay: row.amounts.total }
+      : applyPayrollExclusions(section, row as AgentCommissionRow | B2BSetterCommissionRow, lineItemExclusions);
+
   let runId: string;
   let runStatus: 'open' | 'closed' = 'open';
 
@@ -221,11 +235,12 @@ export async function submitEmployeePayroll(
     agent_name: row.agent_name,
     pay_type: payTypeForSection(section, row),
     section,
-    total_pay: row.amounts.total,
-    amounts: row.amounts,
-    counts: 'counts' in row ? row.counts : {},
+    total_pay: adjusted.total_pay,
+    amounts: adjusted.amounts,
+    counts: adjusted.counts,
     rates: row.rates,
     line_items: 'line_items' in row ? row.line_items : [],
+    line_item_exclusions: lineItemExclusions,
     pending_disposition: row.pending_disposition ?? null,
     submitted_at: new Date().toISOString(),
     submitted_by: userId,
