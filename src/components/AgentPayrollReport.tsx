@@ -1,15 +1,20 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { AgentCommissionRow, UnifiedPayrollReport } from "@/lib/agent-commissions";
 import type { B2BSetterCommissionRow } from "@/lib/b2b-setter-commissions";
 import type { SalariedCommissionRow } from "@/lib/salaried-commissions";
 import { POSITION_LABELS } from "@/lib/employee-positions";
+import {
+  currentPeriodMonth,
+  listRecentPayrollMonths,
+  monthBounds,
+} from "@/lib/payroll-period";
+import type { PayrollRunListItem } from "@/lib/payroll-runs";
+import PayrollEmployeeDetail, { type EmployeePayrollView } from "./PayrollEmployeeDetail";
+import PayrollItemizedModal from "./PayrollItemizedModal";
 
 type Props = {
-  preset: string;
-  startDate: string;
-  endDate: string;
   onGoToCreditQueue?: () => void;
   onGoToAcquisitionCreditQueue?: () => void;
 };
@@ -107,89 +112,148 @@ function KpiStrip({ report }: { report: UnifiedPayrollReport }) {
   );
 }
 
+function rowToDraft(a: AgentCommissionRow): RateDraft {
+  return {
+    base_salary: a.rates.base_salary,
+    monthly_bonus: a.rates.monthly_bonus,
+    pay_per_booking: a.rates.pay_per_booking,
+    pay_per_show: a.rates.pay_per_show,
+    pay_per_live_transfer: a.rates.pay_per_live_transfer,
+    pay_per_qualified_demo: 0,
+    pay_per_close: 0,
+  };
+}
+
+function b2bRowToDraft(a: B2BSetterCommissionRow): RateDraft {
+  return {
+    base_salary: a.rates.base_salary,
+    monthly_bonus: a.rates.monthly_bonus,
+    pay_per_booking: 0,
+    pay_per_show: 0,
+    pay_per_live_transfer: 0,
+    pay_per_qualified_demo: a.rates.pay_per_qualified_demo,
+    pay_per_close: a.rates.pay_per_close,
+  };
+}
+
+function salariedRowToDraft(a: SalariedCommissionRow): RateDraft {
+  return {
+    base_salary: a.rates.base_salary,
+    monthly_bonus: a.rates.monthly_bonus,
+    pay_per_booking: 0,
+    pay_per_show: 0,
+    pay_per_live_transfer: 0,
+    pay_per_qualified_demo: 0,
+    pay_per_close: 0,
+  };
+}
+
 export default function AgentPayrollReport({
-  preset,
-  startDate,
-  endDate,
   onGoToCreditQueue,
   onGoToAcquisitionCreditQueue,
 }: Props) {
+  const monthOptions = useMemo(() => listRecentPayrollMonths(36), []);
+  const [periodMonth, setPeriodMonth] = useState(currentPeriodMonth);
+  const bounds = useMemo(() => monthBounds(periodMonth), [periodMonth]);
+
   const [report, setReport] = useState<UnifiedPayrollReport | null>(null);
+  const [finalizedRuns, setFinalizedRuns] = useState<PayrollRunListItem[]>([]);
+  const [isFinalized, setIsFinalized] = useState(false);
+  const [finalizedMeta, setFinalizedMeta] = useState<{ at: string; by: string | null } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
   const [rateDrafts, setRateDrafts] = useState<Record<string, RateDraft>>({});
+  const [showItemized, setShowItemized] = useState(false);
+  const [employeeView, setEmployeeView] = useState<EmployeePayrollView | null>(null);
 
-  const load = useCallback(() => {
-    if (!startDate || !endDate) return;
+  const applyReport = useCallback((d: UnifiedPayrollReport) => {
+    setReport(d);
+    const drafts: Record<string, RateDraft> = {};
+    for (const a of d.call_reps?.agents ?? []) drafts[a.agent_id] = rowToDraft(a);
+    for (const a of d.b2b_setters?.agents ?? []) drafts[a.agent_id] = b2bRowToDraft(a);
+    for (const a of d.salaried?.agents ?? []) drafts[a.agent_id] = salariedRowToDraft(a);
+    setRateDrafts(drafts);
+  }, []);
+
+  const load = useCallback(async () => {
     setLoading(true);
     setError("");
-    const params = new URLSearchParams({ startDate, endDate });
-    fetch(`/api/agent-commissions?${params}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) {
-          setError(d.error);
-          setReport(null);
-        } else {
-          setReport(d);
-          const drafts: Record<string, RateDraft> = {};
-          for (const a of d.call_reps?.agents ?? []) {
-            drafts[a.agent_id] = rowToDraft(a);
-          }
-          for (const a of d.b2b_setters?.agents ?? []) {
-            drafts[a.agent_id] = b2bRowToDraft(a);
-          }
-          for (const a of d.salaried?.agents ?? []) {
-            drafts[a.agent_id] = salariedRowToDraft(a);
-          }
-          setRateDrafts(drafts);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        setError("Failed to load commission report");
-        setLoading(false);
+    try {
+      const runsRes = await fetch("/api/payroll-runs");
+      const runsData = await runsRes.json();
+      const runs: PayrollRunListItem[] = runsData.runs ?? [];
+      setFinalizedRuns(runs);
+
+      const frozen = runs.find(r => r.period_month.startsWith(periodMonth));
+      if (frozen) {
+        const detailRes = await fetch(`/api/payroll-runs/${periodMonth}`);
+        const detail = await detailRes.json();
+        if (!detailRes.ok) throw new Error(detail.error ?? "Failed to load finalized payroll");
+        applyReport(detail.run.report);
+        setIsFinalized(true);
+        setFinalizedMeta({
+          at: detail.run.finalized_at,
+          by: detail.run.finalized_by_email ?? null,
+        });
+      } else {
+        const params = new URLSearchParams({
+          startDate: bounds.startDate,
+          endDate: bounds.endDate,
+        });
+        const liveRes = await fetch(`/api/agent-commissions?${params}`);
+        const live = await liveRes.json();
+        if (!liveRes.ok) throw new Error(live.error ?? "Failed to load payroll");
+        applyReport(live);
+        setIsFinalized(false);
+        setFinalizedMeta(null);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load payroll");
+      setReport(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [periodMonth, bounds.startDate, bounds.endDate, applyReport]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleFinalize() {
+    if (isFinalized) return;
+    const msg = `Finalize payroll for ${bounds.label}?\n\nThis locks the report as historical data. Live event changes will not alter this month after submit.`;
+    if (!confirm(msg)) return;
+    setFinalizing(true);
+    setError("");
+    try {
+      const res = await fetch("/api/payroll-runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ periodMonth }),
       });
-  }, [startDate, endDate]);
-
-  useEffect(() => { load(); }, [load, preset]);
-
-  function rowToDraft(a: AgentCommissionRow): RateDraft {
-    return {
-      base_salary: a.rates.base_salary,
-      monthly_bonus: a.rates.monthly_bonus,
-      pay_per_booking: a.rates.pay_per_booking,
-      pay_per_show: a.rates.pay_per_show,
-      pay_per_live_transfer: a.rates.pay_per_live_transfer,
-      pay_per_qualified_demo: 0,
-      pay_per_close: 0,
-    };
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to finalize payroll");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to finalize payroll");
+    } finally {
+      setFinalizing(false);
+    }
   }
 
-  function b2bRowToDraft(a: B2BSetterCommissionRow): RateDraft {
-    return {
-      base_salary: a.rates.base_salary,
-      monthly_bonus: a.rates.monthly_bonus,
-      pay_per_booking: 0,
-      pay_per_show: 0,
-      pay_per_live_transfer: 0,
-      pay_per_qualified_demo: a.rates.pay_per_qualified_demo,
-      pay_per_close: a.rates.pay_per_close,
-    };
-  }
-
-  function salariedRowToDraft(a: SalariedCommissionRow): RateDraft {
-    return {
-      base_salary: a.rates.base_salary,
-      monthly_bonus: a.rates.monthly_bonus,
-      pay_per_booking: 0,
-      pay_per_show: 0,
-      pay_per_live_transfer: 0,
-      pay_per_qualified_demo: 0,
-      pay_per_close: 0,
-    };
+  function openEmployeeReview(
+    section: EmployeePayrollView["section"],
+    row: AgentCommissionRow | B2BSetterCommissionRow | SalariedCommissionRow,
+  ) {
+    setEmployeeView({
+      agent_id: row.agent_id,
+      agent_name: row.agent_name,
+      section,
+      row,
+      periodLabel: bounds.label,
+      readOnly: isFinalized,
+    });
   }
 
   function toggleExpand(id: string) {
@@ -202,6 +266,7 @@ export default function AgentPayrollReport({
   }
 
   async function saveRates(agentId: string) {
+    if (isFinalized) return;
     const rates = rateDrafts[agentId];
     if (!rates) return;
     setSavingId(agentId);
@@ -402,15 +467,53 @@ export default function AgentPayrollReport({
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Team Payroll</h2>
           <p className="text-sm mt-0.5 max-w-2xl" style={{ color: "#475569" }}>
-            Unified payroll for all team positions — commission roles plus salaried staff (base + monthly bonus).
+            Monthly payroll (1st–last day). Review live data, then finalize to lock historical pay records.
           </p>
           {report && (
             <p className="text-xs mt-1" style={{ color: "#64748b" }}>
-              Period: {report.period.startDate} → {report.period.endDate}
+              {bounds.startDate} → {bounds.endDate}
+              {isFinalized && finalizedMeta && (
+                <span style={{ color: "#fbbf24" }}>
+                  {" · "}Finalized {new Date(finalizedMeta.at).toLocaleString()}
+                  {finalizedMeta.by ? ` by ${finalizedMeta.by}` : ""}
+                </span>
+              )}
             </p>
           )}
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={periodMonth}
+            onChange={e => setPeriodMonth(e.target.value)}
+            className="px-3 py-2 rounded-lg text-sm font-medium"
+            style={{ background: "#0f2040", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.12)" }}
+          >
+            {monthOptions.map(m => (
+              <option key={m.periodMonth} value={m.periodMonth}>
+                {m.label}{finalizedRuns.some(r => r.period_month.startsWith(m.periodMonth)) ? " ✓" : ""}
+              </option>
+            ))}
+          </select>
+          {!isFinalized && (
+            <button
+              type="button"
+              onClick={handleFinalize}
+              disabled={finalizing || loading || !report}
+              className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+              style={{ background: "#22c55e", color: "#fff" }}
+            >
+              {finalizing ? "Submitting…" : "Finalize & Submit"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowItemized(true)}
+            disabled={!report}
+            className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+            style={{ background: "rgba(96,165,250,0.15)", color: "#93c5fd", border: "1px solid rgba(96,165,250,0.25)" }}
+          >
+            Itemized Report
+          </button>
           <button
             type="button"
             onClick={downloadSummary}
@@ -447,6 +550,34 @@ export default function AgentPayrollReport({
       )}
 
       {report && <KpiStrip report={report} />}
+
+      {isFinalized && (
+        <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", color: "#86efac" }}>
+          This month is finalized — viewing locked historical data. Select another month or use Itemized Report to review line items.
+        </div>
+      )}
+
+      {finalizedRuns.length > 0 && (
+        <div className="rounded-xl px-4 py-3" style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#64748b" }}>Payroll history</p>
+          <div className="flex flex-wrap gap-2">
+            {finalizedRuns.slice(0, 12).map(run => (
+              <button
+                key={run.id}
+                type="button"
+                onClick={() => setPeriodMonth(run.period_month.slice(0, 7))}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                style={{
+                  background: run.period_month.startsWith(periodMonth) ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.04)",
+                  color: run.period_month.startsWith(periodMonth) ? "#fbbf24" : "#94a3b8",
+                }}
+              >
+                {run.period_month.slice(0, 7)} · {fmtMoney(run.summary.grand_total)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading && (
         <p className="text-sm py-8 text-center" style={{ color: "#64748b" }}>Loading payroll…</p>
@@ -500,10 +631,19 @@ export default function AgentPayrollReport({
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>
                         {agent.agent_name}
                         <PendingBadge count={agent.pending_disposition.count} />
+                        <button
+                          type="button"
+                          onClick={() => openEmployeeReview("call_rep", agent)}
+                          className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded"
+                          style={{ background: "rgba(96,165,250,0.12)", color: "#93c5fd" }}
+                        >
+                          Review
+                        </button>
                       </td>
                       {(["base_salary", "monthly_bonus", "pay_per_booking", "pay_per_show", "pay_per_live_transfer"] as const).map(key => (
                         <td key={key} className="px-2 py-2.5 text-right">
                           <input type="number" min={0} step={0.01} style={rateInputStyle} value={draft[key]}
+                            disabled={isFinalized}
                             onChange={e => updateDraft(agent.agent_id, key, e.target.value)} />
                         </td>
                       ))}
@@ -517,7 +657,7 @@ export default function AgentPayrollReport({
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>{fmtMoney(agent.amounts.live_transfers)}</td>
                       <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#22c55e" }}>{fmtMoney(agent.amounts.total)}</td>
                       <td className="px-2 py-2.5 text-right">
-                        {dirty && (
+                        {dirty && !isFinalized && (
                           <button type="button" onClick={() => saveRates(agent.agent_id)} disabled={savingId === agent.agent_id}
                             className="text-xs font-semibold px-2 py-1 rounded disabled:opacity-40"
                             style={{ background: "#f59e0b", color: "#fff" }}>
@@ -594,10 +734,19 @@ export default function AgentPayrollReport({
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>
                         {agent.agent_name}
                         <PendingBadge count={agent.pending_disposition.count} />
+                        <button
+                          type="button"
+                          onClick={() => openEmployeeReview("b2b_setter", agent)}
+                          className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded"
+                          style={{ background: "rgba(245,158,11,0.12)", color: "#fbbf24" }}
+                        >
+                          Review
+                        </button>
                       </td>
                       {(["base_salary", "monthly_bonus", "pay_per_qualified_demo", "pay_per_close"] as const).map(key => (
                         <td key={key} className="px-2 py-2.5 text-right">
                           <input type="number" min={0} step={0.01} style={rateInputStyle} value={draft[key]}
+                            disabled={isFinalized}
                             onChange={e => updateDraft(agent.agent_id, key, e.target.value)} />
                         </td>
                       ))}
@@ -609,7 +758,7 @@ export default function AgentPayrollReport({
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>{fmtMoney(agent.amounts.closes)}</td>
                       <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#22c55e" }}>{fmtMoney(agent.amounts.total)}</td>
                       <td className="px-2 py-2.5 text-right">
-                        {dirty && (
+                        {dirty && !isFinalized && (
                           <button type="button" onClick={() => saveRates(agent.agent_id)} disabled={savingId === agent.agent_id}
                             className="text-xs font-semibold px-2 py-1 rounded disabled:opacity-40"
                             style={{ background: "#f59e0b", color: "#fff" }}>
@@ -686,6 +835,14 @@ export default function AgentPayrollReport({
                         >
                           <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>
                             {agent.agent_name}
+                            <button
+                              type="button"
+                              onClick={() => openEmployeeReview("salaried", agent)}
+                              className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded"
+                              style={{ background: "rgba(167,139,250,0.12)", color: "#c4b5fd" }}
+                            >
+                              Review
+                            </button>
                           </td>
                           <td className="px-3 py-2.5 text-xs" style={{ color: "#c4b5fd" }}>
                             {POSITION_LABELS[agent.position] ?? agent.position}
@@ -698,6 +855,7 @@ export default function AgentPayrollReport({
                                 step={0.01}
                                 style={rateInputStyle}
                                 value={draft[key]}
+                                disabled={isFinalized}
                                 onChange={e => updateDraft(agent.agent_id, key, e.target.value)}
                               />
                             </td>
@@ -712,7 +870,7 @@ export default function AgentPayrollReport({
                             {fmtMoney(agent.amounts.total)}
                           </td>
                           <td className="px-2 py-2.5 text-right">
-                            {dirty && (
+                            {dirty && !isFinalized && (
                               <button
                                 type="button"
                                 onClick={() => saveRates(agent.agent_id)}
@@ -752,6 +910,21 @@ export default function AgentPayrollReport({
           to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
+
+      {showItemized && report && (
+        <PayrollItemizedModal
+          report={report}
+          periodLabel={bounds.label}
+          readOnly={isFinalized}
+          onClose={() => setShowItemized(false)}
+          onReviewEmployee={view => {
+            setShowItemized(false);
+            setEmployeeView(view);
+          }}
+        />
+      )}
+
+      <PayrollEmployeeDetail view={employeeView} onClose={() => setEmployeeView(null)} />
     </div>
   );
 }

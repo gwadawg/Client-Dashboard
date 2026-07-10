@@ -4,6 +4,7 @@ import { buildCommissionReport } from './agent-commissions';
 import { buildB2BSetterCommissionReport } from './b2b-setter-commissions';
 import { buildSalariedCommissionReport } from './salaried-commissions';
 import { computeFixedPay } from './payroll-common';
+import { monthBounds } from './payroll-period';
 import { bucketCallRepPendingDisposition } from './payroll-pending-disposition';
 
 describe('computeFixedPay', () => {
@@ -121,6 +122,14 @@ describe('buildSalariedCommissionReport', () => {
     assert.equal(report.agents.length, 1);
     assert.equal(report.agents[0].agent_name, 'Alex');
     assert.equal(report.agents[0].amounts.total, 4500);
+  });
+});
+
+describe('monthBounds', () => {
+  it('returns full calendar month range', () => {
+    const b = monthBounds('2026-05');
+    assert.equal(b.startDate, '2026-05-01');
+    assert.equal(b.endDate, '2026-05-31');
   });
 });
 

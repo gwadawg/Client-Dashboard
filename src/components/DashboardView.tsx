@@ -474,8 +474,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
     || view === "media_buyer"
     || view === "acquisition_marketing"
     || view === "client_calls"
-    || view === "call_library"
-    || view === "admin_agent_payroll";
+    || view === "call_library";
 
   const navItem = NAV.find(n => n.view === view);
   const hubTabLabel = isHubView(view) && hubTab ? tabLabelForHub(view, hubTab) : null;
@@ -647,7 +646,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
             {hubTabLabel ? <span style={{ color: "#334155" }}> / {hubTabLabel}</span> : null}
           </h1>
 
-          {showDateFilters && (view === "admin_agent_payroll" || !view.startsWith("admin_")) && (
+          {showDateFilters && !view.startsWith("admin_") && (
             <>
               {(view === "dashboard" || view === "kpi_simulator" || view === "dial_analytics" || view === "media_buyer") && (
                 <>
@@ -989,9 +988,6 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
           )}
           {view === "admin_agent_payroll" && (
             <AgentPayrollReport
-              preset={preset}
-              startDate={dateStart}
-              endDate={dateEnd}
               onGoToCreditQueue={() => goToView("agents", "credit_queue")}
               onGoToAcquisitionCreditQueue={() => goToView("acquisition", "credit_queue")}
             />
