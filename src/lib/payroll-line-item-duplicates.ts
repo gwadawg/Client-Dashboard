@@ -3,7 +3,7 @@ import type { B2BSetterCommissionRow } from '@/lib/b2b-setter-commissions';
 import { normalizePhone } from '@/lib/contact-key';
 
 export const DUPLICATE_LEAD_EXCLUSION_REASON =
-  'Duplicate lead — only one conversation credit per lead';
+  'Duplicate lead — only one credit per conversation type (booking + show allowed)';
 
 export type PayrollReviewLineItem = {
   event_id: string;
@@ -41,6 +41,56 @@ export function formatLeadLabel(item: PayrollReviewLineItem): string {
   return name || phone || 'Unknown lead';
 }
 
+/** Booking + show on the same lead is valid; other overlaps are not. */
+export function isCallRepLeadCreditConflict(items: PayrollReviewLineItem[]): boolean {
+  if (items.length < 2) return false;
+
+  let bookings = 0;
+  let shows = 0;
+  let transfers = 0;
+  for (const item of items) {
+    if (item.type === 'booking') bookings++;
+    else if (item.type === 'show') shows++;
+    else if (item.type === 'live_transfer') transfers++;
+  }
+
+  if (bookings > 1 || shows > 1 || transfers > 1) return true;
+
+  const hasBooking = bookings > 0;
+  const hasShow = shows > 0;
+  const hasTransfer = transfers > 0;
+
+  // Live transfer cannot stack with booking or show on the same lead.
+  if (hasTransfer && (hasBooking || hasShow)) return true;
+
+  return false;
+}
+
+/** Demo + close on the same lead is valid; multiples of either type are not. */
+export function isB2BLeadCreditConflict(items: PayrollReviewLineItem[]): boolean {
+  if (items.length < 2) return false;
+
+  let demos = 0;
+  let closes = 0;
+  for (const item of items) {
+    if (item.type === 'qualified_demo') demos++;
+    else if (item.type === 'close') closes++;
+  }
+
+  return demos > 1 || closes > 1;
+}
+
+function isLeadCreditConflict(items: PayrollReviewLineItem[]): boolean {
+  const types = new Set(items.map(item => item.type));
+  if (types.has('booking') || types.has('show') || types.has('live_transfer')) {
+    return isCallRepLeadCreditConflict(items);
+  }
+  if (types.has('qualified_demo') || types.has('close')) {
+    return isB2BLeadCreditConflict(items);
+  }
+  return false;
+}
+
 export function detectDuplicateLeadGroups(items: PayrollReviewLineItem[]): DuplicateLeadGroup[] {
   const byLead = new Map<string, PayrollReviewLineItem[]>();
 
@@ -53,7 +103,7 @@ export function detectDuplicateLeadGroups(items: PayrollReviewLineItem[]): Dupli
   }
 
   return [...byLead.entries()]
-    .filter(([, groupItems]) => groupItems.length >= 2)
+    .filter(([, groupItems]) => groupItems.length >= 2 && isLeadCreditConflict(groupItems))
     .map(([lead_key, groupItems]) => ({
       lead_key,
       lead_label: formatLeadLabel(groupItems[0]),

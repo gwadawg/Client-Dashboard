@@ -73,9 +73,9 @@ function DuplicateLeadBanner({
         Possible duplicate lead credits
       </p>
       <p className="text-xs leading-relaxed" style={{ color: "#fbbf24" }}>
-        {groups.length} lead{groups.length === 1 ? "" : "s"} have multiple payable events (e.g. booking + live transfer).
-        Reps should only receive one conversation credit per lead. Use the checkboxes below to exclude duplicates before submit.
-        Excluded items stay visible on the PDF with the reason.
+        {groups.length} lead{groups.length === 1 ? "" : "s"} have overlapping conversation credits.
+        Booking + show on the same lead is allowed. Flagged when there are multiple bookings, shows, or transfers,
+        live transfer combined with booking/show, or all three types on one lead.
       </p>
       <ul className="text-xs space-y-1" style={{ color: "#fde68a" }}>
         {groups.slice(0, 5).map(group => (
@@ -229,7 +229,8 @@ function DuplicateComparePanel({
   return (
     <div className="space-y-4">
       <p className="text-xs" style={{ color: "#94a3b8" }}>
-        Each card is one lead with multiple payable events. Compare side by side and check which line(s) to exclude from pay.
+        Each card is one lead with conflicting credits. Booking + show together is valid pay.
+        Exclude extra bookings, shows, transfers, or live transfers stacked on the same lead.
       </p>
       {groups.map(group => (
         <div
