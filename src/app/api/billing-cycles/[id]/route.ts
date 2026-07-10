@@ -5,12 +5,17 @@ import {
   computePerformanceAmount,
   deriveCycleStatus,
 } from '@/lib/billing-model';
+import {
+  BILLING_LEDGER_FIELDS,
+  loadClientBillingProbes,
+  logBillingEvent,
+  resolveRevenueDefaults,
+} from '@/lib/billing-revenue';
 
 const CYCLE_FIELDS =
   'id, client_id, period_start, period_end, base_amount, show_count, bailed_count, pay_per_show, pay_per_bailed, performance_amount, discount, status, report_sent_at, objection_deadline_at, dispute_note, billing_id, note, created_at, updated_at';
 
-const BILLING_FIELDS =
-  'id, client_id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, amount_paid, status, paid_on, method, invoice_ref, note, created_at';
+const BILLING_FIELDS = BILLING_LEDGER_FIELDS;
 
 function recomputePerformance(row: {
   show_count: number;
@@ -187,6 +192,40 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const billedOn = typeof body.billed_on === 'string' ? body.billed_on : new Date().toISOString().slice(0, 10);
   const wantsPaid = body.markPaid === true || body.status === 'paid';
 
+  const { data: client, error: clientErr } = await ctx.service
+    .from('clients')
+    .select('id, billing_type, source, contract_term_months')
+    .eq('id', cycle.client_id)
+    .single();
+  if (clientErr) return NextResponse.json({ error: clientErr.message }, { status: 404 });
+
+  let probes;
+  try {
+    probes = await loadClientBillingProbes(ctx.service, cycle.client_id);
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : 'Failed to load billings' },
+      { status: 500 },
+    );
+  }
+
+  const revenue = resolveRevenueDefaults({
+    client,
+    existingBillings: probes,
+    input: {
+      revenue_type: 'performance',
+      revenue_segment: body.revenue_segment,
+      method: body.method,
+      note: body.note,
+      processing_fee: body.processing_fee,
+      stripe_invoice_id: body.stripe_invoice_id,
+      stripe_payment_intent_id: body.stripe_payment_intent_id,
+      lead_source: body.lead_source,
+    },
+    willBePaid: wantsPaid,
+  });
+  if (revenue.error) return NextResponse.json({ error: revenue.error }, { status: 400 });
+
   const billingInsert = {
     client_id: cycle.client_id,
     billed_on: billedOn,
@@ -201,9 +240,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     amount_paid: wantsPaid ? amount : 0,
     status: wantsPaid ? 'paid' : 'pending',
     paid_on: wantsPaid ? (body.paid_on || billedOn) : null,
-    method: body.method || null,
+    method: revenue.method || body.method || null,
     note: body.note || cycle.note || null,
     revenue_type: 'performance',
+    revenue_segment: revenue.revenue_segment ?? 'back_end',
+    term_months: revenue.term_months,
+    processing_fee: revenue.processing_fee,
+    passthrough_amount: revenue.passthrough_amount,
+    lead_source: revenue.lead_source,
+    stripe_invoice_id: revenue.stripe_invoice_id,
+    stripe_payment_intent_id: revenue.stripe_payment_intent_id,
+    is_first_payment: revenue.is_first_payment,
     created_by: ctx.userId,
   };
 
@@ -213,6 +260,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .select(BILLING_FIELDS)
     .single();
   if (billErr) return NextResponse.json({ error: billErr.message }, { status: 500 });
+
+  await logBillingEvent(ctx.service, {
+    billingId: billing.id,
+    clientId: cycle.client_id,
+    eventType: 'created',
+    actorId: ctx.userId,
+    payload: { after: billing, source: 'performance_cycle', cycle_id: id },
+  });
+  if (wantsPaid) {
+    await logBillingEvent(ctx.service, {
+      billingId: billing.id,
+      clientId: cycle.client_id,
+      eventType: 'payment',
+      actorId: ctx.userId,
+      payload: { amount_paid: amount, status: 'paid' },
+    });
+  }
 
   const { data: updated, error: cycleErr } = await ctx.service
     .from('client_billing_cycles')

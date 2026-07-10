@@ -74,6 +74,9 @@ type FileBilling = {
   lead_source: string | null;
   term_months: number | null;
   processing_fee: number | null;
+  stripe_invoice_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  is_first_payment?: boolean | null;
   created_at: string;
 };
 
@@ -190,6 +193,8 @@ const REVENUE_TYPE_LABEL: Record<string, string> = {
   pif: "PIF",
   performance: "Performance",
   passthrough: "Passthrough",
+  upsell: "Upsell",
+  one_off: "One-off",
 };
 
 const fieldStyle = {
@@ -232,6 +237,7 @@ export default function ClientFile({
   openCheckinForm = false,
   openKickoff = false,
   openAddOffer = false,
+  initialTab,
 }: {
   clientId: string;
   fallbackName: string;
@@ -244,6 +250,8 @@ export default function ClientFile({
   openCheckinForm?: boolean;
   openKickoff?: boolean;
   openAddOffer?: boolean;
+  /** Open a specific tab (e.g. billing from Finance ledger). */
+  initialTab?: TabKey;
 }) {
   const [client, setClient] = useState<FileClient | null>(null);
   const [billings, setBillings] = useState<FileBilling[]>([]);
@@ -267,7 +275,9 @@ export default function ClientFile({
   // Deep links from the roster (logged via a remount key) decide the initial
   // tab + open composer, so no post-mount effect is needed.
   const [activeTab, setActiveTab] = useState<TabKey>(
-    () => (scrollToCalls || openCheckinForm || scrollToNotes ? "activity" : "overview"),
+    () =>
+      initialTab ??
+      (scrollToCalls || openCheckinForm || scrollToNotes ? "activity" : "overview"),
   );
   const [showCallComposer, setShowCallComposer] = useState(() => scrollToCalls || openCheckinForm);
   const [showNoteComposer, setShowNoteComposer] = useState(() => scrollToNotes);
@@ -1219,8 +1229,8 @@ export default function ClientFile({
                     <thead>
                       <tr style={{ background: "#0a1628" }}>
                         {(canViewRevenue
-                          ? ["Date", "Type", "Cash", "Amount", "Status", "Method"]
-                          : ["Date", "Type", "Status", "Method"]
+                          ? ["Date", "Type", "Cash", "Amount", "Fee", "Status", "Method / Stripe"]
+                          : ["Date", "Type", "Status", "Method / Stripe"]
                         ).map((h, i) => (
                           <th key={i} className="text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>{h}</th>
                         ))}
@@ -1233,6 +1243,7 @@ export default function ClientFile({
                         const cash = isPassthrough ? Number(b.passthrough_amount) || 0 : Number(b.amount_paid) || 0;
                         const typeLabel = b.revenue_type ? REVENUE_TYPE_LABEL[b.revenue_type] ?? b.revenue_type : "—";
                         const seg = b.revenue_segment === "front_end" ? "new" : b.revenue_segment === "back_end" ? "recurring" : null;
+                        const fee = Number(b.processing_fee) || 0;
                         return (
                           <tr key={b.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                             <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#cbd5e1" }}>
@@ -1242,16 +1253,30 @@ export default function ClientFile({
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <span style={{ color: "#e2e8f0" }}>{typeLabel}</span>
                               {seg && <span className="ml-1.5 text-xs" style={{ color: "#475569" }}>· {seg}</span>}
+                              {b.is_first_payment && (
+                                <span className="ml-1.5 text-xs font-semibold" style={{ color: "#f59e0b" }}>first</span>
+                              )}
+                              {b.term_months != null && b.term_months > 0 && (
+                                <span className="ml-1.5 text-xs" style={{ color: "#64748b" }}>{b.term_months} mo</span>
+                              )}
                               {b.lead_source && <div className="text-xs mt-0.5" style={{ color: "#475569" }}>{b.lead_source}</div>}
                             </td>
                             {canViewRevenue && (
                               <>
                                 <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: isPassthrough ? "#64748b" : "#38bdf8" }}>{money(cash)}</td>
                                 <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#e2e8f0" }}>{money(b.amount)}</td>
+                                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: fee > 0 ? "#f59e0b" : "#475569" }}>
+                                  {fee > 0 ? money(fee) : "—"}
+                                </td>
                               </>
                             )}
                             <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ color: st.color, background: st.bg }}>{b.status}</span></td>
-                            <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#94a3b8" }}>{b.method ?? "—"}</td>
+                            <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#94a3b8" }}>
+                              {b.method ?? "—"}
+                              {b.stripe_invoice_id && (
+                                <div className="text-xs mt-0.5 font-mono" style={{ color: "#475569" }}>{b.stripe_invoice_id}</div>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}

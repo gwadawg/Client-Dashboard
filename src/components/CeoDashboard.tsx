@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import KpiSection from "./kpi/KpiSection";
 import KpiCard from "./kpi/KpiCard";
+import FinanceRevenueLedger from "./FinanceRevenueLedger";
 import { reasonLabel } from "@/lib/client-feedback";
 import type { BusinessMetrics } from "@/lib/business-metrics";
 
@@ -257,6 +258,7 @@ function MrrWaterfall({ bridge }: { bridge: BusinessMetrics["mrrBridge"] }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenue?: boolean }) {
+  const [hubTab, setHubTab] = useState<"overview" | "revenue" | "expenses">("overview");
   const monthOptions = useMemo(() => recentMonths(18), []);
   const [month, setMonth] = useState(monthOptions[0]);
   const [data, setData] = useState<BusinessMetrics | null>(null);
@@ -266,10 +268,12 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    if (!canViewRevenue) {
-      setLoading(false);
-      setData(null);
-      setError(null);
+    if (!canViewRevenue || hubTab !== "overview") {
+      if (!canViewRevenue) {
+        setLoading(false);
+        setData(null);
+        setError(null);
+      }
       return;
     }
     let cancelled = false;
@@ -294,7 +298,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
     return () => {
       cancelled = true;
     };
-  }, [month, reloadKey, canViewRevenue]);
+  }, [month, reloadKey, canViewRevenue, hubTab]);
 
   const isCurrentMonth = month === monthOptions[0];
 
@@ -303,19 +307,68 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
       <div className="py-16 text-center space-y-2 px-4">
         <p className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>Revenue data restricted</p>
         <p className="text-sm max-w-md mx-auto" style={{ color: "#475569" }}>
-          The Business dashboard is only visible to the account owner and users with the &ldquo;View client revenue &amp; billing totals&rdquo; capability.
+          Finance is only visible to the account owner and users with the &ldquo;View client revenue &amp; billing totals&rdquo; capability.
         </p>
       </div>
     );
   }
 
+  const HUB_TABS: { key: "overview" | "revenue" | "expenses"; label: string }[] = [
+    { key: "overview", label: "Overview" },
+    { key: "revenue", label: "Revenue" },
+    { key: "expenses", label: "Expenses" },
+  ];
+
   return (
-    <div className="space-y-8 max-w-7xl">
+    <div className="space-y-6 max-w-7xl">
+      <div className="flex items-end justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Finance</h1>
+          <p className="text-xs mt-0.5" style={{ color: MUTED }}>
+            Company books — cash KPIs, full charge ledger, and expenses. Collections stay in Admin → Client Billing.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex gap-1 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        {HUB_TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setHubTab(t.key)}
+            className="px-4 py-2.5 text-sm font-medium"
+            style={{
+              color: hubTab === t.key ? "#e2e8f0" : "#64748b",
+              borderBottom: `2px solid ${hubTab === t.key ? AMBER : "transparent"}`,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {hubTab === "revenue" && <FinanceRevenueLedger />}
+
+      {hubTab === "expenses" && (
+        <div
+          className="rounded-xl px-6 py-16 text-center space-y-2"
+          style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
+        >
+          <p className="text-base font-semibold" style={{ color: "#e2e8f0" }}>Expenses coming next</p>
+          <p className="text-sm max-w-md mx-auto" style={{ color: MUTED }}>
+            This is where company expense line items will live (vendors, categories, monthly P&amp;L).
+            Revenue is already in the ledger — expenses will plug into the same Finance hub.
+          </p>
+        </div>
+      )}
+
+      {hubTab === "overview" && (
+        <>
       {/* Month picker */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>
-            Business Overview
+            Overview
           </h2>
           <p className="text-xs mt-0.5" style={{ color: MUTED }}>
             Agency-wide KPIs across the whole client book — recurring revenue, cash, churn, and risk.
@@ -342,7 +395,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            <span className="text-sm font-medium">Loading business metrics…</span>
+            <span className="text-sm font-medium">Loading finance metrics…</span>
           </div>
         </div>
       ) : error ? (
@@ -641,6 +694,8 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
           )}
         </>
       ) : null}
+        </>
+      )}
     </div>
   );
 }

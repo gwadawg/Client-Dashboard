@@ -3,6 +3,12 @@ import { getAuthContext, isAuthError, requirePermission, requireClientRevenue } 
 import { computeNextBillingDate, deriveStatus, balanceOf, recordedState, type BillingRow } from '@/lib/billing';
 import { VOIDED_BILLING_STATUS } from '@/lib/billing-query';
 import {
+  BILLING_LEDGER_FIELDS,
+  loadClientBillingProbes,
+  logBillingEvent,
+  resolveRevenueDefaults,
+} from '@/lib/billing-revenue';
+import {
   canViewClientRevenue,
   redactBillingRow,
   redactBillingRows,
@@ -10,10 +16,9 @@ import {
 } from '@/lib/client-revenue-access';
 
 const CLIENT_BILLING_FIELDS =
-  'id, name, reporting_type, is_live, lifecycle_status, billing_paused, billing_paused_at, billing_paused_note, billing_model, pay_per_show, pay_per_bailed, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms';
+  'id, name, reporting_type, is_live, lifecycle_status, billing_paused, billing_paused_at, billing_paused_note, billing_model, pay_per_show, pay_per_bailed, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, source';
 
-const BILLING_FIELDS =
-  'id, client_id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, amount_paid, status, paid_on, method, invoice_ref, note, created_at';
+const BILLING_FIELDS = BILLING_LEDGER_FIELDS;
 
 function todayYmd(): string {
   return new Date().toISOString().slice(0, 10);
@@ -78,16 +83,9 @@ export async function GET(req: Request) {
   const enriched = clients.map(c => {
     const rows = byClient.get(c.id) ?? [];
 
-    // For next_billing_date computation, use the most recent non-scheduled
-    // billing as the anchor so the suggested date reflects the last real payment
-    // cycle, not a scheduled (uncommitted) future one.
     const lastRealBilling = (rows.find(r => r.status !== 'scheduled') as BillingRow | undefined) ?? null;
     const nextBillingDate = computeNextBillingDate(c, lastRealBilling);
     const nextBillingStatus = deriveStatus(nextBillingDate, new Date());
-
-    // suggested_next_date: the recommended due date to pre-fill the "File
-    // billing" form.  Uses the same computation but is kept separate from
-    // next_billing_date so callers can distinguish the two purposes.
     const suggestedNextDate = nextBillingDate;
 
     if (includeRevenue && c.is_live && typeof c.mrr === 'number') activeMrr += c.mrr;
@@ -147,8 +145,6 @@ export async function POST(req: Request) {
   if (!client_id) return NextResponse.json({ error: 'client_id is required' }, { status: 400 });
   if (!billed_on) return NextResponse.json({ error: 'billed_on is required' }, { status: 400 });
 
-  // The total due is the sum of the breakdown. Fall back to a flat `amount` so
-  // older callers still work; that flat amount becomes the base.
   const base = Number(body.base_amount ?? body.amount);
   if (Number.isNaN(base))
     return NextResponse.json({ error: 'base_amount (or amount) is required' }, { status: 400 });
@@ -157,9 +153,6 @@ export async function POST(req: Request) {
   const discount = Number(body.discount) || 0;
   const amount = base + performance + lateFee - discount;
 
-  // Paid-ness: an explicit "paid" status (or markPaid) settles the full amount;
-  // "scheduled" billings are future commitments — no amount is collected yet.
-  // Otherwise derive paid/partial/pending from how much was collected.
   const EXPLICIT_STATUSES = new Set(['scheduled', 'paid', 'failed', 'refunded', 'voided']);
   const wantsPaid = body.status === 'paid' || body.markPaid === true;
   const isScheduled = body.status === 'scheduled';
@@ -172,6 +165,35 @@ export async function POST(req: Request) {
   }
 
   const dueDate = body.due_date || billed_on;
+  const willBePaid = status === 'paid' || amountPaid > 0;
+
+  const { data: client, error: clientErr } = await ctx.service
+    .from('clients')
+    .select('id, billing_type, source, contract_term_months')
+    .eq('id', client_id)
+    .single();
+  if (clientErr) return NextResponse.json({ error: clientErr.message }, { status: 404 });
+
+  let probes;
+  try {
+    probes = await loadClientBillingProbes(ctx.service, client_id);
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to load billings' }, { status: 500 });
+  }
+
+  const revenue = resolveRevenueDefaults({
+    client,
+    existingBillings: probes,
+    input: body,
+    willBePaid,
+  });
+  if (revenue.error) return NextResponse.json({ error: revenue.error }, { status: 400 });
+  if (!revenue.revenue_type) {
+    return NextResponse.json(
+      { error: 'revenue_type is required (mrr | pif | performance | passthrough | upsell | one_off)' },
+      { status: 400 },
+    );
+  }
 
   const insert: Record<string, unknown> = {
     client_id,
@@ -185,11 +207,23 @@ export async function POST(req: Request) {
     amount_paid: amountPaid,
     status,
     created_by: ctx.userId,
+    revenue_type: revenue.revenue_type,
+    revenue_segment: revenue.revenue_segment,
+    term_months: revenue.term_months,
+    processing_fee: revenue.processing_fee,
+    passthrough_amount: revenue.passthrough_amount,
+    lead_source: revenue.lead_source,
+    is_first_payment: revenue.is_first_payment,
   };
+  if (revenue.method) insert.method = revenue.method;
+  if (revenue.stripe_invoice_id) insert.stripe_invoice_id = revenue.stripe_invoice_id;
+  if (revenue.stripe_payment_intent_id) insert.stripe_payment_intent_id = revenue.stripe_payment_intent_id;
   if (status === 'paid' && !body.paid_on) insert.paid_on = billed_on;
-  for (const k of ['period_start', 'period_end', 'paid_on', 'method', 'invoice_ref', 'note'] as const) {
+  for (const k of ['period_start', 'period_end', 'paid_on', 'invoice_ref', 'note'] as const) {
     if (k in body && body[k] !== '') insert[k] = body[k];
   }
+  // method may also come from body when resolve left it null
+  if (!insert.method && body.method) insert.method = body.method;
 
   const { data, error } = await ctx.service
     .from('client_billings')
@@ -198,5 +232,23 @@ export async function POST(req: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logBillingEvent(ctx.service, {
+    billingId: data.id,
+    clientId: client_id,
+    eventType: 'created',
+    actorId: ctx.userId,
+    payload: { after: data },
+  });
+  if (willBePaid) {
+    await logBillingEvent(ctx.service, {
+      billingId: data.id,
+      clientId: client_id,
+      eventType: 'payment',
+      actorId: ctx.userId,
+      payload: { amount_paid: amountPaid, status },
+    });
+  }
+
   return NextResponse.json({ billing: data });
 }

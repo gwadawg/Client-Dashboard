@@ -8,6 +8,14 @@ import PerformanceBilling from "@/components/billing/PerformanceBilling";
 import ReportingTypeBadge from "@/components/ReportingTypeBadge";
 import { isFixedBilling, isPerformanceBilling } from "@/lib/billing-model";
 import type { ClientBilling, RecordOpts, RecordedRow, ScheduleOpts, WorkRow } from "@/components/billing/billing-types";
+import {
+  METHOD_OPTIONS,
+  REVENUE_SEGMENT_OPTIONS,
+  REVENUE_TYPE_OPTIONS,
+  defaultRevenueType,
+  revenueSegmentLabel,
+  revenueTypeLabel,
+} from "@/components/billing/billing-types";
 
 const STICKY_TH_BG = "#0a1628";
 
@@ -46,15 +54,41 @@ function balanceOf(b: Billing): number {
 
 function breakdownLabel(b: Billing): string | null {
   const parts: string[] = [];
+  if (b.revenue_type) parts.push(revenueTypeLabel(b.revenue_type));
+  const seg = revenueSegmentLabel(b.revenue_segment);
+  if (seg) parts.push(seg);
+  if (b.is_first_payment) parts.push("first payment");
+  if (b.term_months) parts.push(`${b.term_months} mo`);
   const perf = Number(b.performance_amount) || 0;
   const late = Number(b.late_fee) || 0;
   const disc = Number(b.discount) || 0;
-  if (perf === 0 && late === 0 && disc === 0) return null;
-  parts.push(`base ${money(Number(b.base_amount ?? b.amount))}`);
-  if (perf) parts.push(`perf ${money(perf)}`);
-  if (late) parts.push(`late ${money(late)}`);
-  if (disc) parts.push(`− disc ${money(disc)}`);
-  return parts.join(" + ").replace("+ −", "−");
+  if (perf || late || disc) {
+    parts.push(`base ${money(Number(b.base_amount ?? b.amount))}`);
+    if (perf) parts.push(`perf ${money(perf)}`);
+    if (late) parts.push(`late ${money(late)}`);
+    if (disc) parts.push(`− disc ${money(disc)}`);
+  }
+  return parts.length ? parts.join(" · ") : null;
+}
+
+function revenuePayload(opts: {
+  revenue_type?: string;
+  revenue_segment?: string;
+  term_months?: number;
+  processing_fee?: number;
+  method?: string;
+  note?: string;
+  stripe_invoice_id?: string;
+}): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (opts.revenue_type) out.revenue_type = opts.revenue_type;
+  if (opts.revenue_segment) out.revenue_segment = opts.revenue_segment;
+  if (opts.term_months != null && opts.term_months > 0) out.term_months = opts.term_months;
+  if (opts.processing_fee != null && opts.processing_fee > 0) out.processing_fee = opts.processing_fee;
+  if (opts.method) out.method = opts.method;
+  if (opts.note) out.note = opts.note;
+  if (opts.stripe_invoice_id) out.stripe_invoice_id = opts.stripe_invoice_id;
+  return out;
 }
 
 function daysFromToday(dateStr: string | null): number | null {
@@ -166,7 +200,6 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     setBusy(null);
   }
 
-  // recordBilling: creates a live billing (pending or paid immediately).
   async function recordBilling(client: ClientBilling, opts: RecordOpts) {
     const key = `rec-${client.id}`;
     setBusy(key);
@@ -181,9 +214,8 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         performance_amount: opts.performance,
         late_fee: opts.lateFee,
         discount: opts.discount ?? 0,
-        method: opts.method || undefined,
-        note: opts.note || undefined,
         status: opts.markPaid ? "paid" : undefined,
+        ...revenuePayload(opts),
       }),
     });
     await load();
@@ -206,9 +238,8 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         performance_amount: opts.performance,
         late_fee: 0,
         discount: opts.discount,
-        method: opts.method || undefined,
-        note: opts.note || undefined,
         status: opts.markPaid ? "paid" : "scheduled",
+        ...revenuePayload(opts),
       }),
     });
     await load();
@@ -260,9 +291,8 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         performance_amount: opts.performance,
         late_fee: 0,
         discount: opts.discount,
-        method: opts.method || undefined,
-        note: opts.note || undefined,
         status: opts.markPaid ? "paid" : "scheduled",
+        ...revenuePayload(opts),
       }),
     });
     await load();
@@ -906,17 +936,43 @@ function ScheduleEditor({
   const [discount, setDiscount] = useState("0");
   const [dueDate, setDueDate] = useState(suggestedDate);
   const [note, setNote] = useState("");
+  const [revenueType, setRevenueType] = useState(defaultRevenueType(client.billing_type));
+  const [revenueSegment, setRevenueSegment] = useState("back_end");
+  const [termMonths, setTermMonths] = useState(
+    client.billing_type === "pif" ? String(client.contract_term_months ?? "") : "",
+  );
+  const [processingFee, setProcessingFee] = useState("0");
+  const [method, setMethod] = useState("stripe");
+  const [stripeInvoiceId, setStripeInvoiceId] = useState("");
 
   const schedKey = `sch-${client.id}`;
   const total = Math.max(0,
     (Number(base) || 0) + (Number(performance) || 0) - (Number(discount) || 0)
   );
-  const disabled = busy === schedKey || total <= 0;
+  const pifNeedsTerm = revenueType === "pif" && !(Number(termMonths) > 0);
+  const disabled = busy === schedKey || total <= 0 || pifNeedsTerm;
+
+  function buildOpts(markPaid?: boolean): ScheduleOpts {
+    return {
+      base: Number(base) || 0,
+      performance: Number(performance) || 0,
+      discount: Number(discount) || 0,
+      dueDate,
+      note: note || undefined,
+      markPaid,
+      revenue_type: revenueType,
+      revenue_segment: revenueSegment,
+      term_months: Number(termMonths) || undefined,
+      processing_fee: Number(processingFee) || undefined,
+      method: method || undefined,
+      stripe_invoice_id: stripeInvoiceId.trim() || undefined,
+    };
+  }
 
   return (
     <div className="space-y-3">
       <p className="text-xs px-3 py-2 rounded-lg" style={{ color: "#818cf8", background: "rgba(129,140,248,0.08)", border: "1px solid rgba(129,140,248,0.2)" }}>
-        Filing a billing commits this cycle to the queue. You can adjust the amounts or due date later before recording payment.
+        Filing a billing commits this cycle to the queue. Tag the revenue type so CEO cash KPIs stay accurate.
       </p>
 
       {client.performance_terms && (
@@ -961,11 +1017,77 @@ function ScheduleEditor({
             style={fieldStyle()}
           />
         </LabeledInput>
+        <LabeledInput label="Revenue type">
+          <select
+            value={revenueType}
+            onChange={e => setRevenueType(e.target.value)}
+            className="px-2 py-1.5 rounded-lg text-sm outline-none"
+            style={fieldStyle()}
+          >
+            {REVENUE_TYPE_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </LabeledInput>
+        <LabeledInput label="Cash segment">
+          <select
+            value={revenueSegment}
+            onChange={e => setRevenueSegment(e.target.value)}
+            className="px-2 py-1.5 rounded-lg text-sm outline-none"
+            style={fieldStyle()}
+          >
+            {REVENUE_SEGMENT_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </LabeledInput>
+        {revenueType === "pif" && (
+          <LabeledInput label="Term months">
+            <input
+              type="number"
+              value={termMonths}
+              onChange={e => setTermMonths(e.target.value)}
+              placeholder="e.g. 6"
+              className="px-2 py-1.5 rounded-lg text-sm outline-none"
+              style={fieldStyle()}
+            />
+          </LabeledInput>
+        )}
+        <LabeledInput label="Processing fee">
+          <input
+            type="number"
+            value={processingFee}
+            onChange={e => setProcessingFee(e.target.value)}
+            className="px-2 py-1.5 rounded-lg text-sm outline-none"
+            style={fieldStyle()}
+          />
+        </LabeledInput>
+        <LabeledInput label="Method">
+          <select
+            value={method}
+            onChange={e => setMethod(e.target.value)}
+            className="px-2 py-1.5 rounded-lg text-sm outline-none"
+            style={fieldStyle()}
+          >
+            {METHOD_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </LabeledInput>
+        <LabeledInput label="Stripe invoice id">
+          <input
+            value={stripeInvoiceId}
+            onChange={e => setStripeInvoiceId(e.target.value)}
+            placeholder="in_..."
+            className="px-2 py-1.5 rounded-lg text-sm outline-none"
+            style={fieldStyle()}
+          />
+        </LabeledInput>
         <LabeledInput label="Note (optional)">
           <input
             value={note}
             onChange={e => setNote(e.target.value)}
-            placeholder="e.g. discounted month"
+            placeholder="e.g. discounted month / upsell"
             className="px-2 py-1.5 rounded-lg text-sm outline-none"
             style={fieldStyle()}
           />
@@ -977,7 +1099,7 @@ function ScheduleEditor({
           Total due: <strong style={{ color: "#e2e8f0" }}>{money(total)}</strong>
         </span>
         <button
-          onClick={() => onSchedule({ base: Number(base) || 0, performance: Number(performance) || 0, discount: Number(discount) || 0, dueDate, note: note || undefined })}
+          onClick={() => onSchedule(buildOpts())}
           disabled={disabled}
           className="text-xs font-semibold px-3 py-1.5 rounded"
           style={{ color: "#818cf8", background: "rgba(129,140,248,0.1)", opacity: disabled ? 0.5 : 1 }}
@@ -986,7 +1108,7 @@ function ScheduleEditor({
         </button>
         {showMarkPaid && (
           <button
-            onClick={() => onSchedule({ base: Number(base) || 0, performance: Number(performance) || 0, discount: Number(discount) || 0, dueDate, note: note || undefined, markPaid: true })}
+            onClick={() => onSchedule(buildOpts(true))}
             disabled={disabled}
             className="text-xs font-semibold px-3 py-1.5 rounded"
             style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: disabled ? 0.5 : 1 }}
@@ -1017,9 +1139,24 @@ function RecordedEditor({
   const [discount, setDiscount] = useState(String(billing.discount ?? 0));
   const [partial, setPartial] = useState(String(billing.amount_paid ?? ""));
   const [dueDate, setDueDate] = useState(billing.due_date ?? billing.billed_on);
+  const [processingFee, setProcessingFee] = useState(String(billing.processing_fee ?? 0));
+  const [method, setMethod] = useState(billing.method ?? "stripe");
+  const [stripeInvoiceId, setStripeInvoiceId] = useState(billing.stripe_invoice_id ?? "");
+  const [revenueType, setRevenueType] = useState(billing.revenue_type ?? "mrr");
+  const [revenueSegment, setRevenueSegment] = useState(billing.revenue_segment ?? "back_end");
 
   const balance = balanceOf(billing);
   const isScheduled = billing.status === "scheduled";
+
+  function paymentExtras() {
+    return {
+      processing_fee: Number(processingFee) || 0,
+      method: method || undefined,
+      stripe_invoice_id: stripeInvoiceId.trim() || null,
+      revenue_type: revenueType,
+      revenue_segment: revenueSegment,
+    };
+  }
 
   if (isScheduled) {
     // ── Scheduled billing editor ─────────────────────────────────────────────
@@ -1049,9 +1186,30 @@ function RecordedEditor({
                 style={fieldStyle()}
               />
             </LabeledInput>
+            <LabeledInput label="Revenue type">
+              <select value={revenueType} onChange={e => setRevenueType(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()}>
+                {REVENUE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </LabeledInput>
+            <LabeledInput label="Cash segment">
+              <select value={revenueSegment} onChange={e => setRevenueSegment(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()}>
+                {REVENUE_SEGMENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </LabeledInput>
+            <LabeledInput label="Processing fee">
+              <input type="number" value={processingFee} onChange={e => setProcessingFee(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} />
+            </LabeledInput>
+            <LabeledInput label="Method">
+              <select value={method} onChange={e => setMethod(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()}>
+                {METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </LabeledInput>
+            <LabeledInput label="Stripe invoice id">
+              <input value={stripeInvoiceId} onChange={e => setStripeInvoiceId(e.target.value)} placeholder="in_..." className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} />
+            </LabeledInput>
             <div className="flex flex-col gap-1 justify-end">
               <button
-                onClick={() => onPatch(billing.id, { amount_paid: Number(partial) || 0 })}
+                onClick={() => onPatch(billing.id, { amount_paid: Number(partial) || 0, ...paymentExtras() })}
                 disabled={isBusy || !partial}
                 className="text-xs font-semibold px-3 py-1.5 rounded"
                 style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)", opacity: (isBusy || !partial) ? 0.5 : 1 }}
@@ -1061,7 +1219,7 @@ function RecordedEditor({
             </div>
             <div className="flex flex-col gap-1 justify-end">
               <button
-                onClick={() => onPatch(billing.id, { status: "paid" })}
+                onClick={() => onPatch(billing.id, { status: "paid", ...paymentExtras() })}
                 disabled={isBusy}
                 className="text-xs font-semibold px-3 py-1.5 rounded"
                 style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: isBusy ? 0.5 : 1 }}
@@ -1145,10 +1303,33 @@ function RecordedEditor({
   // ── Issued billing editor (pending / partial / overdue / failed) ─────────
   return (
     <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <LabeledInput label="Revenue type">
+          <select value={revenueType} onChange={e => setRevenueType(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()}>
+            {REVENUE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </LabeledInput>
+        <LabeledInput label="Cash segment">
+          <select value={revenueSegment} onChange={e => setRevenueSegment(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()}>
+            {REVENUE_SEGMENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </LabeledInput>
+        <LabeledInput label="Processing fee">
+          <input type="number" value={processingFee} onChange={e => setProcessingFee(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} />
+        </LabeledInput>
+        <LabeledInput label="Method">
+          <select value={method} onChange={e => setMethod(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()}>
+            {METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </LabeledInput>
+        <LabeledInput label="Stripe invoice id">
+          <input value={stripeInvoiceId} onChange={e => setStripeInvoiceId(e.target.value)} placeholder="in_..." className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} />
+        </LabeledInput>
+      </div>
       {/* Quick-action buttons */}
       <div className="flex gap-2 flex-wrap">
         <button
-          onClick={() => onPatch(billing.id, { status: "paid" })}
+          onClick={() => onPatch(billing.id, { status: "paid", ...paymentExtras() })}
           disabled={isBusy}
           className="text-xs font-semibold px-3 py-1.5 rounded"
           style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: isBusy ? 0.5 : 1 }}
@@ -1792,12 +1973,31 @@ function RecordPastPaymentForm({
   const [retainer, setRetainer] = useState("");
   const [performance, setPerformance] = useState("0");
   const [discount, setDiscount] = useState("0");
+  const [revenueType, setRevenueType] = useState("mrr");
+  const [revenueSegment, setRevenueSegment] = useState("back_end");
+  const [termMonths, setTermMonths] = useState("");
+  const [processingFee, setProcessingFee] = useState("0");
+  const [method, setMethod] = useState("stripe");
+  const [stripeInvoiceId, setStripeInvoiceId] = useState("");
+  const [note, setNote] = useState("");
   const [justRecorded, setJustRecorded] = useState(false);
 
   const client = sorted.find(c => c.id === clientId) ?? null;
   const total = (Number(retainer) || 0) + (Number(performance) || 0) - (Number(discount) || 0);
   const isBusy = client ? busy === `rec-${client.id}` : false;
-  const disabled = isBusy || !client || total <= 0 || !paymentDate;
+  const pifNeedsTerm = revenueType === "pif" && !(Number(termMonths) > 0);
+  const disabled = isBusy || !client || total <= 0 || !paymentDate || pifNeedsTerm;
+
+  function onClientChange(id: string) {
+    setClientId(id);
+    setJustRecorded(false);
+    const c = sorted.find(x => x.id === id);
+    if (c) {
+      setRevenueType(defaultRevenueType(c.billing_type));
+      setTermMonths(c.billing_type === "pif" ? String(c.contract_term_months ?? "") : "");
+      if (c.mrr != null) setRetainer(String(c.mrr));
+    }
+  }
 
   function submit() {
     if (!client) return;
@@ -1809,11 +2009,21 @@ function RecordPastPaymentForm({
       billedOn: paymentDate,
       dueDate: dueDate || paymentDate,
       markPaid: true,
+      revenue_type: revenueType,
+      revenue_segment: revenueSegment,
+      term_months: Number(termMonths) || undefined,
+      processing_fee: Number(processingFee) || undefined,
+      method: method || undefined,
+      stripe_invoice_id: stripeInvoiceId.trim() || undefined,
+      note: note || undefined,
     });
     setJustRecorded(true);
     setRetainer("");
     setPerformance("0");
     setDiscount("0");
+    setProcessingFee("0");
+    setStripeInvoiceId("");
+    setNote("");
   }
 
   return (
@@ -1821,7 +2031,7 @@ function RecordPastPaymentForm({
       <div>
         <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Record a past payment</h3>
         <p className="text-xs mt-1" style={{ color: "#475569" }}>
-          Log a billing from a while back (e.g. if it wasn&rsquo;t captured at the time). Recorded as fully paid on the payment date. Total = retainer + performance − discount.
+          Log a billing from a while back. Tag type / segment so CEO new vs recurring cash stays accurate.
         </p>
       </div>
 
@@ -1829,7 +2039,7 @@ function RecordPastPaymentForm({
         <LabeledInput label="Client">
           <select
             value={clientId}
-            onChange={e => { setClientId(e.target.value); setJustRecorded(false); }}
+            onChange={e => onClientChange(e.target.value)}
             className="px-2 py-1.5 rounded-lg text-sm outline-none cursor-pointer"
             style={fieldStyle()}
           >
@@ -1851,6 +2061,35 @@ function RecordPastPaymentForm({
         </LabeledInput>
         <LabeledInput label="Amount discounted">
           <input type="number" value={discount} onChange={e => { setDiscount(e.target.value); setJustRecorded(false); }} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} />
+        </LabeledInput>
+        <LabeledInput label="Revenue type">
+          <select value={revenueType} onChange={e => setRevenueType(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()}>
+            {REVENUE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </LabeledInput>
+        <LabeledInput label="Cash segment">
+          <select value={revenueSegment} onChange={e => setRevenueSegment(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()}>
+            {REVENUE_SEGMENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </LabeledInput>
+        {revenueType === "pif" && (
+          <LabeledInput label="Term months">
+            <input type="number" value={termMonths} onChange={e => setTermMonths(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} />
+          </LabeledInput>
+        )}
+        <LabeledInput label="Processing fee">
+          <input type="number" value={processingFee} onChange={e => setProcessingFee(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} />
+        </LabeledInput>
+        <LabeledInput label="Method">
+          <select value={method} onChange={e => setMethod(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()}>
+            {METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </LabeledInput>
+        <LabeledInput label="Stripe invoice id">
+          <input value={stripeInvoiceId} onChange={e => setStripeInvoiceId(e.target.value)} placeholder="in_..." className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} />
+        </LabeledInput>
+        <LabeledInput label="Note">
+          <input value={note} onChange={e => setNote(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none" style={fieldStyle()} />
         </LabeledInput>
       </div>
 

@@ -17,7 +17,7 @@ const NOTE_FIELDS =
   'id, note_type, reason_code, body, related_call_id, created_at, created_by, updated_at';
 
 const BILLING_FIELDS =
-  'id, billed_on, amount, amount_paid, status, revenue_type, note, paid_on, status_history_id';
+  'id, billed_on, amount, amount_paid, status, revenue_type, revenue_segment, term_months, processing_fee, stripe_invoice_id, is_first_payment, note, paid_on, status_history_id';
 
 const ACTION_FIELDS =
   'id, title, layer, constraint_label, change_description, status, outcome_notes, created_at';

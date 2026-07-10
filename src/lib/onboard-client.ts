@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import type { ReportingType } from '@/lib/reporting-types';
-import { deriveServiceProgram, normalizeSalesPackage } from '@/lib/offer-catalog';
+import { deriveServiceProgram, normalizeProduct, normalizeSalesPackage } from '@/lib/offer-catalog';
 import { findClientConflicts } from '@/lib/client-duplicate-check';
 import { clientNamesMatch } from '@/lib/client-name-match';
 import {
@@ -52,7 +52,8 @@ function normalizeBillingType(v: unknown): string | null {
 function normalizeOffer(v: unknown): ReportingType | null {
   const s = trimString(v);
   if (!s) return null;
-  return normalizeReportingType(s);
+  // GHL New Client Form sends catalog labels (e.g. "DSCR Offer") — use alias matching.
+  return normalizeProduct(s);
 }
 
 function reportingTypeFromOffer(offer: ReportingType | null, explicit: unknown): ReportingType {
@@ -283,7 +284,12 @@ async function upsertSigningBilling(
     method: 'manual',
     invoice_ref: SIGNING_BILLING_REF,
     note: 'New cash collected at sign',
+    revenue_segment: 'front_end',
+    is_first_payment: true,
     ...(revenueType ? { revenue_type: revenueType } : {}),
+    ...(revenueType === 'pif' && parsed.contract_term_months
+      ? { term_months: parsed.contract_term_months }
+      : {}),
   };
 
   if (existing?.id) {
