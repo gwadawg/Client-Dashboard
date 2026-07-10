@@ -10,79 +10,50 @@ import type { CallQualityResult } from "@/lib/acquisition-call-quality";
 import { rateColor, thresholdStyle } from "@/lib/acquisition-kpi-thresholds";
 import type { KpiFilters } from "./AcquisitionKpiFilterBar";
 import { fmtPct, fmtNum } from "./kpi-fmt";
-
-// ── Shared card primitives ──────────────────────────────────────────────────
-
-function HeroCard({
-  label, value, sub, color = "#e2e8f0", accent,
-}: { label: string; value: string; sub?: string; color?: string; accent?: string }) {
-  return (
-    <div
-      className="flex flex-col gap-2 p-6"
-      style={{ background: "#0f1115", borderRight: "1px solid rgba(255,255,255,0.06)", position: "relative", overflow: "hidden" }}
-    >
-      {accent && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: accent }} />}
-      <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</div>
-      <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: "-1.5px", color, lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontFamily: "monospace", fontSize: 10, color: "#334155" }}>{sub}</div>}
-    </div>
-  );
-}
-
-function RateCard({
-  label, value, metricKey, sub,
-}: { label: string; value: number | null | undefined; metricKey: string; sub?: string }) {
-  const color = rateColor(metricKey, value ?? null);
-  const style = thresholdStyle(color);
-  return (
-    <div className="flex flex-col gap-2 p-5" style={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8 }}>
-      <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</div>
-      <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-1px", lineHeight: 1, ...style }}>{fmtPct(value)}</div>
-      {sub && <div style={{ fontFamily: "monospace", fontSize: 9, color: "#334155" }}>{sub}</div>}
-    </div>
-  );
-}
-
-function SectionHead({ title }: { title: string }) {
-  return (
-    <div className="flex items-center gap-3 mb-4">
-      <span style={{ fontFamily: "monospace", fontSize: 9, color: "#334155", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 600 }}>
-        {title}
-      </span>
-      <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.04)" }} />
-    </div>
-  );
-}
-
-// ── Funnel flow visualization ───────────────────────────────────────────────
+import {
+  CHART,
+  KPI,
+  KpiChartCard,
+  KpiDetailCard,
+  KpiEmpty,
+  KpiHeroCard,
+  KpiLoading,
+  KpiPage,
+  KpiRateCard,
+  KpiSection,
+  KpiStatCard,
+  KpiBezel,
+} from "./kpi-ui";
 
 type FunnelStage = { label: string; count: number; conv?: number | null };
 
 function FunnelViz({ stages }: { stages: FunnelStage[] }) {
   const max = Math.max(...stages.map(s => s.count), 1);
-  const colors = ["#4f8ef5", "#2dd4bf", "#2dd4bf", "#f0a832", "#f0a832", "#3ecf8e", "#3ecf8e"];
+  const colors = [KPI.accent.blue, KPI.accent.teal, KPI.accent.teal, KPI.accent.amber, KPI.accent.amber, KPI.accent.green, KPI.accent.green];
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       {stages.map((s, i) => {
         const pct = (s.count / max) * 100;
         return (
-          <div key={s.label} className="flex items-center gap-3">
-            <div style={{ width: 160, textAlign: "right", fontFamily: "monospace", fontSize: 10, color: "#64748b", flexShrink: 0 }}>
+          <div key={s.label} className="flex items-center gap-4">
+            <div className="w-36 shrink-0 text-right text-sm font-medium" style={{ color: KPI.textMuted }}>
               {s.label}
             </div>
-            <div style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderRadius: 3, height: 24, overflow: "hidden" }}>
+            <div className="h-7 flex-1 overflow-hidden rounded-lg" style={{ background: "rgba(255,255,255,0.05)" }}>
               <div
+                className="flex h-full items-center rounded-lg px-3 transition-all duration-700"
                 style={{
-                  width: `${pct}%`, height: "100%", background: colors[i % colors.length],
-                  borderRadius: 3, display: "flex", alignItems: "center", padding: "0 10px",
-                  minWidth: 32, transition: "width 0.8s cubic-bezier(.22,1,.36,1)",
+                  width: `${Math.max(pct, s.count > 0 ? 8 : 0)}%`,
+                  background: `linear-gradient(90deg, ${colors[i % colors.length]}cc, ${colors[i % colors.length]}55)`,
+                  transitionTimingFunction: KPI.ease,
                 }}
               />
             </div>
-            <div style={{ width: 48, textAlign: "right", fontFamily: "monospace", fontSize: 11, color: "#94a3b8", flexShrink: 0 }}>
+            <div className="w-12 shrink-0 text-right text-sm font-semibold tabular-nums" style={{ color: KPI.textSecondary }}>
               {fmtNum(s.count)}
             </div>
-            <div style={{ width: 44, textAlign: "right", fontFamily: "monospace", fontSize: 9, color: "#334155", flexShrink: 0 }}>
+            <div className="w-14 shrink-0 text-right text-xs font-medium tabular-nums" style={{ color: KPI.textDim }}>
               {s.conv != null ? fmtPct(s.conv) : ""}
             </div>
           </div>
@@ -91,8 +62,6 @@ function FunnelViz({ stages }: { stages: FunnelStage[] }) {
     </div>
   );
 }
-
-// ── Appointment activity chart (no cost data) ───────────────────────────────
 
 function formatDay(d: string) {
   const dt = new Date(`${d}T00:00:00Z`);
@@ -106,105 +75,88 @@ function AppointmentActivityChart({ data }: { data: AcquisitionTimeseriesBucket[
     intros: d.intros_showed,
     demos: d.demos_showed,
   }));
+
   return (
-    <ResponsiveContainer width="100%" height={200}>
-      <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-        <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#334155" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-        <YAxis tick={{ fontSize: 9, fill: "#334155" }} tickLine={false} axisLine={false} width={28} />
+    <ResponsiveContainer width="100%" height={240}>
+      <ComposedChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+        <XAxis dataKey="label" tick={CHART.tick} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+        <YAxis tick={CHART.tick} tickLine={false} axisLine={false} width={36} />
         <Tooltip
-          contentStyle={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, fontSize: 11 }}
-          labelStyle={{ color: "#94a3b8" }}
+          contentStyle={CHART.tooltip}
+          labelStyle={CHART.tooltipLabel}
         />
-        <Bar dataKey="leads" fill="rgba(79,142,245,0.25)" name="Leads" />
-        <Line type="monotone" dataKey="intros" stroke="#2dd4bf" strokeWidth={2} dot={false} name="Intros showed" />
-        <Line type="monotone" dataKey="demos" stroke="#f0a832" strokeWidth={2} dot={false} name="Demos showed" />
+        <Bar dataKey="leads" fill="rgba(96,165,250,0.35)" name="Leads" radius={[4, 4, 0, 0]} />
+        <Line type="monotone" dataKey="intros" stroke={KPI.accent.teal} strokeWidth={2.5} dot={false} name="Intros showed" />
+        <Line type="monotone" dataKey="demos" stroke={KPI.accent.amber} strokeWidth={2.5} dot={false} name="Demos showed" />
       </ComposedChart>
     </ResponsiveContainer>
   );
 }
 
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+function QualityListCard({
+  label,
+  items,
+  empty = "No data",
+}: {
+  label: string;
+  items: { key: string; text: string; count?: number }[];
+  empty?: string;
+}) {
   return (
-    <div style={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "20px 22px" }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8", marginBottom: 16 }}>{title}</div>
-      {children}
-    </div>
+    <KpiBezel>
+      <div className="flex flex-col gap-4 p-5 sm:p-6">
+        <span className="text-xs font-semibold uppercase tracking-[0.12em]" style={{ color: KPI.textMuted }}>
+          {label}
+        </span>
+        {items.length === 0 ? (
+          <p className="text-sm" style={{ color: KPI.textDim }}>{empty}</p>
+        ) : (
+          <ul className="flex flex-col gap-2.5">
+            {items.map(item => (
+              <li key={item.key} className="flex items-center justify-between gap-3 text-sm">
+                <span style={{ color: KPI.textSecondary }}>{item.text}</span>
+                {item.count != null && (
+                  <span className="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums" style={{ background: "rgba(255,255,255,0.06)", color: KPI.textMuted }}>
+                    {item.count}×
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </KpiBezel>
   );
 }
-
-// ── No-show breakdown ───────────────────────────────────────────────────────
-
-function NoShowCard({ label, value, color = "#94a3b8", sub }: { label: string; value: string | number; color?: string; sub?: string }) {
-  return (
-    <div style={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "16px 18px" }}>
-      <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color, letterSpacing: "-0.5px" }}>{value}</div>
-      {sub && <div style={{ fontFamily: "monospace", fontSize: 9, color: "#334155", marginTop: 4 }}>{sub}</div>}
-    </div>
-  );
-}
-
-// ── Call quality snapshot ───────────────────────────────────────────────────
 
 function QualitySnapshot({ quality }: { quality: CallQualityResult }) {
   return (
-    <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
-      <div style={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "18px 20px" }}>
-        <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
-          Avg call rating
-        </div>
-        <div style={{ fontSize: 28, fontWeight: 700, color: "#3ecf8e", letterSpacing: "-1px" }}>
-          {quality.avg_call_rating != null ? quality.avg_call_rating.toFixed(1) + "/10" : "—"}
-        </div>
-        <div style={{ fontFamily: "monospace", fontSize: 9, color: "#334155", marginTop: 4 }}>
-          {quality.total_documented} documented calls
-        </div>
-      </div>
-
-      <div style={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "18px 20px" }}>
-        <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-          Top surface objections
-        </div>
-        {quality.top_surface_objections.length === 0 ? (
-          <p style={{ fontSize: 11, color: "#334155" }}>No data</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {quality.top_surface_objections.slice(0, 3).map(o => (
-              <div key={o.objection} className="flex items-center justify-between gap-2">
-                <span style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.objection}</span>
-                <span style={{ fontFamily: "monospace", fontSize: 10, color: "#64748b", flexShrink: 0 }}>{o.count}×</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div style={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "18px 20px" }}>
-        <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-          Lead quality distribution
-        </div>
-        {Object.keys(quality.lead_quality_distribution).length === 0 ? (
-          <p style={{ fontSize: 11, color: "#334155" }}>No data</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {Object.entries(quality.lead_quality_distribution)
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 4)
-              .map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between gap-2">
-                  <span style={{ fontSize: 11, color: "#94a3b8" }}>{k}</span>
-                  <span style={{ fontFamily: "monospace", fontSize: 10, color: "#64748b" }}>{v}</span>
-                </div>
-              ))}
-          </div>
-        )}
-      </div>
+    <div className="grid gap-4 md:grid-cols-3">
+      <KpiStatCard
+        label="Avg call rating"
+        value={quality.avg_call_rating != null ? `${quality.avg_call_rating.toFixed(1)}/10` : "—"}
+        sub={`${quality.total_documented} documented calls`}
+        color={KPI.accent.green}
+      />
+      <QualityListCard
+        label="Top surface objections"
+        items={quality.top_surface_objections.slice(0, 4).map(o => ({
+          key: o.objection,
+          text: o.objection,
+          count: o.count,
+        }))}
+      />
+      <QualityListCard
+        label="Lead quality mix"
+        items={Object.entries(quality.lead_quality_distribution)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 4)
+          .map(([k, v]) => ({ key: k, text: k, count: v }))}
+      />
     </div>
   );
 }
-
-// ── Main Overview component ─────────────────────────────────────────────────
 
 type Props = {
   startDate: string;
@@ -232,11 +184,10 @@ export default function AcquisitionKpiOverview({ startDate, endDate, filters }: 
     }).finally(() => setLoading(false));
   }, [startDate, endDate, filters.offerScope]);
 
-  if (loading) return <div className="py-16 text-center" style={{ color: "#334155", fontFamily: "monospace", fontSize: 12 }}>Loading…</div>;
-  if (!metrics) return <div className="py-16 text-center" style={{ color: "#334155", fontFamily: "monospace", fontSize: 12 }}>No data in range.</div>;
+  if (loading) return <KpiLoading />;
+  if (!metrics) return <KpiEmpty message="No acquisition data in this date range." />;
 
   const m = metrics;
-
   const funnelStages: FunnelStage[] = [
     { label: "Total leads", count: m.leads },
     { label: "Intros booked", count: m.intros_booked, conv: m.intro_booking_rate },
@@ -246,99 +197,101 @@ export default function AcquisitionKpiOverview({ startDate, endDate, filters }: 
     { label: "Offers made", count: m.offers_made, conv: m.offer_rate },
     { label: "Closes", count: m.closes, conv: m.close_rate },
   ];
-
   const ns = m.no_show_breakdown;
 
+  const rateCards = [
+    { label: "Intro booking rate", value: m.intro_booking_rate, key: "intro_booking_rate", sub: "Unique leads → intro booked" },
+    { label: "Intro show rate", value: m.intro_show_rate, key: "intro_show_rate", sub: "Of intros that took place" },
+    { label: "Demo booking rate", value: m.demo_booking_rate, key: "demo_booking_rate", sub: "Intros showed → demo booked" },
+    { label: "Demo show rate", value: m.demo_show_rate, key: "demo_show_rate", sub: "Of demos that took place" },
+    { label: "Offer → close", value: m.close_rate, key: "close_rate", sub: "Offers to paid clients" },
+    { label: "Demo → close", value: m.demo_to_close_rate, key: "demo_to_close_rate", sub: "Demos showed to close" },
+  ] as const;
+
   return (
-    <div className="flex flex-col gap-8 pb-12">
-
-      {/* Hero row — activity & conversions only, no cost data */}
-      <div>
-        <SectionHead title="Performance snapshot" />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, overflow: "hidden" }}>
-          <HeroCard label="Total leads" value={fmtNum(m.leads)} sub={`${fmtNum(m.meta_leads)} from Meta`} color="#e2e8f0" accent="#4f8ef5" />
-          <HeroCard label="Intros booked" value={fmtNum(m.intros_booked)} sub={`${fmtNum(m.intros_showed)} showed`} accent="#2dd4bf" />
-          <HeroCard label="Demos booked" value={fmtNum(m.demos_booked)} sub={`${fmtNum(m.demos_showed)} showed`} accent="#f0a832" />
-          <HeroCard label="Closes" value={fmtNum(m.closes)} sub={`${fmtNum(m.offers_made)} offers made`} color="#3ecf8e" accent="#3ecf8e" />
+    <KpiPage>
+      <KpiSection title="Performance snapshot" eyebrow="Volume">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiHeroCard label="Total leads" value={fmtNum(m.leads)} sub={`${fmtNum(m.meta_leads)} from Meta`} accent={KPI.accent.blue} />
+          <KpiHeroCard label="Intros booked" value={fmtNum(m.intros_booked)} sub={`${fmtNum(m.intros_showed)} showed`} accent={KPI.accent.teal} />
+          <KpiHeroCard label="Demos booked" value={fmtNum(m.demos_booked)} sub={`${fmtNum(m.demos_showed)} showed`} accent={KPI.accent.amber} />
+          <KpiHeroCard label="Closes" value={fmtNum(m.closes)} sub={`${fmtNum(m.offers_made)} offers made`} color={KPI.accent.green} accent={KPI.accent.green} />
         </div>
 
-        {/* Funnel volume row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, overflow: "hidden", marginTop: 1 }}>
-          <div className="p-5" style={{ background: "#0f1115" }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Intros booked</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: "#e2e8f0", letterSpacing: "-1px" }}>{fmtNum(m.intros_booked)}</div>
-            <div className="flex gap-4 mt-3">
-              <div><div style={{ fontSize: 8, color: "#334155" }}>Took place</div><div style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>{fmtNum(m.intros_taken_place)}</div></div>
-              <div><div style={{ fontSize: 8, color: "#334155" }}>Show %</div><div style={{ fontSize: 13, fontWeight: 600, color: "#2dd4bf" }}>{fmtPct(m.intro_show_rate)}</div></div>
-            </div>
-          </div>
-          <div className="p-5" style={{ background: "#0f1115" }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Demos booked</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: "#e2e8f0", letterSpacing: "-1px" }}>{fmtNum(m.demos_booked)}</div>
-            <div className="flex gap-4 mt-3">
-              <div><div style={{ fontSize: 8, color: "#334155" }}>Took place</div><div style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>{fmtNum(m.demos_taken_place)}</div></div>
-              <div><div style={{ fontSize: 8, color: "#334155" }}>Show %</div><div style={{ fontSize: 13, fontWeight: 600, color: "#f0a832" }}>{fmtPct(m.demo_show_rate)}</div></div>
-            </div>
-          </div>
-          <div className="p-5" style={{ background: "#0f1115" }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Closes &amp; offers</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: "#3ecf8e", letterSpacing: "-1px" }}>{fmtNum(m.closes)}</div>
-            <div className="flex gap-4 mt-3">
-              <div><div style={{ fontSize: 8, color: "#334155" }}>Offers made</div><div style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>{fmtNum(m.offers_made)}</div></div>
-              <div><div style={{ fontSize: 8, color: "#334155" }}>Close %</div><div style={{ fontSize: 13, fontWeight: 600, color: "#3ecf8e" }}>{fmtPct(m.close_rate)}</div></div>
-            </div>
-          </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <KpiDetailCard
+            label="Intros booked"
+            value={fmtNum(m.intros_booked)}
+            metrics={[
+              { label: "Took place", value: fmtNum(m.intros_taken_place) },
+              { label: "Show %", value: fmtPct(m.intro_show_rate), color: KPI.accent.teal },
+            ]}
+          />
+          <KpiDetailCard
+            label="Demos booked"
+            value={fmtNum(m.demos_booked)}
+            metrics={[
+              { label: "Took place", value: fmtNum(m.demos_taken_place) },
+              { label: "Show %", value: fmtPct(m.demo_show_rate), color: KPI.accent.amber },
+            ]}
+          />
+          <KpiDetailCard
+            label="Closes & offers"
+            value={fmtNum(m.closes)}
+            valueColor={KPI.accent.green}
+            metrics={[
+              { label: "Offers made", value: fmtNum(m.offers_made) },
+              { label: "Close %", value: fmtPct(m.close_rate), color: KPI.accent.green },
+            ]}
+          />
         </div>
-      </div>
+      </KpiSection>
 
-      {/* Conversion rates */}
-      <div>
-        <SectionHead title="Conversion rates" />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-          <RateCard label="Intro booking rate" value={m.intro_booking_rate} metricKey="intro_booking_rate" sub="unique leads → intro booked" />
-          <RateCard label="Intro show rate" value={m.intro_show_rate} metricKey="intro_show_rate" sub="of intros that took place" />
-          <RateCard label="Demo booking rate" value={m.demo_booking_rate} metricKey="demo_booking_rate" sub="intros showed → demo booked" />
-          <RateCard label="Demo show rate" value={m.demo_show_rate} metricKey="demo_show_rate" sub="of demos that took place" />
-          <RateCard label="Offer → close" value={m.close_rate} metricKey="close_rate" sub="offers to paid clients" />
-          <RateCard label="Demo → close" value={m.demo_to_close_rate} metricKey="demo_to_close_rate" sub="demos showed to close" />
+      <KpiSection title="Conversion rates" eyebrow="Efficiency">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {rateCards.map(card => {
+            const color = rateColor(card.key, card.value ?? null);
+            return (
+              <KpiRateCard
+                key={card.key}
+                label={card.label}
+                value={fmtPct(card.value)}
+                metricKey={card.key}
+                sub={card.sub}
+                valueStyle={thresholdStyle(color)}
+              />
+            );
+          })}
         </div>
-      </div>
+      </KpiSection>
 
-      {/* Funnel flow */}
-      <div>
-        <SectionHead title="Funnel flow" />
-        <div style={{ background: "#0f1115", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "20px 24px" }}>
+      <KpiSection title="Funnel flow" eyebrow="Journey">
+        <KpiChartCard title="Stage volume & step conversion">
           <FunnelViz stages={funnelStages} />
-        </div>
-      </div>
+        </KpiChartCard>
+      </KpiSection>
 
-      {/* Appointment activity chart — leads, intros showed, demos showed */}
-      <div>
-        <SectionHead title="Activity trends" />
-        <ChartCard title="Daily leads · intros showed · demos showed">
+      <KpiSection title="Activity trends" eyebrow="Daily">
+        <KpiChartCard title="Leads · intros showed · demos showed">
           <AppointmentActivityChart data={series} />
-        </ChartCard>
-      </div>
+        </KpiChartCard>
+      </KpiSection>
 
-      {/* No-show breakdown — appointment counts only, no cost cards */}
-      <div>
-        <SectionHead title="Appointment status breakdown" />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-          <NoShowCard label="Showed" value={fmtNum(ns.showed)} color="#3ecf8e" />
-          <NoShowCard label="Lead no-show" value={fmtNum(ns.lead_no_show)} color="#e84040" />
-          <NoShowCard label="Cancelled" value={fmtNum(ns.cancelled)} color="#f0a832" />
-          <NoShowCard label="Team no-show" value={fmtNum(ns.team_no_show)} color="#94a3b8" />
-          <NoShowCard label="Overall show rate" value={fmtPct(ns.show_rate)} color="#3ecf8e" sub="excl. cancelled" />
+      <KpiSection title="Appointment status" eyebrow="Show / no-show">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <KpiStatCard label="Showed" value={fmtNum(ns.showed)} color={KPI.accent.green} />
+          <KpiStatCard label="Lead no-show" value={fmtNum(ns.lead_no_show)} color={KPI.accent.red} />
+          <KpiStatCard label="Cancelled" value={fmtNum(ns.cancelled)} color={KPI.accent.amber} />
+          <KpiStatCard label="Team no-show" value={fmtNum(ns.team_no_show)} />
+          <KpiStatCard label="Overall show rate" value={fmtPct(ns.show_rate)} sub="Excl. cancelled" color={KPI.accent.green} />
         </div>
-      </div>
+      </KpiSection>
 
-      {/* Call quality snapshot */}
       {quality && quality.total_documented > 0 && (
-        <div>
-          <SectionHead title="Call quality snapshot" />
+        <KpiSection title="Call quality" eyebrow="Documented calls">
           <QualitySnapshot quality={quality} />
-        </div>
+        </KpiSection>
       )}
-    </div>
+    </KpiPage>
   );
 }

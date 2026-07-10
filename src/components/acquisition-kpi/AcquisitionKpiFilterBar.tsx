@@ -4,6 +4,7 @@ import type { OfferScope } from "@/lib/acquisition-metrics";
 import type { AcquisitionKpiTab } from "@/lib/nav";
 import type { DatePreset } from "@/lib/date-presets";
 import DateRangeFilter from "../DateRangeFilter";
+import { KPI } from "./kpi-ui";
 
 export type KpiFilters = {
   offerScope: OfferScope;
@@ -50,77 +51,103 @@ export default function AcquisitionKpiFilterBar({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-3 px-6 py-3 text-xs"
-      style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(15,17,21,0.8)" }}
+      className="relative shrink-0 px-6 py-4"
+      style={{
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
+        background: "linear-gradient(180deg, rgba(12,18,32,0.95) 0%, rgba(8,12,22,0.88) 100%)",
+        fontFamily: KPI.font,
+      }}
     >
-      {/* Date range — same presets as Client KPIs */}
-      <div className="flex items-center gap-2">
-        <span style={{ color: "#475569", fontFamily: "var(--font-mono, monospace)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-          Period
-        </span>
-        <DateRangeFilter
-          variant="inline"
-          preset={preset}
-          customStart={customStart}
-          customEnd={customEnd}
-          onPresetChange={onPresetChange}
-          onCustomStartChange={onCustomStartChange}
-          onCustomEndChange={onCustomEndChange}
-        />
-      </div>
+      <div className="flex flex-wrap items-center gap-4">
+        <FilterGroup label="Period">
+          <DateRangeFilter
+            variant="inline"
+            preset={preset}
+            customStart={customStart}
+            customEnd={customEnd}
+            onPresetChange={onPresetChange}
+            onCustomStartChange={onCustomStartChange}
+            onCustomEndChange={onCustomEndChange}
+          />
+        </FilterGroup>
 
-      <div style={{ width: 1, height: 20, background: "rgba(255,255,255,0.08)" }} />
+        <Divider />
 
-      {/* Offer scope */}
-      <div className="flex items-center gap-2">
-        <span style={{ color: "#475569", fontFamily: "var(--font-mono, monospace)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-          Scope
-        </span>
-        <div className="flex gap-1">
-          {(["core", "skool", "all_downsells", "all"] as OfferScope[]).map(s => (
-            <button
-              key={s}
-              onClick={() => onChange({ ...filters, offerScope: s })}
-              className="px-3 py-1 rounded-full transition-all"
-              style={
-                filters.offerScope === s
-                  ? { background: "#4f8ef5", color: "#fff", fontWeight: 600 }
-                  : { background: "rgba(255,255,255,0.05)", color: "#64748b", border: "1px solid rgba(255,255,255,0.08)" }
-              }
-            >
-              {SCOPE_LABELS[s]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Rep filter — only on setter/closer tabs */}
-      {showRepFilter && (
-        <>
-          <div style={{ width: 1, height: 20, background: "rgba(255,255,255,0.08)" }} />
-          <div className="flex items-center gap-2">
-            <span style={{ color: "#475569", fontFamily: "var(--font-mono, monospace)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-              {repLabel}
-            </span>
-            <select
-              value={filters.repFilter}
-              onChange={e => onChange({ ...filters, repFilter: e.target.value })}
-              className="rounded-md px-2 py-1 text-xs outline-none"
-              style={{ background: "#161820", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0", fontFamily: "inherit" }}
-            >
-              <option value="">All</option>
-              {repNames.map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
+        <FilterGroup label="Scope">
+          <div className="flex flex-wrap gap-1.5">
+            {(["core", "skool", "all_downsells", "all"] as OfferScope[]).map(s => {
+              const active = filters.offerScope === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => onChange({ ...filters, offerScope: s })}
+                  className="rounded-full px-4 py-2 text-sm font-medium transition-all duration-300 active:scale-[0.98]"
+                  style={
+                    active
+                      ? {
+                          background: "rgba(96,165,250,0.2)",
+                          color: "#93c5fd",
+                          border: "1px solid rgba(96,165,250,0.45)",
+                          boxShadow: "inset 0 1px 1px rgba(255,255,255,0.1)",
+                        }
+                      : {
+                          background: "rgba(255,255,255,0.04)",
+                          color: KPI.textMuted,
+                          border: "1px solid rgba(255,255,255,0.08)",
+                        }
+                  }
+                >
+                  {SCOPE_LABELS[s]}
+                </button>
+              );
+            })}
           </div>
-        </>
-      )}
+        </FilterGroup>
 
-      {/* Date semantics tooltip */}
-      <div className="ml-auto" style={{ color: "#334155", fontFamily: "var(--font-mono, monospace)", fontSize: 9 }}>
-        Intro show/demo show → scheduled date · Bookings → booked date · Leads → created date
+        {showRepFilter && (
+          <>
+            <Divider />
+            <FilterGroup label={repLabel}>
+              <select
+                value={filters.repFilter}
+                onChange={e => onChange({ ...filters, repFilter: e.target.value })}
+                className="rounded-xl px-3 py-2 text-sm font-medium outline-none"
+                style={{
+                  background: "rgba(8,14,28,0.95)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  color: KPI.text,
+                  minWidth: 140,
+                }}
+              >
+                <option value="">All reps</option>
+                {repNames.map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </FilterGroup>
+          </>
+        )}
+
+        <p className="ml-auto hidden max-w-xs text-right text-xs leading-relaxed lg:block" style={{ color: KPI.textDim }}>
+          Intro & demo show dates use scheduled time. Bookings use booked date. Leads use created date.
+        </p>
       </div>
     </div>
   );
+}
+
+function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: KPI.textDim }}>
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function Divider() {
+  return <div className="hidden h-10 w-px sm:block" style={{ background: "rgba(255,255,255,0.08)" }} />;
 }
