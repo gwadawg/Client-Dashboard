@@ -10,7 +10,7 @@ import {
   listRecentPayrollMonths,
   monthBounds,
 } from "@/lib/payroll-period";
-import type { PayrollRunListItem } from "@/lib/payroll-runs";
+import type { PayrollRunListItem, PayrollSubmittedEmployee } from "@/lib/payroll-runs";
 import PayrollEmployeeDetail, { type EmployeePayrollView } from "./PayrollEmployeeDetail";
 
 type Props = {
@@ -19,6 +19,7 @@ type Props = {
 };
 
 type PageTab = "month" | "runs";
+type PeriodStatus = "none" | "open" | "closed";
 
 function csvEscape(s: string): string {
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -80,6 +81,50 @@ function PendingBadge({ count }: { count: number }) {
   );
 }
 
+function SubmittedBadge({ submitted }: { submitted: boolean }) {
+  if (!submitted) {
+    return (
+      <span
+        className="ml-2 inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
+        style={{ background: "rgba(245,158,11,0.12)", color: "#fbbf24" }}
+      >
+        Pending
+      </span>
+    );
+  }
+  return (
+    <span
+      className="ml-2 inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
+      style={{ background: "rgba(34,197,94,0.12)", color: "#86efac" }}
+    >
+      Submitted
+    </span>
+  );
+}
+
+function EmployeeRowActions({
+  submitted,
+  periodClosed,
+  accent,
+  onReview,
+}: {
+  submitted: boolean;
+  periodClosed: boolean;
+  accent: string;
+  onReview: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onReview}
+      className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded whitespace-nowrap"
+      style={{ background: `${accent}22`, color: accent }}
+    >
+      {submitted || periodClosed ? "View" : "Review & Submit"}
+    </button>
+  );
+}
+
 function KpiStrip({ report }: { report: UnifiedPayrollReport }) {
   const cards = [
     { label: "Grand Total", value: report.summary.grand_total, accent: "#22c55e" },
@@ -116,13 +161,24 @@ export default function AgentPayrollReport({
   const [pageTab, setPageTab] = useState<PageTab>("month");
   const [report, setReport] = useState<UnifiedPayrollReport | null>(null);
   const [finalizedRuns, setFinalizedRuns] = useState<PayrollRunListItem[]>([]);
-  const [isFinalized, setIsFinalized] = useState(false);
+  const [periodStatus, setPeriodStatus] = useState<PeriodStatus>("none");
+  const [submittedEmployees, setSubmittedEmployees] = useState<PayrollSubmittedEmployee[]>([]);
   const [finalizedMeta, setFinalizedMeta] = useState<{ at: string; by: string | null } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [employeeView, setEmployeeView] = useState<EmployeePayrollView | null>(null);
+
+  const submittedAgentIds = useMemo(
+    () => new Set(submittedEmployees.map(s => s.agent_id)),
+    [submittedEmployees],
+  );
+
+  const isPeriodClosed = periodStatus === "closed";
+  const employeeCount = report
+    ? report.summary.call_rep_count + report.summary.b2b_setter_count + report.summary.salaried_count
+    : 0;
+  const submittedCount = submittedEmployees.length;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,27 +189,20 @@ export default function AgentPayrollReport({
       const runs: PayrollRunListItem[] = runsData.runs ?? [];
       setFinalizedRuns(runs);
 
-      const frozen = runs.find(r => r.period_month.startsWith(periodMonth));
-      if (frozen) {
-        const detailRes = await fetch(`/api/payroll-runs/${periodMonth}`);
-        const detail = await detailRes.json();
-        if (!detailRes.ok) throw new Error(detail.error ?? "Failed to load finalized payroll");
-        setReport(detail.run.report);
-        setIsFinalized(true);
+      const periodRes = await fetch(`/api/payroll-runs/period/${periodMonth}`);
+      const periodData = await periodRes.json();
+      if (!periodRes.ok) throw new Error(periodData.error ?? "Failed to load payroll");
+
+      setReport(periodData.report);
+      setPeriodStatus(periodData.period_status ?? "none");
+      setSubmittedEmployees(periodData.submitted_employees ?? []);
+
+      if (periodData.period_status === "closed" && periodData.run) {
         setFinalizedMeta({
-          at: detail.run.finalized_at,
-          by: detail.run.finalized_by_email ?? null,
+          at: periodData.run.finalized_at,
+          by: periodData.run.finalized_by_email ?? null,
         });
       } else {
-        const params = new URLSearchParams({
-          startDate: bounds.startDate,
-          endDate: bounds.endDate,
-        });
-        const liveRes = await fetch(`/api/agent-commissions?${params}`);
-        const live = await liveRes.json();
-        if (!liveRes.ok) throw new Error(live.error ?? "Failed to load payroll");
-        setReport(live);
-        setIsFinalized(false);
         setFinalizedMeta(null);
       }
     } catch (e) {
@@ -162,31 +211,9 @@ export default function AgentPayrollReport({
     } finally {
       setLoading(false);
     }
-  }, [periodMonth, bounds.startDate, bounds.endDate]);
+  }, [periodMonth]);
 
   useEffect(() => { load(); }, [load]);
-
-  async function handleFinalize() {
-    if (isFinalized) return;
-    const msg = `Finalize payroll for ${bounds.label}?\n\nThis locks the report as historical data. Live event changes will not alter this month after submit.`;
-    if (!confirm(msg)) return;
-    setFinalizing(true);
-    setError("");
-    try {
-      const res = await fetch("/api/payroll-runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ periodMonth }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to finalize payroll");
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to finalize payroll");
-    } finally {
-      setFinalizing(false);
-    }
-  }
 
   function openEmployeeReview(
     section: EmployeePayrollView["section"],
@@ -197,8 +224,12 @@ export default function AgentPayrollReport({
       agent_name: row.agent_name,
       section,
       row,
+      periodMonth,
       periodLabel: bounds.label,
-      readOnly: isFinalized,
+      startDate: bounds.startDate,
+      endDate: bounds.endDate,
+      isSubmitted: submittedAgentIds.has(row.agent_id),
+      readOnly: isPeriodClosed,
     });
   }
 
@@ -357,12 +388,12 @@ export default function AgentPayrollReport({
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Team Payroll</h2>
           <p className="text-sm mt-0.5 max-w-2xl" style={{ color: "#475569" }}>
-            Close each month here. Pay rates and employee pay history live under Team Roster.
+            Review each employee, download their PDF, and submit individually. Pay rates and history live under Team Roster.
           </p>
           {report && (
             <p className="text-xs mt-1" style={{ color: "#64748b" }}>
               {bounds.startDate} → {bounds.endDate}
-              {isFinalized && finalizedMeta && (
+              {isPeriodClosed && finalizedMeta && (
                 <span style={{ color: "#fbbf24" }}>
                   {" · "}Finalized {new Date(finalizedMeta.at).toLocaleString()}
                   {finalizedMeta.by ? ` by ${finalizedMeta.by}` : ""}
@@ -382,20 +413,14 @@ export default function AgentPayrollReport({
               >
                 {monthOptions.map(m => (
                   <option key={m.periodMonth} value={m.periodMonth}>
-                    {m.label}{finalizedRuns.some(r => r.period_month.startsWith(m.periodMonth)) ? " ✓" : ""}
+                    {m.label}{finalizedRuns.some(r => r.period_month.startsWith(m.periodMonth) && (r.status ?? "closed") === "closed") ? " ✓" : ""}
                   </option>
                 ))}
               </select>
-              {!isFinalized && (
-                <button
-                  type="button"
-                  onClick={handleFinalize}
-                  disabled={finalizing || loading || !report}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
-                  style={{ background: "#22c55e", color: "#fff" }}
-                >
-                  {finalizing ? "Submitting…" : "Finalize & Submit"}
-                </button>
+              {periodStatus !== "closed" && (
+                <span className="text-xs px-2 py-1 rounded-lg" style={{ background: "rgba(245,158,11,0.1)", color: "#fbbf24" }}>
+                  {submittedCount}/{employeeCount} submitted
+                </span>
               )}
               <button
                 type="button"
@@ -464,15 +489,15 @@ export default function AgentPayrollReport({
 
       {report && <KpiStrip report={report} />}
 
-      {isFinalized && (
+      {isPeriodClosed && (
         <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", color: "#86efac" }}>
-          This month is finalized — locked snapshot. Use View detail on each row, or Team Roster for per-employee pay history.
+          This month is closed — all employees submitted. View details or find pay history on Team Roster.
         </div>
       )}
 
-      {!isFinalized && (
+      {!isPeriodClosed && (
         <div className="rounded-xl px-4 py-3 text-xs" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)", color: "#94a3b8" }}>
-          Pay rates are managed in Team Roster. After finalize, each employee&apos;s pay history appears on their roster file.
+          Open each employee with Review &amp; Submit, download their PDF, then submit to lock their pay. The month closes automatically when everyone is submitted.
         </div>
       )}
 
@@ -493,7 +518,7 @@ export default function AgentPayrollReport({
                   Base + bonus + (bookings × rate) + (shows × rate) + (live transfers × rate)
                 </p>
               </div>
-              {callRepUnassigned > 0 && !isFinalized && (
+              {callRepUnassigned > 0 && !isPeriodClosed && (
                 <div className="px-3 py-2 rounded-lg text-xs flex items-center gap-2"
                   style={{ background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.2)", color: "#93c5fd" }}>
                   <span>{callRepUnassigned} unassigned — excluded from pay</span>
@@ -515,6 +540,7 @@ export default function AgentPayrollReport({
               {report.call_reps.agents.map((agent, i) => {
                 const isOpen = expanded.has(agent.agent_id);
                 const r = agent.rates;
+                const submitted = submittedAgentIds.has(agent.agent_id);
 
                 return (
                   <Fragment key={agent.agent_id}>
@@ -526,15 +552,8 @@ export default function AgentPayrollReport({
                       </td>
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>
                         {agent.agent_name}
-                        {!isFinalized && <PendingBadge count={agent.pending_disposition.count} />}
-                        <button
-                          type="button"
-                          onClick={() => openEmployeeReview("call_rep", agent)}
-                          className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded"
-                          style={{ background: "rgba(96,165,250,0.12)", color: "#93c5fd" }}
-                        >
-                          View detail
-                        </button>
+                        <SubmittedBadge submitted={submitted} />
+                        {!isPeriodClosed && <PendingBadge count={agent.pending_disposition.count} />}
                       </td>
                       <RateCell value={r.base_salary} />
                       <RateCell value={r.monthly_bonus} />
@@ -550,19 +569,27 @@ export default function AgentPayrollReport({
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>{fmtMoney(agent.amounts.shows)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>{fmtMoney(agent.amounts.live_transfers)}</td>
                       <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#22c55e" }}>{fmtMoney(agent.amounts.total)}</td>
+                      <td className="px-2 py-2.5 text-right">
+                        <EmployeeRowActions
+                          submitted={submitted}
+                          periodClosed={isPeriodClosed}
+                          accent="#93c5fd"
+                          onReview={() => openEmployeeReview("call_rep", agent)}
+                        />
+                      </td>
                     </tr>
                     {isOpen && (
-                      <LineItemsRow colSpan={16} items={agent.line_items} labels={CALL_REP_TYPE_LABELS} showClient />
+                      <LineItemsRow colSpan={17} items={agent.line_items} labels={CALL_REP_TYPE_LABELS} showClient />
                     )}
-                    {isOpen && !isFinalized && agent.pending_disposition.count > 0 && (
-                      <PendingItemsRow colSpan={16} items={agent.pending_disposition.items} />
+                    {isOpen && !isPeriodClosed && agent.pending_disposition.count > 0 && (
+                      <PendingItemsRow colSpan={17} items={agent.pending_disposition.items} />
                     )}
                   </Fragment>
                 );
               })}
               {report.call_reps.agents.length > 0 && (
                 <tr style={{ borderTop: "2px solid rgba(96,165,250,0.2)", background: "#050c18" }}>
-                  <td colSpan={15} className="px-4 py-3 text-right text-sm font-semibold" style={{ color: "#94a3b8" }}>Call Reps Subtotal</td>
+                  <td colSpan={16} className="px-4 py-3 text-right text-sm font-semibold" style={{ color: "#94a3b8" }}>Call Reps Subtotal</td>
                   <td className="px-3 py-3 text-right text-sm font-bold tabular-nums" style={{ color: "#60a5fa" }}>
                     {fmtMoney(report.summary.call_reps_total)}
                   </td>
@@ -582,7 +609,7 @@ export default function AgentPayrollReport({
                   Base + bonus + (qualified demos × rate) + (closes × rate)
                 </p>
               </div>
-              {b2bUnassigned > 0 && !isFinalized && (
+              {b2bUnassigned > 0 && !isPeriodClosed && (
                 <div className="px-3 py-2 rounded-lg text-xs flex items-center gap-2"
                   style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#fbbf24" }}>
                   <span>{b2bUnassigned} unassigned demos/closes — excluded from pay</span>
@@ -605,6 +632,7 @@ export default function AgentPayrollReport({
               {report.b2b_setters.agents.map((agent, i) => {
                 const isOpen = expanded.has(agent.agent_id);
                 const r = agent.rates;
+                const submitted = submittedAgentIds.has(agent.agent_id);
 
                 return (
                   <Fragment key={agent.agent_id}>
@@ -616,15 +644,8 @@ export default function AgentPayrollReport({
                       </td>
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>
                         {agent.agent_name}
-                        {!isFinalized && <PendingBadge count={agent.pending_disposition.count} />}
-                        <button
-                          type="button"
-                          onClick={() => openEmployeeReview("b2b_setter", agent)}
-                          className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded"
-                          style={{ background: "rgba(245,158,11,0.12)", color: "#fbbf24" }}
-                        >
-                          View detail
-                        </button>
+                        <SubmittedBadge submitted={submitted} />
+                        {!isPeriodClosed && <PendingBadge count={agent.pending_disposition.count} />}
                       </td>
                       <RateCell value={r.base_salary} />
                       <RateCell value={r.monthly_bonus} />
@@ -637,19 +658,27 @@ export default function AgentPayrollReport({
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>{fmtMoney(agent.amounts.qualified_demos)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#64748b" }}>{fmtMoney(agent.amounts.closes)}</td>
                       <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#22c55e" }}>{fmtMoney(agent.amounts.total)}</td>
+                      <td className="px-2 py-2.5 text-right">
+                        <EmployeeRowActions
+                          submitted={submitted}
+                          periodClosed={isPeriodClosed}
+                          accent="#fbbf24"
+                          onReview={() => openEmployeeReview("b2b_setter", agent)}
+                        />
+                      </td>
                     </tr>
                     {isOpen && (
-                      <LineItemsRow colSpan={13} items={agent.line_items} labels={B2B_TYPE_LABELS} />
+                      <LineItemsRow colSpan={14} items={agent.line_items} labels={B2B_TYPE_LABELS} />
                     )}
-                    {isOpen && !isFinalized && agent.pending_disposition.count > 0 && (
-                      <PendingItemsRow colSpan={13} items={agent.pending_disposition.items} />
+                    {isOpen && !isPeriodClosed && agent.pending_disposition.count > 0 && (
+                      <PendingItemsRow colSpan={14} items={agent.pending_disposition.items} />
                     )}
                   </Fragment>
                 );
               })}
               {report.b2b_setters.agents.length > 0 && (
                 <tr style={{ borderTop: "2px solid rgba(245,158,11,0.2)", background: "#050c18" }}>
-                  <td colSpan={12} className="px-4 py-3 text-right text-sm font-semibold" style={{ color: "#94a3b8" }}>B2B Setters Subtotal</td>
+                  <td colSpan={13} className="px-4 py-3 text-right text-sm font-semibold" style={{ color: "#94a3b8" }}>B2B Setters Subtotal</td>
                   <td className="px-3 py-3 text-right text-sm font-bold tabular-nums" style={{ color: "#fbbf24" }}>
                     {fmtMoney(report.summary.b2b_setters_total)}
                   </td>
@@ -674,7 +703,7 @@ export default function AgentPayrollReport({
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ background: "#050c18" }}>
-                      {["Employee", "Position", "Base $", "Bonus $", "Base", "Bonus", "Total"].map(h => (
+                      {["Employee", "Position", "Base $", "Bonus $", "Base", "Bonus", "Total", "Actions"].map(h => (
                         <th
                           key={h || "actions"}
                           className={`px-3 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap ${h === "Employee" || h === "Position" ? "text-left" : "text-right"}`}
@@ -688,12 +717,13 @@ export default function AgentPayrollReport({
                   <tbody>
                     {report.salaried.agents.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-12 text-center text-sm" style={{ color: "#64748b" }}>
+                        <td colSpan={8} className="px-4 py-12 text-center text-sm" style={{ color: "#64748b" }}>
                           No salaried team members with base or bonus in this period.
                         </td>
                       </tr>
                     ) : report.salaried.agents.map((agent, i) => {
                       const r = agent.rates;
+                      const submitted = submittedAgentIds.has(agent.agent_id);
                       return (
                         <tr
                           key={agent.agent_id}
@@ -704,14 +734,7 @@ export default function AgentPayrollReport({
                         >
                           <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>
                             {agent.agent_name}
-                            <button
-                              type="button"
-                              onClick={() => openEmployeeReview("salaried", agent)}
-                              className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded"
-                              style={{ background: "rgba(167,139,250,0.12)", color: "#c4b5fd" }}
-                            >
-                              View detail
-                            </button>
+                            <SubmittedBadge submitted={submitted} />
                           </td>
                           <td className="px-3 py-2.5 text-xs" style={{ color: "#c4b5fd" }}>
                             {POSITION_LABELS[agent.position] ?? agent.position}
@@ -727,12 +750,20 @@ export default function AgentPayrollReport({
                           <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: "#22c55e" }}>
                             {fmtMoney(agent.amounts.total)}
                           </td>
+                          <td className="px-2 py-2.5 text-right">
+                            <EmployeeRowActions
+                              submitted={submitted}
+                              periodClosed={isPeriodClosed}
+                              accent="#c4b5fd"
+                              onReview={() => openEmployeeReview("salaried", agent)}
+                            />
+                          </td>
                         </tr>
                       );
                     })}
                     {report.salaried.agents.length > 0 && (
                       <tr style={{ borderTop: "2px solid rgba(167,139,250,0.2)", background: "#050c18" }}>
-                        <td colSpan={6} className="px-4 py-3 text-right text-sm font-semibold" style={{ color: "#94a3b8" }}>
+                        <td colSpan={7} className="px-4 py-3 text-right text-sm font-semibold" style={{ color: "#94a3b8" }}>
                           Salaried Subtotal
                         </td>
                         <td className="px-3 py-3 text-right text-sm font-bold tabular-nums" style={{ color: "#a78bfa" }}>
@@ -757,7 +788,14 @@ export default function AgentPayrollReport({
         }
       `}</style>
 
-      <PayrollEmployeeDetail view={employeeView} onClose={() => setEmployeeView(null)} />
+      <PayrollEmployeeDetail
+        view={employeeView}
+        onClose={() => setEmployeeView(null)}
+        onSubmitted={() => {
+          setEmployeeView(null);
+          load();
+        }}
+      />
     </div>
   );
 }
@@ -803,6 +841,7 @@ function PayRunsTable({
               const label = monthBounds(pm).label;
               const finalizedAt = new Date(run.finalized_at).toLocaleString();
               const by = run.finalized_by_email ?? "—";
+              const closed = (run.status ?? "closed") === "closed";
               return (
                 <tr
                   key={run.id}
@@ -811,7 +850,14 @@ function PayRunsTable({
                     background: i % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent",
                   }}
                 >
-                  <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{label}</td>
+                  <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>
+                    {label}
+                    {!closed && (
+                      <span className="ml-2 text-[10px] font-semibold uppercase" style={{ color: "#fbbf24" }}>
+                        In progress
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right font-semibold tabular-nums" style={{ color: "#22c55e" }}>
                     {fmtMoney(run.summary.grand_total)}
                   </td>
@@ -853,8 +899,8 @@ function PayrollTable({
   b2b?: boolean;
   children: React.ReactNode;
 }) {
-  const callRepHeaders = ["", "Employee", "Base $", "Bonus $", "$/Booking", "$/Show", "$/Transfer", "Bk", "Show", "Xfer", "Base", "Bonus", "Booking", "Show", "Transfer", "Total"];
-  const b2bHeaders = ["", "Employee", "Base $", "Bonus $", "$/Demo", "$/Close", "Demos", "Closes", "Base", "Bonus", "Demo", "Close", "Total"];
+  const callRepHeaders = ["", "Employee", "Base $", "Bonus $", "$/Booking", "$/Show", "$/Transfer", "Bk", "Show", "Xfer", "Base", "Bonus", "Booking", "Show", "Transfer", "Total", "Actions"];
+  const b2bHeaders = ["", "Employee", "Base $", "Bonus $", "$/Demo", "$/Close", "Demos", "Closes", "Base", "Bonus", "Demo", "Close", "Total", "Actions"];
 
   const headers = b2b ? b2bHeaders : callRepHeaders;
 

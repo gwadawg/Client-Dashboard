@@ -1289,6 +1289,7 @@ create table if not exists payroll_runs (
   end_date      date not null,
   summary       jsonb not null,
   report        jsonb not null,
+  status        text not null default 'closed' check (status in ('open', 'closed')),
   finalized_at  timestamptz not null default now(),
   finalized_by  uuid references auth.users(id) on delete set null,
   notes         text,
@@ -1309,6 +1310,8 @@ create table if not exists payroll_run_employees (
   rates               jsonb not null default '{}',
   line_items          jsonb not null default '[]',
   pending_disposition jsonb,
+  submitted_at        timestamptz,
+  submitted_by        uuid references auth.users(id) on delete set null,
   unique (payroll_run_id, agent_id)
 );
 

@@ -15,7 +15,7 @@ export async function GET() {
 
   const { data, error } = await ctx.service
     .from('payroll_runs')
-    .select('id, period_month, start_date, end_date, summary, finalized_at, finalized_by, notes')
+    .select('id, period_month, start_date, end_date, summary, status, finalized_at, finalized_by, notes')
     .order('period_month', { ascending: false });
 
   if (error) {
