@@ -17,7 +17,7 @@ const FIELDS =
 const RULE_FIELDS =
   'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, exclude_from_pnl, priority, active, notes';
 
-// GET /api/expenses?month=YYYY-MM&bucket=&account_id=&uncategorized=1&limit=
+// GET /api/expenses?month=YYYY-MM&bucket=&account_id=&uncategorized=1&pending=1&limit=
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -28,7 +28,9 @@ export async function GET(req: Request) {
   const month = sp.get('month');
   const bucket = sp.get('bucket');
   const accountId = sp.get('account_id');
-  const uncategorized = sp.get('uncategorized') === '1' || sp.get('uncategorized') === 'true';
+  const pending = sp.get('pending') === '1' || sp.get('pending') === 'true';
+  const uncategorized =
+    pending || sp.get('uncategorized') === '1' || sp.get('uncategorized') === 'true';
   const limit = Math.min(Number(sp.get('limit') || 500) || 500, 2000);
 
   let query = ctx.service
@@ -37,7 +39,8 @@ export async function GET(req: Request) {
     .order('occurred_on', { ascending: false })
     .limit(limit);
 
-  if (month && /^\d{4}-\d{2}$/.test(month)) {
+  // Pending queue: all uncategorized across months (ignore month filter)
+  if (!pending && month && /^\d{4}-\d{2}$/.test(month)) {
     const start = `${month}-01`;
     const [y, m] = month.split('-').map(Number);
     const next = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
@@ -47,9 +50,18 @@ export async function GET(req: Request) {
   else if (bucket && isCeoBucket(bucket)) query = query.eq('ceo_bucket', bucket);
   if (accountId) query = query.eq('account_id', accountId);
 
-  const { data, error } = await query;
+  const [{ data, error }, pendingRes] = await Promise.all([
+    query,
+    ctx.service
+      .from('business_expenses')
+      .select('id', { count: 'exact', head: true })
+      .eq('ceo_bucket', 'uncategorized'),
+  ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ expenses: data ?? [] });
+  return NextResponse.json({
+    expenses: data ?? [],
+    pending_count: pendingRes.count ?? 0,
+  });
 }
 
 // POST /api/expenses — manual charge

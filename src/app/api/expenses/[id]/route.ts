@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { requireExpenseAccess } from '@/lib/expense-auth';
-import { isCeoBucket, type CeoBucket } from '@/lib/expenses';
+import {
+  applyExpenseRules,
+  isCeoBucket,
+  normalizeMerchant,
+  suggestRuleNeedle,
+  type CeoBucket,
+  type ExpenseCategoryRule,
+} from '@/lib/expenses';
 
 const FIELDS =
   'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, exclude_from_pnl, categorized_by, rule_id, payroll_run_id, client_id, created_at, updated_at';
@@ -12,7 +19,16 @@ async function loadExpense(ctx: Ctx, id: string) {
   return ctx.service.from('business_expenses').select(FIELDS).eq('id', id).maybeSingle();
 }
 
-// PATCH /api/expenses/[id] — recategorize / edit
+function defaultExclude(bucket: CeoBucket): boolean {
+  return bucket === 'personal' || bucket === 'owner_draw' || bucket === 'passthrough';
+}
+
+// PATCH /api/expenses/[id] — recategorize / edit / optionally create rule
+// Body extras:
+//   create_rule?: boolean
+//   rule_match_value?: string  (merchant_contains needle)
+//   rule_name?: string
+//   apply_to_matching?: boolean  (re-bucket other uncategorized that match the new rule)
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -43,27 +59,109 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   if (typeof body.merchant_raw === 'string') {
     patch.merchant_raw = body.merchant_raw.trim() || null;
-    const { normalizeMerchant } = await import('@/lib/expenses');
     patch.merchant_normalized = normalizeMerchant(body.merchant_raw) || null;
   }
   if (typeof body.memo === 'string') patch.memo = body.memo.trim() || null;
   if (body.account_id === null) patch.account_id = null;
   else if (typeof body.account_id === 'string') patch.account_id = body.account_id;
 
+  let newBucket: CeoBucket | null = null;
   if (isCeoBucket(body.ceo_bucket)) {
-    patch.ceo_bucket = body.ceo_bucket as CeoBucket;
+    newBucket = body.ceo_bucket as CeoBucket;
+    patch.ceo_bucket = newBucket;
     patch.categorized_by = 'user';
     patch.rule_id = null;
-    if (
-      body.ceo_bucket === 'personal' ||
-      body.ceo_bucket === 'owner_draw' ||
-      body.ceo_bucket === 'passthrough'
-    ) {
-      if (body.exclude_from_pnl === undefined) patch.exclude_from_pnl = true;
+    if (body.exclude_from_pnl === undefined && defaultExclude(newBucket)) {
+      patch.exclude_from_pnl = true;
     }
   }
   if (typeof body.subcategory === 'string') patch.subcategory = body.subcategory.trim() || null;
   if (typeof body.exclude_from_pnl === 'boolean') patch.exclude_from_pnl = body.exclude_from_pnl;
+
+  let createdRule: Record<string, unknown> | null = null;
+  let appliedMatching = 0;
+
+  const createRule = body.create_rule === true && newBucket && newBucket !== 'uncategorized';
+  if (createRule) {
+    const matchValue =
+      (typeof body.rule_match_value === 'string' && body.rule_match_value.trim()) ||
+      suggestRuleNeedle(
+        typeof body.merchant_raw === 'string' ? body.merchant_raw : existing.merchant_raw,
+      );
+    if (!matchValue) {
+      return NextResponse.json({ error: 'rule_match_value required to create a rule' }, { status: 400 });
+    }
+    const sub =
+      typeof body.subcategory === 'string'
+        ? body.subcategory.trim() || null
+        : (existing.subcategory as string | null);
+    const exclude =
+      typeof body.exclude_from_pnl === 'boolean'
+        ? body.exclude_from_pnl
+        : defaultExclude(newBucket!);
+    const ruleName =
+      (typeof body.rule_name === 'string' && body.rule_name.trim()) ||
+      `${matchValue} → ${newBucket}`;
+
+    const { data: rule, error: ruleErr } = await ctx.service
+      .from('expense_category_rules')
+      .insert({
+        name: ruleName,
+        match_type: 'merchant_contains',
+        match_value: matchValue,
+        amount_min: null,
+        amount_max: null,
+        ceo_bucket: newBucket,
+        subcategory: sub,
+        exclude_from_pnl: exclude,
+        priority: 25,
+        active: true,
+        notes: 'Created from Pending review',
+        updated_at: new Date().toISOString(),
+      })
+      .select(
+        'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, exclude_from_pnl, priority, active, notes',
+      )
+      .single();
+    if (ruleErr) return NextResponse.json({ error: ruleErr.message }, { status: 500 });
+    createdRule = rule;
+    patch.rule_id = rule.id;
+    patch.categorized_by = 'user';
+
+    if (body.apply_to_matching === true) {
+      const { data: pending } = await ctx.service
+        .from('business_expenses')
+        .select(FIELDS)
+        .eq('ceo_bucket', 'uncategorized')
+        .neq('id', id)
+        .limit(2000);
+      const rules = [rule as ExpenseCategoryRule];
+      const now = new Date().toISOString();
+      for (const row of pending ?? []) {
+        const match = applyExpenseRules(
+          {
+            merchant_raw: row.merchant_raw,
+            memo: row.memo,
+            amount: Number(row.amount),
+          },
+          rules,
+        );
+        if (match.ceo_bucket === 'uncategorized') continue;
+        const { error: upErr } = await ctx.service
+          .from('business_expenses')
+          .update({
+            ceo_bucket: match.ceo_bucket,
+            subcategory: match.subcategory ?? sub,
+            exclude_from_pnl: match.exclude_from_pnl,
+            categorized_by: 'rule',
+            rule_id: rule.id,
+            updated_at: now,
+          })
+          .eq('id', row.id);
+        if (!upErr) appliedMatching += 1;
+      }
+    }
+  }
 
   const { data, error } = await ctx.service
     .from('business_expenses')
@@ -72,7 +170,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .select(FIELDS)
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ expense: data });
+
+  return NextResponse.json({
+    expense: data,
+    rule: createdRule,
+    applied_matching: appliedMatching,
+  });
 }
 
 // DELETE /api/expenses/[id]

@@ -64,11 +64,10 @@ This keeps **Operating Profit = Total Cash − operating_expenses** coherent on 
 
 Company expense ledger lives under **Finance → Expenses** (`business_expenses`).
 
-- Add charge / add account  
-- Import CSV (preview then write)  
-- Uncategorized queue (filter)  
-- Recategorize inline  
-- Seed rules + **Roll up {month}** → writes `business_metrics`
+- **Pending** tab — all `uncategorized` charges across months. **Map** opens Type + optional subcategory; check **Always treat this merchant this way** to create a `merchant_contains` rule and optionally apply it to other pending matches.
+- **Ledger** tab — month filter, bucket totals, roll up into Overview unit economics
+- Add charge / add account / Import CSV
+- Seed rules
 
 **Admin → Agent Payroll**
 
@@ -78,23 +77,77 @@ Company expense ledger lives under **Finance → Expenses** (`business_expenses`
 
 ## CSV import format
 
+### WM Company Report (preferred labeled format)
+
+Columns from `WM _ Company Report - Total Costs.csv`:
+
+| Sheet column | Maps to |
+|--------------|---------|
+| `Start Date` | `occurred_on` |
+| `Vendor` | `merchant_raw` |
+| `Cost` | `amount` |
+| `Type` | `ceo_bucket` (`CAC`→cac, `COGS`→fulfillment, `Overhead`→overhead, `Passthrough`→passthrough) |
+| `Category` | `subcategory` (Software, Payroll, Ad Spend, …) |
+| `Description` | `memo` |
+
+Canonical copy in-repo: [`data/import/expenses/wm-company-total-costs-labeled.csv`](../data/import/expenses/wm-company-total-costs-labeled.csv)
+
+```bash
+# Dry-run
+node scripts/import-labeled-total-costs.mjs
+
+# Write ledger + roll up business_metrics
+npx tsx scripts/import-labeled-total-costs.mjs --apply
+
+# Also replace category rules with learned seed set
+npx tsx scripts/import-labeled-total-costs.mjs --apply --replace-rules
+```
+
+**Do not keep Total Costs monthly rows and Chase line items both in P&L for the same months** — that double-counts. Default Chase import **skips any YYYY-MM already present on WM Company Books** (the labeled Total Costs sheet). Use `--retire-sheet` only if Chase should replace the sheet; `--allow-overlap` only if you intentionally want both.
+
+### Chase Activity CSV (checking …1519)
+
+Export columns: `Details`, `Posting Date`, `Description`, `Amount`, `Type`, `Balance`.
+
+- Imports **DEBIT only** (skips Stripe/income CREDITS)
+- Merchant cleaned from ACH / POS noise (`ORIG CO NAME:…`, `POS DEBIT…`)
+- Dedupe ids: `chase:trn:…` / `chase:txn:…` / `chase:ref:…` / salted `chase:h…`
+- Known vendors auto-bucket via rules; Wise ACH + unknowns stay `uncategorized` for review
+- Personal transfers → `owner_draw` (excluded); Amex payments excluded (card payoff, not a new expense)
+- **Skips months already covered by Total Costs** unless `--allow-overlap`
+
+```bash
+# Dry-run (skips sheet months)
+npx tsx scripts/import-chase-activity.mjs
+
+# Write only non-overlapping months (keeps Total Costs as SoT)
+npx tsx scripts/import-chase-activity.mjs --apply
+```
+
+Canonical copy: [`data/import/expenses/chase1519-activity-20260710.csv`](../data/import/expenses/chase1519-activity-20260710.csv)
+
+### Generic bank CSV
+
 Required columns (header names flexible):
 
-- `date` (or `occurred_on`, `transaction date`)
+- `date` (or `occurred_on`, `transaction date`, `posting date`)
 - `amount`
-- `merchant` (or `description`, `payee`)
+- `merchant` (or `vendor`, `payee`) — or `description` for Chase-style exports
 
-Optional: `memo`, `category` / `ceo_bucket` / `label` (CAC, COGS, overhead, personal…), `subcategory`, `account`, `external_id`.
+Optional: `memo` / `description`, `type` (CEO bucket), `category` (subcategory), `account`, `external_id`.
 
 Template: [`data/import/expenses/labeled-charges.template.csv`](../data/import/expenses/labeled-charges.template.csv)
 
-Drop your labeled year export into `data/import/expenses/` and run:
+## Learned taxonomy (from Total Costs sheet)
 
-```bash
-node scripts/import-expenses.mjs data/import/expenses/your-file.csv
-node scripts/import-expenses.mjs data/import/expenses/your-file.csv --apply
-```
+| Type (sheet) | CEO bucket | Typical vendors |
+|--------------|------------|-----------------|
+| **CAC** | `cac` | FB ad spend, PK Media, LinkedIn, Ben Edit (acquisition creatives), monthly “Adspend” rows |
+| **COGS** | `fulfillment` | High Level, Make, Twilio, Closebot, Perspective, Hot Prospector, call-rep payroll/commissions |
+| **Overhead** | `overhead` | Notion, ClickUp, Slack, Google Workspace, Miro, Loom, Hubstaff, Canva, QuickBooks, recruiting ads |
+| **Passthrough** | `passthrough` (excl. from P&L) | Sendblue, client-paid contractors |
 
+**Watch-outs encoded as rules:** `FB - Recruit` / recruiting memos → overhead (not CAC). `Sendblue` → passthrough.
 ---
 
 ## APIs (CEO / Expenses + revenue capability)

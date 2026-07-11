@@ -4,7 +4,10 @@ import { requireExpenseAccess } from '@/lib/expense-auth';
 import { parseCsv } from '@/lib/csv';
 import {
   applyExpenseRules,
+  chaseExternalId,
+  cleanBankMerchant,
   expenseDedupeHash,
+  isChaseActivityCsv,
   mapLabelToBucket,
   normalizeMerchant,
   type CeoBucket,
@@ -87,21 +90,38 @@ export async function POST(req: Request) {
   if (table.length < 2) return NextResponse.json({ error: 'CSV has no data rows' }, { status: 400 });
 
   const headers = table[0].map(h => h.trim());
+  const chase = isChaseActivityCsv(headers);
   const col = {
-    date: headerIndex(headers, 'date', 'occurred_on', 'transaction date', 'posted date', 'trans date'),
-    amount: headerIndex(headers, 'amount', 'debit', 'charge', 'spend'),
-    merchant: headerIndex(headers, 'merchant', 'description', 'payee', 'name', 'merchant_raw'),
-    memo: headerIndex(headers, 'memo', 'note', 'notes', 'extended description'),
-    category: headerIndex(headers, 'category', 'ceo_bucket', 'bucket', 'label', 'type'),
-    subcategory: headerIndex(headers, 'subcategory', 'sub category', 'sub_category'),
+    date: headerIndex(
+      headers,
+      'date',
+      'start date',
+      'occurred_on',
+      'transaction date',
+      'posted date',
+      'posting date',
+      'trans date',
+    ),
+    amount: headerIndex(headers, 'amount', 'cost', 'debit', 'charge', 'spend'),
+    merchant: headerIndex(headers, 'vendor', 'merchant', 'payee', 'name', 'merchant_raw'),
+    memo: headerIndex(headers, 'description', 'memo', 'note', 'notes', 'extended description'),
+    // WM Company Report: Type = CAC/COGS/Overhead/Passthrough (CEO bucket)
+    // Chase: Type = MISC_DEBIT / DEBIT_CARD — ignored via mapLabelToBucket null
+    type: headerIndex(headers, 'type', 'ceo_bucket', 'bucket', 'label'),
+    // WM Company Report: Category = Software/Payroll/Ad Spend (subcategory)
+    category: headerIndex(headers, 'category', 'subcategory', 'sub category', 'sub_category'),
     account: headerIndex(headers, 'account', 'card', 'account_name'),
     external: headerIndex(headers, 'external_id', 'transaction id', 'txn_id', 'id'),
+    client: headerIndex(headers, 'client', 'client_name'),
+    details: headerIndex(headers, 'details'),
+    balance: headerIndex(headers, 'balance'),
   };
 
   const missing: string[] = [];
-  if (col.date === -1) missing.push('date');
-  if (col.amount === -1) missing.push('amount');
-  if (col.merchant === -1) missing.push('merchant');
+  if (col.date === -1) missing.push('date / start date / posting date');
+  if (col.amount === -1) missing.push('amount / cost');
+  // Chase uses Description as merchant; labeled sheets use Vendor
+  if (col.merchant === -1 && col.memo === -1) missing.push('vendor / merchant / description');
   if (missing.length) {
     return NextResponse.json({ error: `Missing required column(s): ${missing.join(', ')}` }, { status: 400 });
   }
@@ -128,6 +148,7 @@ export async function POST(req: Request) {
   const rows: ImportRow[] = [];
   let skippedInvalid = 0;
   let skippedDuplicate = 0;
+  let skippedCredit = 0;
   const bucketCounts: Record<string, number> = {};
   const now = new Date().toISOString();
 
@@ -135,9 +156,23 @@ export async function POST(req: Request) {
     const cells = table[r];
     const get = (i: number) => (i >= 0 ? (cells[i] ?? '').trim() : '');
 
+    // Chase Activity: only money-out (DEBIT). Credits are Stripe/income — not expenses.
+    if (chase && col.details !== -1) {
+      const details = get(col.details).toUpperCase();
+      if (details === 'CREDIT') {
+        skippedCredit++;
+        continue;
+      }
+    }
+
     const date = toYmd(get(col.date));
     const amount = parseAmount(get(col.amount));
-    const merchant = get(col.merchant);
+    const rawDesc = col.memo !== -1 ? get(col.memo) : '';
+    const vendorCol = col.merchant !== -1 ? get(col.merchant) : '';
+    const merchant = chase
+      ? cleanBankMerchant(rawDesc || vendorCol) || rawDesc.slice(0, 80) || vendorCol
+      : vendorCol || cleanBankMerchant(rawDesc) || rawDesc.slice(0, 80);
+
     if (!date || amount == null || amount === 0 || !merchant) {
       skippedInvalid++;
       continue;
@@ -149,9 +184,12 @@ export async function POST(req: Request) {
       if (acctName) accountId = accountByName.get(acctName.toLowerCase()) ?? defaultAccountId;
     }
 
-    const memo = col.memo !== -1 ? get(col.memo) || null : null;
-    const labelBucket = col.category !== -1 ? mapLabelToBucket(get(col.category)) : null;
-    const subFromCsv = col.subcategory !== -1 ? get(col.subcategory) || null : null;
+    const memo = chase ? (rawDesc || null) : col.memo !== -1 ? get(col.memo) || null : null;
+    // Prefer Type (CEO bucket) over Category — but not Chase bank Type codes
+    const typeLabel = chase ? '' : col.type !== -1 ? get(col.type) : '';
+    const categoryLabel = col.category !== -1 ? get(col.category) : '';
+    const labelBucket = mapLabelToBucket(typeLabel) ?? mapLabelToBucket(categoryLabel);
+    const subFromCsv = categoryLabel || null;
 
     let ceoBucket: CeoBucket = 'uncategorized';
     let subcategory = subFromCsv;
@@ -174,14 +212,22 @@ export async function POST(req: Request) {
       ruleId = match.rule_id;
     }
 
-    const externalId =
-      (col.external !== -1 && get(col.external)) ||
-      expenseDedupeHash({
-        account_id: accountId,
-        occurred_on: date,
-        amount,
-        merchant_raw: merchant,
-      });
+    const externalId = chase
+      ? chaseExternalId({
+          account_id: accountId,
+          occurred_on: date,
+          amount,
+          description: rawDesc || merchant,
+          balance: col.balance !== -1 ? get(col.balance) : null,
+          rowIndex: r,
+        })
+      : (col.external !== -1 && get(col.external)) ||
+        expenseDedupeHash({
+          account_id: accountId,
+          occurred_on: date,
+          amount,
+          merchant_raw: merchant,
+        });
 
     if (seen.has(externalId)) {
       skippedDuplicate++;
@@ -213,9 +259,11 @@ export async function POST(req: Request) {
   if (dryRun) {
     return NextResponse.json({
       dryRun: true,
+      format: chase ? 'chase_activity' : 'generic',
       would_insert: rows.length,
       skipped_invalid: skippedInvalid,
       skipped_duplicate: skippedDuplicate,
+      skipped_credit: skippedCredit,
       bucket_counts: bucketCounts,
       sample: rows.slice(0, 10),
     });
@@ -231,9 +279,11 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     dryRun: false,
+    format: chase ? 'chase_activity' : 'generic',
     inserted,
     skipped_invalid: skippedInvalid,
     skipped_duplicate: skippedDuplicate,
+    skipped_credit: skippedCredit,
     bucket_counts: bucketCounts,
   });
 }

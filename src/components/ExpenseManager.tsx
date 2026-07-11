@@ -5,6 +5,7 @@ import {
   ACCOUNT_TYPES,
   CEO_BUCKETS,
   CEO_BUCKET_LABELS,
+  suggestRuleNeedle,
   type AccountType,
   type CeoBucket,
 } from "@/lib/expenses";
@@ -33,6 +34,8 @@ type Expense = {
   exclude_from_pnl: boolean;
   categorized_by: string | null;
 };
+
+type ViewTab = "ledger" | "pending";
 
 const fieldStyle: React.CSSProperties = {
   background: "#0f2040",
@@ -63,12 +66,17 @@ function currentMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function defaultExclude(bucket: CeoBucket): boolean {
+  return bucket === "personal" || bucket === "owner_draw" || bucket === "passthrough";
+}
+
 export default function ExpenseManager() {
+  const [tab, setTab] = useState<ViewTab>("pending");
   const [month, setMonth] = useState(currentMonth);
-  const [uncategorizedOnly, setUncategorizedOnly] = useState(false);
   const [accountFilter, setAccountFilter] = useState("");
   const [accounts, setAccounts] = useState<FinanceAccount[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -77,8 +85,18 @@ export default function ExpenseManager() {
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
+  const [mapExpense, setMapExpense] = useState<Expense | null>(null);
   const [csvText, setCsvText] = useState("");
   const [importAccountId, setImportAccountId] = useState("");
+
+  const [mapForm, setMapForm] = useState({
+    ceo_bucket: "overhead" as CeoBucket,
+    subcategory: "",
+    create_rule: true,
+    rule_match_value: "",
+    apply_to_matching: true,
+    exclude_from_pnl: false,
+  });
 
   const [form, setForm] = useState({
     occurred_on: new Date().toISOString().slice(0, 10),
@@ -101,8 +119,12 @@ export default function ExpenseManager() {
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
-    const params = new URLSearchParams({ month, limit: "1000" });
-    if (uncategorizedOnly) params.set("uncategorized", "1");
+    const params = new URLSearchParams({ limit: "1000" });
+    if (tab === "pending") {
+      params.set("pending", "1");
+    } else {
+      params.set("month", month);
+    }
     if (accountFilter) params.set("account_id", accountFilter);
 
     const [expRes, acctRes] = await Promise.all([
@@ -112,10 +134,13 @@ export default function ExpenseManager() {
     const expData = await expRes.json();
     const acctData = await acctRes.json();
     if (!expRes.ok) setError(expData.error ?? "Failed to load expenses");
-    else setExpenses(expData.expenses ?? []);
+    else {
+      setExpenses(expData.expenses ?? []);
+      setPendingCount(expData.pending_count ?? 0);
+    }
     if (acctRes.ok) setAccounts(acctData.accounts ?? []);
     setLoading(false);
-  }, [month, uncategorizedOnly, accountFilter]);
+  }, [tab, month, accountFilter]);
 
   useEffect(() => {
     load();
@@ -137,6 +162,51 @@ export default function ExpenseManager() {
     }
     return { by, pnl, count: expenses.length };
   }, [expenses]);
+
+  function openMap(e: Expense) {
+    const bucket = e.ceo_bucket === "uncategorized" ? "overhead" : e.ceo_bucket;
+    setMapForm({
+      ceo_bucket: bucket,
+      subcategory: e.subcategory ?? "",
+      create_rule: true,
+      rule_match_value: suggestRuleNeedle(e.merchant_raw),
+      apply_to_matching: true,
+      exclude_from_pnl: defaultExclude(bucket),
+    });
+    setMapExpense(e);
+  }
+
+  async function submitMap(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!mapExpense) return;
+    setBusy("map");
+    setError("");
+    setMessage("");
+    const res = await fetch(`/api/expenses/${mapExpense.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ceo_bucket: mapForm.ceo_bucket,
+        subcategory: mapForm.subcategory || null,
+        exclude_from_pnl: mapForm.exclude_from_pnl || defaultExclude(mapForm.ceo_bucket),
+        create_rule: mapForm.create_rule && mapForm.ceo_bucket !== "uncategorized",
+        rule_match_value: mapForm.rule_match_value,
+        apply_to_matching: mapForm.create_rule && mapForm.apply_to_matching,
+      }),
+    });
+    const d = await res.json();
+    setBusy(null);
+    if (!res.ok) {
+      setError(d.error ?? "Map failed");
+      return;
+    }
+    const parts = [`Mapped to ${CEO_BUCKET_LABELS[mapForm.ceo_bucket]}`];
+    if (d.rule) parts.push(`rule “${d.rule.name}” saved`);
+    if (d.applied_matching) parts.push(`${d.applied_matching} matching pending updated`);
+    setMessage(parts.join(" · "));
+    setMapExpense(null);
+    load();
+  }
 
   async function seedRules() {
     setBusy("seed");
@@ -222,19 +292,24 @@ export default function ExpenseManager() {
   }
 
   async function patchBucket(id: string, ceo_bucket: CeoBucket) {
-    setBusy(id);
-    const res = await fetch(`/api/expenses/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ceo_bucket }),
-    });
-    setBusy(null);
-    if (!res.ok) {
-      const d = await res.json();
-      setError(d.error ?? "Update failed");
+    if (ceo_bucket === "uncategorized") {
+      setBusy(id);
+      const res = await fetch(`/api/expenses/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ceo_bucket }),
+      });
+      setBusy(null);
+      if (!res.ok) {
+        const d = await res.json();
+        setError(d.error ?? "Update failed");
+        return;
+      }
+      load();
       return;
     }
-    load();
+    const row = expenses.find(e => e.id === id);
+    if (row) openMap({ ...row, ceo_bucket });
   }
 
   async function runImport(dryRun: boolean) {
@@ -259,12 +334,15 @@ export default function ExpenseManager() {
     }
     if (dryRun) {
       setMessage(
-        `Preview: ${d.would_insert} new · ${d.skipped_duplicate} dupes · ${d.skipped_invalid} invalid`,
+        `Preview: ${d.would_insert} new · ${d.skipped_duplicate ?? 0} dupes · ${d.skipped_invalid ?? 0} invalid${
+          d.skipped_credit != null ? ` · ${d.skipped_credit} credits skipped` : ""
+        }`,
       );
     } else {
       setMessage(`Imported ${d.inserted} charges`);
       setShowImport(false);
       setCsvText("");
+      setTab("pending");
       load();
     }
   }
@@ -274,11 +352,11 @@ export default function ExpenseManager() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>
-            Expenses
+            Expense ledger
           </h2>
           <p className="text-sm mt-0.5 max-w-2xl" style={{ color: "#64748b" }}>
-            Every card/bank charge → CEO buckets (CAC, fulfillment, overhead). Roll up into Business
-            KPIs. QuickBooks stays tax-only.
+            Unmapped bank charges land in Pending. Map a Type (and optionally save a rule) so the
+            next import auto-classifies them.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -315,16 +393,43 @@ export default function ExpenseManager() {
           >
             Seed rules
           </button>
-          <button
-            type="button"
-            onClick={rollupMonth}
-            disabled={busy === "rollup"}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-            style={{ background: "rgba(52,211,153,0.15)", color: "#34d399" }}
-          >
-            Roll up {month}
-          </button>
+          {tab === "ledger" && (
+            <button
+              type="button"
+              onClick={rollupMonth}
+              disabled={busy === "rollup"}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+              style={{ background: "rgba(52,211,153,0.15)", color: "#34d399" }}
+            >
+              Roll up {month}
+            </button>
+          )}
         </div>
+      </div>
+
+      <div className="flex gap-1 p-1 rounded-lg w-fit" style={{ background: "rgba(15,32,64,0.9)" }}>
+        <button
+          type="button"
+          onClick={() => setTab("pending")}
+          className="px-3 py-1.5 rounded-md text-xs font-semibold"
+          style={{
+            background: tab === "pending" ? "rgba(245,158,11,0.2)" : "transparent",
+            color: tab === "pending" ? "#fbbf24" : "#64748b",
+          }}
+        >
+          Pending{pendingCount > 0 ? ` (${pendingCount})` : ""}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("ledger")}
+          className="px-3 py-1.5 rounded-md text-xs font-semibold"
+          style={{
+            background: tab === "ledger" ? "rgba(56,189,248,0.15)" : "transparent",
+            color: tab === "ledger" ? "#38bdf8" : "#64748b",
+          }}
+        >
+          Ledger
+        </button>
       </div>
 
       {(error || message) && (
@@ -339,60 +444,74 @@ export default function ExpenseManager() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="text-xs" style={{ color: "#64748b" }}>
-          Month
-          <input
-            type="month"
-            value={month}
-            onChange={e => setMonth(e.target.value)}
-            style={{ ...fieldStyle, marginLeft: 8 }}
-          />
-        </label>
-        <label className="text-xs flex items-center gap-2" style={{ color: "#64748b" }}>
-          Account
-          <select
-            value={accountFilter}
-            onChange={e => setAccountFilter(e.target.value)}
-            style={fieldStyle}
-          >
-            <option value="">All</option>
-            {accounts.map(a => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs flex items-center gap-2 cursor-pointer" style={{ color: "#94a3b8" }}>
-          <input
-            type="checkbox"
-            checked={uncategorizedOnly}
-            onChange={e => setUncategorizedOnly(e.target.checked)}
-          />
-          Uncategorized only
-        </label>
-        <span className="text-xs ml-auto" style={{ color: "#64748b" }}>
-          {totals.count} charges · P&amp;L {money(totals.pnl)}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        {(["cac", "fulfillment", "overhead", "uncategorized"] as CeoBucket[]).map(b => (
-          <div
-            key={b}
-            className="rounded-lg px-3 py-2"
-            style={{ background: "rgba(15,32,64,0.8)", border: "1px solid rgba(255,255,255,0.06)" }}
-          >
-            <div className="text-[10px] uppercase tracking-wide" style={{ color: BUCKET_COLOR[b] }}>
-              {CEO_BUCKET_LABELS[b]}
-            </div>
-            <div className="text-sm font-semibold mt-0.5" style={{ color: "#e2e8f0" }}>
-              {money(totals.by[b] ?? 0)}
-            </div>
+      {tab === "ledger" && (
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-xs" style={{ color: "#64748b" }}>
+              Month
+              <input
+                type="month"
+                value={month}
+                onChange={e => setMonth(e.target.value)}
+                style={{ ...fieldStyle, marginLeft: 8 }}
+              />
+            </label>
+            <label className="text-xs flex items-center gap-2" style={{ color: "#64748b" }}>
+              Account
+              <select
+                value={accountFilter}
+                onChange={e => setAccountFilter(e.target.value)}
+                style={fieldStyle}
+              >
+                <option value="">All</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="text-xs ml-auto" style={{ color: "#64748b" }}>
+              {totals.count} charges · P&amp;L {money(totals.pnl)}
+            </span>
           </div>
-        ))}
-      </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {(["cac", "fulfillment", "overhead", "uncategorized"] as CeoBucket[]).map(b => (
+              <button
+                key={b}
+                type="button"
+                onClick={() => {
+                  if (b === "uncategorized") setTab("pending");
+                }}
+                className="rounded-lg px-3 py-2 text-left"
+                style={{ background: "rgba(15,32,64,0.8)", border: "1px solid rgba(255,255,255,0.06)" }}
+              >
+                <div className="text-[10px] uppercase tracking-wide" style={{ color: BUCKET_COLOR[b] }}>
+                  {CEO_BUCKET_LABELS[b]}
+                </div>
+                <div className="text-sm font-semibold mt-0.5" style={{ color: "#e2e8f0" }}>
+                  {money(totals.by[b] ?? 0)}
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {tab === "pending" && (
+        <div
+          className="rounded-lg px-3 py-2 text-sm"
+          style={{
+            background: "rgba(245,158,11,0.08)",
+            border: "1px solid rgba(245,158,11,0.2)",
+            color: "#fbbf24",
+          }}
+        >
+          {pendingCount} charge{pendingCount === 1 ? "" : "s"} need a Type. Map once, or save a rule so
+          future imports match automatically.
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm" style={{ color: "#64748b" }}>
@@ -400,7 +519,9 @@ export default function ExpenseManager() {
         </p>
       ) : expenses.length === 0 ? (
         <p className="text-sm" style={{ color: "#64748b" }}>
-          No expenses for this filter. Add a charge, import a CSV, or seed rules then import.
+          {tab === "pending"
+            ? "Pending queue is clear — nothing left to map."
+            : "No expenses for this filter. Add a charge or import a CSV."}
         </p>
       ) : (
         <div className="overflow-auto rounded-lg" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -411,8 +532,12 @@ export default function ExpenseManager() {
                 <th className="px-3 py-2 font-medium text-xs">Merchant</th>
                 <th className="px-3 py-2 font-medium text-xs">Account</th>
                 <th className="px-3 py-2 font-medium text-xs text-right">Amount</th>
-                <th className="px-3 py-2 font-medium text-xs">Bucket</th>
-                <th className="px-3 py-2 font-medium text-xs">Source</th>
+                <th className="px-3 py-2 font-medium text-xs">
+                  {tab === "pending" ? "Action" : "Bucket"}
+                </th>
+                {tab === "ledger" && (
+                  <th className="px-3 py-2 font-medium text-xs">Source</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -424,7 +549,11 @@ export default function ExpenseManager() {
                   <td className="px-3 py-2" style={{ color: "#e2e8f0" }}>
                     <div>{e.merchant_raw ?? "—"}</div>
                     {e.memo && (
-                      <div className="text-xs mt-0.5" style={{ color: "#475569" }}>
+                      <div
+                        className="text-xs mt-0.5 line-clamp-2"
+                        style={{ color: "#475569", maxWidth: 420 }}
+                        title={e.memo}
+                      >
                         {e.memo}
                       </div>
                     )}
@@ -436,28 +565,41 @@ export default function ExpenseManager() {
                     {money(Number(e.amount))}
                   </td>
                   <td className="px-3 py-2">
-                    <select
-                      value={e.ceo_bucket}
-                      disabled={busy === e.id}
-                      onChange={ev => patchBucket(e.id, ev.target.value as CeoBucket)}
-                      style={{
-                        ...fieldStyle,
-                        color: BUCKET_COLOR[e.ceo_bucket],
-                        padding: "0.25rem 0.4rem",
-                        fontSize: "0.75rem",
-                      }}
-                    >
-                      {CEO_BUCKETS.map(b => (
-                        <option key={b} value={b}>
-                          {CEO_BUCKET_LABELS[b]}
-                        </option>
-                      ))}
-                    </select>
+                    {tab === "pending" ? (
+                      <button
+                        type="button"
+                        onClick={() => openMap(e)}
+                        className="px-2.5 py-1 rounded-md text-xs font-semibold"
+                        style={{ background: "rgba(245,158,11,0.18)", color: "#fbbf24" }}
+                      >
+                        Map
+                      </button>
+                    ) : (
+                      <select
+                        value={e.ceo_bucket}
+                        disabled={busy === e.id}
+                        onChange={ev => patchBucket(e.id, ev.target.value as CeoBucket)}
+                        style={{
+                          ...fieldStyle,
+                          color: BUCKET_COLOR[e.ceo_bucket],
+                          padding: "0.25rem 0.4rem",
+                          fontSize: "0.75rem",
+                        }}
+                      >
+                        {CEO_BUCKETS.map(b => (
+                          <option key={b} value={b}>
+                            {CEO_BUCKET_LABELS[b]}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </td>
-                  <td className="px-3 py-2 text-xs" style={{ color: "#475569" }}>
-                    {e.source}
-                    {e.exclude_from_pnl ? " · excl" : ""}
-                  </td>
+                  {tab === "ledger" && (
+                    <td className="px-3 py-2 text-xs" style={{ color: "#475569" }}>
+                      {e.source}
+                      {e.exclude_from_pnl ? " · excl" : ""}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -465,7 +607,107 @@ export default function ExpenseManager() {
         </div>
       )}
 
-      {/* Add charge modal */}
+      {mapExpense && (
+        <Modal title="Map charge" onClose={() => setMapExpense(null)}>
+          <form onSubmit={submitMap} className="space-y-3">
+            <div
+              className="rounded-lg px-3 py-2 text-xs space-y-1"
+              style={{ background: "rgba(15,32,64,0.8)", color: "#94a3b8" }}
+            >
+              <div style={{ color: "#e2e8f0" }}>{mapExpense.merchant_raw ?? "—"}</div>
+              <div>
+                {mapExpense.occurred_on} · {money(Number(mapExpense.amount))}
+              </div>
+            </div>
+            <Field label="Type (CEO bucket)">
+              <select
+                value={mapForm.ceo_bucket}
+                onChange={e => {
+                  const b = e.target.value as CeoBucket;
+                  setMapForm(f => ({
+                    ...f,
+                    ceo_bucket: b,
+                    exclude_from_pnl: defaultExclude(b),
+                  }));
+                }}
+                style={{ ...fieldStyle, width: "100%" }}
+              >
+                {CEO_BUCKETS.filter(b => b !== "uncategorized").map(b => (
+                  <option key={b} value={b}>
+                    {CEO_BUCKET_LABELS[b]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Subcategory (optional)">
+              <input
+                value={mapForm.subcategory}
+                onChange={e => setMapForm(f => ({ ...f, subcategory: e.target.value }))}
+                placeholder="software, payroll, bank fees…"
+                style={{ ...fieldStyle, width: "100%" }}
+              />
+            </Field>
+            <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "#94a3b8" }}>
+              <input
+                type="checkbox"
+                checked={mapForm.exclude_from_pnl}
+                onChange={e => setMapForm(f => ({ ...f, exclude_from_pnl: e.target.checked }))}
+                className="mt-0.5"
+              />
+              Exclude from P&amp;L (owner draw / personal / passthrough / transfers)
+            </label>
+            <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "#e2e8f0" }}>
+              <input
+                type="checkbox"
+                checked={mapForm.create_rule}
+                onChange={e => setMapForm(f => ({ ...f, create_rule: e.target.checked }))}
+                className="mt-0.5"
+              />
+              Always treat this merchant this way (save rule)
+            </label>
+            {mapForm.create_rule && (
+              <>
+                <Field label="Match merchants containing">
+                  <input
+                    required
+                    value={mapForm.rule_match_value}
+                    onChange={e => setMapForm(f => ({ ...f, rule_match_value: e.target.value }))}
+                    style={{ ...fieldStyle, width: "100%" }}
+                  />
+                </Field>
+                <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "#94a3b8" }}>
+                  <input
+                    type="checkbox"
+                    checked={mapForm.apply_to_matching}
+                    onChange={e => setMapForm(f => ({ ...f, apply_to_matching: e.target.checked }))}
+                    className="mt-0.5"
+                  />
+                  Apply to other pending charges that match
+                </label>
+              </>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setMapExpense(null)}
+                className="text-xs px-3 py-1.5"
+                style={{ color: "#94a3b8" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={busy === "map"}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                style={{ background: "rgba(245,158,11,0.25)", color: "#fbbf24" }}
+              >
+                {mapForm.create_rule ? "Map + save rule" : "Map once"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {showAdd && (
         <Modal title="Add charge" onClose={() => setShowAdd(false)}>
           <form onSubmit={addExpense} className="space-y-3">
@@ -614,9 +856,8 @@ export default function ExpenseManager() {
       {showImport && (
         <Modal title="Import CSV" onClose={() => setShowImport(false)} wide>
           <p className="text-xs mb-3" style={{ color: "#64748b" }}>
-            Required columns: <code>date</code>, <code>amount</code>, <code>merchant</code>. Optional:{" "}
-            <code>memo</code>, <code>category</code> (CAC / COGS / overhead…), <code>account</code>,{" "}
-            <code>subcategory</code>.
+            Supports labeled Total Costs sheets and Chase Activity exports. Unknown merchants land in
+            Pending.
           </p>
           <Field label="Default account">
             <select

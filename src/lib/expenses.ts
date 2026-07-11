@@ -138,12 +138,15 @@ export function expenseDedupeHash(input: {
   occurred_on: string;
   amount: number;
   merchant_raw?: string | null;
+  /** Extra uniqueness (full bank memo, balance, row index) when merchants collide. */
+  salt?: string | null;
 }): string {
   const payload = [
     input.account_id ?? "",
     input.occurred_on,
     Number(input.amount).toFixed(2),
     normalizeMerchant(input.merchant_raw),
+    (input.salt ?? "").trim(),
   ].join("|");
   let h = 2166136261;
   for (let i = 0; i < payload.length; i++) {
@@ -153,8 +156,88 @@ export function expenseDedupeHash(input: {
   return `h${(h >>> 0).toString(16).padStart(8, "0")}${payload.length.toString(16)}`;
 }
 
+/**
+ * Pull a readable merchant from Chase / ACH bank description noise.
+ * Keeps ORIG CO NAME, strips POS DEBIT padding, phone tails, TRN noise.
+ */
+export function cleanBankMerchant(raw: string | null | undefined): string {
+  if (!raw) return "";
+  let d = raw.replace(/\s+/g, " ").trim();
+
+  const orig = d.match(/ORIG CO NAME:([^]+?)(?:\s+ORIG ID:|\s+DESC DATE:|\s+CO ENTRY DESCR:|\s+SEC:|$)/i);
+  if (orig) {
+    return orig[1].replace(/\s+/g, " ").trim().slice(0, 80);
+  }
+
+  if (/Transfer to Gabes Personal/i.test(d)) return "Transfer to Gabes Personal";
+  if (/MONTHLY SERVICE FEE/i.test(d)) return "MONTHLY SERVICE FEE";
+  if (/OVERDRAFT FEE/i.test(d)) return "OVERDRAFT FEE";
+  if (/ONLINE DOMESTIC WIRE FEE/i.test(d)) return "ONLINE DOMESTIC WIRE FEE";
+  if (/AMERICAN EXPRESS/i.test(d)) return "American Express Payment";
+  if (/Zelle payment to /i.test(d)) {
+    const z = d.match(/Zelle payment to\s+(.+?)(?:\s+\d{8,}|$)/i);
+    return z ? `Zelle to ${z[1].trim()}` : "Zelle payment";
+  }
+
+  const pos = d.match(/POS DEBIT\s+(.+?)(?:\s+\+\d|\s{2,}\d{3,}|$)/i);
+  if (pos) return pos[1].replace(/\s+/g, " ").trim().slice(0, 80);
+
+  // Card: "HIGHLEVEL INC. GOHIGHLEVEL.C TX 07/08"
+  d = d.replace(/\s+\d{2}\/\d{2}(?:\s|$)/, " ").trim();
+  d = d.replace(/\s+\+\d{10,}.*$/, "").trim();
+  d = d.replace(/\s+transaction#:.*$/i, "").trim();
+  d = d.replace(/\s+TRN:.*$/i, "").trim();
+  return d.slice(0, 80).trim();
+}
+
+/** Chase bank export: prefer TRN / transaction# / reference#; else salted hash. */
+export function chaseExternalId(input: {
+  account_id?: string | null;
+  occurred_on: string;
+  amount: number;
+  description: string;
+  balance?: string | null;
+  rowIndex?: number;
+}): string {
+  const desc = input.description || "";
+  const trn = desc.match(/TRN:\s*(\d+)/i);
+  if (trn) return `chase:trn:${trn[1]}`;
+  const txn = desc.match(/transaction#:\s*(\d+)/i);
+  if (txn) return `chase:txn:${txn[1]}`;
+  const ref = desc.match(/reference#:\s*([A-Z0-9]+)/i);
+  if (ref) return `chase:ref:${ref[1]}`;
+  return expenseDedupeHash({
+    account_id: input.account_id,
+    occurred_on: input.occurred_on,
+    amount: input.amount,
+    merchant_raw: cleanBankMerchant(desc) || desc.slice(0, 60),
+    salt: `${(input.balance ?? "").trim()}|${input.rowIndex ?? ""}|${desc.slice(0, 200)}`,
+  }).replace(/^h/, "chase:h");
+}
+
+/** True when CSV headers look like a Chase Activity export. */
+export function isChaseActivityCsv(headers: string[]): boolean {
+  const lower = headers.map(h => h.trim().toLowerCase());
+  return lower.includes("posting date") && lower.includes("details") && lower.includes("description");
+}
+
 export function isCeoBucket(v: unknown): v is CeoBucket {
   return typeof v === "string" && (CEO_BUCKETS as readonly string[]).includes(v);
+}
+
+/** Suggest a short merchant_contains needle from a raw bank merchant (for Pending → rule). */
+export function suggestRuleNeedle(merchantRaw: string | null | undefined): string {
+  const raw = (merchantRaw ?? "").trim();
+  if (!raw) return "";
+  const norm = normalizeMerchant(raw);
+  const cleaned = norm
+    .replace(/\b(www|https?|com|net|org|inc|llc)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const parts = cleaned.split(" ").filter(Boolean);
+  if (parts.length === 0) return norm.slice(0, 24);
+  if (parts[0].length >= 4) return parts.slice(0, 2).join(" ").slice(0, 40);
+  return parts.slice(0, 3).join(" ").slice(0, 40);
 }
 
 /** Map free-text labels from a user's spreadsheet into CEO buckets. */
@@ -162,9 +245,14 @@ export function mapLabelToBucket(label: string | null | undefined): CeoBucket | 
   if (!label) return null;
   const s = label.trim().toLowerCase();
   if (!s) return null;
-  if (/^(cac|acquisition|marketing|ads?|meta ads|facebook ads|lead gen)/.test(s)) return "cac";
-  if (/^(cogs|fulfillment|delivery|client delivery|media buy|va|contractor)/.test(s)) return "fulfillment";
-  if (/^(overhead|opex|operating|admin|rent|insurance|software)/.test(s)) return "overhead";
+  // Exact Type labels from WM Company Report sheet
+  if (s === "cogs") return "fulfillment";
+  if (s === "cac") return "cac";
+  if (s === "overhead") return "overhead";
+  if (s === "passthrough" || s === "pass-through" || s === "pass through") return "passthrough";
+  if (/^(cac|acquisition|lead gen)/.test(s)) return "cac";
+  if (/^(cogs|fulfillment|delivery|client delivery)/.test(s)) return "fulfillment";
+  if (/^(overhead|opex|operating|admin|rent|insurance)/.test(s)) return "overhead";
   if (/^(passthrough|pass.?through|client.?funded|reimburse)/.test(s)) return "passthrough";
   if (/^(owner|draw|founder|distribution)/.test(s)) return "owner_draw";
   if (/^(personal|private|non.?business)/.test(s)) return "personal";
@@ -209,6 +297,9 @@ export function applyExpenseRules(
       }
     }
     if (!hit) continue;
+    const min = rule.amount_min == null ? -Infinity : Number(rule.amount_min);
+    const max = rule.amount_max == null ? Infinity : Number(rule.amount_max);
+    if (amount < min || amount > max) continue;
     return {
       ceo_bucket: rule.ceo_bucket,
       subcategory: rule.subcategory,
@@ -274,7 +365,7 @@ export function periodDateFromMonth(month: string): string | null {
   return null;
 }
 
-// ── Seed rules (no labeled year file in-repo — common Waiz vendors) ──────────
+// ── Seed rules (learned from WM Company Report — Total Costs labeled sheet) ──
 
 export type SeedRule = Omit<
   ExpenseCategoryRule,
@@ -282,44 +373,121 @@ export type SeedRule = Omit<
 > & { active?: boolean };
 
 /**
- * Starter merchant → bucket map. Replace/extend after importing the founder's
- * labeled charge spreadsheet into data/import/expenses/.
+ * Merchant → CEO bucket map learned from
+ * `data/import/expenses/wm-company-total-costs-labeled.csv`.
+ *
+ * Sheet Type → ceo_bucket: CAC→cac, COGS→fulfillment, Overhead→overhead, Passthrough→passthrough.
+ * Sheet Category → subcategory (Software, Payroll, Ad Spend, …).
  */
 export const SEED_EXPENSE_RULES: SeedRule[] = [
-  // CAC / acquisition
-  { name: "Meta Ads", match_type: "merchant_contains", match_value: "meta platforms", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ads", exclude_from_pnl: false, priority: 10, notes: "Agency acquisition ads" },
-  { name: "Facebook Ads", match_type: "merchant_contains", match_value: "facebook", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ads", exclude_from_pnl: false, priority: 20, notes: null },
-  { name: "LinkedIn Ads", match_type: "merchant_contains", match_value: "linkedin", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ads", exclude_from_pnl: false, priority: 20, notes: null },
-  { name: "Google Ads", match_type: "merchant_contains", match_value: "google ads", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ads", exclude_from_pnl: false, priority: 20, notes: null },
-  { name: "Skool", match_type: "merchant_contains", match_value: "skool", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "community", exclude_from_pnl: false, priority: 30, notes: null },
+  // ── High priority: recruiting / passthrough / memo overrides ──────────────
+  { name: "FB Recruiting", match_type: "merchant_contains", match_value: "fb - recruit", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "recruiting", exclude_from_pnl: false, priority: 5, notes: "Hiring ads — not client CAC" },
+  { name: "Recruiting Ads", match_type: "merchant_contains", match_value: "recruiting ads", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "recruiting", exclude_from_pnl: false, priority: 5, notes: null },
+  { name: "Recruiting memo", match_type: "memo_contains", match_value: "recruit", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "recruiting", exclude_from_pnl: false, priority: 8, notes: "Ben / FB recruiting copy" },
+  { name: "Sendblue passthrough", match_type: "merchant_contains", match_value: "sendblue", amount_min: null, amount_max: null, ceo_bucket: "passthrough", subcategory: "software", exclude_from_pnl: true, priority: 5, notes: "Client-funded tools" },
+  { name: "Paid through client", match_type: "memo_contains", match_value: "paid through client", amount_min: null, amount_max: null, ceo_bucket: "passthrough", subcategory: "contractor", exclude_from_pnl: true, priority: 5, notes: null },
 
-  // Fulfillment / COGS
-  { name: "GoHighLevel", match_type: "merchant_contains", match_value: "gohighlevel", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 10, notes: "Client CRM / dialer stack" },
+  // ── CAC ───────────────────────────────────────────────────────────────────
+  { name: "FB Ad Spend", match_type: "merchant_equals", match_value: "fb", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 10, notes: "Agency Meta acquisition" },
+  { name: "B2B Adspend", match_type: "merchant_contains", match_value: "b2b adspend", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 10, notes: null },
+  { name: "Adspend vendor", match_type: "merchant_equals", match_value: "adspend", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 10, notes: null },
+  { name: "Monthly Adspend label", match_type: "merchant_contains", match_value: "adspend", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 15, notes: "January/February Adspend rows" },
+  { name: "PK Media", match_type: "merchant_contains", match_value: "pk media", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "marketing", exclude_from_pnl: false, priority: 10, notes: "LinkedIn / acquisition creative" },
+  { name: "LinkedIn", match_type: "merchant_contains", match_value: "linkedin", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Meta Platforms", match_type: "merchant_contains", match_value: "meta platforms", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 10, notes: null },
+  { name: "Facebook", match_type: "merchant_contains", match_value: "facebook", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Ben Edit CAC", match_type: "merchant_contains", match_value: "ben edit", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "marketing", exclude_from_pnl: false, priority: 25, notes: "Testimonial / landing / precall videos — majority CAC" },
+
+  // ── Fulfillment / COGS (delivery stack + call-center labor) ───────────────
+  { name: "High Level", match_type: "merchant_contains", match_value: "high level", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 10, notes: null },
+  { name: "GoHighLevel", match_type: "merchant_contains", match_value: "gohighlevel", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 10, notes: null },
   { name: "HighLevel", match_type: "merchant_contains", match_value: "highlevel", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 15, notes: null },
-  { name: "Twilio", match_type: "merchant_contains", match_value: "twilio", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
-  { name: "OpenPhone", match_type: "merchant_contains", match_value: "openphone", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
-  { name: "Perspective", match_type: "merchant_contains", match_value: "perspective", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: "Client funnels" },
-  { name: "ManyChat", match_type: "merchant_contains", match_value: "manychat", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
-  { name: "Ideogram", match_type: "merchant_contains", match_value: "ideogram", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "creative", exclude_from_pnl: false, priority: 30, notes: null },
-  { name: "Canva", match_type: "merchant_contains", match_value: "canva", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "creative", exclude_from_pnl: false, priority: 40, notes: null },
+  { name: "Twilio", match_type: "merchant_contains", match_value: "twilio", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 10, notes: null },
+  { name: "Make.com", match_type: "merchant_contains", match_value: "make.com", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 10, notes: null },
+  { name: "Make equals", match_type: "merchant_equals", match_value: "make", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 12, notes: null },
+  { name: "Closebot", match_type: "merchant_contains", match_value: "closebot", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 10, notes: "AI tool" },
+  { name: "Appointwise", match_type: "merchant_contains", match_value: "appointwise", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 10, notes: "AI tool" },
+  { name: "Hot Prospector", match_type: "merchant_contains", match_value: "hot prospector", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 10, notes: null },
+  { name: "Hot Prospector card", match_type: "merchant_contains", match_value: "hotprosp", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 12, notes: "Chase/card truncation" },
+  { name: "Helton Hot Prospector", match_type: "merchant_contains", match_value: "helton", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 15, notes: "M&M Helton / Hot Prospector" },
+  { name: "HP software", match_type: "merchant_equals", match_value: "hp", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 10, notes: "Hot Prospector alias" },
+  { name: "Upwork", match_type: "merchant_contains", match_value: "upwork", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "contractor", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "CC Mastery", match_type: "merchant_contains", match_value: "cc mastery", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "consulting", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Call Center Mastery", match_type: "merchant_contains", match_value: "callcentermastery", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "consulting", exclude_from_pnl: false, priority: 15, notes: "TFU/CALLCENTERMASTERY" },
+  { name: "Call Center Mastery spaced", match_type: "merchant_contains", match_value: "call center mastery", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "consulting", exclude_from_pnl: false, priority: 15, notes: null },
+  { name: "Stripe fee", match_type: "merchant_equals", match_value: "stripe", amount_min: null, amount_max: 50, ceo_bucket: "overhead", subcategory: "bank fees", exclude_from_pnl: false, priority: 20, notes: "Small Stripe fees / adjustments" },
+  { name: "Perspective", match_type: "merchant_contains", match_value: "perspective", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 10, notes: "Client funnels" },
+  { name: "Adspy", match_type: "merchant_contains", match_value: "adspy", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: "Majority COGS in labeled sheet" },
+  { name: "Backstage", match_type: "merchant_contains", match_value: "backstage", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "media", exclude_from_pnl: false, priority: 30, notes: null },
 
-  // Overhead
-  { name: "ClickUp", match_type: "merchant_contains", match_value: "clickup", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  // Call-center / delivery people (payroll + commissions → COGS)
+  { name: "Laura", match_type: "merchant_equals", match_value: "laura", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Franco", match_type: "merchant_equals", match_value: "franco", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Joe", match_type: "merchant_equals", match_value: "joe", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Joe Black", match_type: "merchant_contains", match_value: "joe black", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 25, notes: null },
+  { name: "Stocker", match_type: "merchant_equals", match_value: "stocker", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Chloe", match_type: "merchant_equals", match_value: "chloe", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Duda", match_type: "merchant_equals", match_value: "duda", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Bernardo", match_type: "merchant_contains", match_value: "bernado", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: "Sheet spelling" },
+  { name: "Bernardo alt", match_type: "merchant_contains", match_value: "bernardo", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Christian", match_type: "merchant_equals", match_value: "christian", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Yamin Potzik", match_type: "merchant_contains", match_value: "yamin", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Pedro Rio", match_type: "merchant_contains", match_value: "pedro rio", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Pedro Moreira", match_type: "merchant_contains", match_value: "pedro moreira", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Gabriela Maranhão", match_type: "merchant_contains", match_value: "gabriela maranh", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: "Majority COGS" },
+  { name: "Gabriela Ferrari", match_type: "merchant_contains", match_value: "gabriela ferrari", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Layza", match_type: "merchant_equals", match_value: "layza", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Yasmin", match_type: "merchant_equals", match_value: "yasmin", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Daniris", match_type: "merchant_equals", match_value: "daniris", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Murilo", match_type: "merchant_equals", match_value: "murilo", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: "Media buyer" },
+  { name: "Joaquim", match_type: "merchant_equals", match_value: "joaquim", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "payroll", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Stealth contractor", match_type: "merchant_contains", match_value: "stealth", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "contractor", exclude_from_pnl: false, priority: 40, notes: "Non-passthrough Stealth rows" },
+
+  // ── Overhead (ops / company tools) ────────────────────────────────────────
   { name: "Notion", match_type: "merchant_contains", match_value: "notion", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
-  { name: "Slack", match_type: "merchant_contains", match_value: "slack", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
-  { name: "Google Workspace", match_type: "merchant_contains", match_value: "google workspace", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
-  { name: "GSuite", match_type: "merchant_contains", match_value: "gsuite", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "ClickUp", match_type: "merchant_contains", match_value: "clickup", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Slack", match_type: "merchant_contains", match_value: "slack", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: "Majority Overhead after early months" },
+  { name: "Miro", match_type: "merchant_contains", match_value: "miro", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Google Workspace", match_type: "merchant_equals", match_value: "google", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: "Workspace — not Google Ads" },
+  { name: "Webflow", match_type: "merchant_contains", match_value: "webflow", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Loom", match_type: "merchant_contains", match_value: "loom", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Hubstaff", match_type: "merchant_contains", match_value: "hubstaff", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Canva", match_type: "merchant_contains", match_value: "canva", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: "Labeled Overhead in sheet" },
+  { name: "Calendly", match_type: "merchant_contains", match_value: "calendly", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "OpenAI", match_type: "merchant_contains", match_value: "open ai", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "OpenAI alt", match_type: "merchant_contains", match_value: "openai", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "ChatGPT", match_type: "merchant_contains", match_value: "chatgpt", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "ChatGtp typo", match_type: "merchant_contains", match_value: "chatgtp", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: "Sheet spelling" },
+  { name: "Manus", match_type: "merchant_contains", match_value: "manus", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "WhisperFlow", match_type: "merchant_contains", match_value: "wisperflow", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: "Sheet spelling" },
+  { name: "WhisperFlow alt", match_type: "merchant_contains", match_value: "whisper", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 25, notes: null },
+  { name: "QuickBooks", match_type: "merchant_contains", match_value: "quickbook", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Intuit", match_type: "merchant_contains", match_value: "intuit", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "accounting", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Poppy", match_type: "merchant_contains", match_value: "poppy", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: "AI tool — labeled Overhead" },
+  { name: "SMA consulting", match_type: "merchant_equals", match_value: "sma", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "consulting", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Namecheap", match_type: "merchant_contains", match_value: "namecheap", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Tab Extend", match_type: "merchant_contains", match_value: "tab extend", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Extend Tab", match_type: "merchant_contains", match_value: "extend tab", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Scribe", match_type: "merchant_contains", match_value: "scribe", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
+  // Wise ACH payouts are usually contractor/payroll — leave uncategorized for review.
+  // Only tiny amounts are likely Wise fees.
+  { name: "Wise fee (small)", match_type: "merchant_contains", match_value: "wise", amount_min: null, amount_max: 5, ceo_bucket: "overhead", subcategory: "bank fees", exclude_from_pnl: false, priority: 40, notes: "Small Wise fees only — larger Wise ACH stays uncategorized" },
+  { name: "Isaque", match_type: "merchant_equals", match_value: "isaque", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "payroll", exclude_from_pnl: false, priority: 35, notes: "Majority Overhead in sheet" },
   { name: "Cursor", match_type: "merchant_contains", match_value: "cursor", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
-  { name: "OpenAI", match_type: "merchant_contains", match_value: "openai", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
   { name: "Anthropic", match_type: "merchant_contains", match_value: "anthropic", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
   { name: "Vercel", match_type: "merchant_contains", match_value: "vercel", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
   { name: "Supabase", match_type: "merchant_contains", match_value: "supabase", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
   { name: "Railway", match_type: "merchant_contains", match_value: "railway", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
-  { name: "QuickBooks", match_type: "merchant_contains", match_value: "intuit", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "accounting", exclude_from_pnl: false, priority: 40, notes: "Tax-only QB subscription" },
-  { name: "Insurance", match_type: "merchant_contains", match_value: "insurance", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "insurance", exclude_from_pnl: false, priority: 50, notes: null },
+  { name: "Fathom", match_type: "merchant_contains", match_value: "fathom", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Ideogram", match_type: "merchant_contains", match_value: "ideogram", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Higgsfield", match_type: "merchant_contains", match_value: "higgsfield", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
+  { name: "Chase monthly fee", match_type: "merchant_contains", match_value: "monthly service fee", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "bank fees", exclude_from_pnl: false, priority: 10, notes: null },
+  { name: "Overdraft fee", match_type: "merchant_contains", match_value: "overdraft fee", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "bank fees", exclude_from_pnl: false, priority: 10, notes: null },
+  { name: "Wire fee", match_type: "merchant_contains", match_value: "wire fee", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "bank fees", exclude_from_pnl: false, priority: 10, notes: null },
 
-  // Transfers / card payments — exclude from P&L
+  // Transfers / non-expense movements (exclude from P&L)
+  { name: "Gabes Personal transfer", match_type: "merchant_contains", match_value: "transfer to gabes personal", amount_min: null, amount_max: null, ceo_bucket: "owner_draw", subcategory: "transfer", exclude_from_pnl: true, priority: 5, notes: "Checking → personal" },
+  { name: "American Express payment", match_type: "merchant_contains", match_value: "american express", amount_min: null, amount_max: null, ceo_bucket: "uncategorized", subcategory: "card payment", exclude_from_pnl: true, priority: 5, notes: "Paying the Amex — not a new expense" },
   { name: "Payment thank you", match_type: "merchant_contains", match_value: "payment thank you", amount_min: null, amount_max: null, ceo_bucket: "uncategorized", subcategory: "transfer", exclude_from_pnl: true, priority: 5, notes: "Credit card payment" },
   { name: "Autopay", match_type: "memo_contains", match_value: "autopay", amount_min: null, amount_max: null, ceo_bucket: "uncategorized", subcategory: "transfer", exclude_from_pnl: true, priority: 5, notes: null },
-  { name: "Transfer", match_type: "merchant_contains", match_value: "transfer", amount_min: null, amount_max: null, ceo_bucket: "uncategorized", subcategory: "transfer", exclude_from_pnl: true, priority: 80, notes: "May need manual review" },
 ];
