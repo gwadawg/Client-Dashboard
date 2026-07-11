@@ -941,8 +941,6 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
             <AcquisitionMarketing startDate={dateStart} endDate={dateEnd} />
           )}
 
-          {view === "ceo" && <CeoDashboard canViewRevenue={canViewRevenue} />}
-
           {view === "client_calls" && (
             <ClientCallsBrowser clients={clients} startDate={dateStart} endDate={dateEnd} />
           )}
@@ -975,6 +973,8 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
               onStateChange={updateSimulatorUrl}
             />
           )}
+
+          {view === "ceo" && <CeoDashboard canViewRevenue={canViewRevenue} />}
 
           {/* ── Admin ── */}
           {view === "admin_agents"  && <AgentAdmin />}

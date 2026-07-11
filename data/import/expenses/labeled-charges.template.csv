@@ -1,0 +1,6 @@
+date,amount,merchant,category,subcategory,account,memo
+2026-01-05,450.00,Meta Platforms Inc,CAC,ads,Amex Business,Agency acquisition
+2026-01-08,297.00,GoHighLevel,COGS,software,Amex Business,Client CRM
+2026-01-10,12.00,ClickUp,overhead,software,Amex Business,
+2026-01-12,89.00,Uber Eats,personal,,Amex Business,Exclude from P&L
+2026-01-15,1200.00,PAYMENT THANK YOU - CHASE,uncategorized,transfer,Amex Business,Card payment — exclude

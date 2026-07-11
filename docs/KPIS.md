@@ -494,15 +494,22 @@ These light up per metric as soon as the relevant input exists. Inputs are impor
 the **Edit inputs** modal) and stored in the `business_metrics` time-series table, keyed by month.
 Each missing-input metric shows a dimmed "needs data" card until its inputs are present.
 
+**Preferred source (v1+):** the **Expenses** ledger (`business_expenses`) — every card/bank charge
+classified into CEO buckets, then **Roll up** writes these keys. See [`docs/EXPENSES.md`](./EXPENSES.md).
+Manual Edit inputs still works as an override / bootstrap.
+
 **Canonical input keys** (`BUSINESS_METRIC_KEYS` in `src/lib/business-metrics.ts`):
 
 | `metric_key` | Meaning |
 |--------------|---------|
-| `marketing_spend` | Agency client-acquisition spend for the month |
-| `operating_expenses` | Total company operating expenses for the month |
-| `delivery_costs` | Cost to deliver client work (COGS) for the month |
+| `marketing_spend` | Agency client-acquisition spend for the month (= sum of `ceo_bucket = cac` when rolled from ledger) |
+| `operating_expenses` | Total company P&L expenses for the month (= `cac` + `fulfillment` + `overhead` from ledger) |
+| `delivery_costs` | Cost to deliver client work / COGS (= sum of `ceo_bucket = fulfillment`) |
 | `cash_balance` | Cash on hand at month end |
 | `headcount` | Team headcount |
+
+**Ledger → metrics rollup:** `POST /api/expenses/rollup` with `{ month: "YYYY-MM" }`. Excludes
+`personal`, `owner_draw`, `passthrough`, `uncategorized`, and any row with `exclude_from_pnl`.
 
 **Derived metrics:**
 

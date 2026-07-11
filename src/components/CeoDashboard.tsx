@@ -16,6 +16,7 @@ import {
 import KpiSection from "./kpi/KpiSection";
 import KpiCard from "./kpi/KpiCard";
 import FinanceRevenueLedger from "./FinanceRevenueLedger";
+import ExpenseManager from "./ExpenseManager";
 import { reasonLabel } from "@/lib/client-feedback";
 import type { BusinessMetrics } from "@/lib/business-metrics";
 
@@ -349,18 +350,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
 
       {hubTab === "revenue" && <FinanceRevenueLedger />}
 
-      {hubTab === "expenses" && (
-        <div
-          className="rounded-xl px-6 py-16 text-center space-y-2"
-          style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
-        >
-          <p className="text-base font-semibold" style={{ color: "#e2e8f0" }}>Expenses coming next</p>
-          <p className="text-sm max-w-md mx-auto" style={{ color: MUTED }}>
-            This is where company expense line items will live (vendors, categories, monthly P&amp;L).
-            Revenue is already in the ledger — expenses will plug into the same Finance hub.
-          </p>
-        </div>
-      )}
+      {hubTab === "expenses" && <ExpenseManager />}
 
       {hubTab === "overview" && (
         <>

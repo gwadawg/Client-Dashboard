@@ -168,6 +168,8 @@ export default function AgentPayrollReport({
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [employeeView, setEmployeeView] = useState<EmployeePayrollView | null>(null);
+  const [postingPayroll, setPostingPayroll] = useState(false);
+  const [payrollMsg, setPayrollMsg] = useState("");
 
   const submittedAgentIds = useMemo(
     () => new Set(submittedEmployees.map(s => s.agent_id)),
@@ -375,6 +377,37 @@ export default function AgentPayrollReport({
     );
   }
 
+  async function postToExpenses(dryRun: boolean) {
+    setPostingPayroll(true);
+    setPayrollMsg("");
+    setError("");
+    const res = await fetch("/api/expenses/payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        startDate: bounds.startDate,
+        endDate: bounds.endDate,
+        role_bucket: "setter",
+        dryRun,
+      }),
+    });
+    const d = await res.json();
+    setPostingPayroll(false);
+    if (!res.ok) {
+      setError(d.error ?? "Failed to post payroll to expenses");
+      return;
+    }
+    if (dryRun) {
+      setPayrollMsg(
+        `Preview: ${d.would_insert} expense rows · ${fmtMoney(d.grand_total ?? 0)} as ${d.ceo_bucket} (CAC). ${d.skipped_duplicate ?? 0} already posted.`,
+      );
+    } else {
+      setPayrollMsg(
+        `Posted ${d.inserted} payroll expenses (${fmtMoney(d.grand_total ?? 0)}) as ${d.ceo_bucket}. Roll up from Finance → Expenses to update KPIs.`,
+      );
+    }
+  }
+
   const callRepUnassigned =
     (report?.call_reps.unassigned.bookings ?? 0) +
     (report?.call_reps.unassigned.shows ?? 0) +
@@ -450,10 +483,34 @@ export default function AgentPayrollReport({
               >
                 Detail CSV
               </button>
+              <button
+                type="button"
+                onClick={() => postToExpenses(true)}
+                disabled={!report || postingPayroll}
+                className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+                style={{ background: "rgba(148,163,184,0.12)", color: "#94a3b8" }}
+              >
+                Preview → Expenses
+              </button>
+              <button
+                type="button"
+                onClick={() => postToExpenses(false)}
+                disabled={!report || postingPayroll}
+                className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+                style={{ background: "rgba(56,189,248,0.15)", color: "#38bdf8" }}
+              >
+                Post to Expenses (CAC)
+              </button>
             </>
           )}
         </div>
       </div>
+
+      {payrollMsg && (
+        <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.25)", color: "#34d399" }}>
+          {payrollMsg}
+        </div>
+      )}
 
       <div className="flex gap-2 border-b pb-1" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
         {([

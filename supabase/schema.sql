@@ -1379,3 +1379,78 @@ create table if not exists payroll_run_employees (
 create index if not exists payroll_runs_period_month_idx on payroll_runs (period_month desc);
 create index if not exists payroll_run_employees_agent_idx on payroll_run_employees (agent_id, period_month desc);
 create index if not exists payroll_run_employees_period_idx on payroll_run_employees (period_month desc);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Business Expenses (see migrations/add_business_expenses.sql)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists finance_accounts (
+  id            uuid primary key default gen_random_uuid(),
+  name          text not null,
+  institution   text,
+  account_type  text not null default 'credit_card',
+  entity        text,
+  is_business   boolean not null default true,
+  active        boolean not null default true,
+  last4         text,
+  notes         text,
+  created_at    timestamptz not null default now(),
+  created_by    uuid references auth.users(id) on delete set null,
+  constraint finance_accounts_type_check check (
+    account_type in ('checking', 'credit_card', 'other')
+  )
+);
+
+create table if not exists expense_category_rules (
+  id                uuid primary key default gen_random_uuid(),
+  name              text not null,
+  match_type        text not null,
+  match_value       text not null,
+  amount_min        numeric,
+  amount_max        numeric,
+  ceo_bucket        text not null,
+  subcategory       text,
+  exclude_from_pnl  boolean not null default false,
+  priority          int not null default 100,
+  active            boolean not null default true,
+  notes             text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  constraint expense_rules_match_type_check check (
+    match_type in ('merchant_contains', 'merchant_equals', 'memo_contains', 'amount_range')
+  ),
+  constraint expense_rules_bucket_check check (
+    ceo_bucket in ('cac', 'fulfillment', 'overhead', 'passthrough', 'owner_draw', 'personal', 'uncategorized')
+  )
+);
+
+create table if not exists business_expenses (
+  id                   uuid primary key default gen_random_uuid(),
+  occurred_on          date not null,
+  amount               numeric not null,
+  currency             text not null default 'USD',
+  account_id           uuid references finance_accounts(id) on delete set null,
+  source               text not null default 'manual',
+  merchant_raw         text,
+  merchant_normalized  text,
+  memo                 text,
+  external_id          text,
+  ceo_bucket           text not null default 'uncategorized',
+  subcategory          text,
+  exclude_from_pnl     boolean not null default false,
+  categorized_by       text,
+  rule_id              uuid references expense_category_rules(id) on delete set null,
+  payroll_run_id       text,
+  client_id            uuid references clients(id) on delete set null,
+  created_by           uuid references auth.users(id) on delete set null,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
+  constraint business_expenses_source_check check (
+    source in ('manual', 'csv_import', 'payroll', 'bank_sync')
+  ),
+  constraint business_expenses_bucket_check check (
+    ceo_bucket in ('cac', 'fulfillment', 'overhead', 'passthrough', 'owner_draw', 'personal', 'uncategorized')
+  ),
+  constraint business_expenses_categorized_by_check check (
+    categorized_by is null or categorized_by in ('rule', 'user', 'import')
+  )
+);

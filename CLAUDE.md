@@ -9,6 +9,7 @@ pipeline) plus operational metrics (dials, pickups, speed-to-lead, ad spend, CPL
 **Data pipeline:** GHL → Make.com → Railway (this app) → Supabase → Dashboard
 
 **KPI definitions (formulas, sheet mapping, GHL fields):** see [`docs/KPIS.md`](docs/KPIS.md)
+**Expense ledger (charges → CAC / COGS / overhead):** see [`docs/EXPENSES.md`](docs/EXPENSES.md)
 
 ### Client KPIs we track
 
