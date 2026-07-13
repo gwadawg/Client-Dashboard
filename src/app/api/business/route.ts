@@ -83,7 +83,7 @@ export async function GET(req: Request) {
   const insightFrom = `${addMonths(period.startMonth, 0)}-01`;
   const insightTo = lastDayOfMonth(endMonth);
 
-  const [clientsRes, historyRes, paidBillingsRes, openBillingsRes, metricsRes, snapshotsRes, closesRes, acqSpendRes] =
+  const [clientsRes, historyRes, paidBillingsRes, openBillingsRes, metricsRes, snapshotsRes, closesRes, acqSpendRes, churnFormsRes] =
     await Promise.all([
       ctx.service.from('clients').select(CLIENT_FIELDS),
       ctx.service.from('client_status_history').select(HISTORY_FIELDS),
@@ -113,6 +113,12 @@ export async function GET(req: Request) {
         .select('spend, insight_date')
         .gte('insight_date', insightFrom)
         .lte('insight_date', insightTo),
+      ctx.service
+        .from('client_form_submissions')
+        .select('client_id, responses, submitted_at')
+        .eq('form_type', 'churn')
+        .eq('status', 'applied')
+        .order('submitted_at', { ascending: false }),
     ]);
 
   if (clientsRes.error) return NextResponse.json({ error: clientsRes.error.message }, { status: 500 });
@@ -131,6 +137,9 @@ export async function GET(req: Request) {
   if (acqSpendRes.error) {
     return NextResponse.json({ error: acqSpendRes.error.message }, { status: 500 });
   }
+  if (churnFormsRes.error) {
+    return NextResponse.json({ error: churnFormsRes.error.message }, { status: 500 });
+  }
 
   const billings = [
     ...((paidBillingsRes.data ?? []) as BusinessBilling[]),
@@ -146,6 +155,19 @@ export async function GET(req: Request) {
     signedClosesByMonth[m] = (signedClosesByMonth[m] ?? 0) + 1;
   }
 
+  // Latest applied churn form per client — effective date wins for late reporting.
+  const effectiveChurnDateByClient: Record<string, string> = {};
+  for (const row of churnFormsRes.data ?? []) {
+    const clientId = (row as { client_id: string }).client_id;
+    if (!clientId || effectiveChurnDateByClient[clientId]) continue;
+    const responses = (row as { responses: Record<string, unknown> | null }).responses;
+    const raw = responses?.effective_churn_date;
+    if (typeof raw !== 'string') continue;
+    const date = raw.trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    effectiveChurnDateByClient[clientId] = date;
+  }
+
   const metrics = computeBusinessMetrics({
     clients: (clientsRes.data ?? []) as BusinessClient[],
     statusHistory: (historyRes.data ?? []) as StatusHistoryRow[],
@@ -153,6 +175,7 @@ export async function GET(req: Request) {
     businessMetrics: (metricsRes.data ?? []) as BusinessMetricRow[],
     snapshots: (snapshotsRes.data ?? []) as ClientMonthlySnapshot[],
     signedClosesByMonth,
+    effectiveChurnDateByClient,
     period,
     trendMonths,
   });

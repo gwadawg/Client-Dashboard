@@ -465,7 +465,7 @@ so the numbers match the bank. Passthrough (ad-spend reimbursement) is always ex
 | KPI | Definition |
 |-----|------------|
 | **New MRR** | `SUM(clients.mrr)` for clients whose `date_signed` falls in the month. |
-| **Lost MRR** | Roster-only. One departure per client from `client_status_history` into `off_boarding` or `churned` (deduped). Month bucket = `clients.churned_at` when set, else first departure `changed_at`. Amount = `mrr_at_change` at first departure. **Not** derived from billing charges. |
+| **Lost MRR** | Roster-only. One departure per client from `client_status_history` into `off_boarding` or `churned` (deduped). Month bucket = churn form `effective_churn_date` when present, else `clients.churned_at`, else first departure `changed_at`. Amount = `mrr_at_change` at first departure. **Not** derived from billing charges. |
 | **Expansion / Contraction MRR** | MoM MRR delta on clients active in both prior-month and this-month `client_monthly_snapshots`. |
 | **Net New MRR** | `New + Expansion − Contraction − Lost`. |
 | **Start / End MRR** | Prior-month snapshot (start) and this-month snapshot or live Active MRR (end). Cron on the 1st freezes the **prior** month. |

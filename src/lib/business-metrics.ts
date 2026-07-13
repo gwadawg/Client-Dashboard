@@ -80,6 +80,11 @@ export type BusinessInput = {
    * When omitted, CAC falls back to roster `date_signed` count.
    */
   signedClosesByMonth?: Record<string, number>;
+  /**
+   * Churn form `effective_churn_date` (YYYY-MM-DD) by client id.
+   * Wins over `clients.churned_at` so late-reported churns land in the real leave month.
+   */
+  effectiveChurnDateByClient?: Record<string, string>;
   /** Reporting window. Prefer over bare `month` for quarter / YTD. */
   period?: ResolvedPeriod;
   /** Single YYYY-MM when `period` is omitted. */
@@ -441,15 +446,34 @@ function collectedInPeriod(b: BusinessBilling, months: Set<string>): number {
 }
 
 /**
+ * Overlay churn-form effective dates onto roster rows so late reports use the
+ * date entered on the form, not when the form was submitted.
+ */
+export function applyEffectiveChurnDates(
+  clients: BusinessClient[],
+  effectiveChurnDateByClient?: Record<string, string>,
+): BusinessClient[] {
+  if (!effectiveChurnDateByClient) return clients;
+  return clients.map((c) => {
+    const formDate = effectiveChurnDateByClient[c.id]?.trim();
+    if (!formDate || !/^\d{4}-\d{2}-\d{2}/.test(formDate)) return c;
+    return { ...c, churned_at: `${formDate.slice(0, 10)}T12:00:00.000Z` };
+  });
+}
+
+/**
  * One Lost-MRR event per client from roster lifecycle history (not billings).
- * Prefers `clients.churned_at` for the month bucket when set (backdated churn);
- * otherwise the first transition into off_boarding / churned.
+ * Month bucket priority:
+ *   1. churn form `effective_churn_date` (when provided)
+ *   2. `clients.churned_at` (backdated leave)
+ *   3. first transition into off_boarding / churned (`changed_at`)
  * Amount is `mrr_at_change` at that first departure (MRR when they left the book).
  */
 export function computeDeparturesForMonth(
   clients: BusinessClient[],
   statusHistory: StatusHistoryRow[],
   month: string,
+  effectiveChurnDateByClient?: Record<string, string>,
 ): ChurnedClient[] {
   const clientById = new Map(clients.map((c) => [c.id, c]));
   const byClient = new Map<string, StatusHistoryRow[]>();
@@ -467,7 +491,9 @@ export function computeDeparturesForMonth(
     const churnedRow = rows.find((r) => r.new_status === CHURNED) ?? null;
     const display = churnedRow ?? first;
     const client = clientById.get(clientId);
-    const effectiveMonth = monthOf(client?.churned_at) ?? monthOf(first.changed_at);
+    const formDate = effectiveChurnDateByClient?.[clientId];
+    const effectiveMonth =
+      monthOf(formDate) ?? monthOf(client?.churned_at) ?? monthOf(first.changed_at);
     if (effectiveMonth !== month) continue;
     out.push({
       client_id: clientId,
@@ -540,7 +566,9 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
   const monthsSet = new Set(period.months);
   const endMonth = period.endMonth;
   const trendMonths = input.trendMonths ?? 12;
-  const { clients, statusHistory, billings } = input;
+  const effectiveChurnDateByClient = input.effectiveChurnDateByClient;
+  const clients = applyEffectiveChurnDates(input.clients, effectiveChurnDateByClient);
+  const { statusHistory, billings } = input;
   const snapshots = input.snapshots ?? [];
   const signedClosesByMonth = input.signedClosesByMonth ?? {};
 
@@ -570,7 +598,9 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
 
   const churned_clients: ChurnedClient[] = [];
   for (const m of period.months) {
-    churned_clients.push(...computeDeparturesForMonth(clients, statusHistory, m));
+    churned_clients.push(
+      ...computeDeparturesForMonth(clients, statusHistory, m, effectiveChurnDateByClient),
+    );
   }
   const lost_mrr = churned_clients.reduce((s, c) => s + c.mrr, 0);
   const churned_count = churned_clients.length;

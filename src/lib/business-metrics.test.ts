@@ -84,6 +84,32 @@ describe("computeDeparturesForMonth", () => {
     assert.equal(computeDeparturesForMonth(clients, history, "2026-02").length, 1);
     assert.equal(computeDeparturesForMonth(clients, history, "2026-03").length, 0);
   });
+
+  it("prefers churn form effective date over roster churned_at (late report)", () => {
+    const clients = [
+      client({
+        id: "c1",
+        name: "Acme",
+        lifecycle_status: "churned",
+        // Roster stamped when form was filed late
+        churned_at: "2026-07-13",
+      }),
+    ];
+    const history: StatusHistoryRow[] = [
+      {
+        client_id: "c1",
+        previous_status: "active",
+        new_status: "churned",
+        reason_code: "price",
+        note: null,
+        mrr_at_change: 1800,
+        changed_at: "2026-07-13T12:00:00.000Z",
+      },
+    ];
+    const formDates = { c1: "2026-06-15" };
+    assert.equal(computeDeparturesForMonth(clients, history, "2026-06", formDates).length, 1);
+    assert.equal(computeDeparturesForMonth(clients, history, "2026-07", formDates).length, 0);
+  });
 });
 
 describe("computeBusinessMetrics", () => {

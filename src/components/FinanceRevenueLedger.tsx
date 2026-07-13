@@ -127,10 +127,10 @@ export default function FinanceRevenueLedger() {
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>
-          Revenue ledger
+          Raw billing data
         </h2>
         <p className="text-xs mt-0.5" style={{ color: MUTED }}>
-          All client charges company-wide. File and collect in Admin → Client Billing; this is the CEO read view.
+          Every client charge company-wide. File and collect in Admin → Client Billing; this is the read-only ledger.
         </p>
       </div>
 

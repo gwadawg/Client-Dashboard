@@ -367,10 +367,14 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
     );
   }
 
-  const HUB_TABS: { key: "overview" | "revenue" | "expenses"; label: string }[] = [
-    { key: "overview", label: "CEO" },
-    { key: "revenue", label: "Revenue" },
-    { key: "expenses", label: "Expenses" },
+  const HUB_TABS: {
+    key: "overview" | "revenue" | "expenses";
+    label: string;
+    hint: string;
+  }[] = [
+    { key: "overview", label: "Dashboard", hint: "KPIs & scorecard" },
+    { key: "revenue", label: "Revenue", hint: "Billing ledger" },
+    { key: "expenses", label: "Expenses", hint: "Charge ledger" },
   ];
 
   const prevTrend = data?.trend?.length
@@ -391,29 +395,42 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
             Executive
           </p>
           <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "#f1f5f9" }}>
-            CEO Finance
+            CEO
           </h1>
           <p className="text-xs mt-1 max-w-xl leading-relaxed" style={{ color: MUTED }}>
-            High-level books for reflection and planning — recurring revenue, cash, unit economics,
-            and portfolio risk. Drill into Revenue and Expenses for the ledgers.
+            Scorecard on Dashboard; open Revenue or Expenses for the raw ledgers behind the numbers.
           </p>
         </div>
       </div>
 
       <div className="flex gap-1 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        {HUB_TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setHubTab(t.key)}
-            className="px-4 py-2.5 text-sm font-medium"
-            style={{
-              color: hubTab === t.key ? "#e2e8f0" : "#64748b",
-              borderBottom: `2px solid ${hubTab === t.key ? AMBER : "transparent"}`,
-            }}
-          >
-            {t.label}
-          </button>
+        {HUB_TABS.map((t, i) => (
+          <div key={t.key} className="flex items-stretch">
+            {i === 1 && (
+              <div
+                className="self-center mx-2 h-5 w-px"
+                style={{ background: "rgba(255,255,255,0.1)" }}
+                aria-hidden
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => setHubTab(t.key)}
+              className="px-4 py-2.5 text-left"
+              style={{
+                color: hubTab === t.key ? "#e2e8f0" : "#64748b",
+                borderBottom: `2px solid ${hubTab === t.key ? AMBER : "transparent"}`,
+              }}
+            >
+              <span className="block text-sm font-medium leading-none">{t.label}</span>
+              <span
+                className="block text-[10px] mt-1 leading-none"
+                style={{ color: hubTab === t.key ? "#94a3b8" : "#475569" }}
+              >
+                {t.hint}
+              </span>
+            </button>
+          </div>
         ))}
       </div>
 
@@ -576,7 +593,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                   hint={{
                     definition: `Change in recurring book this ${scopeWord} (not cash collected).`,
                     source:
-                      "Roster date_signed (new) + client_monthly_snapshots (expansion/contraction) + status history / churned_at (lost).",
+                      "Roster date_signed (new) + client_monthly_snapshots (expansion/contraction) + churn form effective date / churned_at (lost).",
                     formula: "New MRR + Expansion − Contraction − Lost MRR",
                   }}
                   delta={
@@ -862,7 +879,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                     value={pct(data.churn.logo_churn_pct)}
                     hint={{
                       definition: "Share of the starting book that left this month (by logo count).",
-                      source: "client_status_history / churned_at (roster) — not billing charges.",
+                      source: "Churn form effective date (preferred) → clients.churned_at → status history. Not billing charges.",
                       formula: "Departed clients ÷ (Active now − signed this month + departed this month) × 100",
                     }}
                   />
@@ -1140,7 +1157,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
               <KpiSection
                 title="Unit Economics"
                 showDivider
-                footnote="From expense rollup + portfolio. Prefer Finance → Expenses → Roll up over manual edits when the ledger is current."
+                footnote="From expense rollup + portfolio. Prefer Expenses → Roll up over manual edits when the ledger is current."
               >
                 <div className="flex justify-end mb-3">
                   <button

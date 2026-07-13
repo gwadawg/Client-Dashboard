@@ -131,6 +131,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .update({
         source: 'manual',
         changed_by: ctx.userId,
+        changed_at: calledAt,
         reason_code: draft.reason_code,
         note: historyNote,
       })
