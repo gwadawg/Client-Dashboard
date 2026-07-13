@@ -1,4 +1,5 @@
 import Sparkline from "./Sparkline";
+import MetricInfoTip, { type MetricHint } from "./MetricInfoTip";
 
 export type KpiDelta = {
   /** Pre-formatted change text, e.g. "+12%" or "+3.4 pts". */
@@ -11,7 +12,7 @@ type Props = {
   label: string;
   value: string;
   accent?: boolean;
-  hint?: string;
+  hint?: MetricHint | string;
   delta?: KpiDelta;
   spark?: (number | null)[];
 };
@@ -19,7 +20,7 @@ type Props = {
 export default function KpiCard({ label, value, accent = false, hint, delta, spark }: Props) {
   return (
     <div
-      className="relative overflow-hidden rounded-xl p-5 flex flex-col gap-2 transition-all duration-200 hover:translate-y-[-1px] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="relative rounded-xl p-5 flex flex-col gap-2 transition-all duration-200 hover:translate-y-[-1px] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
       style={{
         background: "linear-gradient(135deg, #0f2040 0%, #0c1a30 100%)",
         border: "1px solid rgba(255,255,255,0.07)",
@@ -31,13 +32,8 @@ export default function KpiCard({ label, value, accent = false, hint, delta, spa
         aria-hidden
       />
       {hint && (
-        <span
-          className="absolute top-3 right-3 flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold cursor-help select-none"
-          style={{ background: "rgba(148,163,184,0.15)", color: "#64748b" }}
-          title={hint}
-          aria-label={hint}
-        >
-          i
+        <span className="absolute top-3 right-3 z-10">
+          <MetricInfoTip hint={hint} />
         </span>
       )}
       <span className="text-xs font-medium tracking-wide pl-3 pr-5" style={{ color: "#64748b" }}>

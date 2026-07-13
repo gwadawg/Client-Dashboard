@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import KpiSection from "./kpi/KpiSection";
 import KpiCard from "./kpi/KpiCard";
+import MetricInfoTip, { type MetricHint } from "./kpi/MetricInfoTip";
 import FinanceRevenueLedger from "./FinanceRevenueLedger";
 import ExpenseManager from "./ExpenseManager";
 import { reasonLabel } from "@/lib/client-feedback";
@@ -107,7 +108,7 @@ function StatCard({
   label: string;
   value: string;
   sub?: string;
-  hint?: string;
+  hint?: MetricHint | string;
   accent?: boolean;
   badge?: string;
 }) {
@@ -117,13 +118,8 @@ function StatCard({
       style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
     >
       {hint && (
-        <span
-          className="absolute top-2.5 right-2.5 flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold cursor-help select-none"
-          style={{ background: "rgba(148,163,184,0.15)", color: "#64748b" }}
-          title={hint}
-          aria-label={hint}
-        >
-          i
+        <span className="absolute top-2.5 right-2.5 z-10">
+          <MetricInfoTip hint={hint} />
         </span>
       )}
       <p className="text-[11px] uppercase tracking-wider pr-5" style={{ color: MUTED }}>
@@ -457,14 +453,23 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                   label="Active MRR"
                   value={money(data.headline.active_mrr, { round: true })}
                   accent
-                  hint="Live monthly recurring revenue from active clients."
+                  hint={{
+                    definition: "Live recurring revenue from clients currently marked active.",
+                    source: "Client Roster → clients.mrr where lifecycle_status = active (not billings).",
+                    formula: "SUM(clients.mrr) for active clients",
+                  }}
                   delta={momDelta(data.headline.active_mrr, prevTrend?.mrr_end, { asMoney: true })}
                   spark={mrrSpark}
                 />
                 <KpiCard
                   label="Cash Collected"
                   value={money(data.headline.cash_collected, { round: true })}
-                  hint="Cash received this month (paid_on), excluding passthrough."
+                  hint={{
+                    definition: "Cash that actually landed in the selected month.",
+                    source: "Finance Revenue ledger → client_billings (paid_on, amount_paid).",
+                    formula:
+                      "SUM(amount_paid − passthrough_amount) where paid_on is in month and revenue_type ≠ passthrough / not refunded",
+                  }}
                   delta={momDelta(data.headline.cash_collected, prevTrend?.cash_collected, {
                     asMoney: true,
                   })}
@@ -476,7 +481,12 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                   <KpiCard
                     label="Operating Profit"
                     value={money(data.unitEconomics.operating_profit, { round: true })}
-                    hint="Total cash − operating expenses (after expense rollup)."
+                    hint={{
+                      definition: "Cash profit after company operating costs for the month.",
+                      source:
+                        "Cash from client_billings; OpEx from business_expenses → Roll up → business_metrics.operating_expenses.",
+                      formula: "Total Cash Collected − Operating Expenses (CAC + fulfillment + overhead, excl. exclude_from_pnl)",
+                    }}
                     delta={momDelta(
                       data.unitEconomics.operating_profit,
                       prevTrend?.operating_profit ?? undefined,
@@ -488,7 +498,12 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                 <KpiCard
                   label="Net New MRR"
                   value={money(data.headline.net_new_mrr, { round: true })}
-                  hint="New + expansion − contraction − Lost MRR for the selected month."
+                  hint={{
+                    definition: "Change in recurring book this month (not cash collected).",
+                    source:
+                      "Roster date_signed (new) + client_monthly_snapshots (expansion/contraction) + status history / churned_at (lost).",
+                    formula: "New MRR + Expansion − Contraction − Lost MRR",
+                  }}
                   delta={
                     data.headline.gross_revenue_churn_pct != null
                       ? {
@@ -512,7 +527,11 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                   <KpiCard
                     label="CAC"
                     value={money(data.unitEconomics.cac, { round: true })}
-                    hint={`Marketing spend ÷ ${data.unitEconomics.cac_closes} signed close${data.unitEconomics.cac_closes === 1 ? "" : "s"}.`}
+                    hint={{
+                      definition: "Cost to acquire one signed close this month.",
+                      source: `Marketing spend = expense rollup ceo_bucket=cac (or Meta ads if no rollup). Closes = acquisition_closes (${data.unitEconomics.cac_closes} this month).`,
+                      formula: "Marketing Spend ÷ Signed Closes (non-dismissed acquisition closes)",
+                    }}
                     delta={
                       data.unitEconomics.ltv_cac != null
                         ? {
@@ -531,7 +550,11 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                 <KpiCard
                   label="Signed Closes"
                   value={int(data.unitEconomics.cac_closes)}
-                  hint="Acquisition closes this month (CAC denominator). Roster logos signed shown as sub-context in portfolio."
+                  hint={{
+                    definition: "Acquisition deals closed this month — the CAC denominator.",
+                    source: "Acquisition → acquisition_closes (closed_at in month, not dismissed/deleted).",
+                    formula: "COUNT(acquisition_closes) where closed_at in month",
+                  }}
                   delta={{
                     text: `${int(data.portfolio.new_clients_signed)} on roster`,
                     good: null,
@@ -625,22 +648,38 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                   <StatCard
                     label="Top Client %"
                     value={pct(data.portfolio.top_client_pct)}
-                    hint="Largest client's share of active MRR."
+                    hint={{
+                      definition: "How dependent the book is on the single largest client.",
+                      source: "Client Roster → active clients.mrr.",
+                      formula: "MAX(active client MRR) ÷ Active MRR × 100",
+                    }}
                   />
                   <StatCard
                     label="Top 5 %"
                     value={pct(data.portfolio.top5_pct)}
-                    hint="Top five clients' share of active MRR."
+                    hint={{
+                      definition: "Concentration across the five largest active accounts.",
+                      source: "Client Roster → active clients.mrr.",
+                      formula: "SUM(top 5 active MRR) ÷ Active MRR × 100",
+                    }}
                   />
                   <StatCard
                     label="At-Risk MRR (90d)"
                     value={money(data.portfolio.contracts_ending_90d_mrr, { round: true })}
-                    hint="Active MRR on contracts ending within 90 days."
+                    hint={{
+                      definition: "Recurring revenue that could churn if contracts ending soon are not renewed.",
+                      source: "Client Roster → clients.contract_end_date + mrr (active only).",
+                      formula: "SUM(mrr) where lifecycle = active and contract_end_date within 90 days",
+                    }}
                   />
                   <StatCard
                     label="Overdue AR"
                     value={money(data.revenue.overdue_ar, { round: true })}
-                    hint="Past-due unpaid balances (all-time running)."
+                    hint={{
+                      definition: "Unpaid invoices past due (cash still owed).",
+                      source: "client_billings unpaid balances (all-time, not month-scoped).",
+                      formula: "SUM(amount − amount_paid) where status is overdue/failed and not voided/refunded/passthrough",
+                    }}
                   />
                 </div>
               </div>
@@ -657,32 +696,57 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                     value={money(data.revenue.new_cash, { round: true })}
                     sub={`New-logo cross-check: ${money(data.revenue.new_logo_cash, { round: true })}`}
                     accent
-                    hint="Cash on front_end billings. Cross-check = first-ever paid billing landing this month."
+                    hint={{
+                      definition: "Front-end cash from new-client charges this month.",
+                      source: "client_billings where revenue_segment = front_end and paid_on in month.",
+                      formula:
+                        "SUM(amount_paid − passthrough_amount) for front_end. Cross-check = first-ever paid billing per client landing this month.",
+                    }}
                   />
                   <StatCard
                     label="Recurring Cash"
                     value={money(data.revenue.recurring_cash, { round: true })}
-                    hint="Cash on back_end retainer billings."
+                    hint={{
+                      definition: "Cash from ongoing retainer / back-end billings.",
+                      source: "client_billings where revenue_segment = back_end and paid_on in month.",
+                      formula: "SUM(amount_paid − passthrough_amount) for back_end",
+                    }}
                   />
                   <StatCard
                     label="Total Cash"
                     value={money(data.revenue.total_cash, { round: true })}
-                    hint="All revenue cash collected this month."
+                    hint={{
+                      definition: "All non-passthrough cash collected in the month.",
+                      source: "client_billings (paid_on).",
+                      formula: "New Cash + Recurring Cash + any untagged-segment cash (still in total)",
+                    }}
                   />
                   <StatCard
                     label="Net of Fees"
                     value={money(data.revenue.net_of_fees, { round: true })}
-                    hint="Total cash minus payment processing fees."
+                    hint={{
+                      definition: "Cash after payment-processor fees.",
+                      source: "client_billings.amount_paid and processing_fee.",
+                      formula: "SUM(amount_paid − passthrough_amount − processing_fee) for revenue collections in month",
+                    }}
                   />
                   <StatCard
                     label="Open AR"
                     value={money(data.revenue.open_ar, { round: true })}
-                    hint="Outstanding unpaid balances (all-time)."
+                    hint={{
+                      definition: "All outstanding unpaid balances (not only this month).",
+                      source: "client_billings unpaid rows.",
+                      formula: "SUM(amount − amount_paid) for open non-passthrough billings",
+                    }}
                   />
                   <StatCard
                     label="ARPA"
                     value={money(data.headline.arpa, { round: true })}
-                    hint="Active MRR ÷ Active Clients."
+                    hint={{
+                      definition: "Average revenue per active account.",
+                      source: "Client Roster active mrr + active client count.",
+                      formula: "Active MRR ÷ Active Clients",
+                    }}
                   />
                 </div>
                 <div className="grid gap-4 lg:grid-cols-2 mt-4">
@@ -721,22 +785,38 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                   <StatCard
                     label="Logo Churn"
                     value={pct(data.churn.logo_churn_pct)}
-                    hint="Departures this month ÷ active at month start."
+                    hint={{
+                      definition: "Share of the starting book that left this month (by logo count).",
+                      source: "client_status_history / churned_at (roster) — not billing charges.",
+                      formula: "Departed clients ÷ (Active now − signed this month + departed this month) × 100",
+                    }}
                   />
                   <StatCard
                     label="Revenue Churn"
                     value={pct(data.churn.gross_revenue_churn_pct)}
-                    hint="Lost MRR ÷ start MRR."
+                    hint={{
+                      definition: "Share of start-of-month MRR lost to departures.",
+                      source: "Lost MRR from roster status history; Start MRR from prior-month snapshot (or reconstructed).",
+                      formula: "Lost MRR ÷ Start MRR × 100",
+                    }}
                   />
                   <StatCard
                     label="Net Rev. Retention"
                     value={pct(data.churn.nrr_pct)}
-                    hint="(Start + expansion − contraction − lost) ÷ start."
+                    hint={{
+                      definition: "How much of last month’s recurring book you kept after expansion and churn.",
+                      source: "MRR bridge (roster + snapshots).",
+                      formula: "(Start MRR + Expansion − Contraction − Lost MRR) ÷ Start MRR × 100",
+                    }}
                   />
                   <StatCard
                     label="Quick Ratio"
                     value={ratio(data.churn.quick_ratio)}
-                    hint="(New + expansion) ÷ (lost + contraction). Above 4 is healthy."
+                    hint={{
+                      definition: "Growth MRR gained vs MRR lost. Above ~4 is healthy SaaS rule of thumb.",
+                      source: "MRR bridge components.",
+                      formula: "(New MRR + Expansion) ÷ (Lost MRR + Contraction)",
+                    }}
                   />
                   <StatCard
                     label="Avg Tenure"
@@ -745,7 +825,11 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                         ? "—"
                         : `${data.churn.avg_tenure_months.toFixed(1)} mo`
                     }
-                    hint="Mean months from signing to churn (or today)."
+                    hint={{
+                      definition: "Average how long clients stay (used in LTV).",
+                      source: "clients.date_signed → churned_at (or today if still active).",
+                      formula: "MEAN((end − date_signed) in months) across clients with a sign date",
+                    }}
                   />
                 </div>
                 {data.churn.churned_clients.length > 0 && (
@@ -842,22 +926,38 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                   <StatCard
                     label="Active Clients"
                     value={int(data.headline.active_clients)}
-                    hint="lifecycle_status = active."
+                    hint={{
+                      definition: "How many clients are currently live on the book.",
+                      source: "Client Roster → clients.lifecycle_status.",
+                      formula: "COUNT(*) where lifecycle_status = active",
+                    }}
                   />
                   <StatCard
                     label="New on Roster"
                     value={int(data.portfolio.new_clients_signed)}
-                    hint="Clients with date_signed in this month."
+                    hint={{
+                      definition: "Roster logos with a sign date in this month (may differ from acquisition closes).",
+                      source: "Client Roster → clients.date_signed.",
+                      formula: "COUNT(*) where date_signed is in the selected month",
+                    }}
                   />
                   <StatCard
                     label="Expansion MRR"
                     value={money(data.mrrBridge.expansion_mrr, { round: true })}
-                    hint="From monthly snapshots when available."
+                    hint={{
+                      definition: "Upsells on clients who stayed active month-over-month.",
+                      source: "client_monthly_snapshots (prior month vs this month). 0 until snapshots exist.",
+                      formula: "SUM(end_mrr − start_mrr) for clients active in both months where delta > 0",
+                    }}
                   />
                   <StatCard
                     label="Contraction MRR"
                     value={money(data.mrrBridge.contraction_mrr, { round: true })}
-                    hint="From monthly snapshots when available."
+                    hint={{
+                      definition: "Downsells on retained active clients.",
+                      source: "client_monthly_snapshots. 0 until snapshots exist.",
+                      formula: "SUM(start_mrr − end_mrr) for clients active in both months where delta < 0",
+                    }}
                   />
                 </div>
 
@@ -1027,55 +1127,96 @@ function MiniStat({
 // ── Unit economics grid (live values, else "needs data") ──────────────────────
 
 function UnitEconomicsGrid({ u }: { u: BusinessMetrics["unitEconomics"] }) {
-  const cards: { label: string; value: string | null; hint: string; need: string; accent?: boolean; badge?: string }[] = [
+  const cards: {
+    label: string;
+    value: string | null;
+    hint: MetricHint;
+    need: string;
+    accent?: boolean;
+    badge?: string;
+  }[] = [
     {
       label: "CAC",
       value: u.cac == null ? null : money(u.cac, { round: true }),
-      hint: `Marketing spend ÷ ${u.cac_closes} signed close${u.cac_closes === 1 ? "" : "s"} this month.`,
+      hint: {
+        definition: "Cost to acquire one signed close.",
+        source: `business_metrics.marketing_spend (expense rollup CAC) ÷ ${u.cac_closes} acquisition_closes.`,
+        formula: "Marketing Spend ÷ Signed Closes",
+      },
       need: "Needs marketing spend + signed closes.",
     },
     {
       label: "LTV",
       value: u.ltv == null ? null : money(u.ltv, { round: true }),
-      hint: u.ltv_is_margin_based ? "ARPA × avg tenure × gross margin." : "ARPA × avg tenure (revenue LTV; add delivery costs for margin-based).",
+      hint: {
+        definition: "Estimated lifetime revenue (or margin-adjusted) per account.",
+        source: "ARPA from roster; tenure from date_signed/churned_at; optional gross margin from delivery_costs rollup.",
+        formula: u.ltv_is_margin_based
+          ? "ARPA × Avg Tenure × Gross Margin %"
+          : "ARPA × Avg Tenure (add delivery costs for margin-based LTV)",
+      },
       need: "Needs ARPA + tenure.",
     },
     {
       label: "LTV : CAC",
       value: u.ltv_cac == null ? null : ratio(u.ltv_cac),
-      hint: "LTV ÷ CAC. Above 3× is healthy.",
+      hint: {
+        definition: "How many times LTV covers acquisition cost. Target ≥ 3×.",
+        source: "Derived from LTV and CAC cards above.",
+        formula: "LTV ÷ CAC",
+      },
       need: "Needs LTV + CAC.",
       accent: true,
     },
     {
       label: "CAC Payback",
       value: u.cac_payback_months == null ? null : `${u.cac_payback_months.toFixed(1)} mo`,
-      hint: "Months of gross profit per account to recover CAC.",
+      hint: {
+        definition: "Months of gross profit per account to recover CAC.",
+        source: "CAC, ARPA, and gross margin (when delivery_costs rolled up).",
+        formula: "CAC ÷ (ARPA × Gross Margin fraction)",
+      },
       need: "Needs CAC.",
     },
     {
       label: "ROAS (new cash)",
       value: u.roas == null ? null : ratio(u.roas),
-      hint: "New cash collected this month ÷ marketing spend.",
+      hint: {
+        definition: "Front-end cash returned per dollar of marketing spend this month.",
+        source: "New cash from client_billings front_end; marketing_spend from expense rollup.",
+        formula: "New Cash Collected ÷ Marketing Spend",
+      },
       need: "Needs marketing spend.",
     },
     {
       label: "Gross Margin",
       value: u.gross_margin_pct == null ? null : pct(u.gross_margin_pct),
-      hint: "(Total cash − delivery costs) ÷ total cash.",
+      hint: {
+        definition: "Cash left after delivery / COGS.",
+        source: "Total cash from billings; delivery_costs from expense rollup (ceo_bucket = fulfillment).",
+        formula: "(Total Cash − Delivery Costs) ÷ Total Cash × 100",
+      },
       need: "Needs delivery costs.",
     },
     {
       label: "Operating Profit",
       value: u.operating_profit == null ? null : money(u.operating_profit, { round: true }),
-      hint: "Total cash collected − operating expenses.",
+      hint: {
+        definition: "Cash after all P&L operating expenses.",
+        source: "Total cash; operating_expenses from expense rollup (cac + fulfillment + overhead).",
+        formula: "Total Cash − Operating Expenses",
+      },
       need: "Needs operating expenses.",
       accent: true,
     },
     {
       label: "Profit Margin",
       value: u.profit_margin_pct == null ? null : pct(u.profit_margin_pct),
-      hint: "Operating profit ÷ total cash.",
+      hint: {
+        definition: "Operating profit as a share of cash collected.",
+        source: "Derived from operating profit and total cash.",
+        formula: "Operating Profit ÷ Total Cash × 100",
+      },
       need: "Needs operating expenses.",
     },
     {
@@ -1086,19 +1227,31 @@ function UnitEconomicsGrid({ u }: { u: BusinessMetrics["unitEconomics"] }) {
           : u.runway_months == null
             ? null
             : `${u.runway_months.toFixed(1)} mo`,
-      hint: "Cash balance ÷ monthly net burn (expenses − cash collected).",
+      hint: {
+        definition: "How many months of cash left at the current burn rate.",
+        source: "Manual/imported cash_balance in business_metrics; burn = OpEx − Total Cash.",
+        formula: "Cash Balance ÷ (Operating Expenses − Total Cash) when burning; else “Profitable”",
+      },
       need: "Needs cash balance + expenses.",
     },
     {
       label: "Rule of 40",
       value: u.rule_of_40 == null ? null : u.rule_of_40.toFixed(0),
-      hint: "Annualized MRR growth % + profit margin %. Target ≥ 40.",
+      hint: {
+        definition: "Growth + profitability score. Target ≥ 40.",
+        source: "MRR growth from bridge; profit margin from cash − OpEx.",
+        formula: "(Annualized MRR growth %) + (Profit Margin %)",
+      },
       need: "Needs expenses (for margin).",
     },
     {
       label: "Revenue / Head",
       value: u.revenue_per_head == null ? null : money(u.revenue_per_head, { round: true }),
-      hint: "Annualized MRR ÷ headcount.",
+      hint: {
+        definition: "Annualized recurring revenue per team member.",
+        source: "Active MRR from roster; headcount from business_metrics input.",
+        formula: "(Active MRR × 12) ÷ Headcount",
+      },
       need: "Needs headcount.",
     },
   ];
