@@ -110,6 +110,32 @@ describe("computeDeparturesForMonth", () => {
     assert.equal(computeDeparturesForMonth(clients, history, "2026-06", formDates).length, 1);
     assert.equal(computeDeparturesForMonth(clients, history, "2026-07", formDates).length, 0);
   });
+
+  it("ignores logging-day history when form date is older (late report)", () => {
+    const clients = [
+      client({
+        id: "c1",
+        name: "Late Report Co",
+        lifecycle_status: "churned",
+        churned_at: "2026-07-13",
+      }),
+    ];
+    const history: StatusHistoryRow[] = [
+      {
+        client_id: "c1",
+        previous_status: "active",
+        new_status: "churned",
+        reason_code: "price",
+        note: null,
+        mrr_at_change: 1200,
+        // stamped when the form was filed, not when they left
+        changed_at: "2026-07-13T16:25:00.000Z",
+      },
+    ];
+    const formDates = { c1: "2026-05-20" };
+    assert.equal(computeDeparturesForMonth(clients, history, "2026-05", formDates).length, 1);
+    assert.equal(computeDeparturesForMonth(clients, history, "2026-07", formDates).length, 0);
+  });
 });
 
 describe("computeBusinessMetrics", () => {

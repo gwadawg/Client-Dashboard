@@ -115,7 +115,7 @@ export async function GET(req: Request) {
         .lte('insight_date', insightTo),
       ctx.service
         .from('client_form_submissions')
-        .select('client_id, responses, submitted_at')
+        .select('client_id, responses, applied_patch, submitted_at')
         .eq('form_type', 'churn')
         .eq('status', 'applied')
         .order('submitted_at', { ascending: false }),
@@ -156,13 +156,18 @@ export async function GET(req: Request) {
   }
 
   // Latest applied churn form per client — effective date wins for late reporting.
+  // Prefer responses.effective_churn_date; fall back to applied_patch if responses omit it.
   const effectiveChurnDateByClient: Record<string, string> = {};
   for (const row of churnFormsRes.data ?? []) {
     const clientId = (row as { client_id: string }).client_id;
     if (!clientId || effectiveChurnDateByClient[clientId]) continue;
     const responses = (row as { responses: Record<string, unknown> | null }).responses;
-    const raw = responses?.effective_churn_date;
-    if (typeof raw !== 'string') continue;
+    const patch = (row as { applied_patch: Record<string, unknown> | null }).applied_patch;
+    const raw =
+      (typeof responses?.effective_churn_date === 'string' && responses.effective_churn_date) ||
+      (typeof patch?.effective_churn_date === 'string' && patch.effective_churn_date) ||
+      null;
+    if (!raw) continue;
     const date = raw.trim().slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     effectiveChurnDateByClient[clientId] = date;

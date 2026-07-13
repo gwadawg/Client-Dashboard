@@ -764,6 +764,7 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     financeByMonth,
     signedClosesByMonth,
     snapshots,
+    effectiveChurnDateByClient,
     endMonth,
     months: trendMonths,
     currentActiveMrr: active_mrr,
@@ -1052,6 +1053,7 @@ function computeTrend(args: {
   financeByMonth: Map<string, Record<string, number>>;
   signedClosesByMonth: Record<string, number>;
   snapshots: ClientMonthlySnapshot[];
+  effectiveChurnDateByClient?: Record<string, string>;
   endMonth: string;
   months: number;
   currentActiveMrr: number;
@@ -1064,6 +1066,7 @@ function computeTrend(args: {
     financeByMonth,
     signedClosesByMonth,
     snapshots,
+    effectiveChurnDateByClient,
     endMonth,
     months,
     currentActiveMrr,
@@ -1100,7 +1103,12 @@ function computeTrend(args: {
   }
   const lostMrrByMonth = new Map<string, number>();
   for (const m of monthsList) {
-    const deps = computeDeparturesForMonth(clients, statusHistory, m);
+    const deps = computeDeparturesForMonth(
+      clients,
+      statusHistory,
+      m,
+      effectiveChurnDateByClient,
+    );
     lostMrrByMonth.set(
       m,
       deps.reduce((s, d) => s + d.mrr, 0),

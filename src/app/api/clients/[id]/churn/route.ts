@@ -110,21 +110,40 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
 
-  const { data: historyRows, error: historyError } = await ctx.service
-    .from('client_status_history')
-    .select('id')
-    .eq('client_id', clientId)
-    .eq('previous_status', previousLifecycle)
-    .eq('new_status', lifecycleStatus)
-    .eq('source', 'trigger')
-    .order('changed_at', { ascending: false })
-    .limit(1);
+  // Prefer the trigger row just created; fall back to any matching transition so
+  // we can still backdate changed_at to the form's effective churn date.
+  let historyId: string | null = null;
+  {
+    const { data: triggerRows, error: historyError } = await ctx.service
+      .from('client_status_history')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('previous_status', previousLifecycle)
+      .eq('new_status', lifecycleStatus)
+      .eq('source', 'trigger')
+      .order('changed_at', { ascending: false })
+      .limit(1);
 
-  if (historyError) {
-    return NextResponse.json({ error: historyError.message }, { status: 500 });
+    if (historyError) {
+      return NextResponse.json({ error: historyError.message }, { status: 500 });
+    }
+    historyId = triggerRows?.[0]?.id ?? null;
+
+    if (!historyId) {
+      const { data: fallbackRows, error: fallbackError } = await ctx.service
+        .from('client_status_history')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('new_status', lifecycleStatus)
+        .order('changed_at', { ascending: false })
+        .limit(1);
+      if (fallbackError) {
+        return NextResponse.json({ error: fallbackError.message }, { status: 500 });
+      }
+      historyId = fallbackRows?.[0]?.id ?? null;
+    }
   }
 
-  const historyId = historyRows?.[0]?.id;
   if (historyId) {
     const { error: enrichError } = await ctx.service
       .from('client_status_history')
