@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { requireExpenseAccess } from '@/lib/expense-auth';
 import {
+  applyExpenseRules,
   CEO_BUCKETS,
   MATCH_TYPES,
   SEED_EXPENSE_RULES,
   isCeoBucket,
   type CeoBucket,
+  type ExpenseCategoryRule,
   type MatchType,
 } from '@/lib/expenses';
 
@@ -63,6 +65,59 @@ export async function POST(req: Request) {
     const { data, error } = await ctx.service.from('expense_category_rules').insert(toInsert).select(FIELDS);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ seeded: data?.length ?? 0, rules: data });
+  }
+
+  // Re-run all active rules against uncategorized (or all) ledger rows
+  if (body.apply === true) {
+    const onlyUncategorized = body.only_uncategorized !== false;
+    const { data: rules, error: rulesErr } = await ctx.service
+      .from('expense_category_rules')
+      .select(FIELDS)
+      .eq('active', true)
+      .order('priority');
+    if (rulesErr) return NextResponse.json({ error: rulesErr.message }, { status: 500 });
+
+    let query = ctx.service.from('business_expenses').select(
+      'id, merchant_raw, memo, amount, ceo_bucket, subcategory, exclude_from_pnl, rule_id',
+    ).limit(5000);
+    if (onlyUncategorized) query = query.eq('ceo_bucket', 'uncategorized');
+
+    const { data: rows, error: rowsErr } = await query;
+    if (rowsErr) return NextResponse.json({ error: rowsErr.message }, { status: 500 });
+
+    const now = new Date().toISOString();
+    let applied = 0;
+    for (const row of rows ?? []) {
+      const match = applyExpenseRules(
+        {
+          merchant_raw: row.merchant_raw,
+          memo: row.memo,
+          amount: Number(row.amount),
+        },
+        (rules ?? []) as ExpenseCategoryRule[],
+      );
+      if (match.ceo_bucket === 'uncategorized') continue;
+      if (
+        row.ceo_bucket === match.ceo_bucket &&
+        (row.subcategory ?? null) === (match.subcategory ?? null) &&
+        !!row.exclude_from_pnl === !!match.exclude_from_pnl
+      ) {
+        continue;
+      }
+      const { error: upErr } = await ctx.service
+        .from('business_expenses')
+        .update({
+          ceo_bucket: match.ceo_bucket,
+          subcategory: match.subcategory,
+          exclude_from_pnl: match.exclude_from_pnl,
+          categorized_by: 'rule',
+          rule_id: match.rule_id,
+          updated_at: now,
+        })
+        .eq('id', row.id);
+      if (!upErr) applied += 1;
+    }
+    return NextResponse.json({ applied, scanned: rows?.length ?? 0, only_uncategorized: onlyUncategorized });
   }
 
   if (typeof body.name !== 'string' || !body.name.trim()) {

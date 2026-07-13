@@ -54,7 +54,7 @@ export async function buildUnifiedPayrollReport(
     { data: b2bCloses, error: b2bClosesError },
     { data: pendingB2BDemos, error: pendingB2BError },
   ] = await Promise.all([
-    service.from('agents').select(ROSTER_FIELDS).order('name'),
+    service.from('agents').select(ROSTER_FIELDS).eq('active', true).order('name'),
     service.from('clients').select('id, name'),
     service
       .from('events')

@@ -229,15 +229,31 @@ export function isCeoBucket(v: unknown): v is CeoBucket {
 export function suggestRuleNeedle(merchantRaw: string | null | undefined): string {
   const raw = (merchantRaw ?? "").trim();
   if (!raw) return "";
-  const norm = normalizeMerchant(raw);
-  const cleaned = norm
-    .replace(/\b(www|https?|com|net|org|inc|llc)\b/g, " ")
+
+  const cleaned = cleanBankMerchant(raw) || raw;
+  const lower = cleaned.toLowerCase();
+
+  // Prefer brand+TLD so "make.com" matches WWW.MAKE.COM but not MAKEUGC.AI
+  const domain = lower.match(/(?:^|[^a-z0-9])(?:www\.)?([a-z0-9-]{3,})\.(com|io|ai|net|org|co)(?:[^a-z0-9]|$)/);
+  if (domain) return `${domain[1]}.${domain[2]}`;
+
+  const norm = normalizeMerchant(cleaned)
+    .replace(/\b(www|https?)\b/g, " ")
+    .replace(/\.(com|net|org|io|ai|co)\b/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const parts = cleaned.split(" ").filter(Boolean);
-  if (parts.length === 0) return norm.slice(0, 24);
-  if (parts[0].length >= 4) return parts.slice(0, 2).join(" ").slice(0, 40);
-  return parts.slice(0, 3).join(" ").slice(0, 40);
+
+  const stop = new Set([
+    "www", "http", "https", "inc", "llc", "ltd", "corp", "the", "and", "for", "ny", "ca", "tx", "fl",
+  ]);
+  const parts = norm.split(" ").filter(p => p.length >= 3 && !stop.has(p));
+  const uniq = [...new Set(parts)];
+  if (uniq.length === 0) {
+    return normalizeMerchant(cleaned).replace(/[^a-z0-9]+/g, " ").trim().slice(0, 24);
+  }
+  // Single strongest token (longest) — avoids ".make. .make." style duplicates
+  return uniq.sort((a, b) => b.length - a.length || a.localeCompare(b))[0].slice(0, 40);
 }
 
 /** Map free-text labels from a user's spreadsheet into CEO buckets. */
@@ -469,8 +485,9 @@ export const SEED_EXPENSE_RULES: SeedRule[] = [
   { name: "Tab Extend", match_type: "merchant_contains", match_value: "tab extend", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
   { name: "Extend Tab", match_type: "merchant_contains", match_value: "extend tab", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
   { name: "Scribe", match_type: "merchant_contains", match_value: "scribe", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },
-  // Wise ACH payouts are usually contractor/payroll — leave uncategorized for review.
-  // Only tiny amounts are likely Wise fees.
+  // Wise ACH payouts are usually contractor/payroll bank transfers. When sheet
+  // payroll lines are the P&L labor cost, map Wise as excluded transfers.
+  { name: "Wise payout transfer", match_type: "merchant_contains", match_value: "wise", amount_min: 5.01, amount_max: null, ceo_bucket: "uncategorized", subcategory: "payroll transfer", exclude_from_pnl: true, priority: 35, notes: "Bank payout — labor OpEx lives on source=payroll sheet/agent rows" },
   { name: "Wise fee (small)", match_type: "merchant_contains", match_value: "wise", amount_min: null, amount_max: 5, ceo_bucket: "overhead", subcategory: "bank fees", exclude_from_pnl: false, priority: 40, notes: "Small Wise fees only — larger Wise ACH stays uncategorized" },
   { name: "Isaque", match_type: "merchant_equals", match_value: "isaque", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "payroll", exclude_from_pnl: false, priority: 35, notes: "Majority Overhead in sheet" },
   { name: "Cursor", match_type: "merchant_contains", match_value: "cursor", amount_min: null, amount_max: null, ceo_bucket: "overhead", subcategory: "software", exclude_from_pnl: false, priority: 30, notes: null },

@@ -9,6 +9,7 @@ import {
   normalizeMerchant,
   rollupExpensesForMonth,
   SEED_EXPENSE_RULES,
+  suggestRuleNeedle,
   type ExpenseCategoryRule,
 } from "./expenses";
 
@@ -19,6 +20,16 @@ function asRules(): ExpenseCategoryRule[] {
     active: true,
   }));
 }
+
+describe("suggestRuleNeedle", () => {
+  it("uses make.com for WWW.MAKE.COM card descriptors", () => {
+    assert.equal(suggestRuleNeedle("WWW.MAKE.COM WWW.MAKE.COM NY"), "make.com");
+  });
+
+  it("does not collapse makeugc into make.com", () => {
+    assert.equal(suggestRuleNeedle("MAKEUGC.AI LONDON"), "makeugc.ai");
+  });
+});
 
 describe("normalizeMerchant", () => {
   it("lowercases and strips noise", () => {

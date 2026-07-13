@@ -16,6 +16,53 @@ const EXPENSE_FIELDS =
   'id, occurred_on, amount, merchant_raw, ceo_bucket, subcategory, payroll_run_id, exclude_from_pnl, source';
 
 /**
+ * GET /api/expenses/payroll?startDate=&endDate=&month=YYYY-MM
+ * Lists source=payroll expense rows for the period (sheet backfill + posted runs).
+ */
+export async function GET(req: Request) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const payrollDenied = requirePermission(ctx, 'admin_agent_payroll');
+  const expenseDenied = requireExpenseAccess(ctx);
+  if (payrollDenied && expenseDenied) return payrollDenied;
+
+  const sp = new URL(req.url).searchParams;
+  let startDate = sp.get('startDate');
+  let endDate = sp.get('endDate');
+  const month = sp.get('month');
+  if (month && /^\d{4}-\d{2}$/.test(month)) {
+    const [y, m] = month.split('-').map(Number);
+    startDate = `${month}-01`;
+    endDate =
+      m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    // endDate exclusive for month helper — use last day inclusive below
+    const last = new Date(Date.UTC(y, m, 0));
+    endDate = last.toISOString().slice(0, 10);
+  }
+  if (!startDate || !endDate) {
+    return NextResponse.json({ error: 'startDate and endDate (or month) required' }, { status: 400 });
+  }
+
+  const { data, error } = await ctx.service
+    .from('business_expenses')
+    .select('id, occurred_on, amount, merchant_raw, ceo_bucket, subcategory, payroll_run_id, exclude_from_pnl, source, memo, external_id')
+    .eq('source', 'payroll')
+    .gte('occurred_on', startDate)
+    .lte('occurred_on', endDate)
+    .order('occurred_on', { ascending: false });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const expenses = data ?? [];
+  const grandTotal = expenses.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  return NextResponse.json({
+    period: { startDate, endDate },
+    count: expenses.length,
+    grand_total: grandTotal,
+    expenses,
+  });
+}
+
+/**
  * POST /api/expenses/payroll
  * Body: { startDate, endDate, account_id?, role_bucket?: "setter"|"fulfillment"|"ops"|"founder", dryRun? }
  *

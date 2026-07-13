@@ -6,14 +6,19 @@ import {
   parseTeamInsert,
   TEAM_ROSTER_SELECT,
 } from '@/lib/team-roster-api';
-export async function GET() {
+export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
   const denied = requireAnyPermission(ctx, ['admin_agents', 'schedule', 'admin_agent_payroll', 'admin_users']);
   if (denied) return denied;
 
+  const status = new URL(req.url).searchParams.get('status') ?? 'all';
+  let query = ctx.service.from('agents').select(TEAM_ROSTER_SELECT).order('name');
+  if (status === 'active') query = query.eq('active', true);
+  else if (status === 'alumni') query = query.eq('active', false);
+
   const [{ data, error }, userEmails] = await Promise.all([
-    ctx.service.from('agents').select(TEAM_ROSTER_SELECT).order('name'),
+    query,
     loadAuthUserEmailMap(ctx),
   ]);
 
@@ -42,6 +47,7 @@ export async function POST(req: Request) {
 
   const insert = parseTeamInsert(body);
   if (!insert.pay_type) insert.pay_type = 'call_rep';
+  if (insert.active === undefined) insert.active = true;
 
   const { data, error } = await ctx.service.from('agents').insert(insert).select(TEAM_ROSTER_SELECT).single();
 

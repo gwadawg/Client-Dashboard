@@ -66,6 +66,18 @@ function currentMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/** Month options from late 2024 through current (for Ledger filter). */
+function monthOptions(): string[] {
+  const out: string[] = [];
+  const end = new Date();
+  const cur = new Date(2024, 9, 1); // Oct 2024
+  while (cur <= end) {
+    out.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}`);
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return out.reverse();
+}
+
 function defaultExclude(bucket: CeoBucket): boolean {
   return bucket === "personal" || bucket === "owner_draw" || bucket === "passthrough";
 }
@@ -73,7 +85,9 @@ function defaultExclude(bucket: CeoBucket): boolean {
 export default function ExpenseManager() {
   const [tab, setTab] = useState<ViewTab>("pending");
   const [month, setMonth] = useState(currentMonth);
+  /** Empty string = all months (Ledger only). */
   const [accountFilter, setAccountFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
   const [accounts, setAccounts] = useState<FinanceAccount[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -119,10 +133,10 @@ export default function ExpenseManager() {
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
-    const params = new URLSearchParams({ limit: "1000" });
+    const params = new URLSearchParams({ limit: "2000" });
     if (tab === "pending") {
       params.set("pending", "1");
-    } else {
+    } else if (month) {
       params.set("month", month);
     }
     if (accountFilter) params.set("account_id", accountFilter);
@@ -171,9 +185,31 @@ export default function ExpenseManager() {
       create_rule: true,
       rule_match_value: suggestRuleNeedle(e.merchant_raw),
       apply_to_matching: true,
-      exclude_from_pnl: defaultExclude(bucket),
+      exclude_from_pnl: e.exclude_from_pnl || defaultExclude(bucket),
     });
     setMapExpense(e);
+  }
+
+  async function toggleExclude(e: Expense) {
+    setBusy(e.id);
+    setError("");
+    setMessage("");
+    const next = !e.exclude_from_pnl;
+    const res = await fetch(`/api/expenses/${e.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ exclude_from_pnl: next }),
+    });
+    setBusy(null);
+    if (!res.ok) {
+      const d = await res.json();
+      setError(d.error ?? "Failed to update exclude");
+      return;
+    }
+    setMessage(next
+      ? `Excluded from OpEx reports — ${e.merchant_raw ?? "charge"}`
+      : `Included in OpEx reports again — ${e.merchant_raw ?? "charge"}`);
+    load();
   }
 
   async function submitMap(ev: React.FormEvent) {
@@ -201,8 +237,11 @@ export default function ExpenseManager() {
       return;
     }
     const parts = [`Mapped to ${CEO_BUCKET_LABELS[mapForm.ceo_bucket]}`];
-    if (d.rule) parts.push(`rule “${d.rule.name}” saved`);
-    if (d.applied_matching) parts.push(`${d.applied_matching} matching pending updated`);
+    if (d.rule) parts.push(`rule “${d.rule.name}” saved for future imports`);
+    if (d.applied_matching) parts.push(`${d.applied_matching} other matching charges updated`);
+    else if (mapForm.create_rule && mapForm.apply_to_matching) {
+      parts.push("no other historical matches found");
+    }
     setMessage(parts.join(" · "));
     setMapExpense(null);
     load();
@@ -220,6 +259,23 @@ export default function ExpenseManager() {
     setBusy(null);
     if (!res.ok) setError(d.error ?? "Seed failed");
     else setMessage(`Seeded ${d.seeded ?? 0} category rules`);
+  }
+
+  async function applyRulesToPending() {
+    setBusy("apply-rules");
+    setMessage("");
+    const res = await fetch("/api/expense-rules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ apply: true, only_uncategorized: true }),
+    });
+    const d = await res.json();
+    setBusy(null);
+    if (!res.ok) setError(d.error ?? "Apply rules failed");
+    else {
+      setMessage(`Applied rules to ${d.applied ?? 0} of ${d.scanned ?? 0} pending charges`);
+      load();
+    }
   }
 
   async function rollupMonth() {
@@ -348,7 +404,7 @@ export default function ExpenseManager() {
   }
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col overflow-auto p-4 md:p-6 space-y-5">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>
@@ -393,7 +449,16 @@ export default function ExpenseManager() {
           >
             Seed rules
           </button>
-          {tab === "ledger" && (
+          <button
+            type="button"
+            onClick={applyRulesToPending}
+            disabled={busy === "apply-rules"}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+            style={{ background: "rgba(56,189,248,0.15)", color: "#38bdf8" }}
+          >
+            Apply rules to pending
+          </button>
+          {tab === "ledger" && month && (
             <button
               type="button"
               onClick={rollupMonth}
@@ -449,12 +514,18 @@ export default function ExpenseManager() {
           <div className="flex flex-wrap items-center gap-3">
             <label className="text-xs" style={{ color: "#64748b" }}>
               Month
-              <input
-                type="month"
+              <select
                 value={month}
                 onChange={e => setMonth(e.target.value)}
                 style={{ ...fieldStyle, marginLeft: 8 }}
-              />
+              >
+                <option value="">All months</option>
+                {monthOptions().map(m => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="text-xs flex items-center gap-2" style={{ color: "#64748b" }}>
               Account
@@ -472,9 +543,19 @@ export default function ExpenseManager() {
               </select>
             </label>
             <span className="text-xs ml-auto" style={{ color: "#64748b" }}>
-              {totals.count} charges · P&amp;L {money(totals.pnl)}
+              {totals.count} charges · OpEx in reports {money(totals.pnl)}
+              {totals.count >= 2000 ? " · showing first 2000" : ""}
             </span>
           </div>
+
+          {month && (
+            <p className="text-xs" style={{ color: "#64748b" }}>
+              Ledger rule: Total Costs sheet through Jan 2026 · Chase bank from Feb 2026 onward
+              (plus late-2024 Chase before the sheet). To drop a charge from KPI / OpEx rollups,
+              Map it and check <span style={{ color: "#fbbf24" }}>Exclude from reports</span>, or
+              set Type to Personal / Owner draw / Passthrough. Re-roll the month after.
+            </p>
+          )}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {(["cac", "fulfillment", "overhead", "uncategorized"] as CeoBucket[]).map(b => (
@@ -536,13 +617,22 @@ export default function ExpenseManager() {
                   {tab === "pending" ? "Action" : "Bucket"}
                 </th>
                 {tab === "ledger" && (
-                  <th className="px-3 py-2 font-medium text-xs">Source</th>
+                  <>
+                    <th className="px-3 py-2 font-medium text-xs">Source</th>
+                    <th className="px-3 py-2 font-medium text-xs">Reports</th>
+                  </>
                 )}
               </tr>
             </thead>
             <tbody>
               {expenses.map(e => (
-                <tr key={e.id} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                <tr
+                  key={e.id}
+                  style={{
+                    borderTop: "1px solid rgba(255,255,255,0.04)",
+                    opacity: e.exclude_from_pnl ? 0.55 : 1,
+                  }}
+                >
                   <td className="px-3 py-2 whitespace-nowrap" style={{ color: "#94a3b8" }}>
                     {e.occurred_on}
                   </td>
@@ -575,30 +665,62 @@ export default function ExpenseManager() {
                         Map
                       </button>
                     ) : (
-                      <select
-                        value={e.ceo_bucket}
-                        disabled={busy === e.id}
-                        onChange={ev => patchBucket(e.id, ev.target.value as CeoBucket)}
-                        style={{
-                          ...fieldStyle,
-                          color: BUCKET_COLOR[e.ceo_bucket],
-                          padding: "0.25rem 0.4rem",
-                          fontSize: "0.75rem",
-                        }}
-                      >
-                        {CEO_BUCKETS.map(b => (
-                          <option key={b} value={b}>
-                            {CEO_BUCKET_LABELS[b]}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <select
+                          value={e.ceo_bucket}
+                          disabled={busy === e.id}
+                          onChange={ev => patchBucket(e.id, ev.target.value as CeoBucket)}
+                          style={{
+                            ...fieldStyle,
+                            color: BUCKET_COLOR[e.ceo_bucket],
+                            padding: "0.25rem 0.4rem",
+                            fontSize: "0.75rem",
+                          }}
+                        >
+                          {CEO_BUCKETS.map(b => (
+                            <option key={b} value={b}>
+                              {CEO_BUCKET_LABELS[b]}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => openMap(e)}
+                          className="px-2 py-1 rounded-md text-[10px] font-semibold"
+                          style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}
+                        >
+                          Map
+                        </button>
+                      </div>
                     )}
                   </td>
                   {tab === "ledger" && (
-                    <td className="px-3 py-2 text-xs" style={{ color: "#475569" }}>
-                      {e.source}
-                      {e.exclude_from_pnl ? " · excl" : ""}
-                    </td>
+                    <>
+                      <td className="px-3 py-2 text-xs" style={{ color: "#475569" }}>
+                        {e.source}
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          disabled={busy === e.id}
+                          onClick={() => toggleExclude(e)}
+                          className="px-2 py-1 rounded-md text-[10px] font-semibold disabled:opacity-40"
+                          style={{
+                            background: e.exclude_from_pnl
+                              ? "rgba(148,163,184,0.18)"
+                              : "rgba(239,68,68,0.12)",
+                            color: e.exclude_from_pnl ? "#94a3b8" : "#f87171",
+                          }}
+                          title={
+                            e.exclude_from_pnl
+                              ? "Currently excluded — click to include in OpEx again"
+                              : "Exclude this charge from OpEx / KPI rollups"
+                          }
+                        >
+                          {e.exclude_from_pnl ? "Excluded" : "Exclude"}
+                        </button>
+                      </td>
+                    </>
                   )}
                 </tr>
               ))}
@@ -647,14 +769,29 @@ export default function ExpenseManager() {
                 style={{ ...fieldStyle, width: "100%" }}
               />
             </Field>
-            <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "#94a3b8" }}>
+            <label
+              className="flex items-start gap-2 text-xs cursor-pointer rounded-lg px-3 py-2"
+              style={{
+                color: "#e2e8f0",
+                background: mapForm.exclude_from_pnl ? "rgba(239,68,68,0.1)" : "rgba(15,32,64,0.6)",
+                border: `1px solid ${mapForm.exclude_from_pnl ? "rgba(239,68,68,0.35)" : "rgba(255,255,255,0.06)"}`,
+              }}
+            >
               <input
                 type="checkbox"
                 checked={mapForm.exclude_from_pnl}
                 onChange={e => setMapForm(f => ({ ...f, exclude_from_pnl: e.target.checked }))}
                 className="mt-0.5"
               />
-              Exclude from P&amp;L (owner draw / personal / passthrough / transfers)
+              <span>
+                <span className="font-semibold" style={{ color: mapForm.exclude_from_pnl ? "#f87171" : "#e2e8f0" }}>
+                  Exclude completely from reports
+                </span>
+                <span className="block mt-0.5" style={{ color: "#64748b" }}>
+                  Stays on the ledger for audit, but drops out of OpEx / CAC / COGS KPI rollups.
+                  Personal, Owner draw, and Passthrough types do this automatically.
+                </span>
+              </span>
             </label>
             <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "#e2e8f0" }}>
               <input
@@ -663,7 +800,7 @@ export default function ExpenseManager() {
                 onChange={e => setMapForm(f => ({ ...f, create_rule: e.target.checked }))}
                 className="mt-0.5"
               />
-              Always treat this merchant this way (save rule)
+              Always treat this merchant this way (save rule for future imports)
             </label>
             {mapForm.create_rule && (
               <>
@@ -675,6 +812,10 @@ export default function ExpenseManager() {
                     style={{ ...fieldStyle, width: "100%" }}
                   />
                 </Field>
+                <p className="text-[11px] -mt-1" style={{ color: "#64748b" }}>
+                  Tip: use a short brand token like <code>make.com</code> or <code>clickup</code> so every
+                  bank spelling matches. Remap once and all history + future imports follow this rule.
+                </p>
                 <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: "#94a3b8" }}>
                   <input
                     type="checkbox"
@@ -682,7 +823,7 @@ export default function ExpenseManager() {
                     onChange={e => setMapForm(f => ({ ...f, apply_to_matching: e.target.checked }))}
                     className="mt-0.5"
                   />
-                  Apply to other pending charges that match
+                  Apply to all matching charges in history (recommended)
                 </label>
               </>
             )}

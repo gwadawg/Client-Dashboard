@@ -9,8 +9,8 @@
  * By default skips any YYYY-MM already covered by the Total Costs sheet
  * (WM Company Books) so bank lines do not double-count labeled months.
  *
- *   --retire-sheet   exclude Total Costs rows from P&L (Chase replaces sheet)
- *   --allow-overlap  import Chase even for sheet-covered months (double-counts)
+ *   --retire-sheet   DELETE Total Costs sheet rows, then import all Chase months
+ *   --allow-overlap  import Chase even for sheet-covered months (double-counts if sheet kept)
  *
  * Default file: data/import/expenses/chase1519-activity-20260710.csv
  * Or: --file=/path/to/Chase.csv
@@ -142,43 +142,31 @@ async function ensureChaseAccount() {
 
 async function retireTotalCostsSheet() {
   const { data: acct } = await sb.from('finance_accounts').select('id').eq('name', 'WM Company Books').maybeSingle();
-  let q = sb
-    .from('business_expenses')
-    .update({ exclude_from_pnl: true, subcategory: 'retired_sheet', updated_at: new Date().toISOString() })
-    .eq('source', 'csv_import')
-    .is('memo', null); // labeled sheet often has description in memo — better filter by account
-
-  // Prefer account-scoped retire
-  if (acct?.id) {
-    q = sb
-      .from('business_expenses')
-      .update({
-        exclude_from_pnl: true,
-        memo: 'retired: superseded by Chase bank import',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('account_id', acct.id)
-      .eq('source', 'csv_import');
-  } else {
-    // Fallback: external_id style from labeled import (h…) and merchant from sheet — skip if unsure
+  if (!acct?.id) {
     console.warn('WM Company Books account not found — skipping retire');
     return { retired: 0 };
   }
 
+  const { count } = await sb
+    .from('business_expenses')
+    .select('id', { count: 'exact', head: true })
+    .eq('account_id', acct.id)
+    .eq('source', 'csv_import');
+
   if (!apply) {
-    const { count } = await sb
-      .from('business_expenses')
-      .select('id', { count: 'exact', head: true })
-      .eq('account_id', acct.id)
-      .eq('source', 'csv_import')
-      .eq('exclude_from_pnl', false);
-    console.log(`[dry-run] would retire ${count ?? '?'} Total Costs rows on WM Company Books`);
+    console.log(`[dry-run] would DELETE ${count ?? '?'} Total Costs rows on WM Company Books`);
     return { retired: count ?? 0 };
   }
 
-  const { data, error } = await q.select('id');
+  // Remove monthly sheet summaries so Chase line items are the only ledger for those months.
+  const { data, error } = await sb
+    .from('business_expenses')
+    .delete()
+    .eq('account_id', acct.id)
+    .eq('source', 'csv_import')
+    .select('id');
   if (error) throw new Error(error.message);
-  console.log('Retired Total Costs rows:', data?.length ?? 0);
+  console.log('Deleted Total Costs sheet rows:', data?.length ?? 0);
   return { retired: data?.length ?? 0 };
 }
 

@@ -708,7 +708,7 @@ export default function SetterSchedule({ clients }: { clients: Client[] }) {
   const [weekStart, setWeekStart] = useState(getMondayOfWeek(1));
 
   useEffect(() => {
-    fetch("/api/agents")
+    fetch("/api/agents?status=active")
       .then(r => r.json())
       .then(d => setAgents(d.agents ?? []));
     fetch("/api/setter-availability")

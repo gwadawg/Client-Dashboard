@@ -13,6 +13,9 @@ import {
 const FIELDS =
   'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, exclude_from_pnl, categorized_by, rule_id, payroll_run_id, client_id, created_at, updated_at';
 
+const RULE_FIELDS =
+  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, exclude_from_pnl, priority, active, notes';
+
 type Ctx = Exclude<Awaited<ReturnType<typeof getAuthContext>>, NextResponse>;
 
 async function loadExpense(ctx: Ctx, id: string) {
@@ -23,12 +26,142 @@ function defaultExclude(bucket: CeoBucket): boolean {
   return bucket === 'personal' || bucket === 'owner_draw' || bucket === 'passthrough';
 }
 
-// PATCH /api/expenses/[id] — recategorize / edit / optionally create rule
-// Body extras:
-//   create_rule?: boolean
-//   rule_match_value?: string  (merchant_contains needle)
-//   rule_name?: string
-//   apply_to_matching?: boolean  (re-bucket other uncategorized that match the new rule)
+/**
+ * Apply one rule to every ledger row whose merchant matches (history + current).
+ * Uses normalized merchant contains / equals — not raw ilike alone.
+ */
+async function applyRuleToMatchingExpenses(
+  ctx: Ctx,
+  rule: ExpenseCategoryRule,
+  opts: { skipId?: string; onlyUncategorized?: boolean } = {},
+): Promise<number> {
+  const needle = rule.match_value.toLowerCase().trim();
+  if (!needle) return 0;
+
+  // Broad fetch, then precise match via applyExpenseRules
+  let query = ctx.service
+    .from('business_expenses')
+    .select(FIELDS)
+    .limit(5000);
+  if (opts.skipId) query = query.neq('id', opts.skipId);
+  if (opts.onlyUncategorized) query = query.eq('ceo_bucket', 'uncategorized');
+
+  // Prefer SQL prefilter when possible
+  if (rule.match_type === 'merchant_contains' || rule.match_type === 'merchant_equals') {
+    query = query.ilike('merchant_raw', `%${needle.replace(/[%_]/g, '')}%`);
+  }
+
+  const { data: candidates, error } = await query;
+  if (error) throw new Error(error.message);
+
+  const rules = [rule];
+  const now = new Date().toISOString();
+  let applied = 0;
+
+  for (const row of candidates ?? []) {
+    const match = applyExpenseRules(
+      {
+        merchant_raw: row.merchant_raw,
+        memo: row.memo,
+        amount: Number(row.amount),
+      },
+      rules,
+    );
+    if (match.ceo_bucket === 'uncategorized') continue;
+
+    // Skip no-op updates
+    if (
+      row.ceo_bucket === match.ceo_bucket &&
+      (row.subcategory ?? null) === (match.subcategory ?? rule.subcategory ?? null) &&
+      !!row.exclude_from_pnl === !!match.exclude_from_pnl &&
+      row.rule_id === rule.id
+    ) {
+      continue;
+    }
+
+    const { error: upErr } = await ctx.service
+      .from('business_expenses')
+      .update({
+        ceo_bucket: match.ceo_bucket,
+        subcategory: match.subcategory ?? rule.subcategory,
+        exclude_from_pnl: match.exclude_from_pnl,
+        categorized_by: 'rule',
+        rule_id: rule.id,
+        updated_at: now,
+      })
+      .eq('id', row.id);
+    if (!upErr) applied += 1;
+  }
+  return applied;
+}
+
+/** Upsert a merchant_contains rule by match_value (reuse existing instead of stacking dupes). */
+async function upsertMerchantRule(
+  ctx: Ctx,
+  input: {
+    name: string;
+    matchValue: string;
+    ceoBucket: CeoBucket;
+    subcategory: string | null;
+    excludeFromPnl: boolean;
+  },
+): Promise<ExpenseCategoryRule> {
+  const matchValue = input.matchValue.trim();
+  const { data: existing } = await ctx.service
+    .from('expense_category_rules')
+    .select(RULE_FIELDS)
+    .eq('match_type', 'merchant_contains')
+    .ilike('match_value', matchValue)
+    .eq('active', true)
+    .order('priority')
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    const { data: updated, error } = await ctx.service
+      .from('expense_category_rules')
+      .update({
+        name: input.name,
+        ceo_bucket: input.ceoBucket,
+        subcategory: input.subcategory,
+        exclude_from_pnl: input.excludeFromPnl,
+        match_value: matchValue,
+        match_type: 'merchant_contains',
+        active: true,
+        priority: Math.min(Number(existing.priority) || 25, 25),
+        notes: existing.notes ?? 'Updated from Map charge',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id)
+      .select(RULE_FIELDS)
+      .single();
+    if (error) throw new Error(error.message);
+    return updated as ExpenseCategoryRule;
+  }
+
+  const { data: created, error } = await ctx.service
+    .from('expense_category_rules')
+    .insert({
+      name: input.name,
+      match_type: 'merchant_contains',
+      match_value: matchValue,
+      amount_min: null,
+      amount_max: null,
+      ceo_bucket: input.ceoBucket,
+      subcategory: input.subcategory,
+      exclude_from_pnl: input.excludeFromPnl,
+      priority: 25,
+      active: true,
+      notes: 'Created from Map charge',
+      updated_at: new Date().toISOString(),
+    })
+    .select(RULE_FIELDS)
+    .single();
+  if (error) throw new Error(error.message);
+  return created as ExpenseCategoryRule;
+}
+
+// PATCH /api/expenses/[id] — recategorize / edit / optionally create rule + apply to all history
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -78,11 +211,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (typeof body.subcategory === 'string') patch.subcategory = body.subcategory.trim() || null;
   if (typeof body.exclude_from_pnl === 'boolean') patch.exclude_from_pnl = body.exclude_from_pnl;
 
-  let createdRule: Record<string, unknown> | null = null;
+  let createdRule: ExpenseCategoryRule | null = null;
   let appliedMatching = 0;
 
-  const createRule = body.create_rule === true && newBucket && newBucket !== 'uncategorized';
-  if (createRule) {
+  // Default: save rule + apply to all history whenever mapping a bucket
+  const wantsRule =
+    body.create_rule !== false &&
+    newBucket != null &&
+    newBucket !== 'uncategorized';
+  const wantsApply = body.apply_to_matching !== false;
+
+  if (wantsRule) {
     const matchValue =
       (typeof body.rule_match_value === 'string' && body.rule_match_value.trim()) ||
       suggestRuleNeedle(
@@ -103,63 +242,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       (typeof body.rule_name === 'string' && body.rule_name.trim()) ||
       `${matchValue} → ${newBucket}`;
 
-    const { data: rule, error: ruleErr } = await ctx.service
-      .from('expense_category_rules')
-      .insert({
+    try {
+      createdRule = await upsertMerchantRule(ctx, {
         name: ruleName,
-        match_type: 'merchant_contains',
-        match_value: matchValue,
-        amount_min: null,
-        amount_max: null,
-        ceo_bucket: newBucket,
+        matchValue,
+        ceoBucket: newBucket!,
         subcategory: sub,
-        exclude_from_pnl: exclude,
-        priority: 25,
-        active: true,
-        notes: 'Created from Pending review',
-        updated_at: new Date().toISOString(),
-      })
-      .select(
-        'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, exclude_from_pnl, priority, active, notes',
-      )
-      .single();
-    if (ruleErr) return NextResponse.json({ error: ruleErr.message }, { status: 500 });
-    createdRule = rule;
-    patch.rule_id = rule.id;
-    patch.categorized_by = 'user';
+        excludeFromPnl: exclude,
+      });
+      patch.rule_id = createdRule.id;
+      patch.categorized_by = 'user';
 
-    if (body.apply_to_matching === true) {
-      const { data: pending } = await ctx.service
-        .from('business_expenses')
-        .select(FIELDS)
-        .eq('ceo_bucket', 'uncategorized')
-        .neq('id', id)
-        .limit(2000);
-      const rules = [rule as ExpenseCategoryRule];
-      const now = new Date().toISOString();
-      for (const row of pending ?? []) {
-        const match = applyExpenseRules(
-          {
-            merchant_raw: row.merchant_raw,
-            memo: row.memo,
-            amount: Number(row.amount),
-          },
-          rules,
-        );
-        if (match.ceo_bucket === 'uncategorized') continue;
-        const { error: upErr } = await ctx.service
-          .from('business_expenses')
-          .update({
-            ceo_bucket: match.ceo_bucket,
-            subcategory: match.subcategory ?? sub,
-            exclude_from_pnl: match.exclude_from_pnl,
-            categorized_by: 'rule',
-            rule_id: rule.id,
-            updated_at: now,
-          })
-          .eq('id', row.id);
-        if (!upErr) appliedMatching += 1;
+      if (wantsApply) {
+        appliedMatching = await applyRuleToMatchingExpenses(ctx, createdRule, { skipId: id });
       }
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : 'Failed to save/apply rule' },
+        { status: 500 },
+      );
     }
   }
 

@@ -312,11 +312,15 @@ create table if not exists agents (
   pay_per_live_transfer numeric(10,2) not null default 0,
   pay_per_qualified_demo numeric(10,2) not null default 0,
   pay_per_close         numeric(10,2) not null default 0,
+  active                boolean not null default true,
+  ended_on              date,
   created_at            timestamptz default now(),
   constraint agents_pay_type_check check (
     pay_type in ('call_rep', 'b2b_setter', 'admin', 'media_buyer', 'operations', 'other')
   )
 );
+
+create index if not exists agents_active_idx on agents (active);
 
 create unique index if not exists agents_user_id_key on agents (user_id) where user_id is not null;
 

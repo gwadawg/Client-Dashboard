@@ -33,7 +33,14 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (denied) return denied;
 
   const { id } = await params;
-  const { error } = await ctx.service.from('agents').delete().eq('id', id);
+  // Soft-deactivate so historical payroll / pay history stay attributed.
+  const today = new Date().toISOString().slice(0, 10);
+  const { data, error } = await ctx.service
+    .from('agents')
+    .update({ active: false, ended_on: today })
+    .eq('id', id)
+    .select(TEAM_ROSTER_SELECT)
+    .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, agent: data });
 }

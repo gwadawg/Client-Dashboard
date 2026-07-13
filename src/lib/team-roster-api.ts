@@ -2,7 +2,7 @@ import type { AuthContext } from '@/lib/api-auth';
 import { isEmployeePosition, normalizeEmployeePosition } from '@/lib/employee-positions';
 
 export const TEAM_ROSTER_SELECT =
-  'id, phone, name, email, user_id, pay_type, base_salary, monthly_bonus, base_salary_prorate_days, pay_per_booking, pay_per_show, pay_per_live_transfer, pay_per_qualified_demo, pay_per_close, created_at';
+  'id, phone, name, email, user_id, pay_type, base_salary, monthly_bonus, base_salary_prorate_days, pay_per_booking, pay_per_show, pay_per_live_transfer, pay_per_qualified_demo, pay_per_close, active, ended_on, created_at';
 
 export const TEAM_PAY_FIELDS = [
   'base_salary',
@@ -30,6 +30,8 @@ export type TeamRosterRow = {
   pay_per_live_transfer: number;
   pay_per_qualified_demo: number;
   pay_per_close: number;
+  active: boolean;
+  ended_on: string | null;
   created_at: string;
   linked_user_email?: string | null;
 };
@@ -62,6 +64,13 @@ export function parseTeamInsert(body: Record<string, unknown>): Record<string, u
   else if (body.user_id) insert.user_id = String(body.user_id);
 
   if (isEmployeePosition(String(body.pay_type))) insert.pay_type = body.pay_type;
+
+  if (typeof body.active === 'boolean') insert.active = body.active;
+  if (body.ended_on === null || body.ended_on === '') insert.ended_on = null;
+  else if (body.ended_on != null) {
+    const d = String(body.ended_on).trim().slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) insert.ended_on = d;
+  }
 
   for (const key of TEAM_PAY_FIELDS) {
     if (body[key] != null && body[key] !== '') insert[key] = Number(body[key]) || 0;

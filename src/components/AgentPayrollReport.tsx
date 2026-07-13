@@ -170,11 +170,64 @@ export default function AgentPayrollReport({
   const [employeeView, setEmployeeView] = useState<EmployeePayrollView | null>(null);
   const [postingPayroll, setPostingPayroll] = useState(false);
   const [payrollMsg, setPayrollMsg] = useState("");
+  const [ledgerExpenses, setLedgerExpenses] = useState<{
+    count: number;
+    grand_total: number;
+    expenses: Array<{
+      id: string;
+      occurred_on: string;
+      amount: number;
+      merchant_raw: string | null;
+      ceo_bucket: string;
+      subcategory: string | null;
+      payroll_run_id: string | null;
+      memo?: string | null;
+      external_id?: string | null;
+      source?: string | null;
+    }>;
+  } | null>(null);
+  const [ledgerError, setLedgerError] = useState("");
 
   const submittedAgentIds = useMemo(
     () => new Set(submittedEmployees.map(s => s.agent_id)),
     [submittedEmployees],
   );
+
+  const paidByPerson = useMemo(() => {
+    const map = new Map<string, { salary: number; commissions: number; other: number; rows: number }>();
+    for (const e of ledgerExpenses?.expenses ?? []) {
+      const name = (e.merchant_raw ?? "Unknown").replace(/^Payroll —\s*/i, "").trim() || "Unknown";
+      const cur = map.get(name) ?? { salary: 0, commissions: 0, other: 0, rows: 0 };
+      const amt = Number(e.amount) || 0;
+      const sub = (e.subcategory ?? "payroll").toLowerCase();
+      if (sub === "commissions" || sub === "commission") cur.commissions += amt;
+      else if (sub === "payroll" || sub === "salary" || sub === "bonus") cur.salary += amt;
+      else cur.other += amt;
+      cur.rows += 1;
+      map.set(name, cur);
+    }
+    return [...map.entries()]
+      .map(([name, v]) => ({
+        name,
+        ...v,
+        total: v.salary + v.commissions + v.other,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [ledgerExpenses]);
+
+  function ledgerOrigin(e: {
+    external_id?: string | null;
+    memo?: string | null;
+    payroll_run_id?: string | null;
+  }): string {
+    const ext = e.external_id ?? "";
+    if (ext.startsWith("wise-payroll:")) return "Wise";
+    if (ext.startsWith("hr-payroll:")) return "HR";
+    if (ext.startsWith("sheet-payroll:")) return "Sheet";
+    if ((e.memo ?? "").toLowerCase().includes("wise")) return "Wise";
+    if (e.payroll_run_id?.includes("_to_")) return "Posted";
+    return "Ledger";
+  }
 
   const isPeriodClosed = periodStatus === "closed";
   const employeeCount = report
@@ -185,6 +238,7 @@ export default function AgentPayrollReport({
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
+    setLedgerError("");
     try {
       const runsRes = await fetch("/api/payroll-runs");
       const runsData = await runsRes.json();
@@ -207,13 +261,30 @@ export default function AgentPayrollReport({
       } else {
         setFinalizedMeta(null);
       }
+
+      const ledgerRes = await fetch(
+        `/api/expenses/payroll?startDate=${bounds.startDate}&endDate=${bounds.endDate}`,
+      );
+      if (ledgerRes.ok) {
+        const ledgerData = await ledgerRes.json();
+        setLedgerExpenses({
+          count: ledgerData.count ?? 0,
+          grand_total: ledgerData.grand_total ?? 0,
+          expenses: ledgerData.expenses ?? [],
+        });
+      } else {
+        const ledgerData = await ledgerRes.json().catch(() => ({}));
+        setLedgerExpenses({ count: 0, grand_total: 0, expenses: [] });
+        setLedgerError(ledgerData.error ?? "Could not load expense ledger payroll");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load payroll");
       setReport(null);
+      setLedgerExpenses(null);
     } finally {
       setLoading(false);
     }
-  }, [periodMonth]);
+  }, [periodMonth, bounds.startDate, bounds.endDate]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -405,6 +476,7 @@ export default function AgentPayrollReport({
       setPayrollMsg(
         `Posted ${d.inserted} payroll expenses (${fmtMoney(d.grand_total ?? 0)}) as ${d.ceo_bucket}. Roll up from Finance → Expenses to update KPIs.`,
       );
+      load();
     }
   }
 
@@ -423,7 +495,7 @@ export default function AgentPayrollReport({
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Team Payroll</h2>
           <p className="text-sm mt-0.5 max-w-2xl" style={{ color: "#475569" }}>
-            Review each employee, download their PDF, and submit individually. Pay rates and history live under Team Roster.
+            Tables below are the live commission calculator (bookings / shows). Cash actually paid via Wise / HR lives in the Paid section and under Finance → Expenses.
           </p>
           {report && (
             <p className="text-xs mt-1" style={{ color: "#64748b" }}>
@@ -509,6 +581,114 @@ export default function AgentPayrollReport({
       {payrollMsg && (
         <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.25)", color: "#34d399" }}>
           {payrollMsg}
+        </div>
+      )}
+
+      {pageTab === "month" && (
+        <div
+          className="rounded-xl px-4 py-3 space-y-3"
+          style={{ background: "rgba(15,32,64,0.85)", border: "1px solid rgba(56,189,248,0.2)" }}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "#38bdf8" }}>
+                Cash paid this period (expense ledger)
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
+                Wise / HR / sheet backfill + anything posted from this screen. Not the same as the commission calculator below.
+              </p>
+            </div>
+            {ledgerExpenses && ledgerExpenses.count > 0 && (
+              <p className="text-sm font-semibold tabular-nums" style={{ color: "#e2e8f0" }}>
+                {fmtMoney(ledgerExpenses.grand_total)}
+                <span className="text-xs font-normal ml-2" style={{ color: "#64748b" }}>
+                  {ledgerExpenses.count} rows
+                </span>
+              </p>
+            )}
+          </div>
+
+          {ledgerError && (
+            <p className="text-xs" style={{ color: "#f87171" }}>{ledgerError}</p>
+          )}
+
+          {!ledgerExpenses ? (
+            <p className="text-xs" style={{ color: "#64748b" }}>Loading paid rows…</p>
+          ) : ledgerExpenses.count === 0 ? (
+            <p className="text-xs" style={{ color: "#64748b" }}>
+              No payroll expense rows for {bounds.label}. Check Finance → Expenses, or pick another month in the dropdown (Apr–Jul 2026 have Wise backfill for active reps).
+            </p>
+          ) : (
+            <>
+              <div className="overflow-auto rounded-lg" style={{ border: "1px solid rgba(255,255,255,0.04)" }}>
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr style={{ color: "#64748b" }}>
+                      <th className="px-2 py-1.5 font-medium">Person</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Salary</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Commissions</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Total paid</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paidByPerson.map(p => (
+                      <tr key={p.name} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", color: "#94a3b8" }}>
+                        <td className="px-2 py-1.5" style={{ color: "#e2e8f0" }}>{p.name}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(p.salary)}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(p.commissions)}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums font-semibold" style={{ color: "#e2e8f0" }}>
+                          {fmtMoney(p.total)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <details className="text-xs">
+                <summary className="cursor-pointer" style={{ color: "#64748b" }}>
+                  Line items ({ledgerExpenses.count})
+                </summary>
+                <div className="mt-2 overflow-auto max-h-56 rounded-lg" style={{ border: "1px solid rgba(255,255,255,0.04)" }}>
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr style={{ color: "#64748b" }}>
+                        <th className="px-2 py-1.5 font-medium">Date</th>
+                        <th className="px-2 py-1.5 font-medium">Person</th>
+                        <th className="px-2 py-1.5 font-medium">Origin</th>
+                        <th className="px-2 py-1.5 font-medium">Type</th>
+                        <th className="px-2 py-1.5 font-medium text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ledgerExpenses.expenses.map(e => (
+                        <tr key={e.id} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", color: "#94a3b8" }}>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{e.occurred_on}</td>
+                          <td className="px-2 py-1.5" style={{ color: "#e2e8f0" }}>
+                            {(e.merchant_raw ?? "—").replace(/^Payroll — /, "")}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase"
+                              style={{
+                                background: ledgerOrigin(e) === "Wise" ? "rgba(56,189,248,0.15)" : "rgba(148,163,184,0.12)",
+                                color: ledgerOrigin(e) === "Wise" ? "#38bdf8" : "#94a3b8",
+                              }}
+                            >
+                              {ledgerOrigin(e)}
+                            </span>
+                          </td>
+                          <td className="px-2 py-1.5">{e.subcategory ?? "payroll"}</td>
+                          <td className="px-2 py-1.5 text-right" style={{ color: "#e2e8f0" }}>
+                            {fmtMoney(Number(e.amount))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            </>
+          )}
         </div>
       )}
 

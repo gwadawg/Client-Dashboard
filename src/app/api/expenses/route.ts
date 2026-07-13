@@ -28,6 +28,7 @@ export async function GET(req: Request) {
   const month = sp.get('month');
   const bucket = sp.get('bucket');
   const accountId = sp.get('account_id');
+  const source = sp.get('source');
   const pending = sp.get('pending') === '1' || sp.get('pending') === 'true';
   const uncategorized =
     pending || sp.get('uncategorized') === '1' || sp.get('uncategorized') === 'true';
@@ -49,6 +50,9 @@ export async function GET(req: Request) {
   if (uncategorized) query = query.eq('ceo_bucket', 'uncategorized');
   else if (bucket && isCeoBucket(bucket)) query = query.eq('ceo_bucket', bucket);
   if (accountId) query = query.eq('account_id', accountId);
+  if (source && ['manual', 'csv_import', 'payroll', 'bank_sync'].includes(source)) {
+    query = query.eq('source', source as ExpenseSource);
+  }
 
   const [{ data, error }, pendingRes] = await Promise.all([
     query,

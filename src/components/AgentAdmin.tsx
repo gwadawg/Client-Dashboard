@@ -32,6 +32,8 @@ type EditState = {
   email: string;
   pay_type: EmployeePosition;
   user_id: string;
+  active: boolean;
+  ended_on: string;
 } & PayRates;
 
 const emptyPay: PayRates = {
@@ -46,6 +48,7 @@ const emptyPay: PayRates = {
 
 const FILTER_OPTIONS = ["all", ...EMPLOYEE_POSITIONS] as const;
 type FilterKey = (typeof FILTER_OPTIONS)[number];
+type StatusFilter = "active" | "alumni" | "all";
 
 export default function AgentAdmin() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -53,6 +56,7 @@ export default function AgentAdmin() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newAgent, setNewAgent] = useState<EditState>({
     phone: "",
@@ -60,6 +64,8 @@ export default function AgentAdmin() {
     email: "",
     pay_type: "call_rep",
     user_id: "",
+    active: true,
+    ended_on: "",
     ...emptyPay,
   });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -69,6 +75,8 @@ export default function AgentAdmin() {
     email: "",
     pay_type: "call_rep",
     user_id: "",
+    active: true,
+    ended_on: "",
     ...emptyPay,
   });
   const [saving, setSaving] = useState(false);
@@ -95,6 +103,8 @@ export default function AgentAdmin() {
       email: a.email ?? "",
       pay_type: (a.pay_type as EmployeePosition) ?? "call_rep",
       user_id: a.user_id ?? "",
+      active: a.active !== false,
+      ended_on: a.ended_on ?? "",
       base_salary: Number(a.base_salary) || 0,
       monthly_bonus: Number(a.monthly_bonus) || 0,
       pay_per_booking: Number(a.pay_per_booking) || 0,
@@ -110,6 +120,8 @@ export default function AgentAdmin() {
       ...state,
       user_id: state.user_id || null,
       email: state.email || null,
+      active: state.active,
+      ended_on: state.active ? null : (state.ended_on || new Date().toISOString().slice(0, 10)),
     };
   }
 
@@ -125,7 +137,7 @@ export default function AgentAdmin() {
     const data = await res.json();
     setSaving(false);
     if (!res.ok) { setError(data.error ?? "Failed to add team member"); return; }
-    setNewAgent({ phone: "", name: "", email: "", pay_type: "call_rep", user_id: "", ...emptyPay });
+    setNewAgent({ phone: "", name: "", email: "", pay_type: "call_rep", user_id: "", active: true, ended_on: "", ...emptyPay });
     setAdding(false);
     load();
   }
@@ -146,15 +158,34 @@ export default function AgentAdmin() {
     load();
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (!confirm(`Remove ${name} from the team roster?`)) return;
+  async function handleDeactivate(id: string, name: string) {
+    if (!confirm(`Mark ${name} as alumni (no longer with the company)? Their pay history stays in the ledger.`)) return;
     const res = await fetch(`/api/agents/${id}`, { method: "DELETE" });
-    if (!res.ok) { setError("Failed to delete team member"); return; }
+    if (!res.ok) { setError("Failed to mark as alumni"); return; }
     if (selectedId === id) setSelectedId(null);
     load();
   }
 
-  const filtered = filter === "all" ? agents : agents.filter(a => a.pay_type === filter);
+  async function handleReactivate(id: string) {
+    setSaving(true);
+    setError("");
+    const res = await fetch(`/api/agents/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: true, ended_on: null }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) { setError(data.error ?? "Failed to reactivate"); return; }
+    load();
+  }
+
+  const filtered = agents.filter(a => {
+    if (statusFilter === "active" && a.active === false) return false;
+    if (statusFilter === "alumni" && a.active !== false) return false;
+    if (filter !== "all" && a.pay_type !== filter) return false;
+    return true;
+  });
   const selected = agents.find(a => a.id === selectedId) ?? null;
 
   const inputStyle = {
@@ -260,10 +291,20 @@ export default function AgentAdmin() {
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Team Roster</h2>
           <p className="text-sm mt-0.5 max-w-2xl" style={{ color: "#475569" }}>
-            One record per team member — position, pay rates, and optional dashboard login. Mirrors Client Roster for internal staff.
+            One record per team member — position, pay rates, and optional dashboard login. Former staff stay as Alumni so historical payroll still attributes correctly.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value as StatusFilter)}
+            className="rounded-lg px-3 py-2 text-xs font-semibold"
+            style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+          >
+            <option value="active">Active</option>
+            <option value="alumni">Alumni</option>
+            <option value="all">All people</option>
+          </select>
           <select
             value={filter}
             onChange={e => setFilter(e.target.value as FilterKey)}
@@ -322,7 +363,7 @@ export default function AgentAdmin() {
           <UserLinkField value={newAgent.user_id} currentUserId={null} onChange={id => setNewAgent(s => ({ ...s, user_id: id }))} />
           <PayFields payType={newAgent.pay_type} values={newAgent} onChange={patch => setNewAgent(s => ({ ...s, ...patch }))} />
           <div className="flex gap-2 justify-end">
-            <button onClick={() => { setAdding(false); setNewAgent({ phone: "", name: "", email: "", pay_type: "call_rep", user_id: "", ...emptyPay }); }}
+            <button onClick={() => { setAdding(false); setNewAgent({ phone: "", name: "", email: "", pay_type: "call_rep", user_id: "", active: true, ended_on: "", ...emptyPay }); }}
               className="px-4 py-2 rounded-lg text-sm" style={{ background: "rgba(255,255,255,0.05)", color: "#64748b" }}>Cancel</button>
             <button onClick={handleAdd} disabled={saving || !newAgent.phone || !newAgent.name}
               className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
@@ -336,7 +377,7 @@ export default function AgentAdmin() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: "#050c18" }}>
-                {["Position", "Name", "Login", "Base", "Bonus", ""].map(h => (
+                {["Position", "Name", "Status", "Login", "Base", ""].map(h => (
                   <th key={h || "actions"} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
                     style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{h}</th>
                 ))}
@@ -346,7 +387,7 @@ export default function AgentAdmin() {
               {loading ? (
                 <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: "#64748b" }}>Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: "#64748b" }}>No team members yet</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: "#64748b" }}>No team members in this view</td></tr>
               ) : filtered.map((a, i) => (
                 <tr
                   key={a.id}
@@ -355,6 +396,7 @@ export default function AgentAdmin() {
                   style={{
                     borderTop: "1px solid rgba(255,255,255,0.03)",
                     background: selectedId === a.id ? "rgba(245,158,11,0.08)" : i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent",
+                    opacity: a.active === false ? 0.72 : 1,
                   }}
                 >
                   <td className="px-4 py-3">
@@ -364,11 +406,21 @@ export default function AgentAdmin() {
                     </span>
                   </td>
                   <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{a.name}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded"
+                      style={{
+                        background: a.active === false ? "rgba(148,163,184,0.12)" : "rgba(34,197,94,0.12)",
+                        color: a.active === false ? "#94a3b8" : "#86efac",
+                      }}
+                    >
+                      {a.active === false ? "Alumni" : "Active"}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-xs" style={{ color: a.linked_user_email ? "#94a3b8" : "#475569" }}>
                     {a.linked_user_email ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-xs tabular-nums" style={{ color: "#94a3b8" }}>{Number(a.base_salary) || 0}</td>
-                  <td className="px-4 py-3 text-xs tabular-nums" style={{ color: "#94a3b8" }}>{Number(a.monthly_bonus) || 0}</td>
                   <td className="px-4 py-3 text-right">
                     <button
                       type="button"
@@ -395,6 +447,11 @@ export default function AgentAdmin() {
                 </p>
               </div>
               <dl className="space-y-2 text-sm">
+                <div className="flex justify-between gap-2"><dt style={{ color: "#64748b" }}>Status</dt>
+                  <dd style={{ color: selected.active === false ? "#94a3b8" : "#86efac" }}>
+                    {selected.active === false ? `Alumni${selected.ended_on ? ` · ended ${selected.ended_on}` : ""}` : "Active"}
+                  </dd>
+                </div>
                 <div className="flex justify-between gap-2"><dt style={{ color: "#64748b" }}>Phone / ID</dt><dd style={{ color: "#e2e8f0" }}>{selected.phone}</dd></div>
                 <div className="flex justify-between gap-2"><dt style={{ color: "#64748b" }}>Email</dt><dd style={{ color: "#e2e8f0" }}>{selected.email || "—"}</dd></div>
                 <div className="flex justify-between gap-2"><dt style={{ color: "#64748b" }}>Login</dt><dd style={{ color: "#e2e8f0" }}>{selected.linked_user_email || "Not linked"}</dd></div>
@@ -416,13 +473,19 @@ export default function AgentAdmin() {
               <div className="pt-3 mt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                 <EmployeePayHistory agentId={selected.id} compact />
               </div>
-              <div className="flex gap-2 pt-2">
+              <div className="flex flex-wrap gap-2 pt-2">
                 <button type="button" onClick={() => { setEditingId(selected.id); setEditState(agentToEdit(selected)); }}
                   className="text-xs px-3 py-1.5 rounded-lg font-semibold"
                   style={{ background: "#f59e0b", color: "#fff" }}>Edit profile</button>
-                <button type="button" onClick={() => handleDelete(selected.id, selected.name)}
-                  className="text-xs px-3 py-1.5 rounded-lg"
-                  style={{ background: "rgba(239,68,68,0.1)", color: "#f87171" }}>Remove</button>
+                {selected.active === false ? (
+                  <button type="button" onClick={() => handleReactivate(selected.id)} disabled={saving}
+                    className="text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40"
+                    style={{ background: "rgba(34,197,94,0.15)", color: "#86efac" }}>Reactivate</button>
+                ) : (
+                  <button type="button" onClick={() => handleDeactivate(selected.id, selected.name)}
+                    className="text-xs px-3 py-1.5 rounded-lg"
+                    style={{ background: "rgba(148,163,184,0.12)", color: "#94a3b8" }}>Mark alumni</button>
+                )}
               </div>
             </>
           )}
@@ -460,6 +523,37 @@ export default function AgentAdmin() {
             currentUserId={editState.user_id || null}
             onChange={id => setEditState(s => ({ ...s, user_id: id }))}
           />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Employment</label>
+              <select
+                style={inputStyle}
+                value={editState.active ? "active" : "alumni"}
+                onChange={e => {
+                  const active = e.target.value === "active";
+                  setEditState(s => ({
+                    ...s,
+                    active,
+                    ended_on: active ? "" : (s.ended_on || new Date().toISOString().slice(0, 10)),
+                  }));
+                }}
+              >
+                <option value="active">Active</option>
+                <option value="alumni">Alumni</option>
+              </select>
+            </div>
+            {!editState.active && (
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Ended on</label>
+                <input
+                  type="date"
+                  style={inputStyle}
+                  value={editState.ended_on}
+                  onChange={e => setEditState(s => ({ ...s, ended_on: e.target.value }))}
+                />
+              </div>
+            )}
+          </div>
           <PayFields payType={editState.pay_type} values={editState} onChange={patch => setEditState(s => ({ ...s, ...patch }))} />
           <div className="flex gap-2 justify-end">
             <button onClick={() => setEditingId(null)} className="px-4 py-2 rounded-lg text-sm" style={{ color: "#64748b" }}>Cancel</button>
