@@ -223,7 +223,25 @@ describe("rollupExpensesForMonth", () => {
     assert.equal(r.marketing_spend, 100);
     assert.equal(r.delivery_costs, 50);
     assert.equal(r.operating_expenses, 175);
+    assert.equal(r.excluded_total, 40);
     assert.equal(r.transaction_count, 4);
+  });
+
+  it("drops exclude_from_pnl rows from CAC / COGS / OpEx even when bucket is P&L", () => {
+    const r = rollupExpensesForMonth(
+      [
+        { occurred_on: "2026-03-01", amount: 100, ceo_bucket: "cac", exclude_from_pnl: false },
+        { occurred_on: "2026-03-02", amount: 80, ceo_bucket: "cac", exclude_from_pnl: true },
+        { occurred_on: "2026-03-03", amount: 50, ceo_bucket: "fulfillment", exclude_from_pnl: true },
+        { occurred_on: "2026-03-04", amount: 25, ceo_bucket: "overhead", exclude_from_pnl: false },
+      ],
+      "2026-03",
+    );
+    assert.equal(r.marketing_spend, 100);
+    assert.equal(r.delivery_costs, 0);
+    assert.equal(r.operating_expenses, 125);
+    assert.equal(r.excluded_total, 130);
+    assert.equal(r.by_bucket.cac, 100);
   });
 });
 

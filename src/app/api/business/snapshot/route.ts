@@ -7,13 +7,18 @@ const SNAPSHOT_CLIENT_FIELDS =
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
-/** First day of a YYYY-MM (or the current month) as a YYYY-MM-DD date. */
+/** Previous calendar month as YYYY-MM-01 (end-of-month books frozen on the 1st). */
+export function priorPeriodMonth(now: Date = new Date()): string {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth(); // 0-indexed current
+  const prev = new Date(Date.UTC(y, m - 1, 1));
+  return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}-01`;
+}
+
+/** First day of a YYYY-MM as YYYY-MM-DD. Defaults to the prior calendar month. */
 function periodMonth(month: string | null): string {
   if (month && MONTH_RE.test(month)) return `${month}-01`;
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}-01`;
+  return priorPeriodMonth();
 }
 
 async function captureMonthlySnapshot(month: string | null) {
@@ -76,19 +81,19 @@ export async function GET(req: Request) {
 
   const months = data ?? [];
   const latest = months[0] ?? null;
-  const currentPeriod = periodMonth(null);
-  const hasCurrentMonth = months.some((m) => m.period_month === currentPeriod);
+  const expectedPeriod = priorPeriodMonth();
+  const hasPriorMonth = months.some((m) => m.period_month === expectedPeriod);
 
   return NextResponse.json({
-    current_period: currentPeriod,
-    has_current_month: hasCurrentMonth,
+    expected_period: expectedPeriod,
+    has_prior_month: hasPriorMonth,
     latest_period: latest?.period_month ?? null,
     latest_captured_at: latest?.captured_at ?? null,
     recent_months: months,
-    healthy: hasCurrentMonth,
-    hint: hasCurrentMonth
-      ? 'Monthly snapshots are current.'
-      : 'Schedule GET /api/business/snapshot?run=1 on the 1st of each month.',
+    healthy: hasPriorMonth,
+    hint: hasPriorMonth
+      ? 'Prior-month end snapshots are current (used for MRR bridge start/end).'
+      : 'Schedule GET /api/business/snapshot?run=1 on the 1st — it freezes the prior month.',
   });
 }
 
@@ -97,6 +102,7 @@ export async function GET(req: Request) {
 // so MRR-over-time, expansion/contraction, and cohort retention become exact
 // going forward. Idempotent via the (client_id, period_month) unique index.
 //
+// Default (no body / no month): prior calendar month (end-of-month books).
 // Body (optional JSON): { "month": "YYYY-MM" } to backfill a specific month.
 export async function POST(req: Request) {
   if (!validateSchedulerSecret(req)) {
@@ -108,7 +114,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     if (body && typeof body.month === 'string') month = body.month;
   } catch {
-    // No body / not JSON — default to the current month.
+    // No body / not JSON — default to the prior month.
   }
 
   try {

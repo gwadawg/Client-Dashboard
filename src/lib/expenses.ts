@@ -457,7 +457,8 @@ export function applyExpenseRules(
 /**
  * operating_expenses = cac + fulfillment + overhead (all P&L-included).
  * marketing_spend = cac only; delivery_costs = fulfillment only.
- * Excludes: personal, owner_draw, passthrough, exclude_from_pnl, uncategorized.
+ * Excludes: personal, owner_draw, passthrough, uncategorized, and any row with
+ * exclude_from_pnl — excluded charges must not appear in any KPI total.
  */
 export function rollupExpensesForMonth(
   expenses: Array<Pick<BusinessExpense, "occurred_on" | "amount" | "ceo_bucket" | "exclude_from_pnl">>,
@@ -472,10 +473,13 @@ export function rollupExpensesForMonth(
     const amt = Math.abs(Number(e.amount) || 0);
     transaction_count += 1;
     const bucket = isCeoBucket(e.ceo_bucket) ? e.ceo_bucket : "uncategorized";
-    by_bucket[bucket] += amt;
 
     const pnlIncluded = PNL_BUCKETS.has(bucket) && !e.exclude_from_pnl;
-    if (!pnlIncluded) excluded_total += amt;
+    if (!pnlIncluded) {
+      excluded_total += amt;
+      continue;
+    }
+    by_bucket[bucket] += amt;
   }
 
   const marketing_spend = by_bucket.cac;

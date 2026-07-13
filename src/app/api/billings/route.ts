@@ -194,6 +194,12 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  if (willBePaid && revenue.revenue_type !== 'passthrough' && !revenue.revenue_segment) {
+    return NextResponse.json(
+      { error: 'revenue_segment is required when marking paid (front_end | back_end)' },
+      { status: 400 },
+    );
+  }
 
   const insert: Record<string, unknown> = {
     client_id,

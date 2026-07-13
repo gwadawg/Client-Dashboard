@@ -48,6 +48,10 @@ type ImportRow = {
   note?: string;
   invoice_ref: string;
   created_by: string | null;
+  revenue_type: string;
+  revenue_segment: string;
+  lead_source?: string;
+  passthrough_amount?: number;
 };
 
 // POST /api/billings/import — load historical per-payment rows from a CSV.
@@ -76,6 +80,10 @@ export async function POST(req: Request) {
     amount: headerIndex(headers, 'amount', 'amount paid', 'paid', 'total'),
     method: headerIndex(headers, 'method', 'payment method'),
     note: headerIndex(headers, 'note', 'memo', 'description'),
+    revenue_type: headerIndex(headers, 'revenue_type', 'type', 'revenue type'),
+    revenue_segment: headerIndex(headers, 'revenue_segment', 'segment', 'fe/be', 'front_end'),
+    lead_source: headerIndex(headers, 'lead_source', 'source', 'lead source'),
+    passthrough: headerIndex(headers, 'passthrough_amount', 'passthrough', 'ad spend'),
   };
   const missing: string[] = [];
   if (col.client === -1) missing.push('client');
@@ -122,6 +130,26 @@ export async function POST(req: Request) {
     if (seen.has(key)) { skippedDuplicate++; continue; }
     seen.add(key);
 
+    const typeRaw = get(col.revenue_type).toLowerCase();
+    const segmentRaw = get(col.revenue_segment).toLowerCase();
+    const revenue_type =
+      typeRaw === 'pif' ||
+      typeRaw === 'performance' ||
+      typeRaw === 'passthrough' ||
+      typeRaw === 'upsell' ||
+      typeRaw === 'one_off'
+        ? typeRaw
+        : 'mrr';
+    let revenue_segment =
+      segmentRaw === 'front_end' || segmentRaw === 'fe' || segmentRaw === 'front'
+        ? 'front_end'
+        : segmentRaw === 'back_end' || segmentRaw === 'be' || segmentRaw === 'back'
+          ? 'back_end'
+          : 'back_end';
+    if (revenue_type === 'passthrough') revenue_segment = 'back_end';
+
+    const passthroughAmt = parseAmount(get(col.passthrough));
+
     rows.push({
       client_id: clientId,
       billed_on: date,
@@ -135,6 +163,10 @@ export async function POST(req: Request) {
       note: get(col.note) || undefined,
       invoice_ref: 'import',
       created_by: ctx.userId,
+      revenue_type,
+      revenue_segment,
+      lead_source: get(col.lead_source) || undefined,
+      passthrough_amount: passthroughAmt ?? undefined,
     });
 
     const agg = perClient.get(clientId) ?? { name, count: 0, total: 0 };

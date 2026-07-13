@@ -58,12 +58,28 @@ export type BusinessMetricRow = {
   value_numeric: number | null;
 };
 
+/** Point-in-time roster freeze (end-of-month books for `period_month`). */
+export type ClientMonthlySnapshot = {
+  client_id: string;
+  period_month: string; // YYYY-MM-DD (first of month)
+  lifecycle_status: string | null;
+  mrr: number | null;
+  is_active: boolean;
+};
+
 export type BusinessInput = {
   clients: BusinessClient[];
   statusHistory: StatusHistoryRow[];
   billings: BusinessBilling[];
   /** Imported / manual company-wide inputs (marketing spend, expenses, cash …). */
   businessMetrics?: BusinessMetricRow[];
+  /** End-of-month roster snapshots — used for start/end MRR + expansion. */
+  snapshots?: ClientMonthlySnapshot[];
+  /**
+   * Acquisition signed closes per YYYY-MM (non-dismissed). CAC denominator.
+   * When omitted, CAC falls back to roster `date_signed` count.
+   */
+  signedClosesByMonth?: Record<string, number>;
   /** Target month, "YYYY-MM". Defaults to the current calendar month. */
   month?: string;
   /** Number of trailing months (including target) for the trend series. */
@@ -95,8 +111,7 @@ export type Headline = {
   net_new_mrr: number;
   cash_collected: number;
   gross_revenue_churn_pct: number | null;
-  // Reconstructed MRR at the start of the target month (approximate until
-  // client_monthly_snapshots accrue). Used as the churn-rate denominator.
+  // MRR at the start of the target month (snapshot prior month when available).
   start_mrr: number;
 };
 
@@ -196,6 +211,8 @@ export type UnitEconomics = {
   headcount: number | null;
   // Acquisition efficiency.
   cac: number | null;
+  /** Denominator used for CAC (signed closes preferred). */
+  cac_closes: number;
   ltv: number | null;
   ltv_is_margin_based: boolean;
   ltv_cac: number | null;
@@ -211,8 +228,7 @@ export type UnitEconomics = {
   is_profitable: boolean;
   rule_of_40: number | null;
   revenue_per_head: number | null; // annualized MRR per head
-  /** From acquisition pipeline when business_metrics.marketing_spend is unset */
-  acquisition_pipeline_cac?: number | null;
+  /** Meta ad spend this month (informational; CAC uses expense rollup when set). */
   acquisition_ad_spend?: number | null;
 };
 
@@ -265,16 +281,113 @@ function pct(part: number, whole: number): number | null {
   return (part / whole) * 100;
 }
 
-/** A billing counts as revenue unless it is a passthrough (ad-spend reimbursement). */
+const NON_CASH_STATUSES = new Set(["voided", "refunded"]);
+
+/** A billing counts as revenue unless it is a full passthrough (ad-spend reimbursement). */
 function isRevenue(b: BusinessBilling): boolean {
-  return b.revenue_type !== "passthrough";
+  if (b.revenue_type === "passthrough") return false;
+  if (b.status && NON_CASH_STATUSES.has(b.status)) return false;
+  return true;
 }
 
-/** Collected cash on a billing in a given month (dated by paid_on). */
+/**
+ * Collected cash on a billing in a given month (dated by paid_on).
+ * Subtracts `passthrough_amount` so mixed retainer+adspend invoices don't inflate revenue.
+ */
 function collectedInMonth(b: BusinessBilling, month: string): number {
   if (!isRevenue(b)) return 0;
   if (monthOf(b.paid_on) !== month) return 0;
-  return num(b.amount_paid);
+  return Math.max(0, num(b.amount_paid) - num(b.passthrough_amount));
+}
+
+/**
+ * One Lost-MRR event per client from roster lifecycle history (not billings).
+ * Prefers `clients.churned_at` for the month bucket when set (backdated churn);
+ * otherwise the first transition into off_boarding / churned.
+ * Amount is `mrr_at_change` at that first departure (MRR when they left the book).
+ */
+export function computeDeparturesForMonth(
+  clients: BusinessClient[],
+  statusHistory: StatusHistoryRow[],
+  month: string,
+): ChurnedClient[] {
+  const clientById = new Map(clients.map((c) => [c.id, c]));
+  const byClient = new Map<string, StatusHistoryRow[]>();
+  for (const h of statusHistory) {
+    if (!DEPARTURE_STATUSES.has(h.new_status)) continue;
+    const list = byClient.get(h.client_id) ?? [];
+    list.push(h);
+    byClient.set(h.client_id, list);
+  }
+
+  const out: ChurnedClient[] = [];
+  for (const [clientId, rows] of byClient) {
+    rows.sort((a, b) => a.changed_at.localeCompare(b.changed_at));
+    const first = rows[0];
+    const churnedRow = rows.find((r) => r.new_status === CHURNED) ?? null;
+    const display = churnedRow ?? first;
+    const client = clientById.get(clientId);
+    const effectiveMonth = monthOf(client?.churned_at) ?? monthOf(first.changed_at);
+    if (effectiveMonth !== month) continue;
+    out.push({
+      client_id: clientId,
+      name: client?.name ?? "Unknown",
+      mrr: num(first.mrr_at_change),
+      reason_code: display.reason_code ?? first.reason_code ?? null,
+      note: display.note ?? first.note ?? null,
+      departure_status: display.new_status,
+    });
+  }
+  out.sort((a, b) => b.mrr - a.mrr);
+  return out;
+}
+
+function snapshotMonthKey(periodMonth: string): string | null {
+  return monthOf(periodMonth);
+}
+
+function activeMrrFromSnapshots(
+  snapshots: ClientMonthlySnapshot[],
+  month: string,
+): number | null {
+  const rows = snapshots.filter((s) => snapshotMonthKey(s.period_month) === month);
+  if (rows.length === 0) return null;
+  return rows.reduce((sum, s) => {
+    const active = s.is_active || s.lifecycle_status === ACTIVE;
+    return active ? sum + num(s.mrr) : sum;
+  }, 0);
+}
+
+/** Expansion / contraction from MoM snapshot deltas on clients active in both months. */
+function expansionContractionFromSnapshots(
+  snapshots: ClientMonthlySnapshot[],
+  startMonth: string,
+  endMonth: string,
+): { expansion_mrr: number; contraction_mrr: number } {
+  const startRows = snapshots.filter((s) => snapshotMonthKey(s.period_month) === startMonth);
+  const endRows = snapshots.filter((s) => snapshotMonthKey(s.period_month) === endMonth);
+  if (startRows.length === 0 || endRows.length === 0) {
+    return { expansion_mrr: 0, contraction_mrr: 0 };
+  }
+  const startByClient = new Map(
+    startRows
+      .filter((s) => s.is_active || s.lifecycle_status === ACTIVE)
+      .map((s) => [s.client_id, num(s.mrr)]),
+  );
+  const endByClient = new Map(
+    endRows
+      .filter((s) => s.is_active || s.lifecycle_status === ACTIVE)
+      .map((s) => [s.client_id, num(s.mrr)]),
+  );
+  let expansion_mrr = 0;
+  let contraction_mrr = 0;
+  for (const [clientId, startMrr] of startByClient) {
+    if (!endByClient.has(clientId)) continue;
+    const delta = (endByClient.get(clientId) ?? 0) - startMrr;
+    if (delta > 0) expansion_mrr += delta;
+    else if (delta < 0) contraction_mrr += -delta;
+  }
+  return { expansion_mrr, contraction_mrr };
 }
 
 // ── Engine ────────────────────────────────────────────────────────────────────
@@ -284,40 +397,48 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
   const month = input.month ?? currentMonth(now);
   const trendMonths = input.trendMonths ?? 12;
   const { clients, statusHistory, billings } = input;
+  const snapshots = input.snapshots ?? [];
+  const signedClosesByMonth = input.signedClosesByMonth ?? {};
 
   // Imported / manual inputs bucketed as month -> key -> value.
   const financeByMonth = bucketBusinessMetrics(input.businessMetrics ?? []);
   const finance = financeByMonth.get(month) ?? {};
 
-  const clientById = new Map(clients.map((c) => [c.id, c]));
-
   // ── Current portfolio snapshot (as-of now) ────────────────────────────────
   const activeClients = clients.filter((c) => c.lifecycle_status === ACTIVE);
-  const active_mrr = activeClients.reduce((s, c) => s + num(c.mrr), 0);
+  const live_active_mrr = activeClients.reduce((s, c) => s + num(c.mrr), 0);
   const active_clients = activeClients.length;
-  const arpa = active_clients ? active_mrr / active_clients : 0;
+  const arpa = active_clients ? live_active_mrr / active_clients : 0;
+
+  // End MRR for the selected month: snapshot when frozen, else live book.
+  const snapEnd = activeMrrFromSnapshots(snapshots, month);
+  const isCurrentMonth = month === currentMonth(now);
+  const end_mrr = snapEnd != null && !isCurrentMonth ? snapEnd : live_active_mrr;
+  const active_mrr = live_active_mrr;
 
   // ── MRR movement for the target month ─────────────────────────────────────
   const new_mrr = clients
     .filter((c) => monthOf(c.date_signed) === month)
     .reduce((s, c) => s + num(c.mrr), 0);
 
-  const churnRowsThisMonth = statusHistory.filter(
-    (h) => DEPARTURE_STATUSES.has(h.new_status) && monthOf(h.changed_at) === month,
-  );
-  const lost_mrr = churnRowsThisMonth.reduce((s, h) => s + num(h.mrr_at_change), 0);
+  // Lost MRR = roster lifecycle only (one event per client). Not billings.
+  const churned_clients = computeDeparturesForMonth(clients, statusHistory, month);
+  const lost_mrr = churned_clients.reduce((s, c) => s + c.mrr, 0);
+  const churned_count = churned_clients.length;
 
-  // Expansion / contraction need month-over-month MRR deltas on retained clients,
-  // which require client_monthly_snapshots. Best-effort 0 until those accrue.
-  const expansion_mrr = 0;
-  const contraction_mrr = 0;
+  const priorMonth = addMonths(month, -1);
+  const snapStart = activeMrrFromSnapshots(snapshots, priorMonth);
+  const { expansion_mrr, contraction_mrr } = expansionContractionFromSnapshots(
+    snapshots,
+    priorMonth,
+    month,
+  );
 
   const net_new_mrr = new_mrr + expansion_mrr - contraction_mrr - lost_mrr;
 
-  // Reconstructed start-of-month MRR. For the current month, end-of-month MRR is
-  // the live active_mrr, so start = end - net movement. (Approximate for past
-  // months; exact once snapshots exist.)
-  const start_mrr = Math.max(0, active_mrr - net_new_mrr);
+  // Start-of-month MRR: prior-month snapshot when present; else reconstruct.
+  const start_mrr =
+    snapStart != null ? snapStart : Math.max(0, end_mrr - net_new_mrr);
 
   // ── Revenue & cash (cash-collected basis) ─────────────────────────────────
   let new_cash = 0;
@@ -377,25 +498,17 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
 
   // ── Churn & retention ─────────────────────────────────────────────────────
   const new_clients_signed = clients.filter((c) => monthOf(c.date_signed) === month).length;
-  const churned_count = churnRowsThisMonth.length;
-  // Active clients at month start ≈ now − signed-this-month + churned-this-month.
+  const signed_closes =
+    typeof signedClosesByMonth[month] === "number" ? signedClosesByMonth[month] : new_clients_signed;
+  // Active clients at month start ≈ now − signed-this-month + departed-this-month.
   const active_at_start = Math.max(0, active_clients - new_clients_signed + churned_count);
 
-  const churned_clients: ChurnedClient[] = churnRowsThisMonth.map((h) => ({
-    client_id: h.client_id,
-    name: clientById.get(h.client_id)?.name ?? "Unknown",
-    mrr: num(h.mrr_at_change),
-    reason_code: h.reason_code ?? null,
-    note: h.note ?? null,
-    departure_status: h.new_status,
-  }));
-
   const reasonAgg = new Map<string, { count: number; lost_mrr: number }>();
-  for (const h of churnRowsThisMonth) {
+  for (const h of churned_clients) {
     const code = h.reason_code ?? "unknown";
     const cur = reasonAgg.get(code) ?? { count: 0, lost_mrr: 0 };
     cur.count += 1;
-    cur.lost_mrr += num(h.mrr_at_change);
+    cur.lost_mrr += h.mrr;
     reasonAgg.set(code, cur);
   }
   const churn_by_reason: ChurnReasonBucket[] = [...reasonAgg.entries()]
@@ -442,7 +555,7 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     expansion_mrr,
     contraction_mrr,
     lost_mrr,
-    end_mrr: active_mrr,
+    end_mrr,
   };
 
   const unitEconomics = computeUnitEconomics({
@@ -450,7 +563,7 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     active_mrr,
     arpa,
     avg_tenure_months: churn.avg_tenure_months,
-    new_clients_signed,
+    cac_closes: signed_closes,
     new_cash,
     total_cash,
     start_mrr,
@@ -461,9 +574,12 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     statusHistory,
     billings,
     financeByMonth,
+    signedClosesByMonth,
+    snapshots,
     endMonth: month,
     months: trendMonths,
     currentActiveMrr: active_mrr,
+    now,
   });
 
   return { month, headline, revenue, mrrBridge, churn, portfolio, unitEconomics, trend };
@@ -490,7 +606,8 @@ function computeUnitEconomics(args: {
   active_mrr: number;
   arpa: number;
   avg_tenure_months: number | null;
-  new_clients_signed: number;
+  /** Signed closes this month (CAC denominator). */
+  cac_closes: number;
   new_cash: number;
   total_cash: number;
   start_mrr: number;
@@ -505,11 +622,10 @@ function computeUnitEconomics(args: {
   const cash_balance = val("cash_balance");
   const headcount = val("headcount");
 
-  // Acquisition efficiency.
+  // CAC = marketing spend ÷ signed closes (acquisition closes).
+  const cac_closes = Math.max(0, args.cac_closes);
   const cac =
-    marketing_spend != null && args.new_clients_signed > 0
-      ? marketing_spend / args.new_clients_signed
-      : null;
+    marketing_spend != null && cac_closes > 0 ? marketing_spend / cac_closes : null;
 
   const gross_margin_pct =
     delivery_costs != null && args.total_cash > 0
@@ -561,6 +677,7 @@ function computeUnitEconomics(args: {
     cash_balance,
     headcount,
     cac,
+    cac_closes,
     ltv,
     ltv_is_margin_based: marginFrac != null,
     ltv_cac,
@@ -591,12 +708,15 @@ function computeNewLogoCash(billings: BusinessBilling[], month: string): number 
   const firstPaid = new Map<string, BusinessBilling>();
   for (const b of billings) {
     if (!isRevenue(b) || !b.paid_on) continue;
+    if (num(b.amount_paid) - num(b.passthrough_amount) <= 0) continue;
     const cur = firstPaid.get(b.client_id);
     if (!cur || b.paid_on < (cur.paid_on as string)) firstPaid.set(b.client_id, b);
   }
   let total = 0;
   for (const b of firstPaid.values()) {
-    if (monthOf(b.paid_on) === month) total += num(b.amount_paid);
+    if (monthOf(b.paid_on) === month) {
+      total += Math.max(0, num(b.amount_paid) - num(b.passthrough_amount));
+    }
   }
   return total;
 }
@@ -694,26 +814,38 @@ function computePortfolio(
 }
 
 /**
- * Trailing month-by-month series. Cash figures are exact (from paid billings);
- * MRR is reconstructed by walking backward from the live active MRR using each
- * month's net movement (new − lost), so the line is approximate until real
- * client_monthly_snapshots exist.
+ * Trailing month-by-month series. Cash figures are exact (from paid billings).
+ * MRR end uses monthly snapshots when present; otherwise walks backward from
+ * live Active MRR using each month's net movement (new − lost ± expansion).
  */
 function computeTrend(args: {
   clients: BusinessClient[];
   statusHistory: StatusHistoryRow[];
   billings: BusinessBilling[];
   financeByMonth: Map<string, Record<string, number>>;
+  signedClosesByMonth: Record<string, number>;
+  snapshots: ClientMonthlySnapshot[];
   endMonth: string;
   months: number;
   currentActiveMrr: number;
+  now: Date;
 }): TrendPoint[] {
-  const { clients, statusHistory, billings, financeByMonth, endMonth, months, currentActiveMrr } = args;
+  const {
+    clients,
+    statusHistory,
+    billings,
+    financeByMonth,
+    signedClosesByMonth,
+    snapshots,
+    endMonth,
+    months,
+    currentActiveMrr,
+    now,
+  } = args;
 
   const monthsList: string[] = [];
   for (let i = months - 1; i >= 0; i--) monthsList.push(addMonths(endMonth, -i));
 
-  // New clients signed per month (for per-month CAC).
   const newClientsByMonthCount = new Map<string, number>();
   for (const c of clients) {
     const m = monthOf(c.date_signed);
@@ -721,13 +853,12 @@ function computeTrend(args: {
     newClientsByMonthCount.set(m, (newClientsByMonthCount.get(m) ?? 0) + 1);
   }
 
-  // Per-month cash + movement aggregation.
   const cashByMonth = new Map<string, { total: number; front: number; back: number }>();
   for (const b of billings) {
     const m = monthOf(b.paid_on);
     if (!m || !isRevenue(b)) continue;
     const cur = cashByMonth.get(m) ?? { total: 0, front: 0, back: 0 };
-    const amt = num(b.amount_paid);
+    const amt = Math.max(0, num(b.amount_paid) - num(b.passthrough_amount));
     cur.total += amt;
     if (b.revenue_segment === "front_end") cur.front += amt;
     else if (b.revenue_segment === "back_end") cur.back += amt;
@@ -741,21 +872,38 @@ function computeTrend(args: {
     newMrrByMonth.set(m, (newMrrByMonth.get(m) ?? 0) + num(c.mrr));
   }
   const lostMrrByMonth = new Map<string, number>();
-  for (const h of statusHistory) {
-    if (!DEPARTURE_STATUSES.has(h.new_status)) continue;
-    const m = monthOf(h.changed_at);
-    if (!m) continue;
-    lostMrrByMonth.set(m, (lostMrrByMonth.get(m) ?? 0) + num(h.mrr_at_change));
+  for (const m of monthsList) {
+    const deps = computeDeparturesForMonth(clients, statusHistory, m);
+    lostMrrByMonth.set(
+      m,
+      deps.reduce((s, d) => s + d.mrr, 0),
+    );
   }
 
-  // Reconstruct end-of-month MRR backward from the latest month (= live MRR).
   const mrrEndByMonth = new Map<string, number>();
   let running = currentActiveMrr;
   for (let i = monthsList.length - 1; i >= 0; i--) {
     const m = monthsList[i];
-    mrrEndByMonth.set(m, Math.max(0, running));
-    const net = (newMrrByMonth.get(m) ?? 0) - (lostMrrByMonth.get(m) ?? 0);
-    running = running - net; // step to previous month's end
+    const snap = activeMrrFromSnapshots(snapshots, m);
+    const isCurrent = m === currentMonth(now);
+    if (snap != null && !isCurrent) {
+      mrrEndByMonth.set(m, snap);
+      running = snap;
+    } else {
+      mrrEndByMonth.set(m, Math.max(0, running));
+    }
+    const prior = addMonths(m, -1);
+    const { expansion_mrr, contraction_mrr } = expansionContractionFromSnapshots(
+      snapshots,
+      prior,
+      m,
+    );
+    const net =
+      (newMrrByMonth.get(m) ?? 0) +
+      expansion_mrr -
+      contraction_mrr -
+      (lostMrrByMonth.get(m) ?? 0);
+    running = running - net;
   }
 
   return monthsList.map((m) => {
@@ -763,8 +911,11 @@ function computeTrend(args: {
     const fin = financeByMonth.get(m) ?? {};
     const marketing_spend = typeof fin.marketing_spend === "number" ? fin.marketing_spend : null;
     const operating_expenses = typeof fin.operating_expenses === "number" ? fin.operating_expenses : null;
-    const newClients = newClientsByMonthCount.get(m) ?? 0;
-    const cac = marketing_spend != null && newClients > 0 ? marketing_spend / newClients : null;
+    const closes =
+      typeof signedClosesByMonth[m] === "number"
+        ? signedClosesByMonth[m]
+        : (newClientsByMonthCount.get(m) ?? 0);
+    const cac = marketing_spend != null && closes > 0 ? marketing_spend / closes : null;
     const roas = marketing_spend != null && marketing_spend > 0 ? cash.front / marketing_spend : null;
     const operating_profit = operating_expenses != null ? cash.total - operating_expenses : null;
     return {

@@ -465,17 +465,27 @@ so the numbers match the bank. Passthrough (ad-spend reimbursement) is always ex
 | KPI | Definition |
 |-----|------------|
 | **New MRR** | `SUM(clients.mrr)` for clients whose `date_signed` falls in the month. |
-| **Lost MRR** (churned) | `SUM(client_status_history.mrr_at_change WHERE new_status = 'churned')` in the month. |
-| **Expansion / Contraction MRR** | Best-effort now; becomes exact once `client_monthly_snapshots` accrue (a month-over-month MRR delta on retained clients). |
+| **Lost MRR** | Roster-only. One departure per client from `client_status_history` into `off_boarding` or `churned` (deduped). Month bucket = `clients.churned_at` when set, else first departure `changed_at`. Amount = `mrr_at_change` at first departure. **Not** derived from billing charges. |
+| **Expansion / Contraction MRR** | MoM MRR delta on clients active in both prior-month and this-month `client_monthly_snapshots`. |
 | **Net New MRR** | `New + Expansion − Contraction − Lost`. |
+| **Start / End MRR** | Prior-month snapshot (start) and this-month snapshot or live Active MRR (end). Cron on the 1st freezes the **prior** month. |
+
+**Extensions, free months, late charges (cash timing — not Lost MRR):**
+
+| Situation | What to do | What CEO metrics should show |
+|-----------|------------|------------------------------|
+| Free month / payment extension | Keep lifecycle `active`; defer the billing `due_date` / next charge date. Do **not** zero MRR or mark churned. | Active MRR unchanged; cash collected later (or $0 that month); AR may rise if you still book a future due. |
+| Late to charge | Same — leave roster alone; when you collect, set `paid_on` to the real collection date. | Cash lands in the payment month; MRR bridge unchanged. |
+| Client actually left | Set `off_boarding` then `churned` (or straight to churned) with correct `churned_at` / keep `mrr` until the status change so Lost MRR stamps correctly. | Lost MRR in the effective leave month. |
+| Roster catch-up (left months ago, still “active”) | Backfill churn with the real `churned_at` before trusting historical Lost MRR / churn %. | Until cleaned, Active MRR is overstated and Lost MRR understated. |
 
 ### Churn & retention
 
 | KPI | Definition |
 |-----|------------|
-| **Logo Churn Rate** | `Churned clients in month ÷ Active clients at month start × 100`. |
+| **Logo Churn Rate** | `Departed clients in month ÷ Active clients at month start × 100`. |
 | **Gross Revenue Churn Rate** | `Lost MRR ÷ MRR at month start × 100`. |
-| **Net Revenue Retention (NRR)** | `(Start MRR + Expansion − Contraction − Lost) ÷ Start MRR × 100` (partial until expansion is tracked). |
+| **Net Revenue Retention (NRR)** | `(Start MRR + Expansion − Contraction − Lost) ÷ Start MRR × 100`. |
 | **Avg Client Tenure** | Mean months from `date_signed` to `churned_at` (or today for active). |
 
 ### Clients & portfolio risk
@@ -483,7 +493,8 @@ so the numbers match the bank. Passthrough (ad-spend reimbursement) is always ex
 | KPI | Definition |
 |-----|------------|
 | **Lifecycle Funnel** | Client counts by `lifecycle_status`: new_account → onboarding → active → paused → off_boarding → churned. |
-| **New Clients Signed** | `COUNT(clients WHERE date_signed in month)`. |
+| **New Clients Signed** | `COUNT(clients WHERE date_signed in month)` — roster logos (reporting). |
+| **Signed closes** | Non-dismissed `acquisition_closes` in the month — **CAC denominator**. |
 | **MRR by Offer** | Active MRR + client count split by `offer` (RM vs HE). |
 | **Revenue Concentration** | Top client's % of Active MRR, and top-5 % — single-client dependency risk. |
 | **Contracts Ending Soon** | Clients with `contract_end_date` within 60/90 days and their at-risk MRR. |
@@ -509,13 +520,14 @@ Manual Edit inputs still works as an override / bootstrap.
 | `headcount` | Team headcount |
 
 **Ledger → metrics rollup:** `POST /api/expenses/rollup` with `{ month: "YYYY-MM" }`. Excludes
-`personal`, `owner_draw`, `passthrough`, `uncategorized`, and any row with `exclude_from_pnl`.
+`personal`, `owner_draw`, `passthrough`, `uncategorized`, and any row with `exclude_from_pnl`
+(excluded charges must not appear in any KPI total).
 
 **Derived metrics:**
 
 | KPI | Formula | Needs |
 |-----|---------|-------|
-| **CAC** | `marketing_spend ÷ new clients signed` | `marketing_spend` |
+| **CAC** | `marketing_spend ÷ signed closes` | `marketing_spend` + acquisition closes |
 | **ROAS** (new cash) | `New Cash Collected ÷ marketing_spend` | `marketing_spend` |
 | **LTV** | `ARPA × avg tenure (× gross margin if known)` | portfolio (live) |
 | **LTV : CAC** | `LTV ÷ CAC` | `marketing_spend` |
@@ -526,7 +538,7 @@ Manual Edit inputs still works as an override / bootstrap.
 | **Net Burn / Runway** | `cash_balance ÷ (operating_expenses − Total Cash)` | `cash_balance` + `operating_expenses` |
 | **Rule of 40** | `annualized MRR growth % + profit margin %` | `operating_expenses` |
 | **Revenue / Head** | `(Active MRR × 12) ÷ headcount` | `headcount` |
-| **Quick Ratio** | `(New + Expansion MRR) ÷ (Lost + Contraction MRR)` | live now (partial) |
+| **Quick Ratio** | `(New + Expansion MRR) ÷ (Lost + Contraction MRR)` | snapshots help expansion |
 
 Read/write the inputs via `GET|POST /api/business/metrics` (`ceo`-guarded). An import job can POST the
 same body (`{ metric_key, month, value_numeric }`) to backfill history; the route upserts per
@@ -537,9 +549,18 @@ once any month carries `marketing_spend` or `operating_expenses`.
 
 The accuracy of the Business view depends on a small, consistent billing/lifecycle convention:
 
-1. **Tag every billing's segment.** Set `revenue_segment` to `front_end` (new-client cash: setup, PIF, first contract) or `back_end` (ongoing retainer) on each `client_billings` row, and set `revenue_type` (`mrr` / `pif` / `performance` / `passthrough`). New Cash reads `front_end`; the New-Logo Cash cross-check works even if a row is mis-tagged.
-2. **Record cash when it lands.** Fill `paid_on` and `amount_paid` so cash-collected KPIs match the bank. Mark `passthrough` so ad-spend reimbursements never inflate revenue.
-3. **Churn through lifecycle.** Set a client's `lifecycle_status = 'churned'` — the `log_client_status_change` trigger auto-appends a `client_status_history` row stamped with `mrr_at_change`, which is the Lost MRR source. Keep `clients.mrr` current so the snapshot of Active MRR and the lost amount are both right.
-4. **Snapshot monthly.** `GET /api/business/snapshot?run=1` or `POST /api/business/snapshot` (Bearer `ADMIN_WEBHOOK_SECRET` or Vercel `CRON_SECRET`) freezes one `client_monthly_snapshots` row per client each month. Vercel cron runs on the 1st via `vercel.json`. Check health with `GET /api/business/snapshot` (no `run` param).
+1. **Tag every billing's segment.** Set `revenue_segment` to `front_end` (new-client cash: setup, PIF, first contract) or `back_end` (ongoing retainer) on each `client_billings` row, and set `revenue_type` (`mrr` / `pif` / `performance` / `passthrough`). New Cash reads `front_end`; the New-Logo Cash cross-check works even if a row is mis-tagged. Mixed ad-spend on a retainer invoice must set `passthrough_amount` (or use a separate `passthrough` row).
+2. **Record cash when it lands.** Fill `paid_on` and `amount_paid` so cash-collected KPIs match the bank. Refunds: clear paid fields or mark `refunded`.
+3. **Churn through lifecycle (roster), not billing.** Lost MRR comes from status history + `churned_at`. Keep `clients.mrr` current **before** the status change so `mrr_at_change` stamps correctly. Extensions / late charges do **not** change lifecycle.
+4. **Snapshot monthly.** `GET /api/business/snapshot?run=1` (Vercel cron on the 1st) freezes the **prior** month’s end-of-month roster into `client_monthly_snapshots`. Check health with `GET /api/business/snapshot` (no `run` param).
+
+### Month-close checklist (CEO books)
+
+1. Clear Finance → Expenses **Pending** (`uncategorized`) for the month.
+2. Confirm one expense source of truth (sheet **or** bank; payroll not double-posted).
+3. **Roll up {month}** so Overview OpEx / CAC / COGS refresh.
+4. Reconcile **New cash** vs **New-logo cash** vs acquisition **signed closes**.
+5. Confirm roster churn catch-up (`churned_at` / off_boarding) before trusting Lost MRR.
+6. Confirm prior-month snapshot healthy (`/api/business/snapshot`).
 
 **Code references:** `src/lib/business-metrics.ts` (engine), `src/app/api/business/route.ts` (API), `src/app/api/business/snapshot/route.ts` (monthly snapshot writer), `src/components/CeoDashboard.tsx` (UI).
