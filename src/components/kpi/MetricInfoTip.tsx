@@ -1,4 +1,7 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 export type MetricHint = {
   /** What the number means in plain English. */
@@ -14,6 +17,9 @@ type Props = {
   children?: ReactNode;
 };
 
+const TIP_WIDTH = 288; // w-72
+const EDGE_PAD = 12;
+
 /** Small “i” control with a hover/focus panel: Definition · Source · Formula. */
 export default function MetricInfoTip({ hint }: Props) {
   const isStructured = typeof hint !== "string";
@@ -21,24 +27,42 @@ export default function MetricInfoTip({ hint }: Props) {
     ? hint
     : { definition: hint, source: "", formula: "" };
 
-  return (
-    <span className="relative inline-flex group/tip">
-      <button
-        type="button"
-        className="flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold cursor-help select-none outline-none focus-visible:ring-1 focus-visible:ring-amber-500/60"
-        style={{ background: "rgba(148,163,184,0.15)", color: "#64748b" }}
-        aria-label={
-          isStructured
-            ? `${structured.definition}. Source: ${structured.source}. Formula: ${structured.formula}`
-            : structured.definition
-        }
-      >
-        i
-      </button>
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+
+  const place = useCallback(() => {
+    const btn = btnRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    // Prefer right-align under the icon; clamp so left edge never slides under the sidebar.
+    let left = rect.right - TIP_WIDTH;
+    left = Math.max(EDGE_PAD, Math.min(left, window.innerWidth - TIP_WIDTH - EDGE_PAD));
+    setCoords({ top: rect.bottom + 8, left });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, place]);
+
+  const tip =
+    open &&
+    coords &&
+    typeof document !== "undefined" &&
+    createPortal(
       <span
         role="tooltip"
-        className="pointer-events-none absolute z-50 right-0 top-full mt-2 w-72 rounded-lg p-3 opacity-0 scale-95 origin-top-right transition duration-150 group-hover/tip:opacity-100 group-hover/tip:scale-100 group-focus-within/tip:opacity-100 group-focus-within/tip:scale-100 motion-reduce:transition-none"
+        className="pointer-events-none fixed z-[100] w-72 rounded-lg p-3"
         style={{
+          top: coords.top,
+          left: coords.left,
           background: "#0a1424",
           border: "1px solid rgba(255,255,255,0.12)",
           boxShadow: "0 12px 40px rgba(0,0,0,0.55)",
@@ -55,7 +79,32 @@ export default function MetricInfoTip({ hint }: Props) {
             <HintBlock label="Formula" text={structured.formula} last />
           </>
         )}
-      </span>
+      </span>,
+      document.body,
+    );
+
+  return (
+    <span
+      className="relative inline-flex"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)}
+      onBlur={() => setOpen(false)}
+    >
+      <button
+        ref={btnRef}
+        type="button"
+        className="flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold cursor-help select-none outline-none focus-visible:ring-1 focus-visible:ring-amber-500/60"
+        style={{ background: "rgba(148,163,184,0.15)", color: "#64748b" }}
+        aria-label={
+          isStructured
+            ? `${structured.definition}. Source: ${structured.source}. Formula: ${structured.formula}`
+            : structured.definition
+        }
+      >
+        i
+      </button>
+      {tip}
     </span>
   );
 }
