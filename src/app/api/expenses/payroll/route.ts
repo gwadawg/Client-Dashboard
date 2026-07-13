@@ -6,6 +6,7 @@ import {
   PAYROLL_ROLE_BUCKETS,
   expenseDedupeHash,
   normalizeMerchant,
+  resolveAcquisitionCostChannel,
   type CeoBucket,
 } from '@/lib/expenses';
 import { rollupExpenseDates } from '@/lib/expense-rollup';
@@ -183,6 +184,15 @@ export async function POST(req: Request) {
       external_id: externalId,
       ceo_bucket: ceoBucket,
       subcategory: 'payroll',
+      acquisition_cost_channel:
+        ceoBucket === 'cac'
+          ? resolveAcquisitionCostChannel({
+              ceo_bucket: 'cac',
+              subcategory: 'payroll',
+              merchant_raw: merchant,
+              source: 'payroll',
+            })
+          : null,
       exclude_from_pnl: excludeFromPnl,
       categorized_by: 'user' as const,
       rule_id: null,

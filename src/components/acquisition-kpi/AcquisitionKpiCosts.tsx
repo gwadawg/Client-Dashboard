@@ -56,19 +56,51 @@ export default function AcquisitionKpiCosts({ startDate, endDate, filters }: Pro
   const cplData = series.filter(d => d.cpl != null).map(d => ({ label: formatDay(d.date), cpl: d.cpl }));
 
   const costCards = [
-    { label: "Cost per lead (CPL)", value: fmtMoney(m.cpl), sub: "Meta spend ÷ Meta leads", color: KPI.accent.blue },
+    { label: "Cost per lead (CPL)", value: fmtMoney(m.cpl), sub: "Meta media ÷ Meta leads", color: KPI.accent.blue },
     { label: "Cost / intro booked", value: fmtMoney(m.cost_per_intro) },
     { label: "Cost / intro showed", value: fmtMoney(m.cost_per_intro_showed) },
     { label: "Cost / demo booked", value: fmtMoney(m.cost_per_demo_booked) },
     { label: "Cost / demo showed", value: fmtMoney(m.cost_per_demo_showed) },
     { label: "Cost / offer", value: fmtMoney(m.cost_per_offer) },
-    { label: "Blended CAC", value: fmtMoney(m.cac), sub: "Meta spend ÷ all closes", color: KPI.accent.blue },
-    { label: "Meta CAC", value: fmtMoney(m.meta_cac), sub: `Meta spend ÷ Meta closes (${fmtNum(m.meta_closes)})`, color: KPI.accent.blue },
-    { label: "Ad spend total", value: fmtMoney(m.ad_spend), sub: "Meta campaigns", color: KPI.textMuted },
+    { label: "Blended All-in CAC", value: fmtMoney(m.cac), sub: "Meta + creative/labor ÷ all closes", color: KPI.accent.blue },
+    { label: "Meta Media CAC", value: fmtMoney(m.meta_cac), sub: `Meta spend ÷ Meta closes (${fmtNum(m.meta_closes)})`, color: KPI.accent.blue },
+    { label: "Meta All-in CAC", value: fmtMoney(m.meta_all_in_cac), sub: "Meta + attributed creative/labor ÷ Meta closes", color: KPI.accent.blue },
+    { label: "Referral CAC", value: fmtMoney(m.referral_cac), sub: `Partner fees ÷ Referral closes (${fmtNum(m.referral_closes)})` },
+    { label: "Meta media spend", value: fmtMoney(m.ad_spend), sub: "Graph insights", color: KPI.textMuted },
+    { label: "Non-media CAC", value: fmtMoney(m.non_media_cac), sub: "Creative, labor, paid other, referral", color: KPI.textMuted },
+  ];
+
+  const channel = m.cost_by_channel ?? {
+    meta_media: m.ad_spend,
+    creative_production: 0,
+    paid_other: 0,
+    referral_partner: 0,
+    acquisition_labor: 0,
+  };
+  const channelCards = [
+    { label: "Meta media", value: fmtMoney(channel.meta_media) },
+    { label: "Creative / production", value: fmtMoney(channel.creative_production) },
+    { label: "Other paid", value: fmtMoney(channel.paid_other) },
+    { label: "Acquisition labor", value: fmtMoney(channel.acquisition_labor) },
+    { label: "Referral partner", value: fmtMoney(channel.referral_partner) },
+    { label: "All-in spend", value: fmtMoney(m.all_in_spend), color: KPI.accent.blue },
   ];
 
   return (
     <KpiPage>
+      <KpiSection title="CAC & channel mix" eyebrow="All-in">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {channelCards.map(card => (
+            <KpiStatCard
+              key={card.label}
+              label={card.label}
+              value={card.value}
+              color={card.color ?? KPI.text}
+            />
+          ))}
+        </div>
+      </KpiSection>
+
       <KpiSection title="Cost per funnel stage" eyebrow="Spend">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {costCards.map(card => (

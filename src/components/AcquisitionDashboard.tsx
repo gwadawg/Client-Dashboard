@@ -68,8 +68,9 @@ export default function AcquisitionDashboard({ startDate, endDate }: Props) {
           <KpiCard label="Ad Spend" value={fmt(m.ad_spend, "money")} />
           <KpiCard label="Meta Leads" value={fmt(m.meta_leads, "int")} />
           <KpiCard label="CPL" value={fmt(m.cpl, "money")} hint="Meta spend ÷ Meta leads" />
-          <KpiCard label="Blended CAC" value={fmt(m.cac, "money")} accent hint="Meta spend ÷ all closes" />
-          <KpiCard label="Meta CAC" value={fmt(m.meta_cac, "money")} accent hint="Meta spend ÷ Meta closes" />
+          <KpiCard label="Blended All-in CAC" value={fmt(m.cac, "money")} accent hint="Meta + creative/labor ÷ all closes" />
+          <KpiCard label="Meta Media CAC" value={fmt(m.meta_cac, "money")} accent hint="Meta spend ÷ Meta closes" />
+          <KpiCard label="Meta All-in CAC" value={fmt(m.meta_all_in_cac, "money")} accent hint="Meta + attributed ledger ÷ Meta closes" />
           <KpiCard label="Closes" value={fmt(m.closes, "int")} />
           <KpiCard label="Close Rate" value={fmt(m.close_rate, "pct")} />
         </div>

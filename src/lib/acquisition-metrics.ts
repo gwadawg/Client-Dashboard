@@ -7,6 +7,13 @@ import {
 } from './acquisition-config';
 import { offerMatchesScope as catalogOfferMatchesScope, type OfferScope } from './offer-catalog';
 import { isReportingClose } from './acquisition-close-filter';
+import { normalizeAcquisitionLeadSource } from './acquisition-lead-source';
+import {
+  META_ATTRIBUTED_CHANNELS,
+  NON_MEDIA_ACQUISITION_CHANNELS,
+  resolveAcquisitionCostChannel,
+  type AcquisitionCostChannel,
+} from './expenses';
 
 export type DateMode = 'booked' | 'scheduled' | 'lead_created' | 'offered';
 
@@ -57,6 +64,27 @@ export type AcquisitionAdSpendRow = {
   spend?: number;
 };
 
+/** Non-media CAC ledger rows (creative, labor, referral, paid_other). */
+export type AcquisitionLedgerCostRow = {
+  occurred_on: string;
+  amount: number;
+  acquisition_cost_channel?: string | null;
+  subcategory?: string | null;
+  merchant_raw?: string | null;
+  merchant_normalized?: string | null;
+  source?: string | null;
+  ceo_bucket?: string | null;
+  exclude_from_pnl?: boolean | null;
+};
+
+export type CostByChannel = {
+  meta_media: number;
+  creative_production: number;
+  paid_other: number;
+  referral_partner: number;
+  acquisition_labor: number;
+};
+
 export type NoShowBreakdown = {
   showed: number;
   lead_no_show: number;
@@ -73,6 +101,8 @@ export type AcquisitionMetricsInput = {
   offers: AcquisitionOfferRow[];
   closes: AcquisitionCloseRow[];
   adSpend: AcquisitionAdSpendRow[];
+  /** Optional ledger CAC (non-media) for all-in / blended formulas. */
+  ledgerCosts?: AcquisitionLedgerCostRow[];
   from: string;
   to: string;
   dateMode?: DateMode;
@@ -87,6 +117,13 @@ export type AcquisitionMetricsInput = {
 
 export type AcquisitionMetricsResult = {
   ad_spend: number;
+  /** Non-media CAC from expense ledger in range. */
+  non_media_cac: number;
+  /** Meta media + non-media CAC. */
+  all_in_spend: number;
+  /** Spend attributed to Meta all-in (media + creative/labor/paid_other). */
+  meta_all_in_spend: number;
+  cost_by_channel: CostByChannel;
   leads: number;
   meta_leads: number;
   intros_booked: number;
@@ -111,12 +148,20 @@ export type AcquisitionMetricsResult = {
   cost_per_demo_booked: number | null;
   cost_per_demo_showed: number | null;
   cost_per_offer: number | null;
-  /** Meta spend ÷ all closes (offer-scoped). */
+  /**
+   * Blended All-in CAC = (Meta media + non-media CAC) ÷ all closes.
+   * Kept as `cac` for API compat; UI should label "Blended All-in CAC".
+   */
   cac: number | null;
-  /** Meta spend ÷ closes whose lead source is Meta. */
+  /** Meta Media CAC = Meta spend ÷ Meta closes. */
   meta_cac: number | null;
+  /** Meta All-in CAC = (Meta + Meta-attributed ledger) ÷ Meta closes. */
+  meta_all_in_cac: number | null;
+  /** Referral CAC = referral_partner spend ÷ Referral closes. */
+  referral_cac: number | null;
   /** Closes in range with a Meta-sourced lead (offer-scoped). */
   meta_closes: number;
+  referral_closes: number;
   no_show_breakdown: NoShowBreakdown;
   cost_per_no_show: number | null;
 };
@@ -142,6 +187,7 @@ export function calculateAcquisitionMetrics(input: AcquisitionMetricsInput): Acq
     offers,
     closes,
     adSpend,
+    ledgerCosts = [],
     from,
     to,
     offerScope: rawScope,
@@ -155,6 +201,43 @@ export function calculateAcquisitionMetrics(input: AcquisitionMetricsInput): Acq
   const spend = adSpend
     .filter(r => inRange(r.insight_date, from, to))
     .reduce((s, r) => s + Number(r.amount_spent ?? r.spend ?? 0), 0);
+
+  const cost_by_channel: CostByChannel = {
+    meta_media: spend,
+    creative_production: 0,
+    paid_other: 0,
+    referral_partner: 0,
+    acquisition_labor: 0,
+  };
+
+  for (const row of ledgerCosts) {
+    if (!inRange(row.occurred_on, from, to)) continue;
+    if (row.ceo_bucket && row.ceo_bucket !== 'cac') continue;
+    const channel = resolveAcquisitionCostChannel({
+      ceo_bucket: 'cac',
+      acquisition_cost_channel: row.acquisition_cost_channel,
+      subcategory: row.subcategory,
+      merchant_raw: row.merchant_raw,
+      merchant_normalized: row.merchant_normalized,
+      source: row.source,
+    }) as AcquisitionCostChannel | null;
+    if (!channel || channel === 'meta_media') continue;
+    if (!NON_MEDIA_ACQUISITION_CHANNELS.has(channel)) continue;
+    const amt = Math.abs(Number(row.amount) || 0);
+    cost_by_channel[channel] += amt;
+  }
+
+  const non_media_cac =
+    cost_by_channel.creative_production +
+    cost_by_channel.paid_other +
+    cost_by_channel.referral_partner +
+    cost_by_channel.acquisition_labor;
+  const meta_attributed_ledger = [...META_ATTRIBUTED_CHANNELS].reduce(
+    (s, ch) => s + cost_by_channel[ch],
+    0,
+  );
+  const all_in_spend = spend + non_media_cac;
+  const meta_all_in_spend = spend + meta_attributed_ledger;
 
   const leadsInRange = leads.filter(l => inRange(l.created_at, from, to));
   const metaLeads = leadsInRange.filter(l => isMetaLeadSource(l.source));
@@ -222,6 +305,10 @@ export function calculateAcquisitionMetrics(input: AcquisitionMetricsInput): Acq
   const metaCloseRows = closeRows.filter(c =>
     c.lead_id != null && isMetaLeadSource(leadSourceById.get(c.lead_id) ?? null),
   );
+  const referralCloseRows = closeRows.filter(c => {
+    if (!c.lead_id) return false;
+    return normalizeAcquisitionLeadSource(leadSourceById.get(c.lead_id) ?? null) === 'Referral';
+  });
 
   const cash = closeRows.reduce((s, c) => s + Number(c.cash_collected ?? 0), 0);
 
@@ -229,9 +316,14 @@ export function calculateAcquisitionMetrics(input: AcquisitionMetricsInput): Acq
 
   const rate = (num: number, den: number) => (den > 0 ? (num / den) * 100 : null);
   const cost = (den: number) => (den > 0 && spend > 0 ? spend / den : null);
+  const costWith = (num: number, den: number) => (den > 0 && num > 0 ? num / den : null);
 
   return {
     ad_spend: spend,
+    non_media_cac,
+    all_in_spend,
+    meta_all_in_spend,
+    cost_by_channel,
     leads: leadsInRange.length,
     meta_leads: metaLeads.length,
     intros_booked: introsBooked.length,
@@ -256,9 +348,12 @@ export function calculateAcquisitionMetrics(input: AcquisitionMetricsInput): Acq
     cost_per_demo_booked: cost(demosBooked.length),
     cost_per_demo_showed: cost(demosShowed.length),
     cost_per_offer: cost(offerRows.length),
-    cac: cost(closeRows.length),
+    cac: costWith(all_in_spend, closeRows.length),
     meta_cac: cost(metaCloseRows.length),
+    meta_all_in_cac: costWith(meta_all_in_spend, metaCloseRows.length),
+    referral_cac: costWith(cost_by_channel.referral_partner, referralCloseRows.length),
     meta_closes: metaCloseRows.length,
+    referral_closes: referralCloseRows.length,
     no_show_breakdown,
     cost_per_no_show: cost(nsLeadNoShow),
   };

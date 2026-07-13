@@ -3,10 +3,13 @@ import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { requireExpenseAccess } from '@/lib/expense-auth';
 import {
   applyExpenseRules,
+  isAcquisitionCostChannel,
   isCeoBucket,
   isFulfillmentLine,
   normalizeMerchant,
+  resolveAcquisitionCostChannel,
   suggestRuleNeedle,
+  type AcquisitionCostChannel,
   type CeoBucket,
   type ExpenseCategoryRule,
   type FulfillmentLine,
@@ -14,10 +17,10 @@ import {
 import { rollupExpenseDates, uniqueMonthsFromDates } from '@/lib/expense-rollup';
 
 const FIELDS =
-  'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, categorized_by, rule_id, payroll_run_id, client_id, created_at, updated_at';
+  'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, fulfillment_line, acquisition_cost_channel, exclude_from_pnl, categorized_by, rule_id, payroll_run_id, client_id, created_at, updated_at';
 
 const RULE_FIELDS =
-  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, priority, active, notes';
+  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, fulfillment_line, acquisition_cost_channel, exclude_from_pnl, priority, active, notes';
 
 type Ctx = Exclude<Awaited<ReturnType<typeof getAuthContext>>, NextResponse>;
 
@@ -77,12 +80,24 @@ async function applyRuleToMatchingExpenses(
       match.ceo_bucket === 'fulfillment'
         ? (match.fulfillment_line ?? rule.fulfillment_line ?? null)
         : null;
+    const nextChannel =
+      match.ceo_bucket === 'cac'
+        ? (match.acquisition_cost_channel ??
+          resolveAcquisitionCostChannel({
+            ceo_bucket: 'cac',
+            subcategory: match.subcategory ?? rule.subcategory,
+            merchant_raw: row.merchant_raw,
+            merchant_normalized: row.merchant_normalized,
+            source: row.source,
+          }))
+        : null;
 
     // Skip no-op updates
     if (
       row.ceo_bucket === match.ceo_bucket &&
       (row.subcategory ?? null) === (match.subcategory ?? rule.subcategory ?? null) &&
       (row.fulfillment_line ?? null) === nextLine &&
+      (row.acquisition_cost_channel ?? null) === (nextChannel ?? null) &&
       !!row.exclude_from_pnl === !!match.exclude_from_pnl &&
       row.rule_id === rule.id
     ) {
@@ -95,6 +110,7 @@ async function applyRuleToMatchingExpenses(
         ceo_bucket: match.ceo_bucket,
         subcategory: match.subcategory ?? rule.subcategory,
         fulfillment_line: nextLine,
+        acquisition_cost_channel: nextChannel,
         exclude_from_pnl: match.exclude_from_pnl,
         categorized_by: 'rule',
         rule_id: rule.id,
@@ -118,12 +134,15 @@ async function upsertMerchantRule(
     ceoBucket: CeoBucket;
     subcategory: string | null;
     fulfillmentLine: FulfillmentLine | null;
+    acquisitionCostChannel: AcquisitionCostChannel | null;
     excludeFromPnl: boolean;
   },
 ): Promise<ExpenseCategoryRule> {
   const matchValue = input.matchValue.trim();
   const fulfillmentLine =
     input.ceoBucket === 'fulfillment' ? input.fulfillmentLine : null;
+  const acquisitionCostChannel =
+    input.ceoBucket === 'cac' ? input.acquisitionCostChannel : null;
   const { data: existing } = await ctx.service
     .from('expense_category_rules')
     .select(RULE_FIELDS)
@@ -142,6 +161,7 @@ async function upsertMerchantRule(
         ceo_bucket: input.ceoBucket,
         subcategory: input.subcategory,
         fulfillment_line: fulfillmentLine,
+        acquisition_cost_channel: acquisitionCostChannel,
         exclude_from_pnl: input.excludeFromPnl,
         match_value: matchValue,
         match_type: 'merchant_contains',
@@ -168,6 +188,7 @@ async function upsertMerchantRule(
       ceo_bucket: input.ceoBucket,
       subcategory: input.subcategory,
       fulfillment_line: fulfillmentLine,
+      acquisition_cost_channel: acquisitionCostChannel,
       exclude_from_pnl: input.excludeFromPnl,
       priority: 25,
       active: true,
@@ -243,6 +264,44 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     patch.fulfillment_line = null;
   }
 
+  let acquisitionChannel: AcquisitionCostChannel | null = null;
+  if (body.acquisition_cost_channel === null || body.acquisition_cost_channel === '') {
+    acquisitionChannel = null;
+  } else if (isAcquisitionCostChannel(body.acquisition_cost_channel)) {
+    acquisitionChannel = body.acquisition_cost_channel;
+  }
+
+  if (effectiveBucket === 'cac') {
+    const merchantForResolve =
+      typeof body.merchant_raw === 'string'
+        ? body.merchant_raw
+        : (existing.merchant_raw as string | null);
+    const subForResolve =
+      typeof body.subcategory === 'string'
+        ? body.subcategory.trim() || null
+        : (existing.subcategory as string | null);
+    acquisitionChannel =
+      acquisitionChannel ??
+      resolveAcquisitionCostChannel({
+        ceo_bucket: 'cac',
+        acquisition_cost_channel: existing.acquisition_cost_channel as string | null,
+        subcategory: subForResolve,
+        merchant_raw: merchantForResolve,
+        merchant_normalized: existing.merchant_normalized as string | null,
+        source: existing.source as string | null,
+      });
+    patch.acquisition_cost_channel = acquisitionChannel;
+    if (
+      acquisitionChannel === 'meta_media' &&
+      body.exclude_from_pnl === undefined &&
+      patch.exclude_from_pnl === undefined
+    ) {
+      patch.exclude_from_pnl = true;
+    }
+  } else {
+    patch.acquisition_cost_channel = null;
+  }
+
   if (typeof body.exclude_from_pnl === 'boolean') patch.exclude_from_pnl = body.exclude_from_pnl;
 
   let createdRule: ExpenseCategoryRule | null = null;
@@ -301,6 +360,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         ceoBucket: newBucket!,
         subcategory: sub,
         fulfillmentLine,
+        acquisitionCostChannel: effectiveBucket === 'cac' ? acquisitionChannel : null,
         excludeFromPnl: exclude,
       });
       patch.rule_id = createdRule.id;

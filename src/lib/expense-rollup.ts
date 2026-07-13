@@ -1,5 +1,6 @@
 // Server-side expense → business_metrics rollup.
 // Call after ledger mutations so CEO / Finance Overview KPIs stay current.
+// marketing_spend = Meta Graph media + non-media CAC ledger (creative, labor, …).
 
 import type { createServiceClient } from './supabase';
 import {
@@ -12,7 +13,8 @@ import {
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
-const METRIC_NOTES = 'Rolled up from business_expenses ledger';
+const METRIC_NOTES =
+  'Rolled up from Meta insights + non-media CAC ledger (meta_media reconcile excluded)';
 
 export type ExpenseRollupResult = MonthRollup & {
   by_bucket: Record<CeoBucket, number>;
@@ -74,9 +76,41 @@ async function upsertMetric(
   if (error) throw new Error(error.message);
 }
 
+/** Sum acquisition_meta_ad_insights.spend by YYYY-MM for the given months. */
+export async function fetchMetaMediaSpendByMonth(
+  service: ServiceClient,
+  months: string[],
+): Promise<Record<string, number>> {
+  const normalized = [...new Set(months.filter(m => /^\d{4}-\d{2}$/.test(m)))].sort();
+  const out: Record<string, number> = {};
+  for (const m of normalized) out[m] = 0;
+  if (normalized.length === 0) return out;
+
+  const minMonth = normalized[0];
+  const maxMonth = normalized[normalized.length - 1];
+  const rangeStart = `${minMonth}-01`;
+  const [maxY, maxM] = maxMonth.split('-').map(Number);
+  const rangeEndExclusive =
+    maxM === 12 ? `${maxY + 1}-01-01` : `${maxY}-${String(maxM + 1).padStart(2, '0')}-01`;
+
+  const { data, error } = await service
+    .from('acquisition_meta_ad_insights')
+    .select('insight_date, spend')
+    .gte('insight_date', rangeStart)
+    .lt('insight_date', rangeEndExclusive);
+  if (error) throw new Error(error.message);
+
+  for (const row of data ?? []) {
+    const m = monthKeyFromDate(row.insight_date as string);
+    if (!m || !(m in out)) continue;
+    out[m] += Number(row.spend) || 0;
+  }
+  return out;
+}
+
 /**
  * Recompute marketing_spend / delivery_costs / operating_expenses for each month
- * from the live business_expenses ledger and upsert into business_metrics.
+ * from Meta Graph media + live business_expenses non-media CAC.
  */
 export async function rollupExpenseMonths(
   service: ServiceClient,
@@ -93,22 +127,37 @@ export async function rollupExpenseMonths(
   const rangeEndExclusive =
     maxM === 12 ? `${maxY + 1}-01-01` : `${maxY}-${String(maxM + 1).padStart(2, '0')}-01`;
 
-  const { data: expenses, error } = await service
-    .from('business_expenses')
-    .select('occurred_on, amount, ceo_bucket, exclude_from_pnl')
-    .gte('occurred_on', rangeStart)
-    .lt('occurred_on', rangeEndExclusive);
-  if (error) throw new Error(error.message);
+  const [expensesRes, metaByMonth] = await Promise.all([
+    service
+      .from('business_expenses')
+      .select(
+        'occurred_on, amount, ceo_bucket, exclude_from_pnl, acquisition_cost_channel, subcategory, merchant_raw, merchant_normalized, source',
+      )
+      .gte('occurred_on', rangeStart)
+      .lt('occurred_on', rangeEndExclusive),
+    fetchMetaMediaSpendByMonth(service, normalized),
+  ]);
+  if (expensesRes.error) throw new Error(expensesRes.error.message);
 
-  const rows = (expenses ?? []) as Pick<
+  const rows = (expensesRes.data ?? []) as Pick<
     BusinessExpense,
-    'occurred_on' | 'amount' | 'ceo_bucket' | 'exclude_from_pnl'
+    | 'occurred_on'
+    | 'amount'
+    | 'ceo_bucket'
+    | 'exclude_from_pnl'
+    | 'acquisition_cost_channel'
+    | 'subcategory'
+    | 'merchant_raw'
+    | 'merchant_normalized'
+    | 'source'
   >[];
 
   const results: ExpenseRollupResult[] = [];
   for (const month of normalized) {
     const pd = periodDateFromMonth(month)!;
-    const rollup = rollupExpensesForMonth(rows, month);
+    const rollup = rollupExpensesForMonth(rows, month, {
+      metaMediaSpend: metaByMonth[month] ?? 0,
+    });
     await upsertMetric(service, 'marketing_spend', pd, rollup.marketing_spend, createdBy);
     await upsertMetric(service, 'delivery_costs', pd, rollup.delivery_costs, createdBy);
     await upsertMetric(service, 'operating_expenses', pd, rollup.operating_expenses, createdBy);

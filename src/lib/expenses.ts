@@ -62,12 +62,104 @@ export function isFulfillmentLine(v: unknown): v is FulfillmentLine {
   return typeof v === "string" && (FULFILLMENT_LINES as readonly string[]).includes(v);
 }
 
+/**
+ * Acquisition cost nature — only meaningful when ceo_bucket = cac.
+ * meta_media ledger rows are reconcile-only; Graph insights are the media SoT.
+ */
+export const ACQUISITION_COST_CHANNELS = [
+  "meta_media",
+  "creative_production",
+  "paid_other",
+  "referral_partner",
+  "acquisition_labor",
+] as const;
+export type AcquisitionCostChannel = (typeof ACQUISITION_COST_CHANNELS)[number];
+
+export const ACQUISITION_COST_CHANNEL_LABELS: Record<AcquisitionCostChannel, string> = {
+  meta_media: "Meta media (reconcile)",
+  creative_production: "Creative / production",
+  paid_other: "Other paid (LinkedIn, etc.)",
+  referral_partner: "Referral / partner",
+  acquisition_labor: "Acquisition labor",
+};
+
+export function isAcquisitionCostChannel(v: unknown): v is AcquisitionCostChannel {
+  return typeof v === "string" && (ACQUISITION_COST_CHANNELS as readonly string[]).includes(v);
+}
+
+/** Channels that count toward all-in CAC (excludes ledger Meta media). */
+export const NON_MEDIA_ACQUISITION_CHANNELS: ReadonlySet<AcquisitionCostChannel> = new Set([
+  "creative_production",
+  "paid_other",
+  "referral_partner",
+  "acquisition_labor",
+]);
+
+/** Creative + other paid + labor attributed to Meta when computing Meta All-in CAC. */
+export const META_ATTRIBUTED_CHANNELS: ReadonlySet<AcquisitionCostChannel> = new Set([
+  "creative_production",
+  "paid_other",
+  "acquisition_labor",
+]);
+
+/**
+ * Infer channel when a CAC row has no explicit tag (import / legacy).
+ * Prefer an explicit acquisition_cost_channel on write.
+ */
+export function resolveAcquisitionCostChannel(input: {
+  ceo_bucket: string;
+  acquisition_cost_channel?: string | null;
+  subcategory?: string | null;
+  merchant_raw?: string | null;
+  merchant_normalized?: string | null;
+  source?: string | null;
+}): AcquisitionCostChannel | null {
+  if (input.ceo_bucket !== "cac") return null;
+  if (isAcquisitionCostChannel(input.acquisition_cost_channel)) {
+    return input.acquisition_cost_channel;
+  }
+  const sub = (input.subcategory ?? "").trim().toLowerCase();
+  const merchant = (input.merchant_normalized || input.merchant_raw || "")
+    .trim()
+    .toLowerCase();
+  if (sub === "ad spend" || sub === "adspend") return "meta_media";
+  if (
+    merchant === "fb" ||
+    merchant.includes("facebook") ||
+    merchant.includes("meta platforms") ||
+    merchant.includes("adspend") ||
+    merchant.includes("b2b adspend")
+  ) {
+    return "meta_media";
+  }
+  // Creative vendors before payroll source — "Payroll — PK Media" is production cost.
+  if (merchant.includes("pk media") || merchant.includes("ben edit") || /\bben\b/.test(merchant)) {
+    return "creative_production";
+  }
+  if (sub.includes("refer") || merchant.includes("referral")) return "referral_partner";
+  if (sub === "marketing" || sub === "media" || sub === "contractor") {
+    return "creative_production";
+  }
+  if (merchant.includes("linkedin") || sub === "software") return "paid_other";
+  if (sub === "commissions" || sub === "payroll" || input.source === "payroll") {
+    return "acquisition_labor";
+  }
+  return "creative_production";
+}
+
 /** Default CEO bucket when posting setter / call-center payroll. */
 export const PAYROLL_ROLE_BUCKETS = {
   setter: "cac" as CeoBucket,
   fulfillment: "fulfillment" as CeoBucket,
   ops: "overhead" as CeoBucket,
   founder: "owner_draw" as CeoBucket,
+};
+
+/** Default acquisition channel when posting setter payroll to CAC. */
+export const PAYROLL_ROLE_ACQUISITION_CHANNELS: Partial<
+  Record<keyof typeof PAYROLL_ROLE_BUCKETS, AcquisitionCostChannel>
+> = {
+  setter: "acquisition_labor",
 };
 
 // ── Row shapes ───────────────────────────────────────────────────────────────
@@ -94,6 +186,7 @@ export type ExpenseCategoryRule = {
   ceo_bucket: CeoBucket;
   subcategory: string | null;
   fulfillment_line: FulfillmentLine | null;
+  acquisition_cost_channel: AcquisitionCostChannel | null;
   exclude_from_pnl: boolean;
   priority: number;
   active: boolean;
@@ -114,6 +207,7 @@ export type BusinessExpense = {
   ceo_bucket: CeoBucket;
   subcategory: string | null;
   fulfillment_line: FulfillmentLine | null;
+  acquisition_cost_channel: AcquisitionCostChannel | null;
   exclude_from_pnl: boolean;
   categorized_by: "rule" | "user" | "import" | null;
   rule_id: string | null;
@@ -127,6 +221,7 @@ export type RuleMatchResult = {
   ceo_bucket: CeoBucket;
   subcategory: string | null;
   fulfillment_line: FulfillmentLine | null;
+  acquisition_cost_channel: AcquisitionCostChannel | null;
   exclude_from_pnl: boolean;
   rule_id: string | null;
   categorized_by: "rule" | null;
@@ -134,10 +229,16 @@ export type RuleMatchResult = {
 
 export type MonthRollup = {
   month: string; // YYYY-MM
+  /** Meta Graph media + non-media CAC ledger (excludes reconcile meta_media charges). */
   marketing_spend: number;
+  /** Meta API media portion injected into marketing_spend. */
+  meta_media_spend: number;
+  /** Non-media CAC from ledger (creative, labor, paid_other, referral). */
+  non_media_cac: number;
   delivery_costs: number;
   operating_expenses: number;
   by_bucket: Record<CeoBucket, number>;
+  by_acquisition_channel: Record<AcquisitionCostChannel, number>;
   excluded_total: number;
   transaction_count: number;
 };
@@ -436,6 +537,15 @@ export function applyExpenseRules(
       subcategory: rule.subcategory,
       fulfillment_line:
         rule.ceo_bucket === "fulfillment" ? (rule.fulfillment_line ?? null) : null,
+      acquisition_cost_channel:
+        rule.ceo_bucket === "cac"
+          ? (rule.acquisition_cost_channel ??
+            resolveAcquisitionCostChannel({
+              ceo_bucket: "cac",
+              subcategory: rule.subcategory,
+              merchant_raw: rule.match_value,
+            }))
+          : null,
       exclude_from_pnl: rule.exclude_from_pnl,
       rule_id: rule.id,
       categorized_by: "rule",
@@ -446,6 +556,7 @@ export function applyExpenseRules(
     ceo_bucket: "uncategorized",
     subcategory: null,
     fulfillment_line: null,
+    acquisition_cost_channel: null,
     exclude_from_pnl: false,
     rule_id: null,
     categorized_by: null,
@@ -455,43 +566,89 @@ export function applyExpenseRules(
 // ── Rollup → business_metrics ────────────────────────────────────────────────
 
 /**
- * operating_expenses = cac + fulfillment + overhead (all P&L-included).
- * marketing_spend = cac only; delivery_costs = fulfillment only.
- * Excludes: personal, owner_draw, passthrough, uncategorized, and any row with
- * exclude_from_pnl — excluded charges must not appear in any KPI total.
+ * operating_expenses = marketing_spend + fulfillment + overhead.
+ * marketing_spend = Meta Graph media (injected) + non-media CAC ledger.
+ * Ledger meta_media rows are reconcile-only (excluded from KPIs even if not flagged).
  */
 export function rollupExpensesForMonth(
-  expenses: Array<Pick<BusinessExpense, "occurred_on" | "amount" | "ceo_bucket" | "exclude_from_pnl">>,
+  expenses: Array<
+    Pick<BusinessExpense, "occurred_on" | "amount" | "ceo_bucket" | "exclude_from_pnl"> &
+      Partial<
+        Pick<
+          BusinessExpense,
+          | "acquisition_cost_channel"
+          | "subcategory"
+          | "merchant_raw"
+          | "merchant_normalized"
+          | "source"
+        >
+      >
+  >,
   month: string, // YYYY-MM
+  opts?: { metaMediaSpend?: number },
 ): MonthRollup {
   const by_bucket = Object.fromEntries(CEO_BUCKETS.map(b => [b, 0])) as Record<CeoBucket, number>;
+  const by_acquisition_channel = Object.fromEntries(
+    ACQUISITION_COST_CHANNELS.map(c => [c, 0]),
+  ) as Record<AcquisitionCostChannel, number>;
   let excluded_total = 0;
   let transaction_count = 0;
+  let non_media_cac = 0;
+
+  const metaMediaSpend = Math.max(0, Number(opts?.metaMediaSpend) || 0);
 
   for (const e of expenses) {
     if (!e.occurred_on?.startsWith(month)) continue;
     const amt = Math.abs(Number(e.amount) || 0);
     transaction_count += 1;
     const bucket = isCeoBucket(e.ceo_bucket) ? e.ceo_bucket : "uncategorized";
+    const channel =
+      bucket === "cac"
+        ? resolveAcquisitionCostChannel({
+            ceo_bucket: bucket,
+            acquisition_cost_channel: e.acquisition_cost_channel,
+            subcategory: e.subcategory,
+            merchant_raw: e.merchant_raw,
+            merchant_normalized: e.merchant_normalized,
+            source: e.source,
+          })
+        : null;
 
-    const pnlIncluded = PNL_BUCKETS.has(bucket) && !e.exclude_from_pnl;
+    // Ledger Meta media is always reconcile-only — Graph injects the media numerator.
+    const treatAsReconcileMedia = bucket === "cac" && channel === "meta_media";
+    const pnlIncluded =
+      PNL_BUCKETS.has(bucket) && !e.exclude_from_pnl && !treatAsReconcileMedia;
+
     if (!pnlIncluded) {
       excluded_total += amt;
+      if (channel) by_acquisition_channel[channel] += amt;
       continue;
     }
+
     by_bucket[bucket] += amt;
+    if (bucket === "cac" && channel && NON_MEDIA_ACQUISITION_CHANNELS.has(channel)) {
+      non_media_cac += amt;
+      by_acquisition_channel[channel] += amt;
+    } else if (channel) {
+      by_acquisition_channel[channel] += amt;
+    }
   }
 
-  const marketing_spend = by_bucket.cac;
+  const marketing_spend = metaMediaSpend + non_media_cac;
+  // Replace by_bucket.cac with all-in marketing so OpEx stays coherent.
+  by_bucket.cac = marketing_spend;
   const delivery_costs = by_bucket.fulfillment;
-  const operating_expenses = by_bucket.cac + by_bucket.fulfillment + by_bucket.overhead;
+  const operating_expenses = marketing_spend + by_bucket.fulfillment + by_bucket.overhead;
 
   return {
     month,
     marketing_spend,
+    meta_media_spend: metaMediaSpend,
+    non_media_cac,
     delivery_costs,
     operating_expenses,
     by_bucket,
+    by_acquisition_channel,
     excluded_total,
     transaction_count,
   };
@@ -507,8 +664,12 @@ export function periodDateFromMonth(month: string): string | null {
 
 export type SeedRule = Omit<
   ExpenseCategoryRule,
-  "id" | "active" | "fulfillment_line"
-> & { active?: boolean; fulfillment_line?: FulfillmentLine | null };
+  "id" | "active" | "fulfillment_line" | "acquisition_cost_channel"
+> & {
+  active?: boolean;
+  fulfillment_line?: FulfillmentLine | null;
+  acquisition_cost_channel?: AcquisitionCostChannel | null;
+};
 
 /**
  * Merchant → CEO bucket map learned from
@@ -525,16 +686,16 @@ export const SEED_EXPENSE_RULES: SeedRule[] = [
   { name: "Sendblue passthrough", match_type: "merchant_contains", match_value: "sendblue", amount_min: null, amount_max: null, ceo_bucket: "passthrough", subcategory: "software", exclude_from_pnl: true, priority: 5, notes: "Client-funded tools" },
   { name: "Paid through client", match_type: "memo_contains", match_value: "paid through client", amount_min: null, amount_max: null, ceo_bucket: "passthrough", subcategory: "contractor", exclude_from_pnl: true, priority: 5, notes: null },
 
-  // ── CAC ───────────────────────────────────────────────────────────────────
-  { name: "FB Ad Spend", match_type: "merchant_equals", match_value: "fb", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 10, notes: "Agency Meta acquisition" },
-  { name: "B2B Adspend", match_type: "merchant_contains", match_value: "b2b adspend", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 10, notes: null },
-  { name: "Adspend vendor", match_type: "merchant_equals", match_value: "adspend", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 10, notes: null },
-  { name: "Monthly Adspend label", match_type: "merchant_contains", match_value: "adspend", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 15, notes: "January/February Adspend rows" },
-  { name: "PK Media", match_type: "merchant_contains", match_value: "pk media", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "marketing", exclude_from_pnl: false, priority: 10, notes: "LinkedIn / acquisition creative" },
-  { name: "LinkedIn", match_type: "merchant_contains", match_value: "linkedin", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "software", exclude_from_pnl: false, priority: 20, notes: null },
-  { name: "Meta Platforms", match_type: "merchant_contains", match_value: "meta platforms", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 10, notes: null },
-  { name: "Facebook", match_type: "merchant_contains", match_value: "facebook", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", exclude_from_pnl: false, priority: 20, notes: null },
-  { name: "Ben Edit CAC", match_type: "merchant_contains", match_value: "ben edit", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "marketing", exclude_from_pnl: false, priority: 25, notes: "Testimonial / landing / precall videos — majority CAC" },
+  // ── CAC (meta_media ledger = reconcile-only; Graph is media SoT) ───────────
+  { name: "FB Ad Spend", match_type: "merchant_equals", match_value: "fb", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", acquisition_cost_channel: "meta_media", exclude_from_pnl: true, priority: 10, notes: "Reconcile vs acquisition_meta_ad_insights" },
+  { name: "B2B Adspend", match_type: "merchant_contains", match_value: "b2b adspend", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", acquisition_cost_channel: "meta_media", exclude_from_pnl: true, priority: 10, notes: null },
+  { name: "Adspend vendor", match_type: "merchant_equals", match_value: "adspend", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", acquisition_cost_channel: "meta_media", exclude_from_pnl: true, priority: 10, notes: null },
+  { name: "Monthly Adspend label", match_type: "merchant_contains", match_value: "adspend", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", acquisition_cost_channel: "meta_media", exclude_from_pnl: true, priority: 15, notes: "January/February Adspend rows" },
+  { name: "PK Media", match_type: "merchant_contains", match_value: "pk media", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "marketing", acquisition_cost_channel: "creative_production", exclude_from_pnl: false, priority: 10, notes: "LinkedIn / acquisition creative" },
+  { name: "LinkedIn", match_type: "merchant_contains", match_value: "linkedin", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "software", acquisition_cost_channel: "paid_other", exclude_from_pnl: false, priority: 20, notes: null },
+  { name: "Meta Platforms", match_type: "merchant_contains", match_value: "meta platforms", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", acquisition_cost_channel: "meta_media", exclude_from_pnl: true, priority: 10, notes: null },
+  { name: "Facebook", match_type: "merchant_contains", match_value: "facebook", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "ad spend", acquisition_cost_channel: "meta_media", exclude_from_pnl: true, priority: 20, notes: null },
+  { name: "Ben Edit CAC", match_type: "merchant_contains", match_value: "ben edit", amount_min: null, amount_max: null, ceo_bucket: "cac", subcategory: "marketing", acquisition_cost_channel: "creative_production", exclude_from_pnl: false, priority: 25, notes: "Testimonial / landing / precall videos — majority CAC" },
 
   // ── Fulfillment / COGS (delivery stack + call-center labor) ───────────────
   { name: "High Level", match_type: "merchant_contains", match_value: "high level", amount_min: null, amount_max: null, ceo_bucket: "fulfillment", subcategory: "software", fulfillment_line: "delivery_tech", exclude_from_pnl: false, priority: 10, notes: null },

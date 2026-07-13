@@ -34,8 +34,9 @@ One row = one charge (or one agent payroll total for a period).
 | `source` | `manual` \| `csv_import` \| `payroll` \| `bank_sync` (later) |
 | `ceo_bucket` | See buckets below |
 | `fulfillment_line` | When bucket = `fulfillment`: `media_buying` \| `call_center` \| `client_success` \| `delivery_tech` |
-| `subcategory` | Cost nature (payroll, commissions, software, …) — orthogonal to fulfillment_line |
-| `exclude_from_pnl` | Personal, owner draw, passthrough, card payments |
+| `acquisition_cost_channel` | When bucket = `cac`: `meta_media` \| `creative_production` \| `paid_other` \| `referral_partner` \| `acquisition_labor` |
+| `subcategory` | Cost nature (payroll, commissions, software, …) — orthogonal to fulfillment_line / channel |
+| `exclude_from_pnl` | Personal, owner draw, passthrough, card payments, **and Meta media reconcile rows** |
 | `external_id` | Bank txn id or import hash (dedupe) |
 | `payroll_run_id` | `{start}_to_{end}:{agent_id}` |
 
@@ -48,7 +49,9 @@ Merchant/memo matchers → bucket. Seed via **Expenses → Seed rules** or `POST
 
 | Bucket | Meaning | In P&L? | Rolls to |
 |--------|---------|---------|----------|
-| `cac` | Acquisition (ads, setters, lead gen) | Yes | `marketing_spend` |
+| `cac` | Acquisition (ads, setters, lead gen) | Yes* | `marketing_spend` |
+
+\*Meta media dollars in `marketing_spend` come from `acquisition_meta_ad_insights` (Graph). Ledger rows tagged `acquisition_cost_channel=meta_media` are excluded from P&L so FB card charges do not double-count. Non-media CAC channels (creative, labor, paid_other, referral) still roll from the ledger.
 | `fulfillment` | Delivery / COGS | Yes | `delivery_costs` |
 | `overhead` | Company ops | Yes | (part of OpEx) |
 | `passthrough` | Client-funded | No | — |

@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   // meta_only only affects cost denominators (CPL). Default false — use all Meta leads for CPL.
   const metaOnly = params.get('meta_only') === '1';
 
-  const [leadsRes, apptsRes, offersRes, closesRes, spendRes] = await Promise.all([
+  const [leadsRes, apptsRes, offersRes, closesRes, spendRes, ledgerRes] = await Promise.all([
     ctx.service.from('acquisition_leads').select('id, source, created_at, qualified')
       .gte('created_at', `${from}T00:00:00.000Z`)
       .lte('created_at', `${to}T23:59:59.999Z`),
@@ -49,10 +49,18 @@ export async function GET(req: NextRequest) {
       .select('insight_date, spend')
       .gte('insight_date', from)
       .lte('insight_date', to),
+    ctx.service.from('business_expenses')
+      .select(
+        'occurred_on, amount, ceo_bucket, exclude_from_pnl, acquisition_cost_channel, subcategory, merchant_raw, merchant_normalized, source',
+      )
+      .eq('ceo_bucket', 'cac')
+      .gte('occurred_on', from)
+      .lte('occurred_on', to),
   ]);
 
   if (leadsRes.error) return NextResponse.json({ error: leadsRes.error.message }, { status: 500 });
   if (apptsRes.error) return NextResponse.json({ error: apptsRes.error.message }, { status: 500 });
+  if (ledgerRes.error) return NextResponse.json({ error: ledgerRes.error.message }, { status: 500 });
 
   // Closes often attach to leads created before `from` — pull those sources so
   // Meta CAC can attribute closes correctly.
@@ -83,6 +91,7 @@ export async function GET(req: NextRequest) {
     offers: offersRes.data ?? [],
     closes: closesRes.data ?? [],
     adSpend: spendRes.data ?? [],
+    ledgerCosts: ledgerRes.data ?? [],
     from,
     to,
     offerScope,

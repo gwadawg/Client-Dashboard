@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ACCOUNT_TYPES,
+  ACQUISITION_COST_CHANNELS,
+  ACQUISITION_COST_CHANNEL_LABELS,
   CEO_BUCKETS,
   CEO_BUCKET_LABELS,
   FULFILLMENT_LINES,
   FULFILLMENT_LINE_LABELS,
   suggestRuleNeedle,
   type AccountType,
+  type AcquisitionCostChannel,
   type CeoBucket,
   type FulfillmentLine,
 } from "@/lib/expenses";
@@ -35,6 +38,7 @@ type Expense = {
   ceo_bucket: CeoBucket;
   subcategory: string | null;
   fulfillment_line: FulfillmentLine | null;
+  acquisition_cost_channel: AcquisitionCostChannel | null;
   exclude_from_pnl: boolean;
   categorized_by: string | null;
 };
@@ -111,6 +115,7 @@ export default function ExpenseManager() {
     ceo_bucket: "overhead" as CeoBucket,
     subcategory: "",
     fulfillment_line: "" as "" | FulfillmentLine,
+    acquisition_cost_channel: "" as "" | AcquisitionCostChannel,
     create_rule: true,
     rule_match_value: "",
     apply_to_matching: true,
@@ -126,6 +131,7 @@ export default function ExpenseManager() {
     ceo_bucket: "uncategorized" as CeoBucket,
     subcategory: "",
     fulfillment_line: "" as "" | FulfillmentLine,
+    acquisition_cost_channel: "" as "" | AcquisitionCostChannel,
   });
 
   const [acctForm, setAcctForm] = useState({
@@ -189,6 +195,7 @@ export default function ExpenseManager() {
       ceo_bucket: bucket,
       subcategory: e.subcategory ?? "",
       fulfillment_line: e.fulfillment_line ?? "",
+      acquisition_cost_channel: e.acquisition_cost_channel ?? "",
       create_rule: true,
       rule_match_value: suggestRuleNeedle(e.merchant_raw),
       apply_to_matching: true,
@@ -226,6 +233,10 @@ export default function ExpenseManager() {
       setError("Pick a COGS category (media buying, call center, client success, or delivery tech)");
       return;
     }
+    if (mapForm.ceo_bucket === "cac" && !mapForm.acquisition_cost_channel) {
+      setError("Pick an acquisition channel (creative, Meta reconcile, labor…)");
+      return;
+    }
     setBusy("map");
     setError("");
     setMessage("");
@@ -237,7 +248,12 @@ export default function ExpenseManager() {
         subcategory: mapForm.subcategory || null,
         fulfillment_line:
           mapForm.ceo_bucket === "fulfillment" ? mapForm.fulfillment_line || null : null,
-        exclude_from_pnl: mapForm.exclude_from_pnl || defaultExclude(mapForm.ceo_bucket),
+        acquisition_cost_channel:
+          mapForm.ceo_bucket === "cac" ? mapForm.acquisition_cost_channel || null : null,
+        exclude_from_pnl:
+          mapForm.exclude_from_pnl ||
+          defaultExclude(mapForm.ceo_bucket) ||
+          mapForm.acquisition_cost_channel === "meta_media",
         create_rule: mapForm.create_rule && mapForm.ceo_bucket !== "uncategorized",
         rule_match_value: mapForm.rule_match_value,
         apply_to_matching: mapForm.create_rule && mapForm.apply_to_matching,
@@ -333,6 +349,8 @@ export default function ExpenseManager() {
         subcategory: form.subcategory || null,
         fulfillment_line:
           form.ceo_bucket === "fulfillment" ? form.fulfillment_line || null : null,
+        acquisition_cost_channel:
+          form.ceo_bucket === "cac" ? form.acquisition_cost_channel || null : null,
       }),
     });
     const d = await res.json();
@@ -788,6 +806,7 @@ export default function ExpenseManager() {
                     ...f,
                     ceo_bucket: b,
                     fulfillment_line: b === "fulfillment" ? f.fulfillment_line : "",
+                    acquisition_cost_channel: b === "cac" ? f.acquisition_cost_channel : "",
                     exclude_from_pnl: defaultExclude(b),
                   }));
                 }}
@@ -822,6 +841,33 @@ export default function ExpenseManager() {
                 </select>
                 <p className="text-[11px] mt-1" style={{ color: "#64748b" }}>
                   Delivery line for margins (keep Subcategory for payroll / commissions / software).
+                </p>
+              </Field>
+            )}
+            {mapForm.ceo_bucket === "cac" && (
+              <Field label="Acquisition channel">
+                <select
+                  required
+                  value={mapForm.acquisition_cost_channel}
+                  onChange={e => {
+                    const ch = e.target.value as "" | AcquisitionCostChannel;
+                    setMapForm(f => ({
+                      ...f,
+                      acquisition_cost_channel: ch,
+                      exclude_from_pnl: ch === "meta_media" ? true : f.exclude_from_pnl,
+                    }));
+                  }}
+                  style={{ ...fieldStyle, width: "100%" }}
+                >
+                  <option value="">Select…</option>
+                  {ACQUISITION_COST_CHANNELS.map(ch => (
+                    <option key={ch} value={ch}>
+                      {ACQUISITION_COST_CHANNEL_LABELS[ch]}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] mt-1" style={{ color: "#64748b" }}>
+                  Meta media rows are reconcile-only — Graph insights feed CAC math.
                 </p>
               </Field>
             )}

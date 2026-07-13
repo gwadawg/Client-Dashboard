@@ -4,9 +4,12 @@ import { requireExpenseAccess } from '@/lib/expense-auth';
 import {
   applyExpenseRules,
   expenseDedupeHash,
+  isAcquisitionCostChannel,
   isCeoBucket,
   isFulfillmentLine,
   normalizeMerchant,
+  resolveAcquisitionCostChannel,
+  type AcquisitionCostChannel,
   type CeoBucket,
   type ExpenseCategoryRule,
   type ExpenseSource,
@@ -15,10 +18,10 @@ import {
 import { rollupExpenseDates } from '@/lib/expense-rollup';
 
 const FIELDS =
-  'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, categorized_by, rule_id, payroll_run_id, client_id, created_at, updated_at';
+  'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, fulfillment_line, acquisition_cost_channel, exclude_from_pnl, categorized_by, rule_id, payroll_run_id, client_id, created_at, updated_at';
 
 const RULE_FIELDS =
-  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, priority, active, notes';
+  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, fulfillment_line, acquisition_cost_channel, exclude_from_pnl, priority, active, notes';
 
 // GET /api/expenses?month=YYYY-MM&bucket=&account_id=&uncategorized=1&pending=1&limit=
 export async function GET(req: Request) {
@@ -101,6 +104,11 @@ export async function POST(req: Request) {
   let fulfillmentLine: FulfillmentLine | null = isFulfillmentLine(body.fulfillment_line)
     ? body.fulfillment_line
     : null;
+  let acquisitionChannel: AcquisitionCostChannel | null = isAcquisitionCostChannel(
+    body.acquisition_cost_channel,
+  )
+    ? body.acquisition_cost_channel
+    : null;
   let excludeFromPnl = body.exclude_from_pnl === true;
   let categorizedBy: 'rule' | 'user' | 'import' | null = null;
   let ruleId: string | null = null;
@@ -109,6 +117,20 @@ export async function POST(req: Request) {
     ceoBucket = body.ceo_bucket;
     categorizedBy = 'user';
     if (ceoBucket !== 'fulfillment') fulfillmentLine = null;
+    if (ceoBucket === 'cac') {
+      acquisitionChannel =
+        acquisitionChannel ??
+        resolveAcquisitionCostChannel({
+          ceo_bucket: 'cac',
+          subcategory,
+          merchant_raw: merchantRaw,
+        });
+      if (acquisitionChannel === 'meta_media' && body.exclude_from_pnl !== false) {
+        excludeFromPnl = true;
+      }
+    } else {
+      acquisitionChannel = null;
+    }
   } else {
     const { data: rules } = await ctx.service
       .from('expense_category_rules')
@@ -121,10 +143,12 @@ export async function POST(req: Request) {
     ceoBucket = match.ceo_bucket;
     subcategory = subcategory ?? match.subcategory;
     fulfillmentLine = fulfillmentLine ?? match.fulfillment_line;
+    acquisitionChannel = acquisitionChannel ?? match.acquisition_cost_channel;
     excludeFromPnl = excludeFromPnl || match.exclude_from_pnl;
     categorizedBy = match.categorized_by;
     ruleId = match.rule_id;
     if (ceoBucket !== 'fulfillment') fulfillmentLine = null;
+    if (ceoBucket !== 'cac') acquisitionChannel = null;
   }
 
   // Auto-exclude personal / owner_draw from P&L unless explicitly overridden
@@ -155,6 +179,7 @@ export async function POST(req: Request) {
     ceo_bucket: ceoBucket,
     subcategory,
     fulfillment_line: fulfillmentLine,
+    acquisition_cost_channel: ceoBucket === 'cac' ? acquisitionChannel : null,
     exclude_from_pnl: excludeFromPnl,
     categorized_by: categorizedBy,
     rule_id: ruleId,

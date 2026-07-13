@@ -66,12 +66,23 @@ Status updates send only `external_id` + `status` (dates preserved from booked r
 
 ## Acquisition cost
 
-Spend from `acquisition_ad_insights`. Cost metrics use Meta leads as denominator for CPL.
+Two sources of truth, one reporting bridge:
+
+| Source | Table | Role |
+|--------|-------|------|
+| Meta Graph media | `acquisition_meta_ad_insights` | Operational media (CPL, cost/stage, Meta Media CAC) |
+| Non-media CAC | `business_expenses` (`ceo_bucket=cac`, channel ≠ `meta_media`) | Creative, labor, LinkedIn, referral fees |
+
+Ledger Meta/FB/“Adspend” rows use `acquisition_cost_channel = meta_media` and are **reconcile-only** (`exclude_from_pnl`) so card charges do not double-count Graph spend.
 
 - **CPL** = Meta ad spend ÷ Meta leads
-- **Blended CAC** = Meta ad spend ÷ all closes (scoped by offer type)
-- **Meta CAC** = Meta ad spend ÷ closes whose lead source is Meta
-- **Cost/stage** = ad spend ÷ count at each funnel stage
+- **Meta Media CAC** = Meta ad spend ÷ Meta closes
+- **Meta All-in CAC** = (Meta ad spend + creative/labor/paid_other) ÷ Meta closes
+- **Blended All-in CAC** (`cac`) = (Meta ad spend + all non-media CAC) ÷ all closes
+- **Referral CAC** = referral_partner spend ÷ Referral closes
+- **Company CAC** (CEO) = same Blended All-in numerator via `marketing_spend` rollup
+
+`acquisition_cost_channel` values: `meta_media` · `creative_production` · `paid_other` · `referral_partner` · `acquisition_labor`
 
 ## Cash collected
 

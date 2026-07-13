@@ -22,6 +22,7 @@ function asRules(): ExpenseCategoryRule[] {
     id: `seed-${i}`,
     active: true,
     fulfillment_line: r.fulfillment_line ?? null,
+    acquisition_cost_channel: r.acquisition_cost_channel ?? null,
   }));
 }
 
@@ -212,28 +213,48 @@ describe("rollupExpensesForMonth", () => {
   it("sums P&L buckets and excludes personal", () => {
     const r = rollupExpensesForMonth(
       [
-        { occurred_on: "2026-03-01", amount: 100, ceo_bucket: "cac", exclude_from_pnl: false },
-        { occurred_on: "2026-03-02", amount: 50, ceo_bucket: "fulfillment", exclude_from_pnl: false },
-        { occurred_on: "2026-03-03", amount: 25, ceo_bucket: "overhead", exclude_from_pnl: false },
-        { occurred_on: "2026-03-04", amount: 40, ceo_bucket: "personal", exclude_from_pnl: true },
-        { occurred_on: "2026-04-01", amount: 999, ceo_bucket: "cac", exclude_from_pnl: false },
+        { occurred_on: "2026-03-01", amount: 100, ceo_bucket: "cac", exclude_from_pnl: false, acquisition_cost_channel: "creative_production" },
+        { occurred_on: "2026-03-02", amount: 50, ceo_bucket: "fulfillment", exclude_from_pnl: false, acquisition_cost_channel: null },
+        { occurred_on: "2026-03-03", amount: 25, ceo_bucket: "overhead", exclude_from_pnl: false, acquisition_cost_channel: null },
+        { occurred_on: "2026-03-04", amount: 40, ceo_bucket: "personal", exclude_from_pnl: true, acquisition_cost_channel: null },
+        { occurred_on: "2026-04-01", amount: 999, ceo_bucket: "cac", exclude_from_pnl: false, acquisition_cost_channel: "creative_production" },
       ],
       "2026-03",
+      { metaMediaSpend: 0 },
     );
     assert.equal(r.marketing_spend, 100);
+    assert.equal(r.non_media_cac, 100);
     assert.equal(r.delivery_costs, 50);
     assert.equal(r.operating_expenses, 175);
     assert.equal(r.excluded_total, 40);
     assert.equal(r.transaction_count, 4);
   });
 
+  it("injects Meta API media and excludes ledger meta_media from marketing_spend", () => {
+    const r = rollupExpensesForMonth(
+      [
+        { occurred_on: "2026-03-01", amount: 1000, ceo_bucket: "cac", exclude_from_pnl: false, acquisition_cost_channel: "meta_media" },
+        { occurred_on: "2026-03-02", amount: 200, ceo_bucket: "cac", exclude_from_pnl: false, acquisition_cost_channel: "creative_production" },
+        { occurred_on: "2026-03-03", amount: 50, ceo_bucket: "overhead", exclude_from_pnl: false, acquisition_cost_channel: null },
+      ],
+      "2026-03",
+      { metaMediaSpend: 532 },
+    );
+    assert.equal(r.meta_media_spend, 532);
+    assert.equal(r.non_media_cac, 200);
+    assert.equal(r.marketing_spend, 732);
+    assert.equal(r.operating_expenses, 782);
+    assert.equal(r.by_acquisition_channel.meta_media, 1000);
+    assert.equal(r.by_acquisition_channel.creative_production, 200);
+  });
+
   it("drops exclude_from_pnl rows from CAC / COGS / OpEx even when bucket is P&L", () => {
     const r = rollupExpensesForMonth(
       [
-        { occurred_on: "2026-03-01", amount: 100, ceo_bucket: "cac", exclude_from_pnl: false },
-        { occurred_on: "2026-03-02", amount: 80, ceo_bucket: "cac", exclude_from_pnl: true },
-        { occurred_on: "2026-03-03", amount: 50, ceo_bucket: "fulfillment", exclude_from_pnl: true },
-        { occurred_on: "2026-03-04", amount: 25, ceo_bucket: "overhead", exclude_from_pnl: false },
+        { occurred_on: "2026-03-01", amount: 100, ceo_bucket: "cac", exclude_from_pnl: false, acquisition_cost_channel: "creative_production" },
+        { occurred_on: "2026-03-02", amount: 80, ceo_bucket: "cac", exclude_from_pnl: true, acquisition_cost_channel: "creative_production" },
+        { occurred_on: "2026-03-03", amount: 50, ceo_bucket: "fulfillment", exclude_from_pnl: true, acquisition_cost_channel: null },
+        { occurred_on: "2026-03-04", amount: 25, ceo_bucket: "overhead", exclude_from_pnl: false, acquisition_cost_channel: null },
       ],
       "2026-03",
     );

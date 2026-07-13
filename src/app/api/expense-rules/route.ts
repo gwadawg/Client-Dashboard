@@ -6,6 +6,7 @@ import {
   CEO_BUCKETS,
   MATCH_TYPES,
   SEED_EXPENSE_RULES,
+  isAcquisitionCostChannel,
   isCeoBucket,
   isFulfillmentLine,
   type CeoBucket,
@@ -15,7 +16,7 @@ import {
 import { rollupExpenseDates, uniqueMonthsFromDates } from '@/lib/expense-rollup';
 
 const FIELDS =
-  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, priority, active, notes, created_at, updated_at';
+  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, fulfillment_line, acquisition_cost_channel, exclude_from_pnl, priority, active, notes, created_at, updated_at';
 
 // GET /api/expense-rules
 export async function GET() {
@@ -56,6 +57,8 @@ export async function POST(req: Request) {
       ceo_bucket: r.ceo_bucket,
       subcategory: r.subcategory,
       fulfillment_line: r.ceo_bucket === 'fulfillment' ? (r.fulfillment_line ?? null) : null,
+      acquisition_cost_channel:
+        r.ceo_bucket === 'cac' ? (r.acquisition_cost_channel ?? null) : null,
       exclude_from_pnl: r.exclude_from_pnl,
       priority: r.priority,
       active: r.active !== false,
@@ -81,7 +84,7 @@ export async function POST(req: Request) {
     if (rulesErr) return NextResponse.json({ error: rulesErr.message }, { status: 500 });
 
     let query = ctx.service.from('business_expenses').select(
-      'id, occurred_on, merchant_raw, memo, amount, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, rule_id',
+      'id, occurred_on, merchant_raw, merchant_normalized, memo, amount, ceo_bucket, subcategory, fulfillment_line, acquisition_cost_channel, exclude_from_pnl, rule_id, source',
     ).limit(5000);
     if (onlyUncategorized) query = query.eq('ceo_bucket', 'uncategorized');
 
@@ -103,10 +106,13 @@ export async function POST(req: Request) {
       if (match.ceo_bucket === 'uncategorized') continue;
       const nextLine =
         match.ceo_bucket === 'fulfillment' ? (match.fulfillment_line ?? null) : null;
+      const nextChannel =
+        match.ceo_bucket === 'cac' ? (match.acquisition_cost_channel ?? null) : null;
       if (
         row.ceo_bucket === match.ceo_bucket &&
         (row.subcategory ?? null) === (match.subcategory ?? null) &&
         (row.fulfillment_line ?? null) === nextLine &&
+        (row.acquisition_cost_channel ?? null) === (nextChannel ?? null) &&
         !!row.exclude_from_pnl === !!match.exclude_from_pnl
       ) {
         continue;
@@ -117,6 +123,7 @@ export async function POST(req: Request) {
           ceo_bucket: match.ceo_bucket,
           subcategory: match.subcategory,
           fulfillment_line: nextLine,
+          acquisition_cost_channel: nextChannel,
           exclude_from_pnl: match.exclude_from_pnl,
           categorized_by: 'rule',
           rule_id: match.rule_id,
@@ -171,6 +178,10 @@ export async function POST(req: Request) {
     fulfillment_line:
       body.ceo_bucket === 'fulfillment' && isFulfillmentLine(body.fulfillment_line)
         ? body.fulfillment_line
+        : null,
+    acquisition_cost_channel:
+      body.ceo_bucket === 'cac' && isAcquisitionCostChannel(body.acquisition_cost_channel)
+        ? body.acquisition_cost_channel
         : null,
     exclude_from_pnl: body.exclude_from_pnl === true,
     priority: Number.isFinite(Number(body.priority)) ? Number(body.priority) : 100,
