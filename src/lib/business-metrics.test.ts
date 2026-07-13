@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   computeBusinessMetrics,
   computeDeparturesForMonth,
+  resolveBusinessPeriod,
   type BusinessBilling,
   type BusinessClient,
   type ClientMonthlySnapshot,
@@ -187,5 +188,104 @@ describe("computeBusinessMetrics", () => {
     assert.equal(m.headline.start_mrr, 1000);
     assert.equal(m.mrrBridge.expansion_mrr, 200);
     assert.equal(m.mrrBridge.end_mrr, 2000);
+  });
+});
+
+describe("resolveBusinessPeriod + multi-month aggregation", () => {
+  it("resolves Q1 into Jan–Mar", () => {
+    const p = resolveBusinessPeriod("quarter", "2026-Q1", new Date("2026-06-15T12:00:00Z"));
+    assert.equal(p.key, "2026-Q1");
+    assert.deepEqual(p.months, ["2026-01", "2026-02", "2026-03"]);
+    assert.equal(p.label, "Q1 2026");
+  });
+
+  it("sums cash and closes across a quarter", () => {
+    const billings: BusinessBilling[] = [
+      {
+        client_id: "c1",
+        billed_on: "2026-01-01",
+        due_date: "2026-01-01",
+        paid_on: "2026-01-10",
+        amount: 1000,
+        amount_paid: 1000,
+        status: "paid",
+        revenue_type: "mrr",
+        revenue_segment: "back_end",
+        lead_source: null,
+        processing_fee: 0,
+        passthrough_amount: 0,
+      },
+      {
+        client_id: "c2",
+        billed_on: "2026-03-01",
+        due_date: "2026-03-01",
+        paid_on: "2026-03-10",
+        amount: 2500,
+        amount_paid: 2500,
+        status: "paid",
+        revenue_type: "mrr",
+        revenue_segment: "front_end",
+        lead_source: null,
+        processing_fee: 0,
+        passthrough_amount: 0,
+      },
+    ];
+    const m = computeBusinessMetrics({
+      clients: [
+        client({ id: "c1", name: "A", date_signed: "2026-01-05", mrr: 1000 }),
+        client({ id: "c2", name: "B", date_signed: "2026-03-01", mrr: 2500 }),
+      ],
+      statusHistory: [],
+      billings,
+      businessMetrics: [
+        { metric_key: "marketing_spend", period_date: "2026-01-01", value_numeric: 3000 },
+        { metric_key: "marketing_spend", period_date: "2026-03-01", value_numeric: 6000 },
+        { metric_key: "operating_expenses", period_date: "2026-01-01", value_numeric: 5000 },
+        { metric_key: "operating_expenses", period_date: "2026-03-01", value_numeric: 7000 },
+      ],
+      signedClosesByMonth: { "2026-01": 1, "2026-03": 2 },
+      period: resolveBusinessPeriod("quarter", "2026-Q1", new Date("2026-06-15T12:00:00Z")),
+      now: new Date("2026-06-15T12:00:00Z"),
+    });
+    assert.equal(m.period.granularity, "quarter");
+    assert.equal(m.revenue.total_cash, 3500);
+    assert.equal(m.revenue.new_cash, 2500);
+    assert.equal(m.unitEconomics.cac_closes, 3);
+    assert.equal(m.unitEconomics.marketing_spend, 9000);
+    assert.equal(m.unitEconomics.cac, 3000);
+    assert.equal(m.unitEconomics.operating_expenses, 12000);
+    assert.equal(m.headline.new_mrr, 3500);
+  });
+
+  it("YTD sums Jan through current month when year is current", () => {
+    const now = new Date("2026-03-20T12:00:00Z");
+    const p = resolveBusinessPeriod("ytd", "2026", now);
+    assert.deepEqual(p.months, ["2026-01", "2026-02", "2026-03"]);
+    assert.equal(p.label, "YTD 2026");
+
+    const m = computeBusinessMetrics({
+      clients: [client({ id: "c1", name: "A" })],
+      statusHistory: [],
+      billings: [
+        {
+          client_id: "c1",
+          billed_on: "2026-02-01",
+          due_date: "2026-02-01",
+          paid_on: "2026-02-05",
+          amount: 500,
+          amount_paid: 500,
+          status: "paid",
+          revenue_type: "mrr",
+          revenue_segment: "back_end",
+          lead_source: null,
+          processing_fee: 0,
+          passthrough_amount: 0,
+        },
+      ],
+      period: p,
+      now,
+    });
+    assert.equal(m.revenue.total_cash, 500);
+    assert.equal(m.month, "2026-03");
   });
 });

@@ -19,7 +19,13 @@ import MetricInfoTip, { type MetricHint } from "./kpi/MetricInfoTip";
 import FinanceRevenueLedger from "./FinanceRevenueLedger";
 import ExpenseManager from "./ExpenseManager";
 import { reasonLabel } from "@/lib/client-feedback";
-import type { BusinessMetrics } from "@/lib/business-metrics";
+import {
+  listRecentMonths,
+  listRecentQuarters,
+  listRecentYears,
+  type BusinessMetrics,
+  type PeriodGranularity,
+} from "@/lib/business-metrics";
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -51,15 +57,14 @@ function monthLabel(month: string): string {
   return d.toLocaleString(undefined, { month: "short", year: "numeric", timeZone: "UTC" });
 }
 
-/** Trailing months (newest first) as YYYY-MM for the picker. */
-function recentMonths(count: number): string[] {
-  const now = new Date();
-  const out: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-  }
-  return out;
+function quarterLabel(key: string): string {
+  const m = key.match(/^(\d{4})-Q([1-4])$/i);
+  if (!m) return key;
+  return `Q${m[2]} ${m[1]}`;
+}
+
+function yearLabel(key: string, currentYear: string): string {
+  return key === currentYear ? `YTD ${key}` : `Full year ${key}`;
 }
 
 const GOOD = "#34d399";
@@ -283,13 +288,26 @@ function MrrWaterfall({ bridge }: { bridge: BusinessMetrics["mrrBridge"] }) {
 
 export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenue?: boolean }) {
   const [hubTab, setHubTab] = useState<"overview" | "revenue" | "expenses">("overview");
-  const monthOptions = useMemo(() => recentMonths(18), []);
-  const [month, setMonth] = useState(monthOptions[0]);
+  const monthOptions = useMemo(() => listRecentMonths(18), []);
+  const quarterOptions = useMemo(() => listRecentQuarters(8), []);
+  const yearOptions = useMemo(() => listRecentYears(4), []);
+  const [granularity, setGranularity] = useState<PeriodGranularity>("month");
+  const [periodKey, setPeriodKey] = useState(monthOptions[0]);
   const [data, setData] = useState<BusinessMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+
+  const periodOptions =
+    granularity === "quarter" ? quarterOptions : granularity === "ytd" ? yearOptions : monthOptions;
+
+  function switchGranularity(next: PeriodGranularity) {
+    setGranularity(next);
+    if (next === "month") setPeriodKey(monthOptions[0]);
+    else if (next === "quarter") setPeriodKey(quarterOptions[0]);
+    else setPeriodKey(yearOptions[0]);
+  }
 
   useEffect(() => {
     if (!canViewRevenue || hubTab !== "overview") {
@@ -305,7 +323,12 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
       setLoading(true);
       setError(null);
     });
-    fetch(`/api/business?month=${month}&trend_months=12`)
+    const qs = new URLSearchParams({
+      granularity,
+      period: periodKey,
+      trend_months: "12",
+    });
+    fetch(`/api/business?${qs}`)
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load");
         return r.json();
@@ -322,9 +345,16 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
     return () => {
       cancelled = true;
     };
-  }, [month, reloadKey, canViewRevenue, hubTab]);
+  }, [granularity, periodKey, reloadKey, canViewRevenue, hubTab]);
 
-  const isCurrentMonth = month === monthOptions[0];
+  const periodLabel = data?.period.label ?? periodKey;
+  const editMonth = data?.period.endMonth ?? (granularity === "month" ? periodKey : monthOptions[0]);
+  const isLivePeriod =
+    granularity === "month"
+      ? periodKey === monthOptions[0]
+      : data?.period.months.includes(monthOptions[0]) ?? true;
+  const showPeriodScopeNote = !isLivePeriod || granularity !== "month";
+  const scopeWord = granularity === "month" ? "month" : "period";
 
   if (!canViewRevenue) {
     return (
@@ -396,28 +426,62 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <h2 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>
-                {monthLabel(month)}
+                {periodLabel}
               </h2>
               <p className="text-xs mt-0.5" style={{ color: MUTED }}>
                 Six signals that matter — then the bridge, profit trend, and risk.
               </p>
             </div>
-            <select
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="px-4 py-2 rounded-lg text-sm font-medium outline-none cursor-pointer"
-              style={{
-                background: "#0f2040",
-                border: "1px solid rgba(255,255,255,0.12)",
-                color: "#e2e8f0",
-              }}
-            >
-              {monthOptions.map((m) => (
-                <option key={m} value={m}>
-                  {monthLabel(m)}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center flex-wrap gap-2">
+              <div
+                className="flex rounded-lg p-0.5"
+                style={{
+                  background: "#0f2040",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                }}
+              >
+                {(
+                  [
+                    { key: "month", label: "Month" },
+                    { key: "quarter", label: "Quarter" },
+                    { key: "ytd", label: "YTD" },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => switchGranularity(opt.key)}
+                    className="px-3 py-1.5 rounded-md text-xs font-semibold"
+                    style={{
+                      background: granularity === opt.key ? "rgba(245,158,11,0.18)" : "transparent",
+                      color: granularity === opt.key ? AMBER : "#94a3b8",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <select
+                value={periodKey}
+                onChange={(e) => setPeriodKey(e.target.value)}
+                className="px-4 py-2 rounded-lg text-sm font-medium outline-none cursor-pointer"
+                style={{
+                  background: "#0f2040",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  color: "#e2e8f0",
+                }}
+              >
+                {periodOptions.map((k) => (
+                  <option key={k} value={k}>
+                    {granularity === "quarter"
+                      ? quarterLabel(k)
+                      : granularity === "ytd"
+                        ? yearLabel(k, yearOptions[0])
+                        : monthLabel(k)}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {loading ? (
@@ -465,33 +529,44 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                   label="Cash Collected"
                   value={money(data.headline.cash_collected, { round: true })}
                   hint={{
-                    definition: "Cash that actually landed in the selected month.",
+                    definition: `Cash that actually landed in the selected ${scopeWord}.`,
                     source: "Finance Revenue ledger → client_billings (paid_on, amount_paid).",
                     formula:
-                      "SUM(amount_paid − passthrough_amount) where paid_on is in month and revenue_type ≠ passthrough / not refunded",
+                      `SUM(amount_paid − passthrough_amount) where paid_on is in ${scopeWord} and revenue_type ≠ passthrough / not refunded`,
                   }}
-                  delta={momDelta(data.headline.cash_collected, prevTrend?.cash_collected, {
-                    asMoney: true,
-                  })}
+                  delta={
+                    granularity === "month"
+                      ? momDelta(data.headline.cash_collected, prevTrend?.cash_collected, {
+                          asMoney: true,
+                        })
+                      : undefined
+                  }
                   spark={cashSpark}
                 />
                 {data.unitEconomics.operating_profit == null ? (
-                  <PlaceholderCard label="Operating Profit" need="Roll up expenses for this month." />
+                  <PlaceholderCard
+                    label="Operating Profit"
+                    need={`Roll up expenses for ${granularity === "month" ? "this month" : "months in this period"}.`}
+                  />
                 ) : (
                   <KpiCard
                     label="Operating Profit"
                     value={money(data.unitEconomics.operating_profit, { round: true })}
                     hint={{
-                      definition: "Cash profit after company operating costs for the month.",
+                      definition: `Cash profit after company operating costs for the ${scopeWord}.`,
                       source:
                         "Cash from client_billings; OpEx from business_expenses → Roll up → business_metrics.operating_expenses.",
                       formula: "Total Cash Collected − Operating Expenses (CAC + fulfillment + overhead, excl. exclude_from_pnl)",
                     }}
-                    delta={momDelta(
-                      data.unitEconomics.operating_profit,
-                      prevTrend?.operating_profit ?? undefined,
-                      { asMoney: true },
-                    )}
+                    delta={
+                      granularity === "month"
+                        ? momDelta(
+                            data.unitEconomics.operating_profit,
+                            prevTrend?.operating_profit ?? undefined,
+                            { asMoney: true },
+                          )
+                        : undefined
+                    }
                     spark={profitSpark}
                   />
                 )}
@@ -499,7 +574,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                   label="Net New MRR"
                   value={money(data.headline.net_new_mrr, { round: true })}
                   hint={{
-                    definition: "Change in recurring book this month (not cash collected).",
+                    definition: `Change in recurring book this ${scopeWord} (not cash collected).`,
                     source:
                       "Roster date_signed (new) + client_monthly_snapshots (expansion/contraction) + status history / churned_at (lost).",
                     formula: "New MRR + Expansion − Contraction − Lost MRR",
@@ -528,8 +603,8 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                     label="CAC"
                     value={money(data.unitEconomics.cac, { round: true })}
                     hint={{
-                      definition: "Cost to acquire one signed close this month.",
-                      source: `Marketing spend = expense rollup ceo_bucket=cac (or Meta ads if no rollup). Closes = acquisition_closes (${data.unitEconomics.cac_closes} this month).`,
+                      definition: `Cost to acquire one signed close this ${scopeWord}.`,
+                      source: `Marketing spend = expense rollup ceo_bucket=cac (or Meta ads if no rollup). Closes = acquisition_closes (${data.unitEconomics.cac_closes} this ${scopeWord}).`,
                       formula: "Marketing Spend ÷ Signed Closes (non-dismissed acquisition closes)",
                     }}
                     delta={
@@ -551,9 +626,9 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                   label="Signed Closes"
                   value={int(data.unitEconomics.cac_closes)}
                   hint={{
-                    definition: "Acquisition deals closed this month — the CAC denominator.",
-                    source: "Acquisition → acquisition_closes (closed_at in month, not dismissed/deleted).",
-                    formula: "COUNT(acquisition_closes) where closed_at in month",
+                    definition: `Acquisition deals closed this ${scopeWord} — the CAC denominator.`,
+                    source: `Acquisition → acquisition_closes (closed_at in ${scopeWord}, not dismissed/deleted).`,
+                    formula: `COUNT(acquisition_closes) where closed_at in ${scopeWord}`,
                   }}
                   delta={{
                     text: `${int(data.portfolio.new_clients_signed)} on roster`,
@@ -561,10 +636,10 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                   }}
                 />
               </div>
-              {!isCurrentMonth && (
+              {showPeriodScopeNote && (
                 <p className="text-[11px]" style={{ color: MUTED }}>
                   Active MRR / clients are live now; cash, churn, closes, and movement are for{" "}
-                  {monthLabel(month)}.
+                  {periodLabel}.
                 </p>
               )}
 
@@ -760,7 +835,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                     >
                       Revenue by type
                     </p>
-                    <BreakdownBars rows={data.revenue.by_type} empty="No cash collected this month." />
+                    <BreakdownBars rows={data.revenue.by_type} empty={`No cash collected this ${scopeWord}.`} />
                   </div>
                   <div
                     className="rounded-xl p-5"
@@ -774,7 +849,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                     </p>
                     <BreakdownBars
                       rows={data.revenue.by_lead_source}
-                      empty="No lead-source data on this month's billings."
+                      empty={`No lead-source data on this ${scopeWord}'s billings.`}
                     />
                   </div>
                 </div>
@@ -842,7 +917,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                         className="text-xs font-semibold uppercase tracking-wider mb-3"
                         style={{ color: MUTED }}
                       >
-                        Churn reasons ({monthLabel(month)})
+                        Churn reasons ({periodLabel})
                       </p>
                       <div className="space-y-2">
                         {data.churn.churn_by_reason.map((r) => (
@@ -1073,7 +1148,8 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold"
                     style={{ background: "rgba(245,158,11,0.12)", color: AMBER }}
                   >
-                    Edit inputs for {monthLabel(month)}
+                    Edit inputs for {monthLabel(editMonth)}
+                    {granularity !== "month" ? " (end month)" : ""}
                   </button>
                 </div>
                 <UnitEconomicsGrid u={data.unitEconomics} />
@@ -1081,7 +1157,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
 
               {editing && (
                 <FinancialInputsEditor
-                  month={month}
+                  month={editMonth}
                   current={data.unitEconomics}
                   onClose={() => setEditing(false)}
                   onSaved={() => {

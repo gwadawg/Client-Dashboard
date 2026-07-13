@@ -80,12 +80,27 @@ export type BusinessInput = {
    * When omitted, CAC falls back to roster `date_signed` count.
    */
   signedClosesByMonth?: Record<string, number>;
-  /** Target month, "YYYY-MM". Defaults to the current calendar month. */
+  /** Reporting window. Prefer over bare `month` for quarter / YTD. */
+  period?: ResolvedPeriod;
+  /** Single YYYY-MM when `period` is omitted. */
   month?: string;
-  /** Number of trailing months (including target) for the trend series. */
+  /** Number of trailing months (including period end) for the trend series. */
   trendMonths?: number;
   /** Reference "now" for tenure / contract-ending windows. Defaults to new Date(). */
   now?: Date;
+};
+
+export type PeriodGranularity = "month" | "quarter" | "ytd";
+
+export type ResolvedPeriod = {
+  granularity: PeriodGranularity;
+  /** Stable key: YYYY-MM | YYYY-QN | YYYY */
+  key: string;
+  label: string;
+  /** Inclusive months in the window, ascending YYYY-MM. */
+  months: string[];
+  startMonth: string;
+  endMonth: string;
 };
 
 // Canonical business_metrics keys the unit-economics engine understands. These
@@ -233,7 +248,10 @@ export type UnitEconomics = {
 };
 
 export type BusinessMetrics = {
+  /** End month of the selected period (YYYY-MM), kept for trend anchoring. */
   month: string;
+  /** Selected reporting window (month / quarter / YTD). */
+  period: ResolvedPeriod;
   headline: Headline;
   revenue: Revenue;
   mrrBridge: MrrBridge;
@@ -243,7 +261,7 @@ export type BusinessMetrics = {
   trend: TrendPoint[];
 };
 
-// ── Date helpers (YYYY-MM bucketing, timezone-safe) ───────────────────────────
+// ── Date / period helpers (YYYY-MM bucketing, timezone-safe) ───────────────────
 
 const ACTIVE = "active";
 const CHURNED = "churned";
@@ -260,16 +278,137 @@ export function currentMonth(now: Date = new Date()): string {
 /** The YYYY-MM bucket of a date/timestamp string, or null if unparseable. */
 function monthOf(value: string | null | undefined): string | null {
   if (!value) return null;
-  // Both "2026-06-03" and "2026-06-03T12:00:00Z" start with YYYY-MM-DD.
   const m = value.slice(0, 7);
   return /^\d{4}-\d{2}$/.test(m) ? m : null;
 }
 
-/** Step a YYYY-MM back by n months. */
-function addMonths(month: string, delta: number): string {
+/** Step a YYYY-MM back/forward by n months. */
+export function addMonths(month: string, delta: number): string {
   const [y, m] = month.split("-").map(Number);
   const base = new Date(Date.UTC(y, m - 1 + delta, 1));
   return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthsBetweenInclusive(startMonth: string, endMonth: string): string[] {
+  const out: string[] = [];
+  let cur = startMonth;
+  // Guard runaway loops.
+  for (let i = 0; i < 36; i++) {
+    out.push(cur);
+    if (cur === endMonth) break;
+    cur = addMonths(cur, 1);
+    if (cur > endMonth) break;
+  }
+  return out;
+}
+
+function quarterIndex(month: string): number {
+  const m = Number(month.slice(5, 7));
+  return Math.ceil(m / 3);
+}
+
+function monthsInQuarter(year: number, q: number): string[] {
+  const startM = (q - 1) * 3 + 1;
+  return [0, 1, 2].map((i) => `${year}-${String(startM + i).padStart(2, "0")}`);
+}
+
+/** Resolve a reporting window from granularity + key. */
+export function resolveBusinessPeriod(
+  granularity: PeriodGranularity,
+  key: string | null | undefined,
+  now: Date = new Date(),
+): ResolvedPeriod {
+  const cur = currentMonth(now);
+
+  if (granularity === "quarter") {
+    let year: number;
+    let q: number;
+    const qMatch = key?.match(/^(\d{4})-Q([1-4])$/i);
+    if (qMatch) {
+      year = Number(qMatch[1]);
+      q = Number(qMatch[2]);
+    } else if (key && /^\d{4}-\d{2}$/.test(key)) {
+      year = Number(key.slice(0, 4));
+      q = quarterIndex(key);
+    } else {
+      year = Number(cur.slice(0, 4));
+      q = quarterIndex(cur);
+    }
+    const months = monthsInQuarter(year, q);
+    return {
+      granularity: "quarter",
+      key: `${year}-Q${q}`,
+      label: `Q${q} ${year}`,
+      months,
+      startMonth: months[0],
+      endMonth: months[2],
+    };
+  }
+
+  if (granularity === "ytd") {
+    const year = key && /^\d{4}/.test(key) ? Number(key.slice(0, 4)) : Number(cur.slice(0, 4));
+    const startMonth = `${year}-01`;
+    const endMonth = year === Number(cur.slice(0, 4)) ? cur : `${year}-12`;
+    const months = monthsBetweenInclusive(startMonth, endMonth);
+    return {
+      granularity: "ytd",
+      key: String(year),
+      label: year === Number(cur.slice(0, 4)) ? `YTD ${year}` : `Full year ${year}`,
+      months,
+      startMonth,
+      endMonth,
+    };
+  }
+
+  // month
+  const month = key && /^\d{4}-\d{2}$/.test(key) ? key : cur;
+  const [y, m] = month.split("-").map(Number);
+  const label = new Date(Date.UTC(y, m - 1, 1)).toLocaleString(undefined, {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  return {
+    granularity: "month",
+    key: month,
+    label,
+    months: [month],
+    startMonth: month,
+    endMonth: month,
+  };
+}
+
+/** Recent month keys newest-first. */
+export function listRecentMonths(count: number, now: Date = new Date()): string[] {
+  const out: string[] = [];
+  let cur = currentMonth(now);
+  for (let i = 0; i < count; i++) {
+    out.push(cur);
+    cur = addMonths(cur, -1);
+  }
+  return out;
+}
+
+/** Recent quarter keys newest-first (YYYY-QN). */
+export function listRecentQuarters(count: number, now: Date = new Date()): string[] {
+  const out: string[] = [];
+  let year = now.getFullYear();
+  let q = quarterIndex(currentMonth(now));
+  for (let i = 0; i < count; i++) {
+    out.push(`${year}-Q${q}`);
+    q -= 1;
+    if (q < 1) {
+      q = 4;
+      year -= 1;
+    }
+  }
+  return out;
+}
+
+/** Recent calendar years newest-first (for YTD picker). */
+export function listRecentYears(count: number, now: Date = new Date()): string[] {
+  const y = now.getFullYear();
+  return Array.from({ length: count }, (_, i) => String(y - i));
 }
 
 function num(v: number | null | undefined): number {
@@ -291,12 +430,13 @@ function isRevenue(b: BusinessBilling): boolean {
 }
 
 /**
- * Collected cash on a billing in a given month (dated by paid_on).
+ * Collected cash on a billing in any of the period months (dated by paid_on).
  * Subtracts `passthrough_amount` so mixed retainer+adspend invoices don't inflate revenue.
  */
-function collectedInMonth(b: BusinessBilling, month: string): number {
+function collectedInPeriod(b: BusinessBilling, months: Set<string>): number {
   if (!isRevenue(b)) return 0;
-  if (monthOf(b.paid_on) !== month) return 0;
+  const m = monthOf(b.paid_on);
+  if (!m || !months.has(m)) return 0;
   return Math.max(0, num(b.amount_paid) - num(b.passthrough_amount));
 }
 
@@ -394,7 +534,11 @@ function expansionContractionFromSnapshots(
 
 export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
   const now = input.now ?? new Date();
-  const month = input.month ?? currentMonth(now);
+  const period =
+    input.period ??
+    resolveBusinessPeriod("month", input.month ?? currentMonth(now), now);
+  const monthsSet = new Set(period.months);
+  const endMonth = period.endMonth;
   const trendMonths = input.trendMonths ?? 12;
   const { clients, statusHistory, billings } = input;
   const snapshots = input.snapshots ?? [];
@@ -402,7 +546,7 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
 
   // Imported / manual inputs bucketed as month -> key -> value.
   const financeByMonth = bucketBusinessMetrics(input.businessMetrics ?? []);
-  const finance = financeByMonth.get(month) ?? {};
+  const finance = sumFinanceAcrossMonths(financeByMonth, period.months);
 
   // ── Current portfolio snapshot (as-of now) ────────────────────────────────
   const activeClients = clients.filter((c) => c.lifecycle_status === ACTIVE);
@@ -410,33 +554,42 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
   const active_clients = activeClients.length;
   const arpa = active_clients ? live_active_mrr / active_clients : 0;
 
-  // End MRR for the selected month: snapshot when frozen, else live book.
-  const snapEnd = activeMrrFromSnapshots(snapshots, month);
-  const isCurrentMonth = month === currentMonth(now);
-  const end_mrr = snapEnd != null && !isCurrentMonth ? snapEnd : live_active_mrr;
+  // End MRR for the period: snapshot of last month when frozen, else live book.
+  const snapEnd = activeMrrFromSnapshots(snapshots, endMonth);
+  const isCurrentEnd = endMonth === currentMonth(now);
+  const end_mrr = snapEnd != null && !isCurrentEnd ? snapEnd : live_active_mrr;
   const active_mrr = live_active_mrr;
 
-  // ── MRR movement for the target month ─────────────────────────────────────
+  // ── MRR movement across the period ────────────────────────────────────────
   const new_mrr = clients
-    .filter((c) => monthOf(c.date_signed) === month)
+    .filter((c) => {
+      const m = monthOf(c.date_signed);
+      return m != null && monthsSet.has(m);
+    })
     .reduce((s, c) => s + num(c.mrr), 0);
 
-  // Lost MRR = roster lifecycle only (one event per client). Not billings.
-  const churned_clients = computeDeparturesForMonth(clients, statusHistory, month);
+  const churned_clients: ChurnedClient[] = [];
+  for (const m of period.months) {
+    churned_clients.push(...computeDeparturesForMonth(clients, statusHistory, m));
+  }
   const lost_mrr = churned_clients.reduce((s, c) => s + c.mrr, 0);
   const churned_count = churned_clients.length;
 
-  const priorMonth = addMonths(month, -1);
+  const priorMonth = addMonths(period.startMonth, -1);
   const snapStart = activeMrrFromSnapshots(snapshots, priorMonth);
-  const { expansion_mrr, contraction_mrr } = expansionContractionFromSnapshots(
-    snapshots,
-    priorMonth,
-    month,
-  );
+
+  let expansion_mrr = 0;
+  let contraction_mrr = 0;
+  for (const m of period.months) {
+    const prior = addMonths(m, -1);
+    const ec = expansionContractionFromSnapshots(snapshots, prior, m);
+    expansion_mrr += ec.expansion_mrr;
+    contraction_mrr += ec.contraction_mrr;
+  }
 
   const net_new_mrr = new_mrr + expansion_mrr - contraction_mrr - lost_mrr;
 
-  // Start-of-month MRR: prior-month snapshot when present; else reconstruct.
+  // Start-of-period MRR: snapshot before first month when present; else reconstruct.
   const start_mrr =
     snapStart != null ? snapStart : Math.max(0, end_mrr - net_new_mrr);
 
@@ -449,7 +602,7 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
   const byLeadSource = new Map<string, number>();
 
   for (const b of billings) {
-    const collected = collectedInMonth(b, month);
+    const collected = collectedInPeriod(b, monthsSet);
     if (collected === 0) continue;
     total_cash += collected;
     net_of_fees += collected - num(b.processing_fee);
@@ -461,11 +614,8 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     byLeadSource.set(src, (byLeadSource.get(src) ?? 0) + collected);
   }
 
-  // New-logo cash cross-check: each client's first-ever paid billing, counted
-  // when that first payment lands in the target month. Tagging-independent.
-  const new_logo_cash = computeNewLogoCash(billings, month);
+  const new_logo_cash = computeNewLogoCash(billings, monthsSet);
 
-  // Running AR (all-time, not month-scoped) from unsettled billings.
   let open_ar = 0;
   let overdue_ar = 0;
   for (const b of billings) {
@@ -497,10 +647,20 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
   };
 
   // ── Churn & retention ─────────────────────────────────────────────────────
-  const new_clients_signed = clients.filter((c) => monthOf(c.date_signed) === month).length;
-  const signed_closes =
-    typeof signedClosesByMonth[month] === "number" ? signedClosesByMonth[month] : new_clients_signed;
-  // Active clients at month start ≈ now − signed-this-month + departed-this-month.
+  const new_clients_signed = clients.filter((c) => {
+    const m = monthOf(c.date_signed);
+    return m != null && monthsSet.has(m);
+  }).length;
+  let signed_closes = 0;
+  let hasCloseCounts = false;
+  for (const m of period.months) {
+    if (typeof signedClosesByMonth[m] === "number") {
+      hasCloseCounts = true;
+      signed_closes += signedClosesByMonth[m];
+    }
+  }
+  if (!hasCloseCounts) signed_closes = new_clients_signed;
+
   const active_at_start = Math.max(0, active_clients - new_clients_signed + churned_count);
 
   const reasonAgg = new Map<string, { count: number; lost_mrr: number }>();
@@ -533,10 +693,8 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     avg_tenure_months: averageTenureMonths(clients, now),
   };
 
-  // ── Portfolio & risk ──────────────────────────────────────────────────────
-  const portfolio = computePortfolio(clients, activeClients, active_mrr, month, now);
+  const portfolio = computePortfolio(clients, activeClients, active_mrr, monthsSet, now);
 
-  // ── Headline rollup ───────────────────────────────────────────────────────
   const headline: Headline = {
     active_mrr,
     active_clients,
@@ -576,13 +734,50 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     financeByMonth,
     signedClosesByMonth,
     snapshots,
-    endMonth: month,
+    endMonth,
     months: trendMonths,
     currentActiveMrr: active_mrr,
     now,
   });
 
-  return { month, headline, revenue, mrrBridge, churn, portfolio, unitEconomics, trend };
+  return {
+    month: endMonth,
+    period,
+    headline,
+    revenue,
+    mrrBridge,
+    churn,
+    portfolio,
+    unitEconomics,
+    trend,
+  };
+}
+
+function sumFinanceAcrossMonths(
+  financeByMonth: Map<string, Record<string, number>>,
+  months: string[],
+): Record<string, number> {
+  const sumKeys = ["marketing_spend", "operating_expenses", "delivery_costs"] as const;
+  const lastKeys = ["cash_balance", "headcount"] as const;
+  const out: Record<string, number> = {};
+  for (const k of sumKeys) {
+    let total = 0;
+    let any = false;
+    for (const m of months) {
+      const v = financeByMonth.get(m)?.[k];
+      if (typeof v === "number" && Number.isFinite(v)) {
+        total += v;
+        any = true;
+      }
+    }
+    if (any) out[k] = total;
+  }
+  const last = months[months.length - 1];
+  const lastFin = financeByMonth.get(last) ?? {};
+  for (const k of lastKeys) {
+    if (typeof lastFin[k] === "number" && Number.isFinite(lastFin[k])) out[k] = lastFin[k];
+  }
+  return out;
 }
 
 /** month -> (metric_key -> value) from the raw business_metrics rows. */
@@ -702,9 +897,8 @@ function toSortedBreakdown(m: Map<string, number>): RevenueBreakdown[] {
     .sort((a, b) => b.amount - a.amount);
 }
 
-/** Sum of each client's first-ever paid billing whose payment lands in `month`. */
-function computeNewLogoCash(billings: BusinessBilling[], month: string): number {
-  // Earliest paid (revenue) billing per client.
+/** Sum of each client's first-ever paid billing whose payment lands in `months`. */
+function computeNewLogoCash(billings: BusinessBilling[], months: Set<string>): number {
   const firstPaid = new Map<string, BusinessBilling>();
   for (const b of billings) {
     if (!isRevenue(b) || !b.paid_on) continue;
@@ -714,7 +908,8 @@ function computeNewLogoCash(billings: BusinessBilling[], month: string): number 
   }
   let total = 0;
   for (const b of firstPaid.values()) {
-    if (monthOf(b.paid_on) === month) {
+    const m = monthOf(b.paid_on);
+    if (m && months.has(m)) {
       total += Math.max(0, num(b.amount_paid) - num(b.passthrough_amount));
     }
   }
@@ -741,7 +936,7 @@ function computePortfolio(
   clients: BusinessClient[],
   activeClients: BusinessClient[],
   active_mrr: number,
-  month: string,
+  months: Set<string>,
   now: Date,
 ): Portfolio {
   const lifecycleMap = new Map<string, number>();
@@ -749,7 +944,6 @@ function computePortfolio(
     const s = c.lifecycle_status ?? "unknown";
     lifecycleMap.set(s, (lifecycleMap.get(s) ?? 0) + 1);
   }
-  // Stable, human-meaningful lifecycle ordering.
   const order = ["new_account", "onboarding", "active", "paused", "off_boarding", "churned"];
   const lifecycle: LifecycleBucket[] = Array.from(lifecycleMap.entries())
     .map(([status, count]) => ({ status, count }))
@@ -759,7 +953,10 @@ function computePortfolio(
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
     });
 
-  const new_clients_signed = clients.filter((c) => monthOf(c.date_signed) === month).length;
+  const new_clients_signed = clients.filter((c) => {
+    const m = monthOf(c.date_signed);
+    return m != null && months.has(m);
+  }).length;
 
   const offerMap = new Map<string, { mrr: number; count: number }>();
   for (const c of activeClients) {

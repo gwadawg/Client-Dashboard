@@ -3,12 +3,15 @@ import { getAuthContext, isAuthError, requirePermission, requireClientRevenue } 
 import { DISMISSED_CLOSE_STATUS } from '@/lib/acquisition-close-filter';
 import { VOIDED_BILLING_STATUS } from '@/lib/billing-query';
 import {
+  addMonths,
   computeBusinessMetrics,
   currentMonth,
+  resolveBusinessPeriod,
   type BusinessBilling,
   type BusinessClient,
   type BusinessMetricRow,
   type ClientMonthlySnapshot,
+  type PeriodGranularity,
   type StatusHistoryRow,
 } from '@/lib/business-metrics';
 
@@ -26,14 +29,22 @@ const BUSINESS_METRIC_FIELDS = 'metric_key, period_date, value_numeric';
 const SNAPSHOT_FIELDS = 'client_id, period_month, lifecycle_status, mrr, is_active';
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
+const QUARTER_RE = /^\d{4}-Q[1-4]$/i;
+const YEAR_RE = /^\d{4}$/;
 
-function addMonthsUtc(month: string, delta: number): string {
-  const [y, m] = month.split('-').map(Number);
-  const base = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, '0')}`;
+function parseGranularity(raw: string | null): PeriodGranularity {
+  if (raw === 'quarter' || raw === 'ytd' || raw === 'month') return raw;
+  return 'month';
 }
 
-// GET /api/business?month=YYYY-MM&trend_months=12
+function lastDayOfMonth(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0));
+  return last.toISOString().slice(0, 10);
+}
+
+// GET /api/business?granularity=month|quarter|ytd&period=YYYY-MM|YYYY-QN|YYYY&trend_months=12
+// Legacy: ?month=YYYY-MM (implies granularity=month)
 // Agency-wide CEO KPIs aggregated across the whole client book.
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -44,14 +55,33 @@ export async function GET(req: Request) {
   if (revenueDenied) return revenueDenied;
 
   const url = new URL(req.url);
-  const monthParam = url.searchParams.get('month');
-  const month = monthParam && MONTH_RE.test(monthParam) ? monthParam : currentMonth();
+  const granularity = parseGranularity(url.searchParams.get('granularity'));
+  const periodParam =
+    url.searchParams.get('period') ??
+    url.searchParams.get('month') ??
+    null;
+
+  let periodKey = periodParam;
+  if (granularity === 'month' && periodKey && !MONTH_RE.test(periodKey)) {
+    periodKey = currentMonth();
+  }
+  if (granularity === 'quarter' && periodKey && !QUARTER_RE.test(periodKey) && !MONTH_RE.test(periodKey)) {
+    periodKey = null;
+  }
+  if (granularity === 'ytd' && periodKey && !YEAR_RE.test(periodKey) && !MONTH_RE.test(periodKey)) {
+    periodKey = null;
+  }
+
+  const period = resolveBusinessPeriod(granularity, periodKey);
+  const endMonth = period.endMonth;
   const trendParam = Number(url.searchParams.get('trend_months'));
   const trendMonths = Number.isFinite(trendParam) && trendParam > 0 && trendParam <= 36 ? trendParam : 12;
 
   // Cash is attributed by paid_on; also keep open (unpaid) rows for AR.
-  const paidFrom = `${addMonthsUtc(month, -(trendMonths + 2))}-01`;
-  const snapshotFrom = `${addMonthsUtc(month, -(trendMonths + 1))}-01`;
+  const paidFrom = `${addMonths(endMonth, -(trendMonths + 2))}-01`;
+  const snapshotFrom = `${addMonths(endMonth, -(trendMonths + 1))}-01`;
+  const insightFrom = `${addMonths(period.startMonth, 0)}-01`;
+  const insightTo = lastDayOfMonth(endMonth);
 
   const [clientsRes, historyRes, paidBillingsRes, openBillingsRes, metricsRes, snapshotsRes, closesRes, acqSpendRes] =
     await Promise.all([
@@ -81,12 +111,8 @@ export async function GET(req: Request) {
       ctx.service
         .from('acquisition_meta_ad_insights')
         .select('spend, insight_date')
-        .gte('insight_date', `${addMonthsUtc(month, -(trendMonths - 1))}-01`)
-        .lte('insight_date', (() => {
-          const [y, m] = month.split('-').map(Number);
-          const last = new Date(Date.UTC(y, m, 0));
-          return last.toISOString().slice(0, 10);
-        })()),
+        .gte('insight_date', insightFrom)
+        .lte('insight_date', insightTo),
     ]);
 
   if (clientsRes.error) return NextResponse.json({ error: clientsRes.error.message }, { status: 500 });
@@ -127,14 +153,16 @@ export async function GET(req: Request) {
     businessMetrics: (metricsRes.data ?? []) as BusinessMetricRow[],
     snapshots: (snapshotsRes.data ?? []) as ClientMonthlySnapshot[],
     signedClosesByMonth,
-    month,
+    period,
     trendMonths,
   });
 
-  // Informational Meta spend for the selected month (does not override expense CAC).
+  const monthsSet = new Set(period.months);
+  // Informational Meta spend for the selected period (does not override expense CAC).
   const acqSpend = (acqSpendRes.data ?? []).reduce((s, r) => {
     const row = r as { spend: number; insight_date: string };
-    if (!row.insight_date?.startsWith(month)) return s;
+    const m = row.insight_date?.slice(0, 7);
+    if (!m || !monthsSet.has(m)) return s;
     return s + Number(row.spend ?? 0);
   }, 0);
   metrics.unitEconomics.acquisition_ad_spend = acqSpend > 0 ? acqSpend : null;
