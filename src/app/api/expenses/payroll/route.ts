@@ -8,6 +8,7 @@ import {
   normalizeMerchant,
   type CeoBucket,
 } from '@/lib/expenses';
+import { rollupExpenseDates } from '@/lib/expense-rollup';
 
 const EVENT_FIELDS =
   'id, client_id, event_type, agent_name, occurred_at, scheduled_at, lead_name, lead_phone, raw';
@@ -223,6 +224,18 @@ export async function POST(req: Request) {
   const { data, error } = await ctx.service.from('business_expenses').insert(rows).select(EXPENSE_FIELDS);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  let rollups = null;
+  let warning: string | undefined;
+  try {
+    rollups = await rollupExpenseDates(
+      ctx.service,
+      rows.map(r => r.occurred_on),
+      ctx.userId,
+    );
+  } catch (e) {
+    warning = e instanceof Error ? e.message : 'Payroll posted but KPI rollup failed';
+  }
+
   return NextResponse.json({
     dryRun: false,
     inserted: data?.length ?? 0,
@@ -231,5 +244,7 @@ export async function POST(req: Request) {
     ceo_bucket: ceoBucket,
     expenses: data,
     grand_total: rows.reduce((s, r) => s + r.amount, 0),
+    rollups,
+    ...(warning ? { warning } : {}),
   });
 }

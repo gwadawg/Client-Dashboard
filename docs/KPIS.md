@@ -506,8 +506,8 @@ the **Edit inputs** modal) and stored in the `business_metrics` time-series tabl
 Each missing-input metric shows a dimmed "needs data" card until its inputs are present.
 
 **Preferred source (v1+):** the **Expenses** ledger (`business_expenses`) — every card/bank charge
-classified into CEO buckets, then **Roll up** writes these keys. See [`docs/EXPENSES.md`](./EXPENSES.md).
-Manual Edit inputs still works as an override / bootstrap.
+classified into CEO buckets. Ledger writes **auto-rollup** these keys into `business_metrics`.
+See [`docs/EXPENSES.md`](./EXPENSES.md). Manual Edit inputs still works as an override / bootstrap.
 
 **Canonical input keys** (`BUSINESS_METRIC_KEYS` in `src/lib/business-metrics.ts`):
 
@@ -519,9 +519,10 @@ Manual Edit inputs still works as an override / bootstrap.
 | `cash_balance` | Cash on hand at month end |
 | `headcount` | Team headcount |
 
-**Ledger → metrics rollup:** `POST /api/expenses/rollup` with `{ month: "YYYY-MM" }`. Excludes
-`personal`, `owner_draw`, `passthrough`, `uncategorized`, and any row with `exclude_from_pnl`
-(excluded charges must not appear in any KPI total).
+**Ledger → metrics rollup:** Runs automatically after create / edit / delete / categorize /
+exclude / CSV import / payroll post / apply-rules. Manual refresh: `POST /api/expenses/rollup`
+with `{ month: "YYYY-MM" }`. Excludes `personal`, `owner_draw`, `passthrough`, `uncategorized`,
+and any row with `exclude_from_pnl` (excluded charges must not appear in any KPI total).
 
 **Derived metrics:**
 
@@ -558,7 +559,7 @@ The accuracy of the Business view depends on a small, consistent billing/lifecyc
 
 1. Clear Finance → Expenses **Pending** (`uncategorized`) for the month.
 2. Confirm one expense source of truth (sheet **or** bank; payroll not double-posted).
-3. **Roll up {month}** so Overview OpEx / CAC / COGS refresh.
+3. Confirm Overview OpEx / CAC / COGS match the ledger (auto-rolled; optional **Refresh KPIs**).
 4. Reconcile **New cash** vs **New-logo cash** vs acquisition **signed closes**.
 5. Confirm roster churn catch-up (`churned_at` / off_boarding) before trusting Lost MRR.
 6. Confirm prior-month snapshot healthy (`/api/business/snapshot`).

@@ -67,10 +67,10 @@ This keeps **Operating Profit = Total Cash − operating_expenses** coherent on 
 Company expense ledger lives under **Finance → Expenses** (`business_expenses`).
 
 - **Pending** tab — all `uncategorized` charges across months. **Map** opens Type + optional subcategory; when Type is **Fulfillment / COGS**, a **COGS category** select appears (`media_buying`, `call_center`, `client_success`, `delivery_tech`). Check **Always treat this merchant this way** to create a `merchant_contains` rule and optionally apply it to other matching ledger rows.
-- **Ledger** tab — month filter, bucket totals, roll up into Overview unit economics. Per row: **Exclude** toggles `exclude_from_pnl` (charge stays visible, drops out of OpEx KPIs). Or **Map** → check **Exclude completely from reports** (+ save rule to auto-exclude that merchant forever).
+- **Ledger** tab — month filter, bucket totals. Per row: **Exclude** toggles `exclude_from_pnl` (charge stays visible, drops out of OpEx KPIs). Or **Map** → check **Exclude completely from reports** (+ save rule to auto-exclude that merchant forever).
 - Types that auto-exclude: `personal`, `owner_draw`, `passthrough`
-- After excluding, hit **Roll up {month}** so Finance Overview KPIs refresh. Excluded rows (`exclude_from_pnl`) and non-P&L buckets (`personal`, `owner_draw`, `passthrough`, `uncategorized`) are omitted from every KPI total (CAC / COGS / OpEx).
-- **Month close:** Pending empty → one SoT for the month → Roll up → reconcile Finance Overview.
+- **Auto KPI rollup:** Creating, editing, deleting, categorizing, excluding, importing, posting payroll, or applying rules automatically recomputes that month’s `marketing_spend` / `delivery_costs` / `operating_expenses` in `business_metrics` (including backdated charges for older months). Excluded rows (`exclude_from_pnl`) and non-P&L buckets (`personal`, `owner_draw`, `passthrough`, `uncategorized`) stay out of every KPI total. Optional **Refresh KPIs {month}** remains for a manual recompute.
+- **Month close:** Pending empty → one SoT for the month → reconcile Finance Overview (no separate roll-up click required).
 - Add charge / add account / Import CSV
 - Seed rules
 
@@ -202,7 +202,7 @@ Template: [`data/import/expenses/labeled-charges.template.csv`](../data/import/e
 | GET/POST | `/api/expenses` | List / manual create |
 | PATCH/DELETE | `/api/expenses/[id]` | Recategorize / delete |
 | POST | `/api/expenses/import` | CSV (`dryRun` default true) |
-| POST | `/api/expenses/rollup` | `{ month }` or `{ months }` → `business_metrics` |
+| POST | `/api/expenses/rollup` | `{ month }` or `{ months }` → `business_metrics` (manual refresh; writes also auto-rollup) |
 | GET/POST | `/api/expense-rules` | List / create / `{ seed: true }` |
 | POST | `/api/expenses/payroll` | Post agent payroll period → expenses |
 

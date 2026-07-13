@@ -12,6 +12,7 @@ import {
   type ExpenseSource,
   type FulfillmentLine,
 } from '@/lib/expenses';
+import { rollupExpenseDates } from '@/lib/expense-rollup';
 
 const FIELDS =
   'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, categorized_by, rule_id, payroll_run_id, client_id, created_at, updated_at';
@@ -170,5 +171,19 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ expense: data });
+
+  let rollups = null;
+  try {
+    rollups = await rollupExpenseDates(ctx.service, [occurredOn], ctx.userId);
+  } catch (e) {
+    return NextResponse.json(
+      {
+        expense: data,
+        warning: e instanceof Error ? e.message : 'Expense saved but KPI rollup failed',
+      },
+      { status: 200 },
+    );
+  }
+
+  return NextResponse.json({ expense: data, rollups });
 }

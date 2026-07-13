@@ -12,6 +12,7 @@ import {
   type ExpenseCategoryRule,
   type MatchType,
 } from '@/lib/expenses';
+import { rollupExpenseDates, uniqueMonthsFromDates } from '@/lib/expense-rollup';
 
 const FIELDS =
   'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, priority, active, notes, created_at, updated_at';
@@ -80,7 +81,7 @@ export async function POST(req: Request) {
     if (rulesErr) return NextResponse.json({ error: rulesErr.message }, { status: 500 });
 
     let query = ctx.service.from('business_expenses').select(
-      'id, merchant_raw, memo, amount, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, rule_id',
+      'id, occurred_on, merchant_raw, memo, amount, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, rule_id',
     ).limit(5000);
     if (onlyUncategorized) query = query.eq('ceo_bucket', 'uncategorized');
 
@@ -89,6 +90,7 @@ export async function POST(req: Request) {
 
     const now = new Date().toISOString();
     let applied = 0;
+    const touchedDates: string[] = [];
     for (const row of rows ?? []) {
       const match = applyExpenseRules(
         {
@@ -121,9 +123,28 @@ export async function POST(req: Request) {
           updated_at: now,
         })
         .eq('id', row.id);
-      if (!upErr) applied += 1;
+      if (!upErr) {
+        applied += 1;
+        if (typeof row.occurred_on === 'string') touchedDates.push(row.occurred_on);
+      }
     }
-    return NextResponse.json({ applied, scanned: rows?.length ?? 0, only_uncategorized: onlyUncategorized });
+
+    let rollups = null;
+    let warning: string | undefined;
+    try {
+      rollups = await rollupExpenseDates(ctx.service, touchedDates, ctx.userId);
+    } catch (e) {
+      warning = e instanceof Error ? e.message : 'Rules applied but KPI rollup failed';
+    }
+
+    return NextResponse.json({
+      applied,
+      scanned: rows?.length ?? 0,
+      only_uncategorized: onlyUncategorized,
+      months_rolled: uniqueMonthsFromDates(touchedDates),
+      rollups,
+      ...(warning ? { warning } : {}),
+    });
   }
 
   if (typeof body.name !== 'string' || !body.name.trim()) {

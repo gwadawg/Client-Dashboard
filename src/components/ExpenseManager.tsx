@@ -311,8 +311,8 @@ export default function ExpenseManager() {
     const r = d.rollups?.[0];
     setMessage(
       r
-        ? `Rolled ${month}: CAC ${money(r.marketing_spend)} · COGS ${money(r.delivery_costs)} · OpEx ${money(r.operating_expenses)}`
-        : "Rollup complete",
+        ? `Refreshed ${month}: CAC ${money(r.marketing_spend)} · COGS ${money(r.delivery_costs)} · OpEx ${money(r.operating_expenses)}`
+        : "KPI refresh complete",
     );
   }
 
@@ -491,7 +491,7 @@ export default function ExpenseManager() {
               className="px-3 py-1.5 rounded-lg text-xs font-semibold"
               style={{ background: "rgba(52,211,153,0.15)", color: "#34d399" }}
             >
-              Roll up {month}
+              Refresh KPIs {month}
             </button>
           )}
         </div>
@@ -576,9 +576,10 @@ export default function ExpenseManager() {
           {month && (
             <p className="text-xs" style={{ color: "#64748b" }}>
               Ledger rule: Total Costs sheet through Jan 2026 · Chase bank from Feb 2026 onward
-              (plus late-2024 Chase before the sheet). To drop a charge from KPI / OpEx rollups,
-              Map it and check <span style={{ color: "#fbbf24" }}>Exclude from reports</span>, or
-              set Type to Personal / Owner draw / Passthrough. Re-roll the month after.
+              (plus late-2024 Chase before the sheet). To drop a charge from KPI / OpEx, Map it
+              and check <span style={{ color: "#fbbf24" }}>Exclude from reports</span>, or set
+              Type to Personal / Owner draw / Passthrough. Dashboard KPIs update automatically
+              when you save; use Refresh KPIs only if you need a manual recompute.
             </p>
           )}
 

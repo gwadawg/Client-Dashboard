@@ -474,7 +474,7 @@ export default function AgentPayrollReport({
       );
     } else {
       setPayrollMsg(
-        `Posted ${d.inserted} payroll expenses (${fmtMoney(d.grand_total ?? 0)}) as ${d.ceo_bucket}. Roll up from Finance → Expenses to update KPIs.`,
+        `Posted ${d.inserted} payroll expenses (${fmtMoney(d.grand_total ?? 0)}) as ${d.ceo_bucket}. Dashboard KPIs for that month update automatically.`,
       );
       load();
     }

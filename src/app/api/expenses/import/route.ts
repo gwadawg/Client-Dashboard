@@ -13,6 +13,7 @@ import {
   type CeoBucket,
   type ExpenseCategoryRule,
 } from '@/lib/expenses';
+import { rollupExpenseDates } from '@/lib/expense-rollup';
 
 const BATCH = 200;
 const FIELDS =
@@ -283,6 +284,18 @@ export async function POST(req: Request) {
     inserted += chunk.length;
   }
 
+  let rollups = null;
+  let warning: string | undefined;
+  try {
+    rollups = await rollupExpenseDates(
+      ctx.service,
+      rows.map(r => r.occurred_on),
+      ctx.userId,
+    );
+  } catch (e) {
+    warning = e instanceof Error ? e.message : 'Import saved but KPI rollup failed';
+  }
+
   return NextResponse.json({
     dryRun: false,
     format: chase ? 'chase_activity' : 'generic',
@@ -291,5 +304,7 @@ export async function POST(req: Request) {
     skipped_duplicate: skippedDuplicate,
     skipped_credit: skippedCredit,
     bucket_counts: bucketCounts,
+    rollups,
+    ...(warning ? { warning } : {}),
   });
 }
