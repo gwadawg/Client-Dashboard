@@ -445,9 +445,12 @@ function collectedInPeriod(b: BusinessBilling, months: Set<string>): number {
   return Math.max(0, num(b.amount_paid) - num(b.passthrough_amount));
 }
 
+const LIVE_STATUSES = new Set(["new_account", "onboarding", "active"]);
+
 /**
  * Overlay churn-form effective dates onto roster rows so late reports use the
  * date entered on the form, not when the form was submitted.
+ * Only applied while the client is still departed — do not re-stamp live accounts.
  */
 export function applyEffectiveChurnDates(
   clients: BusinessClient[],
@@ -455,6 +458,7 @@ export function applyEffectiveChurnDates(
 ): BusinessClient[] {
   if (!effectiveChurnDateByClient) return clients;
   return clients.map((c) => {
+    if (!DEPARTURE_STATUSES.has(c.lifecycle_status ?? "")) return c;
     const formDate = effectiveChurnDateByClient[c.id]?.trim();
     if (!formDate || !/^\d{4}-\d{2}-\d{2}/.test(formDate)) return c;
     return { ...c, churned_at: `${formDate.slice(0, 10)}T12:00:00.000Z` };
@@ -462,11 +466,29 @@ export function applyEffectiveChurnDates(
 }
 
 /**
+ * True when the client returned to a live lifecycle after the given departure.
+ * Prevents historical churn + backfill rows from counting once the account is back.
+ */
+function returnedAfterDeparture(
+  statusHistory: StatusHistoryRow[],
+  clientId: string,
+  departedAt: string,
+): boolean {
+  return statusHistory.some(
+    (h) =>
+      h.client_id === clientId &&
+      h.changed_at > departedAt &&
+      LIVE_STATUSES.has(h.new_status),
+  );
+}
+
+/**
  * One Lost-MRR event per client from roster lifecycle history (not billings).
  * Month bucket priority:
- *   1. churn form `effective_churn_date` (when provided)
+ *   1. churn form `effective_churn_date` (when provided, and still departed)
  *   2. `clients.churned_at` (backdated leave)
  *   3. first transition into off_boarding / churned (`changed_at`)
+ * Skips departures that were later reversed (client returned to live status).
  * Amount is `mrr_at_change` at that first departure (MRR when they left the book).
  */
 export function computeDeparturesForMonth(
@@ -487,11 +509,29 @@ export function computeDeparturesForMonth(
   const out: ChurnedClient[] = [];
   for (const [clientId, rows] of byClient) {
     rows.sort((a, b) => a.changed_at.localeCompare(b.changed_at));
-    const first = rows[0];
-    const churnedRow = rows.find((r) => r.new_status === CHURNED) ?? null;
-    const display = churnedRow ?? first;
     const client = clientById.get(clientId);
-    const formDate = effectiveChurnDateByClient?.[clientId];
+
+    // Prefer the latest unbroken departure when a client left, returned, then left again.
+    let first: StatusHistoryRow | null = null;
+    for (const row of rows) {
+      if (returnedAfterDeparture(statusHistory, clientId, row.changed_at)) continue;
+      first = row;
+      break;
+    }
+    if (!first) continue;
+
+    // Still live on the book — a past churn was reversed and must not count now.
+    if (LIVE_STATUSES.has(client?.lifecycle_status ?? "")) continue;
+
+    const churnedRow =
+      rows.find(
+        (r) =>
+          r.new_status === CHURNED &&
+          !returnedAfterDeparture(statusHistory, clientId, r.changed_at),
+      ) ?? null;
+    const display = churnedRow ?? first;
+    const stillDeparted = DEPARTURE_STATUSES.has(client?.lifecycle_status ?? "");
+    const formDate = stillDeparted ? effectiveChurnDateByClient?.[clientId] : undefined;
     const effectiveMonth =
       monthOf(formDate) ?? monthOf(client?.churned_at) ?? monthOf(first.changed_at);
     if (effectiveMonth !== month) continue;

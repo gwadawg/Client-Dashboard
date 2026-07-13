@@ -136,6 +136,39 @@ describe("computeDeparturesForMonth", () => {
     assert.equal(computeDeparturesForMonth(clients, history, "2026-05", formDates).length, 1);
     assert.equal(computeDeparturesForMonth(clients, history, "2026-07", formDates).length, 0);
   });
+
+  it("skips historical churn after the client returned to active", () => {
+    const clients = [
+      client({
+        id: "c1",
+        name: "Came Back",
+        lifecycle_status: "active",
+        churned_at: null,
+        mrr: 2000,
+      }),
+    ];
+    const history: StatusHistoryRow[] = [
+      {
+        client_id: "c1",
+        previous_status: "active",
+        new_status: "churned",
+        reason_code: "price",
+        note: null,
+        mrr_at_change: 2000,
+        changed_at: "2026-04-08T12:00:00.000Z",
+      },
+      {
+        client_id: "c1",
+        previous_status: "churned",
+        new_status: "active",
+        reason_code: null,
+        note: null,
+        mrr_at_change: 2000,
+        changed_at: "2026-06-19T12:00:00.000Z",
+      },
+    ];
+    assert.equal(computeDeparturesForMonth(clients, history, "2026-04").length, 0);
+  });
 });
 
 describe("computeBusinessMetrics", () => {
