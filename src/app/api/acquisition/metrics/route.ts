@@ -54,8 +54,31 @@ export async function GET(req: NextRequest) {
   if (leadsRes.error) return NextResponse.json({ error: leadsRes.error.message }, { status: 500 });
   if (apptsRes.error) return NextResponse.json({ error: apptsRes.error.message }, { status: 500 });
 
+  // Closes often attach to leads created before `from` — pull those sources so
+  // Meta CAC can attribute closes correctly.
+  const leadsInRange = leadsRes.data ?? [];
+  const leadById = new Map(leadsInRange.map(l => [l.id, l]));
+  const missingLeadIds = [
+    ...new Set(
+      (closesRes.data ?? [])
+        .map(c => c.lead_id)
+        .filter((id): id is string => !!id && !leadById.has(id)),
+    ),
+  ];
+  let closeLeads: typeof leadsInRange = [];
+  if (missingLeadIds.length > 0) {
+    const closeLeadsRes = await ctx.service
+      .from('acquisition_leads')
+      .select('id, source, created_at, qualified')
+      .in('id', missingLeadIds);
+    if (closeLeadsRes.error) {
+      return NextResponse.json({ error: closeLeadsRes.error.message }, { status: 500 });
+    }
+    closeLeads = closeLeadsRes.data ?? [];
+  }
+
   const metrics = calculateAcquisitionMetrics({
-    leads: leadsRes.data ?? [],
+    leads: [...leadsInRange, ...closeLeads],
     appointments: apptsRes.data ?? [],
     offers: offersRes.data ?? [],
     closes: closesRes.data ?? [],

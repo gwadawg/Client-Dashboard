@@ -56,13 +56,14 @@ export default function AcquisitionKpiCosts({ startDate, endDate, filters }: Pro
   const cplData = series.filter(d => d.cpl != null).map(d => ({ label: formatDay(d.date), cpl: d.cpl }));
 
   const costCards = [
-    { label: "Cost per lead (CPL)", value: fmtMoney(m.cpl), sub: "Meta spend ÷ Meta leads", color: KPI.accent.blue, highlight: true },
+    { label: "Cost per lead (CPL)", value: fmtMoney(m.cpl), sub: "Meta spend ÷ Meta leads", color: KPI.accent.blue },
     { label: "Cost / intro booked", value: fmtMoney(m.cost_per_intro) },
     { label: "Cost / intro showed", value: fmtMoney(m.cost_per_intro_showed) },
     { label: "Cost / demo booked", value: fmtMoney(m.cost_per_demo_booked) },
     { label: "Cost / demo showed", value: fmtMoney(m.cost_per_demo_showed) },
     { label: "Cost / offer", value: fmtMoney(m.cost_per_offer) },
-    { label: "CAC — cost per close", value: fmtMoney(m.cac), sub: "Customer acquisition cost", color: KPI.accent.blue, highlight: true },
+    { label: "Blended CAC", value: fmtMoney(m.cac), sub: "Meta spend ÷ all closes", color: KPI.accent.blue },
+    { label: "Meta CAC", value: fmtMoney(m.meta_cac), sub: `Meta spend ÷ Meta closes (${fmtNum(m.meta_closes)})`, color: KPI.accent.blue },
     { label: "Ad spend total", value: fmtMoney(m.ad_spend), sub: "Meta campaigns", color: KPI.textMuted },
   ];
 

@@ -69,7 +69,8 @@ Status updates send only `external_id` + `status` (dates preserved from booked r
 Spend from `acquisition_ad_insights`. Cost metrics use Meta leads as denominator for CPL.
 
 - **CPL** = Meta ad spend ÷ Meta leads
-- **CAC** = ad spend ÷ closes (scoped by offer type)
+- **Blended CAC** = Meta ad spend ÷ all closes (scoped by offer type)
+- **Meta CAC** = Meta ad spend ÷ closes whose lead source is Meta
 - **Cost/stage** = ad spend ÷ count at each funnel stage
 
 ## Cash collected

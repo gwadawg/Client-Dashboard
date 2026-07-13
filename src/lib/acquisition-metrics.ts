@@ -111,7 +111,12 @@ export type AcquisitionMetricsResult = {
   cost_per_demo_booked: number | null;
   cost_per_demo_showed: number | null;
   cost_per_offer: number | null;
+  /** Meta spend ÷ all closes (offer-scoped). */
   cac: number | null;
+  /** Meta spend ÷ closes whose lead source is Meta. */
+  meta_cac: number | null;
+  /** Closes in range with a Meta-sourced lead (offer-scoped). */
+  meta_closes: number;
   no_show_breakdown: NoShowBreakdown;
   cost_per_no_show: number | null;
 };
@@ -211,6 +216,13 @@ export function calculateAcquisitionMetrics(input: AcquisitionMetricsInput): Acq
     return offerMatchesScope(c.offer_type, offerScope);
   });
 
+  // Lead source lookup — include leads outside the created_at window so closes
+  // can still be attributed to Meta (lead may have been created earlier).
+  const leadSourceById = new Map(leads.map(l => [l.id, l.source]));
+  const metaCloseRows = closeRows.filter(c =>
+    c.lead_id != null && isMetaLeadSource(leadSourceById.get(c.lead_id) ?? null),
+  );
+
   const cash = closeRows.reduce((s, c) => s + Number(c.cash_collected ?? 0), 0);
 
   const uniqueLeadsWithIntro = new Set(introsBooked.map(a => a.lead_id).filter(Boolean));
@@ -245,6 +257,8 @@ export function calculateAcquisitionMetrics(input: AcquisitionMetricsInput): Acq
     cost_per_demo_showed: cost(demosShowed.length),
     cost_per_offer: cost(offerRows.length),
     cac: cost(closeRows.length),
+    meta_cac: cost(metaCloseRows.length),
+    meta_closes: metaCloseRows.length,
     no_show_breakdown,
     cost_per_no_show: cost(nsLeadNoShow),
   };
