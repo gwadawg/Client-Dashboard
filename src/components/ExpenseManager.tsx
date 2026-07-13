@@ -5,9 +5,12 @@ import {
   ACCOUNT_TYPES,
   CEO_BUCKETS,
   CEO_BUCKET_LABELS,
+  FULFILLMENT_LINES,
+  FULFILLMENT_LINE_LABELS,
   suggestRuleNeedle,
   type AccountType,
   type CeoBucket,
+  type FulfillmentLine,
 } from "@/lib/expenses";
 
 type FinanceAccount = {
@@ -31,6 +34,7 @@ type Expense = {
   memo: string | null;
   ceo_bucket: CeoBucket;
   subcategory: string | null;
+  fulfillment_line: FulfillmentLine | null;
   exclude_from_pnl: boolean;
   categorized_by: string | null;
 };
@@ -106,6 +110,7 @@ export default function ExpenseManager() {
   const [mapForm, setMapForm] = useState({
     ceo_bucket: "overhead" as CeoBucket,
     subcategory: "",
+    fulfillment_line: "" as "" | FulfillmentLine,
     create_rule: true,
     rule_match_value: "",
     apply_to_matching: true,
@@ -120,6 +125,7 @@ export default function ExpenseManager() {
     account_id: "",
     ceo_bucket: "uncategorized" as CeoBucket,
     subcategory: "",
+    fulfillment_line: "" as "" | FulfillmentLine,
   });
 
   const [acctForm, setAcctForm] = useState({
@@ -182,6 +188,7 @@ export default function ExpenseManager() {
     setMapForm({
       ceo_bucket: bucket,
       subcategory: e.subcategory ?? "",
+      fulfillment_line: e.fulfillment_line ?? "",
       create_rule: true,
       rule_match_value: suggestRuleNeedle(e.merchant_raw),
       apply_to_matching: true,
@@ -215,6 +222,10 @@ export default function ExpenseManager() {
   async function submitMap(ev: React.FormEvent) {
     ev.preventDefault();
     if (!mapExpense) return;
+    if (mapForm.ceo_bucket === "fulfillment" && !mapForm.fulfillment_line) {
+      setError("Pick a COGS category (media buying, call center, client success, or delivery tech)");
+      return;
+    }
     setBusy("map");
     setError("");
     setMessage("");
@@ -224,6 +235,8 @@ export default function ExpenseManager() {
       body: JSON.stringify({
         ceo_bucket: mapForm.ceo_bucket,
         subcategory: mapForm.subcategory || null,
+        fulfillment_line:
+          mapForm.ceo_bucket === "fulfillment" ? mapForm.fulfillment_line || null : null,
         exclude_from_pnl: mapForm.exclude_from_pnl || defaultExclude(mapForm.ceo_bucket),
         create_rule: mapForm.create_rule && mapForm.ceo_bucket !== "uncategorized",
         rule_match_value: mapForm.rule_match_value,
@@ -237,6 +250,9 @@ export default function ExpenseManager() {
       return;
     }
     const parts = [`Mapped to ${CEO_BUCKET_LABELS[mapForm.ceo_bucket]}`];
+    if (mapForm.ceo_bucket === "fulfillment" && mapForm.fulfillment_line) {
+      parts.push(FULFILLMENT_LINE_LABELS[mapForm.fulfillment_line]);
+    }
     if (d.rule) parts.push(`rule “${d.rule.name}” saved for future imports`);
     if (d.applied_matching) parts.push(`${d.applied_matching} other matching charges updated`);
     else if (mapForm.create_rule && mapForm.apply_to_matching) {
@@ -315,6 +331,8 @@ export default function ExpenseManager() {
         account_id: form.account_id || null,
         ceo_bucket: form.ceo_bucket === "uncategorized" ? undefined : form.ceo_bucket,
         subcategory: form.subcategory || null,
+        fulfillment_line:
+          form.ceo_bucket === "fulfillment" ? form.fulfillment_line || null : null,
       }),
     });
     const d = await res.json();
@@ -324,7 +342,14 @@ export default function ExpenseManager() {
       return;
     }
     setShowAdd(false);
-    setForm(f => ({ ...f, amount: "", merchant_raw: "", memo: "", subcategory: "" }));
+    setForm(f => ({
+      ...f,
+      amount: "",
+      merchant_raw: "",
+      memo: "",
+      subcategory: "",
+      fulfillment_line: "",
+    }));
     load();
   }
 
@@ -665,32 +690,44 @@ export default function ExpenseManager() {
                         Map
                       </button>
                     ) : (
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <select
-                          value={e.ceo_bucket}
-                          disabled={busy === e.id}
-                          onChange={ev => patchBucket(e.id, ev.target.value as CeoBucket)}
-                          style={{
-                            ...fieldStyle,
-                            color: BUCKET_COLOR[e.ceo_bucket],
-                            padding: "0.25rem 0.4rem",
-                            fontSize: "0.75rem",
-                          }}
-                        >
-                          {CEO_BUCKETS.map(b => (
-                            <option key={b} value={b}>
-                              {CEO_BUCKET_LABELS[b]}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => openMap(e)}
-                          className="px-2 py-1 rounded-md text-[10px] font-semibold"
-                          style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}
-                        >
-                          Map
-                        </button>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <select
+                            value={e.ceo_bucket}
+                            disabled={busy === e.id}
+                            onChange={ev => patchBucket(e.id, ev.target.value as CeoBucket)}
+                            style={{
+                              ...fieldStyle,
+                              color: BUCKET_COLOR[e.ceo_bucket],
+                              padding: "0.25rem 0.4rem",
+                              fontSize: "0.75rem",
+                            }}
+                          >
+                            {CEO_BUCKETS.map(b => (
+                              <option key={b} value={b}>
+                                {CEO_BUCKET_LABELS[b]}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => openMap(e)}
+                            className="px-2 py-1 rounded-md text-[10px] font-semibold"
+                            style={{ background: "rgba(255,255,255,0.06)", color: "#94a3b8" }}
+                          >
+                            Map
+                          </button>
+                        </div>
+                        {e.ceo_bucket === "fulfillment" && e.fulfillment_line && (
+                          <div className="text-[10px] mt-1" style={{ color: "#34d399" }}>
+                            {FULFILLMENT_LINE_LABELS[e.fulfillment_line]}
+                          </div>
+                        )}
+                        {e.ceo_bucket === "fulfillment" && !e.fulfillment_line && (
+                          <div className="text-[10px] mt-1" style={{ color: "#f59e0b" }}>
+                            Needs COGS category
+                          </div>
+                        )}
                       </div>
                     )}
                   </td>
@@ -749,6 +786,7 @@ export default function ExpenseManager() {
                   setMapForm(f => ({
                     ...f,
                     ceo_bucket: b,
+                    fulfillment_line: b === "fulfillment" ? f.fulfillment_line : "",
                     exclude_from_pnl: defaultExclude(b),
                   }));
                 }}
@@ -761,11 +799,36 @@ export default function ExpenseManager() {
                 ))}
               </select>
             </Field>
+            {mapForm.ceo_bucket === "fulfillment" && (
+              <Field label="COGS category">
+                <select
+                  required
+                  value={mapForm.fulfillment_line}
+                  onChange={e =>
+                    setMapForm(f => ({
+                      ...f,
+                      fulfillment_line: e.target.value as "" | FulfillmentLine,
+                    }))
+                  }
+                  style={{ ...fieldStyle, width: "100%" }}
+                >
+                  <option value="">Select…</option>
+                  {FULFILLMENT_LINES.map(line => (
+                    <option key={line} value={line}>
+                      {FULFILLMENT_LINE_LABELS[line]}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] mt-1" style={{ color: "#64748b" }}>
+                  Delivery line for margins (keep Subcategory for payroll / commissions / software).
+                </p>
+              </Field>
+            )}
             <Field label="Subcategory (optional)">
               <input
                 value={mapForm.subcategory}
                 onChange={e => setMapForm(f => ({ ...f, subcategory: e.target.value }))}
-                placeholder="software, payroll, bank fees…"
+                placeholder="software, payroll, commissions…"
                 style={{ ...fieldStyle, width: "100%" }}
               />
             </Field>
@@ -903,7 +966,14 @@ export default function ExpenseManager() {
             <Field label="Bucket (optional — rules apply if Uncategorized)">
               <select
                 value={form.ceo_bucket}
-                onChange={e => setForm(f => ({ ...f, ceo_bucket: e.target.value as CeoBucket }))}
+                onChange={e => {
+                  const b = e.target.value as CeoBucket;
+                  setForm(f => ({
+                    ...f,
+                    ceo_bucket: b,
+                    fulfillment_line: b === "fulfillment" ? f.fulfillment_line : "",
+                  }));
+                }}
                 style={{ ...fieldStyle, width: "100%" }}
               >
                 {CEO_BUCKETS.map(b => (
@@ -912,6 +982,36 @@ export default function ExpenseManager() {
                   </option>
                 ))}
               </select>
+            </Field>
+            {form.ceo_bucket === "fulfillment" && (
+              <Field label="COGS category">
+                <select
+                  required
+                  value={form.fulfillment_line}
+                  onChange={e =>
+                    setForm(f => ({
+                      ...f,
+                      fulfillment_line: e.target.value as "" | FulfillmentLine,
+                    }))
+                  }
+                  style={{ ...fieldStyle, width: "100%" }}
+                >
+                  <option value="">Select…</option>
+                  {FULFILLMENT_LINES.map(line => (
+                    <option key={line} value={line}>
+                      {FULFILLMENT_LINE_LABELS[line]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            <Field label="Subcategory (optional)">
+              <input
+                value={form.subcategory}
+                onChange={e => setForm(f => ({ ...f, subcategory: e.target.value }))}
+                placeholder="payroll, commissions, software…"
+                style={{ ...fieldStyle, width: "100%" }}
+              />
             </Field>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => setShowAdd(false)} className="text-xs px-3 py-1.5" style={{ color: "#94a3b8" }}>

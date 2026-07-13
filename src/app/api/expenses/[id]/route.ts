@@ -4,17 +4,19 @@ import { requireExpenseAccess } from '@/lib/expense-auth';
 import {
   applyExpenseRules,
   isCeoBucket,
+  isFulfillmentLine,
   normalizeMerchant,
   suggestRuleNeedle,
   type CeoBucket,
   type ExpenseCategoryRule,
+  type FulfillmentLine,
 } from '@/lib/expenses';
 
 const FIELDS =
-  'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, exclude_from_pnl, categorized_by, rule_id, payroll_run_id, client_id, created_at, updated_at';
+  'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, categorized_by, rule_id, payroll_run_id, client_id, created_at, updated_at';
 
 const RULE_FIELDS =
-  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, exclude_from_pnl, priority, active, notes';
+  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, priority, active, notes';
 
 type Ctx = Exclude<Awaited<ReturnType<typeof getAuthContext>>, NextResponse>;
 
@@ -69,10 +71,16 @@ async function applyRuleToMatchingExpenses(
     );
     if (match.ceo_bucket === 'uncategorized') continue;
 
+    const nextLine =
+      match.ceo_bucket === 'fulfillment'
+        ? (match.fulfillment_line ?? rule.fulfillment_line ?? null)
+        : null;
+
     // Skip no-op updates
     if (
       row.ceo_bucket === match.ceo_bucket &&
       (row.subcategory ?? null) === (match.subcategory ?? rule.subcategory ?? null) &&
+      (row.fulfillment_line ?? null) === nextLine &&
       !!row.exclude_from_pnl === !!match.exclude_from_pnl &&
       row.rule_id === rule.id
     ) {
@@ -84,6 +92,7 @@ async function applyRuleToMatchingExpenses(
       .update({
         ceo_bucket: match.ceo_bucket,
         subcategory: match.subcategory ?? rule.subcategory,
+        fulfillment_line: nextLine,
         exclude_from_pnl: match.exclude_from_pnl,
         categorized_by: 'rule',
         rule_id: rule.id,
@@ -103,10 +112,13 @@ async function upsertMerchantRule(
     matchValue: string;
     ceoBucket: CeoBucket;
     subcategory: string | null;
+    fulfillmentLine: FulfillmentLine | null;
     excludeFromPnl: boolean;
   },
 ): Promise<ExpenseCategoryRule> {
   const matchValue = input.matchValue.trim();
+  const fulfillmentLine =
+    input.ceoBucket === 'fulfillment' ? input.fulfillmentLine : null;
   const { data: existing } = await ctx.service
     .from('expense_category_rules')
     .select(RULE_FIELDS)
@@ -124,6 +136,7 @@ async function upsertMerchantRule(
         name: input.name,
         ceo_bucket: input.ceoBucket,
         subcategory: input.subcategory,
+        fulfillment_line: fulfillmentLine,
         exclude_from_pnl: input.excludeFromPnl,
         match_value: matchValue,
         match_type: 'merchant_contains',
@@ -149,6 +162,7 @@ async function upsertMerchantRule(
       amount_max: null,
       ceo_bucket: input.ceoBucket,
       subcategory: input.subcategory,
+      fulfillment_line: fulfillmentLine,
       exclude_from_pnl: input.excludeFromPnl,
       priority: 25,
       active: true,
@@ -208,7 +222,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       patch.exclude_from_pnl = true;
     }
   }
+
+  const effectiveBucket = (newBucket ?? existing.ceo_bucket) as CeoBucket;
+
   if (typeof body.subcategory === 'string') patch.subcategory = body.subcategory.trim() || null;
+
+  if (body.fulfillment_line === null || body.fulfillment_line === '') {
+    patch.fulfillment_line = null;
+  } else if (isFulfillmentLine(body.fulfillment_line)) {
+    patch.fulfillment_line = body.fulfillment_line;
+  }
+
+  // COGS line only applies to fulfillment; clear when leaving that bucket
+  if (effectiveBucket !== 'fulfillment') {
+    patch.fulfillment_line = null;
+  }
+
   if (typeof body.exclude_from_pnl === 'boolean') patch.exclude_from_pnl = body.exclude_from_pnl;
 
   let createdRule: ExpenseCategoryRule | null = null;
@@ -234,6 +263,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       typeof body.subcategory === 'string'
         ? body.subcategory.trim() || null
         : (existing.subcategory as string | null);
+    let fulfillmentLine: FulfillmentLine | null = null;
+    if (newBucket === 'fulfillment') {
+      if (isFulfillmentLine(body.fulfillment_line)) {
+        fulfillmentLine = body.fulfillment_line;
+      } else if (isFulfillmentLine(existing.fulfillment_line)) {
+        fulfillmentLine = existing.fulfillment_line as FulfillmentLine;
+      } else {
+        return NextResponse.json(
+          {
+            error:
+              'fulfillment_line required for Fulfillment / COGS (media_buying, call_center, client_success, delivery_tech)',
+          },
+          { status: 400 },
+        );
+      }
+      patch.fulfillment_line = fulfillmentLine;
+    }
     const exclude =
       typeof body.exclude_from_pnl === 'boolean'
         ? body.exclude_from_pnl
@@ -248,6 +294,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         matchValue,
         ceoBucket: newBucket!,
         subcategory: sub,
+        fulfillmentLine,
         excludeFromPnl: exclude,
       });
       patch.rule_id = createdRule.id;

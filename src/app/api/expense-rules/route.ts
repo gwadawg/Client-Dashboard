@@ -7,13 +7,14 @@ import {
   MATCH_TYPES,
   SEED_EXPENSE_RULES,
   isCeoBucket,
+  isFulfillmentLine,
   type CeoBucket,
   type ExpenseCategoryRule,
   type MatchType,
 } from '@/lib/expenses';
 
 const FIELDS =
-  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, exclude_from_pnl, priority, active, notes, created_at, updated_at';
+  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, priority, active, notes, created_at, updated_at';
 
 // GET /api/expense-rules
 export async function GET() {
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
       amount_max: r.amount_max,
       ceo_bucket: r.ceo_bucket,
       subcategory: r.subcategory,
+      fulfillment_line: r.ceo_bucket === 'fulfillment' ? (r.fulfillment_line ?? null) : null,
       exclude_from_pnl: r.exclude_from_pnl,
       priority: r.priority,
       active: r.active !== false,
@@ -78,7 +80,7 @@ export async function POST(req: Request) {
     if (rulesErr) return NextResponse.json({ error: rulesErr.message }, { status: 500 });
 
     let query = ctx.service.from('business_expenses').select(
-      'id, merchant_raw, memo, amount, ceo_bucket, subcategory, exclude_from_pnl, rule_id',
+      'id, merchant_raw, memo, amount, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, rule_id',
     ).limit(5000);
     if (onlyUncategorized) query = query.eq('ceo_bucket', 'uncategorized');
 
@@ -97,9 +99,12 @@ export async function POST(req: Request) {
         (rules ?? []) as ExpenseCategoryRule[],
       );
       if (match.ceo_bucket === 'uncategorized') continue;
+      const nextLine =
+        match.ceo_bucket === 'fulfillment' ? (match.fulfillment_line ?? null) : null;
       if (
         row.ceo_bucket === match.ceo_bucket &&
         (row.subcategory ?? null) === (match.subcategory ?? null) &&
+        (row.fulfillment_line ?? null) === nextLine &&
         !!row.exclude_from_pnl === !!match.exclude_from_pnl
       ) {
         continue;
@@ -109,6 +114,7 @@ export async function POST(req: Request) {
         .update({
           ceo_bucket: match.ceo_bucket,
           subcategory: match.subcategory,
+          fulfillment_line: nextLine,
           exclude_from_pnl: match.exclude_from_pnl,
           categorized_by: 'rule',
           rule_id: match.rule_id,
@@ -141,6 +147,10 @@ export async function POST(req: Request) {
     amount_max: body.amount_max != null ? Number(body.amount_max) : null,
     ceo_bucket: body.ceo_bucket as CeoBucket,
     subcategory: typeof body.subcategory === 'string' ? body.subcategory.trim() || null : null,
+    fulfillment_line:
+      body.ceo_bucket === 'fulfillment' && isFulfillmentLine(body.fulfillment_line)
+        ? body.fulfillment_line
+        : null,
     exclude_from_pnl: body.exclude_from_pnl === true,
     priority: Number.isFinite(Number(body.priority)) ? Number(body.priority) : 100,
     active: body.active !== false,

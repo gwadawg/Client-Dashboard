@@ -5,17 +5,19 @@ import {
   applyExpenseRules,
   expenseDedupeHash,
   isCeoBucket,
+  isFulfillmentLine,
   normalizeMerchant,
   type CeoBucket,
   type ExpenseCategoryRule,
   type ExpenseSource,
+  type FulfillmentLine,
 } from '@/lib/expenses';
 
 const FIELDS =
-  'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, exclude_from_pnl, categorized_by, rule_id, payroll_run_id, client_id, created_at, updated_at';
+  'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, categorized_by, rule_id, payroll_run_id, client_id, created_at, updated_at';
 
 const RULE_FIELDS =
-  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, exclude_from_pnl, priority, active, notes';
+  'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, priority, active, notes';
 
 // GET /api/expenses?month=YYYY-MM&bucket=&account_id=&uncategorized=1&pending=1&limit=
 export async function GET(req: Request) {
@@ -95,6 +97,9 @@ export async function POST(req: Request) {
 
   let ceoBucket: CeoBucket = 'uncategorized';
   let subcategory: string | null = typeof body.subcategory === 'string' ? body.subcategory.trim() || null : null;
+  let fulfillmentLine: FulfillmentLine | null = isFulfillmentLine(body.fulfillment_line)
+    ? body.fulfillment_line
+    : null;
   let excludeFromPnl = body.exclude_from_pnl === true;
   let categorizedBy: 'rule' | 'user' | 'import' | null = null;
   let ruleId: string | null = null;
@@ -102,6 +107,7 @@ export async function POST(req: Request) {
   if (isCeoBucket(body.ceo_bucket) && body.ceo_bucket !== 'uncategorized') {
     ceoBucket = body.ceo_bucket;
     categorizedBy = 'user';
+    if (ceoBucket !== 'fulfillment') fulfillmentLine = null;
   } else {
     const { data: rules } = await ctx.service
       .from('expense_category_rules')
@@ -113,9 +119,11 @@ export async function POST(req: Request) {
     );
     ceoBucket = match.ceo_bucket;
     subcategory = subcategory ?? match.subcategory;
+    fulfillmentLine = fulfillmentLine ?? match.fulfillment_line;
     excludeFromPnl = excludeFromPnl || match.exclude_from_pnl;
     categorizedBy = match.categorized_by;
     ruleId = match.rule_id;
+    if (ceoBucket !== 'fulfillment') fulfillmentLine = null;
   }
 
   // Auto-exclude personal / owner_draw from P&L unless explicitly overridden
@@ -145,6 +153,7 @@ export async function POST(req: Request) {
     external_id: externalId,
     ceo_bucket: ceoBucket,
     subcategory,
+    fulfillment_line: fulfillmentLine,
     exclude_from_pnl: excludeFromPnl,
     categorized_by: categorizedBy,
     rule_id: ruleId,

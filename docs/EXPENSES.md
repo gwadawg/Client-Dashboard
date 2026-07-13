@@ -33,6 +33,8 @@ One row = one charge (or one agent payroll total for a period).
 | `occurred_on`, `amount` | Amount is always positive (money out) |
 | `source` | `manual` \| `csv_import` \| `payroll` \| `bank_sync` (later) |
 | `ceo_bucket` | See buckets below |
+| `fulfillment_line` | When bucket = `fulfillment`: `media_buying` \| `call_center` \| `client_success` \| `delivery_tech` |
+| `subcategory` | Cost nature (payroll, commissions, software, …) — orthogonal to fulfillment_line |
 | `exclude_from_pnl` | Personal, owner draw, passthrough, card payments |
 | `external_id` | Bank txn id or import hash (dedupe) |
 | `payroll_run_id` | `{start}_to_{end}:{agent_id}` |
@@ -64,7 +66,7 @@ This keeps **Operating Profit = Total Cash − operating_expenses** coherent on 
 
 Company expense ledger lives under **Finance → Expenses** (`business_expenses`).
 
-- **Pending** tab — all `uncategorized` charges across months. **Map** opens Type + optional subcategory; check **Always treat this merchant this way** to create a `merchant_contains` rule and optionally apply it to other matching ledger rows.
+- **Pending** tab — all `uncategorized` charges across months. **Map** opens Type + optional subcategory; when Type is **Fulfillment / COGS**, a **COGS category** select appears (`media_buying`, `call_center`, `client_success`, `delivery_tech`). Check **Always treat this merchant this way** to create a `merchant_contains` rule and optionally apply it to other matching ledger rows.
 - **Ledger** tab — month filter, bucket totals, roll up into Overview unit economics. Per row: **Exclude** toggles `exclude_from_pnl` (charge stays visible, drops out of OpEx KPIs). Or **Map** → check **Exclude completely from reports** (+ save rule to auto-exclude that merchant forever).
 - Types that auto-exclude: `personal`, `owner_draw`, `passthrough`
 - After excluding, hit **Roll up {month}** so Finance Overview KPIs refresh
@@ -152,7 +154,20 @@ npx tsx scripts/import-chase-activity.mjs --apply --retire-sheet
 
 Canonical copy: [`data/import/expenses/chase1519-activity-20260710.csv`](../data/import/expenses/chase1519-activity-20260710.csv)
 
+### Amex activity CSV (credit card gap-fill)
 
+Export columns: `Date`, `Receipt`, `Description`, `Amount`.
+
+- Charges only (skips AUTOPAY / ONLINE PAYMENT credits)
+- Hard dedupe: `amex:{date}:{amount}:{merchant}`
+- Soft skip vs existing ledger: amount+date±3d+merchant token, **or** same calendar month + merchant token against Total Costs sheet monthly rollups (so ClickUp/Perspective already on the sheet are not re-added)
+- Re-running the same files is a no-op
+
+```bash
+# Put exports in data/import/expenses/amex/ then:
+npx tsx scripts/import-amex-activity.mjs           # dry-run
+npx tsx scripts/import-amex-activity.mjs --apply
+```
 
 ### Generic bank CSV
 

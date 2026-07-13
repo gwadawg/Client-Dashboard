@@ -16,7 +16,7 @@ import {
 
 const BATCH = 200;
 const FIELDS =
-  'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, exclude_from_pnl, categorized_by, rule_id';
+  'id, occurred_on, amount, currency, account_id, source, merchant_raw, merchant_normalized, memo, external_id, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, categorized_by, rule_id';
 
 function headerIndex(headers: string[], ...candidates: string[]): number {
   const lower = headers.map(h => h.trim().toLowerCase());
@@ -62,6 +62,7 @@ type ImportRow = {
   external_id: string;
   ceo_bucket: CeoBucket;
   subcategory: string | null;
+  fulfillment_line: string | null;
   exclude_from_pnl: boolean;
   categorized_by: 'rule' | 'user' | 'import' | null;
   rule_id: string | null;
@@ -136,7 +137,7 @@ export async function POST(req: Request) {
     const { data } = await ctx.service
       .from('expense_category_rules')
       .select(
-        'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, exclude_from_pnl, priority, active, notes',
+        'id, name, match_type, match_value, amount_min, amount_max, ceo_bucket, subcategory, fulfillment_line, exclude_from_pnl, priority, active, notes',
       )
       .eq('active', true);
     rules = (data ?? []) as ExpenseCategoryRule[];
@@ -193,6 +194,7 @@ export async function POST(req: Request) {
 
     let ceoBucket: CeoBucket = 'uncategorized';
     let subcategory = subFromCsv;
+    let fulfillmentLine: string | null = null;
     let excludeFromPnl = false;
     let categorizedBy: ImportRow['categorized_by'] = null;
     let ruleId: string | null = null;
@@ -207,10 +209,13 @@ export async function POST(req: Request) {
       const match = applyExpenseRules({ merchant_raw: merchant, memo, amount }, rules);
       ceoBucket = match.ceo_bucket;
       subcategory = subcategory ?? match.subcategory;
+      fulfillmentLine = match.fulfillment_line;
       excludeFromPnl = match.exclude_from_pnl;
       categorizedBy = match.categorized_by;
       ruleId = match.rule_id;
     }
+
+    if (ceoBucket !== 'fulfillment') fulfillmentLine = null;
 
     const externalId = chase
       ? chaseExternalId({
@@ -248,6 +253,7 @@ export async function POST(req: Request) {
       external_id: externalId,
       ceo_bucket: ceoBucket,
       subcategory,
+      fulfillment_line: fulfillmentLine,
       exclude_from_pnl: excludeFromPnl,
       categorized_by: categorizedBy,
       rule_id: ruleId,

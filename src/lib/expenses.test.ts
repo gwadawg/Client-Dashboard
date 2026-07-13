@@ -1,10 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  amexExternalId,
   applyExpenseRules,
   chaseExternalId,
   cleanBankMerchant,
   expenseDedupeHash,
+  isAmexActivityCsv,
+  isSoftExpenseDuplicate,
   mapLabelToBucket,
   normalizeMerchant,
   rollupExpensesForMonth,
@@ -18,6 +21,7 @@ function asRules(): ExpenseCategoryRule[] {
     ...r,
     id: `seed-${i}`,
     active: true,
+    fulfillment_line: r.fulfillment_line ?? null,
   }));
 }
 
@@ -28,6 +32,57 @@ describe("suggestRuleNeedle", () => {
 
   it("does not collapse makeugc into make.com", () => {
     assert.equal(suggestRuleNeedle("MAKEUGC.AI LONDON"), "makeugc.ai");
+  });
+});
+
+describe("amex helpers", () => {
+  it("detects Amex activity headers", () => {
+    assert.equal(isAmexActivityCsv(["Date", "Receipt", "Description", "Amount"]), true);
+    assert.equal(isAmexActivityCsv(["Posting Date", "Details", "Description", "Amount"]), false);
+  });
+
+  it("builds stable amex external ids", () => {
+    const id = amexExternalId({
+      occurred_on: "2026-01-08",
+      amount: 57,
+      description: "BT*CLICKUP          SAN DIEGO           CA",
+    });
+    assert.match(id, /^amex:2026-01-08:57\.00:/);
+  });
+
+  it("soft-matches sheet ClickUp vs Amex ClickUp within date window", () => {
+    assert.equal(
+      isSoftExpenseDuplicate(
+        { occurred_on: "2026-01-08", amount: 57, merchant_raw: "BT*CLICKUP SAN DIEGO CA" },
+        { occurred_on: "2026-01-07", amount: 57, merchant_raw: "ClickUp" },
+        3,
+      ),
+      true,
+    );
+    assert.equal(
+      isSoftExpenseDuplicate(
+        { occurred_on: "2026-01-08", amount: 57, merchant_raw: "BT*CLICKUP SAN DIEGO CA" },
+        { occurred_on: "2026-01-07", amount: 99, merchant_raw: "ClickUp" },
+        3,
+      ),
+      false,
+    );
+  });
+
+  it("soft-matches monthly sheet rollups by month + merchant even when amounts differ", () => {
+    assert.equal(
+      isSoftExpenseDuplicate(
+        { occurred_on: "2026-01-08", amount: 57, merchant_raw: "BT*CLICKUP SAN DIEGO CA" },
+        {
+          occurred_on: "2026-01-01",
+          amount: 71.71,
+          merchant_raw: "Clickup",
+          account_name: "WM Company Books",
+        },
+        3,
+      ),
+      true,
+    );
   });
 });
 
@@ -56,7 +111,14 @@ describe("applyExpenseRules from labeled sheet", () => {
   it("matches High Level to fulfillment", () => {
     const m = applyExpenseRules({ merchant_raw: "High Level", amount: 797 }, asRules());
     assert.equal(m.ceo_bucket, "fulfillment");
+    assert.equal(m.fulfillment_line, "delivery_tech");
     assert.equal(m.categorized_by, "rule");
+  });
+
+  it("tags Closebot as call_center COGS line", () => {
+    const m = applyExpenseRules({ merchant_raw: "Closebot", amount: 99 }, asRules());
+    assert.equal(m.ceo_bucket, "fulfillment");
+    assert.equal(m.fulfillment_line, "call_center");
   });
 
   it("matches FB to cac and FB Recruit to overhead", () => {
