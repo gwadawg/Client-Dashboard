@@ -286,8 +286,16 @@ function MrrWaterfall({ bridge }: { bridge: BusinessMetrics["mrrBridge"] }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenue?: boolean }) {
-  const [hubTab, setHubTab] = useState<"overview" | "revenue" | "expenses">("overview");
+export type CeoDashboardMode = "dashboard" | "raw";
+
+export default function CeoDashboard({
+  canViewRevenue = false,
+  mode = "dashboard",
+}: {
+  canViewRevenue?: boolean;
+  mode?: CeoDashboardMode;
+}) {
+  const [ledgerTab, setLedgerTab] = useState<"revenue" | "expenses">("revenue");
   const monthOptions = useMemo(() => listRecentMonths(18), []);
   const quarterOptions = useMemo(() => listRecentQuarters(8), []);
   const yearOptions = useMemo(() => listRecentYears(4), []);
@@ -310,7 +318,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
   }
 
   useEffect(() => {
-    if (!canViewRevenue || hubTab !== "overview") {
+    if (!canViewRevenue || mode !== "dashboard") {
       if (!canViewRevenue) {
         setLoading(false);
         setData(null);
@@ -345,7 +353,7 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
     return () => {
       cancelled = true;
     };
-  }, [granularity, periodKey, reloadKey, canViewRevenue, hubTab]);
+  }, [granularity, periodKey, reloadKey, canViewRevenue, mode]);
 
   const periodLabel = data?.period.label ?? periodKey;
   const editMonth = data?.period.endMonth ?? (granularity === "month" ? periodKey : monthOptions[0]);
@@ -367,15 +375,55 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
     );
   }
 
-  const HUB_TABS: {
-    key: "overview" | "revenue" | "expenses";
-    label: string;
-    hint: string;
-  }[] = [
-    { key: "overview", label: "Dashboard", hint: "KPIs & scorecard" },
-    { key: "revenue", label: "Revenue", hint: "Billing ledger" },
-    { key: "expenses", label: "Expenses", hint: "Charge ledger" },
-  ];
+  if (mode === "raw") {
+    const LEDGER_TABS = [
+      { key: "revenue" as const, label: "Revenue", hint: "Billing ledger" },
+      { key: "expenses" as const, label: "Expenses", hint: "Charge ledger" },
+    ];
+    return (
+      <div className="space-y-6 max-w-7xl">
+        <div>
+          <p
+            className="text-[10px] font-bold uppercase tracking-[0.2em] mb-1"
+            style={{ color: AMBER }}
+          >
+            Executive
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "#f1f5f9" }}>
+            Raw Data
+          </h1>
+          <p className="text-xs mt-1 max-w-xl leading-relaxed" style={{ color: MUTED }}>
+            Billing and expense ledgers that feed the CEO Dashboard.
+          </p>
+        </div>
+
+        <div className="flex gap-1 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          {LEDGER_TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setLedgerTab(t.key)}
+              className="px-4 py-2.5 text-left"
+              style={{
+                color: ledgerTab === t.key ? "#e2e8f0" : "#64748b",
+                borderBottom: `2px solid ${ledgerTab === t.key ? AMBER : "transparent"}`,
+              }}
+            >
+              <span className="block text-sm font-medium leading-none">{t.label}</span>
+              <span
+                className="block text-[10px] mt-1 leading-none"
+                style={{ color: ledgerTab === t.key ? "#94a3b8" : "#475569" }}
+              >
+                {t.hint}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {ledgerTab === "revenue" ? <FinanceRevenueLedger /> : <ExpenseManager />}
+      </div>
+    );
+  }
 
   const prevTrend = data?.trend?.length
     ? data.trend[data.trend.length - 2]
@@ -395,51 +443,14 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
             Executive
           </p>
           <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "#f1f5f9" }}>
-            CEO
+            CEO Dashboard
           </h1>
           <p className="text-xs mt-1 max-w-xl leading-relaxed" style={{ color: MUTED }}>
-            Scorecard on Dashboard; open Revenue or Expenses for the raw ledgers behind the numbers.
+            High-level books — recurring revenue, cash, unit economics, and portfolio risk.
           </p>
         </div>
       </div>
 
-      <div className="flex gap-1 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        {HUB_TABS.map((t, i) => (
-          <div key={t.key} className="flex items-stretch">
-            {i === 1 && (
-              <div
-                className="self-center mx-2 h-5 w-px"
-                style={{ background: "rgba(255,255,255,0.1)" }}
-                aria-hidden
-              />
-            )}
-            <button
-              type="button"
-              onClick={() => setHubTab(t.key)}
-              className="px-4 py-2.5 text-left"
-              style={{
-                color: hubTab === t.key ? "#e2e8f0" : "#64748b",
-                borderBottom: `2px solid ${hubTab === t.key ? AMBER : "transparent"}`,
-              }}
-            >
-              <span className="block text-sm font-medium leading-none">{t.label}</span>
-              <span
-                className="block text-[10px] mt-1 leading-none"
-                style={{ color: hubTab === t.key ? "#94a3b8" : "#475569" }}
-              >
-                {t.hint}
-              </span>
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {hubTab === "revenue" && <FinanceRevenueLedger />}
-
-      {hubTab === "expenses" && <ExpenseManager />}
-
-      {hubTab === "overview" && (
-        <>
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <h2 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>
@@ -1185,8 +1196,6 @@ export default function CeoDashboard({ canViewRevenue = false }: { canViewRevenu
               )}
             </>
           ) : null}
-        </>
-      )}
     </div>
   );
 }

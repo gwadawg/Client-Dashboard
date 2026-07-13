@@ -54,6 +54,8 @@ const VIEW_ALIASES: Record<string, string[]> = {
   kpi_simulator: ["dashboard"],
   dashboard: ["kpi_simulator", "state_looker"],
   state_looker: ["dashboard"],
+  ceo: ["ceo_raw"],
+  ceo_raw: ["ceo"],
 };
 
 /** All keys that satisfy a permission check (hub ↔ legacy children). */

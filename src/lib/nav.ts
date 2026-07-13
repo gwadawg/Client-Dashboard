@@ -14,6 +14,7 @@ export type View =
   | "dashboard"
   | "kpi_simulator"
   | "ceo"
+  | "ceo_raw"
   | "dial_analytics"
   | "media_buyer"
   | "client_health"
@@ -218,7 +219,8 @@ export const NAV: NavItem[] = [
   { view: "heatmaps",           label: "Heat Maps",             group: "Clients"      },
   { view: "data_explorer",      label: "Data Explorer",         group: "Clients"      },
   { view: "state_looker",       label: "State Looker",          group: "Clients"      },
-  { view: "ceo",                label: "CEO Finance",           group: "Executive"    },
+  { view: "ceo",                label: "CEO Dashboard",         group: "Executive"    },
+  { view: "ceo_raw",            label: "Raw Data",              group: "Executive"    },
   { view: "acquisition_kpis",          label: "Acquisition KPIs",      group: "Acquisition"  },
   { view: "acquisition_marketing",     label: "Marketing",             group: "Acquisition"  },
   { view: "acquisition",               label: "Acquisition",           group: "Acquisition"  },
