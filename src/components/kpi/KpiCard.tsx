@@ -1,6 +1,8 @@
 import Sparkline from "./Sparkline";
 import MetricInfoTip, { type MetricHint } from "./MetricInfoTip";
 
+const AMBER_BADGE = "#fbbf24";
+
 export type KpiDelta = {
   /** Pre-formatted change text, e.g. "+12%" or "+3.4 pts". */
   text: string;
@@ -12,12 +14,22 @@ type Props = {
   label: string;
   value: string;
   accent?: boolean;
+  /** Scope chip — e.g. LIVE, PERIOD, T3 — shown under the label. */
+  badge?: string;
   hint?: MetricHint | string;
   delta?: KpiDelta;
   spark?: (number | null)[];
 };
 
-export default function KpiCard({ label, value, accent = false, hint, delta, spark }: Props) {
+export default function KpiCard({
+  label,
+  value,
+  accent = false,
+  badge,
+  hint,
+  delta,
+  spark,
+}: Props) {
   return (
     <div
       className="relative rounded-xl p-5 flex flex-col gap-2 transition-all duration-200 hover:translate-y-[-1px] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
@@ -36,9 +48,22 @@ export default function KpiCard({ label, value, accent = false, hint, delta, spa
           <MetricInfoTip hint={hint} />
         </span>
       )}
-      <span className="text-xs font-medium tracking-wide pl-3 pr-5" style={{ color: "#64748b" }}>
-        {label}
-      </span>
+      <div className="pl-3 pr-5 flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-medium tracking-wide" style={{ color: "#64748b" }}>
+          {label}
+        </span>
+        {badge && (
+          <span
+            className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
+            style={{
+              background: badge === "LIVE" ? "rgba(59,130,246,0.18)" : "rgba(245,158,11,0.14)",
+              color: badge === "LIVE" ? "#93c5fd" : AMBER_BADGE,
+            }}
+          >
+            {badge}
+          </span>
+        )}
+      </div>
       <span className="text-3xl font-bold pl-3 tabular-nums" style={{ color: "#f1f5f9" }}>
         {value}
       </span>

@@ -211,12 +211,22 @@ export type TrendPoint = {
   new_cash: number;
   recurring_cash: number;
   mrr_end: number; // reconstructed end-of-month MRR
+  /** Signed closes (or roster fallback) for the month — CAC denominator. */
+  closes: number;
   // Finance overlays — null on months with no imported inputs yet.
   marketing_spend: number | null;
   operating_expenses: number | null;
   cac: number | null;
   roas: number | null;
   operating_profit: number | null;
+};
+
+/** Hygiene flags so the CEO UI can gate incomplete books. */
+export type BusinessDataHealth = {
+  /** Distinct YYYY-MM values present in client_monthly_snapshots. */
+  snapshot_month_count: number;
+  /** True when at least one frozen month exists (expansion / historical end MRR possible). */
+  snapshots_ready: boolean;
 };
 
 // High-value metrics that come alive once acquisition + expense data is imported.
@@ -264,6 +274,7 @@ export type BusinessMetrics = {
   portfolio: Portfolio;
   unitEconomics: UnitEconomics;
   trend: TrendPoint[];
+  dataHealth: BusinessDataHealth;
 };
 
 // ── Date / period helpers (YYYY-MM bucketing, timezone-safe) ───────────────────
@@ -811,6 +822,12 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     now,
   });
 
+  const snapshotMonths = new Set<string>();
+  for (const s of snapshots) {
+    const m = snapshotMonthKey(s.period_month);
+    if (m) snapshotMonths.add(m);
+  }
+
   return {
     month: endMonth,
     period,
@@ -821,6 +838,10 @@ export function computeBusinessMetrics(input: BusinessInput): BusinessMetrics {
     portfolio,
     unitEconomics,
     trend,
+    dataHealth: {
+      snapshot_month_count: snapshotMonths.size,
+      snapshots_ready: snapshotMonths.size > 0,
+    },
   };
 }
 
@@ -1199,6 +1220,7 @@ function computeTrend(args: {
       new_cash: cash.front,
       recurring_cash: cash.back,
       mrr_end: mrrEndByMonth.get(m) ?? 0,
+      closes,
       marketing_spend,
       operating_expenses,
       cac,

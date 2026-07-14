@@ -288,6 +288,124 @@ function MrrWaterfall({ bridge }: { bridge: BusinessMetrics["mrrBridge"] }) {
 
 export type CeoDashboardMode = "dashboard" | "raw";
 
+type CeoTab = "overview" | "mrr" | "cash" | "acquisition" | "risk";
+
+const CEO_TABS: { key: CeoTab; label: string; hint: string }[] = [
+  { key: "overview", label: "Overview", hint: "Live + period pulse" },
+  { key: "mrr", label: "MRR & Retention", hint: "Bridge & churn" },
+  { key: "cash", label: "Cash & P&L", hint: "Collections & profit" },
+  { key: "acquisition", label: "Acquisition", hint: "Closes, CAC, ROAS" },
+  { key: "risk", label: "Portfolio Risk", hint: "As-of-now only" },
+];
+
+/** Trailing-N unit economics from monthly trend (ratios stay noisy alone). */
+function trailingUnitEconomics(trend: BusinessMetrics["trend"], n = 3) {
+  const slice = trend.slice(-n);
+  let spend = 0;
+  let spendMonths = 0;
+  let opex = 0;
+  let opexMonths = 0;
+  let closes = 0;
+  let newCash = 0;
+  let cash = 0;
+  for (const t of slice) {
+    if (t.marketing_spend != null && Number.isFinite(t.marketing_spend)) {
+      spend += t.marketing_spend;
+      spendMonths += 1;
+    }
+    if (t.operating_expenses != null && Number.isFinite(t.operating_expenses)) {
+      opex += t.operating_expenses;
+      opexMonths += 1;
+    }
+    closes += t.closes ?? 0;
+    newCash += t.new_cash;
+    cash += t.cash_collected;
+  }
+  return {
+    months: slice.length,
+    marketing_spend: spendMonths > 0 ? spend : null,
+    operating_expenses: opexMonths > 0 ? opex : null,
+    closes,
+    new_cash: newCash,
+    cash_collected: cash,
+    cac: spendMonths > 0 && closes > 0 ? spend / closes : null,
+    roas: spendMonths > 0 && spend > 0 ? newCash / spend : null,
+    operating_profit: opexMonths > 0 ? cash - opex : null,
+  };
+}
+
+function ScopeChip({ kind }: { kind: "live" | "period" | "t3" }) {
+  const map = {
+    live: { label: "LIVE", bg: "rgba(59,130,246,0.18)", color: "#93c5fd" },
+    period: { label: "PERIOD", bg: "rgba(245,158,11,0.14)", color: AMBER },
+    t3: { label: "T3", bg: "rgba(52,211,153,0.12)", color: GOOD },
+  } as const;
+  const s = map[kind];
+  return (
+    <span
+      className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
+      style={{ background: s.bg, color: s.color }}
+    >
+      {s.label}
+    </span>
+  );
+}
+
+function HealthBanner({
+  tone,
+  title,
+  body,
+}: {
+  tone: "danger" | "warn" | "info";
+  title: string;
+  body: string;
+}) {
+  const colors = {
+    danger: { border: "rgba(248,113,113,0.35)", bg: "rgba(248,113,113,0.08)", title: BAD },
+    warn: { border: "rgba(245,158,11,0.35)", bg: "rgba(245,158,11,0.08)", title: AMBER },
+    info: { border: "rgba(59,130,246,0.35)", bg: "rgba(59,130,246,0.08)", title: BLUE },
+  }[tone];
+  return (
+    <div
+      className="rounded-xl px-4 py-3"
+      style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
+    >
+      <p className="text-xs font-semibold" style={{ color: colors.title }}>
+        {title}
+      </p>
+      <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: "#94a3b8" }}>
+        {body}
+      </p>
+    </div>
+  );
+}
+
+function PanelIntro({
+  title,
+  sub,
+  liveOnly,
+}: {
+  title: string;
+  sub: string;
+  liveOnly?: boolean;
+}) {
+  return (
+    <div className="flex items-end justify-between flex-wrap gap-2">
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <h2 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>
+            {title}
+          </h2>
+          {liveOnly && <ScopeChip kind="live" />}
+        </div>
+        <p className="text-xs max-w-2xl leading-relaxed" style={{ color: MUTED }}>
+          {sub}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function CeoDashboard({
   canViewRevenue = false,
   mode = "dashboard",
@@ -296,6 +414,7 @@ export default function CeoDashboard({
   mode?: CeoDashboardMode;
 }) {
   const [ledgerTab, setLedgerTab] = useState<"revenue" | "expenses">("revenue");
+  const [ceoTab, setCeoTab] = useState<CeoTab>("overview");
   const monthOptions = useMemo(() => listRecentMonths(18), []);
   const quarterOptions = useMemo(() => listRecentQuarters(8), []);
   const yearOptions = useMemo(() => listRecentYears(4), []);
@@ -318,16 +437,20 @@ export default function CeoDashboard({
   }
 
   useEffect(() => {
+    let cancelled = false;
     if (!canViewRevenue || mode !== "dashboard") {
-      if (!canViewRevenue) {
+      queueMicrotask(() => {
+        if (cancelled || canViewRevenue) return;
         setLoading(false);
         setData(null);
         setError(null);
-      }
-      return;
+      });
+      return () => {
+        cancelled = true;
+      };
     }
-    let cancelled = false;
     queueMicrotask(() => {
+      if (cancelled) return;
       setLoading(true);
       setError(null);
     });
@@ -360,9 +483,9 @@ export default function CeoDashboard({
   const isLivePeriod =
     granularity === "month"
       ? periodKey === monthOptions[0]
-      : data?.period.months.includes(monthOptions[0]) ?? true;
-  const showPeriodScopeNote = !isLivePeriod || granularity !== "month";
+      : (data?.period.months.includes(monthOptions[0]) ?? true);
   const scopeWord = granularity === "month" ? "month" : "period";
+  const showPeriodControls = ceoTab !== "risk";
 
   if (!canViewRevenue) {
     return (
@@ -425,15 +548,23 @@ export default function CeoDashboard({
     );
   }
 
-  const prevTrend = data?.trend?.length
-    ? data.trend[data.trend.length - 2]
-    : undefined;
+  const prevTrend = data?.trend?.length ? data.trend[data.trend.length - 2] : undefined;
+  const t3 = data ? trailingUnitEconomics(data.trend, 3) : null;
   const mrrSpark = data?.trend?.map((t) => t.mrr_end) ?? [];
   const cashSpark = data?.trend?.map((t) => t.cash_collected) ?? [];
   const profitSpark = data?.trend?.map((t) => t.operating_profit) ?? [];
+  const snapshotsReady = data?.dataHealth?.snapshots_ready ?? false;
+  const lostMrrSuspect =
+    !!data && data.churn.churned_count > 0 && data.headline.lost_mrr <= 0;
+  const newCashDelta =
+    data != null ? Math.abs(data.revenue.new_cash - data.revenue.new_logo_cash) : 0;
+  const closesGap =
+    data != null
+      ? Math.abs(data.unitEconomics.cac_closes - data.portfolio.new_clients_signed)
+      : 0;
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="space-y-5 max-w-7xl">
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <p
@@ -446,121 +577,204 @@ export default function CeoDashboard({
             CEO Dashboard
           </h1>
           <p className="text-xs mt-1 max-w-xl leading-relaxed" style={{ color: MUTED }}>
-            High-level books — recurring revenue, cash, unit economics, and portfolio risk.
+            Stock metrics stay live. Flow metrics follow the period. Ratios prefer trailing 3 months.
           </p>
         </div>
       </div>
 
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div>
-              <h2 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>
-                {periodLabel}
-              </h2>
-              <p className="text-xs mt-0.5" style={{ color: MUTED }}>
-                Six signals that matter — then the bridge, profit trend, and risk.
-              </p>
-            </div>
-            <div className="flex items-center flex-wrap gap-2">
-              <div
-                className="flex rounded-lg p-0.5"
-                style={{
-                  background: "#0f2040",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                }}
+      {/* Internal department tabs */}
+      <div
+        className="flex gap-1 overflow-x-auto border-b pb-px"
+        style={{ borderColor: "rgba(255,255,255,0.06)" }}
+        role="tablist"
+        aria-label="CEO dashboard sections"
+      >
+        {CEO_TABS.map((t) => {
+          const active = ceoTab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setCeoTab(t.key)}
+              className="px-4 py-2.5 text-left shrink-0 transition-colors"
+              style={{
+                color: active ? "#e2e8f0" : "#64748b",
+                borderBottom: `2px solid ${active ? AMBER : "transparent"}`,
+              }}
+            >
+              <span className="block text-sm font-medium leading-none">{t.label}</span>
+              <span
+                className="block text-[10px] mt-1 leading-none"
+                style={{ color: active ? "#94a3b8" : "#475569" }}
               >
-                {(
-                  [
-                    { key: "month", label: "Month" },
-                    { key: "quarter", label: "Quarter" },
-                    { key: "ytd", label: "YTD" },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => switchGranularity(opt.key)}
-                    className="px-3 py-1.5 rounded-md text-xs font-semibold"
-                    style={{
-                      background: granularity === opt.key ? "rgba(245,158,11,0.18)" : "transparent",
-                      color: granularity === opt.key ? AMBER : "#94a3b8",
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <select
-                value={periodKey}
-                onChange={(e) => setPeriodKey(e.target.value)}
-                className="px-4 py-2 rounded-lg text-sm font-medium outline-none cursor-pointer"
-                style={{
-                  background: "#0f2040",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  color: "#e2e8f0",
-                }}
-              >
-                {periodOptions.map((k) => (
-                  <option key={k} value={k}>
-                    {granularity === "quarter"
-                      ? quarterLabel(k)
-                      : granularity === "ytd"
-                        ? yearLabel(k, yearOptions[0])
-                        : monthLabel(k)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+                {t.hint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-          {loading ? (
-            <div className="flex items-center justify-center py-24">
-              <div className="flex items-center gap-3" style={{ color: MUTED }}>
-                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-                <span className="text-sm font-medium">Loading CEO metrics…</span>
-              </div>
+      {/* Period controls — hidden on live-only risk tab */}
+      {showPeriodControls && (
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
+              {periodLabel}
+            </h2>
+            {!isLivePeriod && <ScopeChip kind="period" />}
+            {isLivePeriod && granularity === "month" && (
+              <span className="text-[11px]" style={{ color: MUTED }}>
+                Current month (partial until close)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center flex-wrap gap-2">
+            <div
+              className="flex rounded-lg p-0.5"
+              style={{
+                background: "#0f2040",
+                border: "1px solid rgba(255,255,255,0.12)",
+              }}
+            >
+              {(
+                [
+                  { key: "month", label: "Month" },
+                  { key: "quarter", label: "Quarter" },
+                  { key: "ytd", label: "YTD" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => switchGranularity(opt.key)}
+                  className="px-3 py-1.5 rounded-md text-xs font-semibold"
+                  style={{
+                    background: granularity === opt.key ? "rgba(245,158,11,0.18)" : "transparent",
+                    color: granularity === opt.key ? AMBER : "#94a3b8",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
-          ) : error ? (
-            <p className="text-sm py-10 text-center" style={{ color: BAD }}>
-              {error}
-            </p>
-          ) : data ? (
-            <>
-              {/* ── V1 cockpit: 6 headline KPIs ── */}
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            <select
+              value={periodKey}
+              onChange={(e) => setPeriodKey(e.target.value)}
+              className="px-4 py-2 rounded-lg text-sm font-medium outline-none cursor-pointer"
+              style={{
+                background: "#0f2040",
+                border: "1px solid rgba(255,255,255,0.12)",
+                color: "#e2e8f0",
+              }}
+            >
+              {periodOptions.map((k) => (
+                <option key={k} value={k}>
+                  {granularity === "quarter"
+                    ? quarterLabel(k)
+                    : granularity === "ytd"
+                      ? yearLabel(k, yearOptions[0])
+                      : monthLabel(k)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-24">
+          <div className="flex items-center gap-3" style={{ color: MUTED }}>
+            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
+            </svg>
+            <span className="text-sm font-medium">Loading CEO metrics…</span>
+          </div>
+        </div>
+      ) : error ? (
+        <p className="text-sm py-10 text-center" style={{ color: BAD }}>
+          {error}
+        </p>
+      ) : data ? (
+        <>
+          {/* ── OVERVIEW ── */}
+          {ceoTab === "overview" && (
+            <div className="space-y-5">
+              <PanelIntro
+                title="Executive pulse"
+                sub="Five decisions at a glance. LIVE = current book. PERIOD = selected window. T3 = trailing 3 months (ratios)."
+              />
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {!snapshotsReady && (
+                  <HealthBanner
+                    tone="danger"
+                    title="Monthly roster snapshots missing"
+                    body="MRR bridge End/Start and Expansion/Contraction cannot be trusted historically until client_monthly_snapshots are frozen (cron on the 1st)."
+                  />
+                )}
+                {lostMrrSuspect && (
+                  <HealthBanner
+                    tone="danger"
+                    title="Lost MRR looks understated"
+                    body={`${data.churn.churned_count} departure(s) this ${scopeWord} but Lost MRR is ${money(data.headline.lost_mrr, { round: true })} — check mrr_at_change stamps before trusting revenue churn %.`}
+                  />
+                )}
+                {newCashDelta > 500 && (
+                  <HealthBanner
+                    tone="warn"
+                    title="New cash vs new-logo cross-check diverges"
+                    body={`Front-end cash ${money(data.revenue.new_cash, { round: true })} vs first-paid ${money(data.revenue.new_logo_cash, { round: true })} (Δ ${money(newCashDelta, { round: true })}). Review revenue_segment tagging.`}
+                  />
+                )}
+                {closesGap > 0 && (
+                  <HealthBanner
+                    tone="info"
+                    title="Closes ≠ roster sign dates"
+                    body={`${int(data.unitEconomics.cac_closes)} acquisition closes vs ${int(data.portfolio.new_clients_signed)} roster date_signed — different clocks; CAC uses closes.`}
+                  />
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
                 <KpiCard
                   label="Active MRR"
+                  badge="LIVE"
                   value={money(data.headline.active_mrr, { round: true })}
                   accent
                   hint={{
-                    definition: "Live recurring revenue from clients currently marked active.",
-                    source: "Client Roster → clients.mrr where lifecycle_status = active (not billings).",
+                    definition: "Live recurring revenue from clients currently marked active — not period End MRR.",
+                    source: "Client Roster → clients.mrr where lifecycle_status = active.",
                     formula: "SUM(clients.mrr) for active clients",
                   }}
-                  delta={momDelta(data.headline.active_mrr, prevTrend?.mrr_end, { asMoney: true })}
-                  spark={mrrSpark}
+                  delta={
+                    isLivePeriod
+                      ? momDelta(data.headline.active_mrr, prevTrend?.mrr_end, { asMoney: true })
+                      : undefined
+                  }
+                  spark={isLivePeriod ? mrrSpark : undefined}
                 />
                 <KpiCard
                   label="Cash Collected"
+                  badge="PERIOD"
                   value={money(data.headline.cash_collected, { round: true })}
                   hint={{
                     definition: `Cash that actually landed in the selected ${scopeWord}.`,
                     source: "Finance Revenue ledger → client_billings (paid_on, amount_paid).",
-                    formula:
-                      `SUM(amount_paid − passthrough_amount) where paid_on is in ${scopeWord} and revenue_type ≠ passthrough / not refunded`,
+                    formula: `SUM(amount_paid − passthrough) where paid_on in ${scopeWord}`,
                   }}
                   delta={
                     granularity === "month"
@@ -571,80 +785,38 @@ export default function CeoDashboard({
                   }
                   spark={cashSpark}
                 />
-                {data.unitEconomics.operating_profit == null ? (
-                  <PlaceholderCard
-                    label="Operating Profit"
-                    need={`Roll up expenses for ${granularity === "month" ? "this month" : "months in this period"}.`}
-                  />
+                {t3?.operating_profit == null ? (
+                  <PlaceholderCard label="Op. Profit (T3)" need="Roll up expenses for recent months." />
                 ) : (
                   <KpiCard
-                    label="Operating Profit"
-                    value={money(data.unitEconomics.operating_profit, { round: true })}
+                    label="Op. Profit"
+                    badge="T3"
+                    value={money(t3.operating_profit, { round: true })}
                     hint={{
-                      definition: `Cash profit after company operating costs for the ${scopeWord}.`,
-                      source:
-                        "Cash from client_billings; OpEx from business_expenses → Roll up → business_metrics.operating_expenses.",
-                      formula: "Total Cash Collected − Operating Expenses (CAC + fulfillment + overhead, excl. exclude_from_pnl)",
+                      definition: "Trailing 3 months: cash collected minus operating expenses.",
+                      source: "client_billings + business_metrics.operating_expenses.",
+                      formula: "Σ Cash − Σ OpEx over last 3 months in trend",
                     }}
-                    delta={
-                      granularity === "month"
-                        ? momDelta(
-                            data.unitEconomics.operating_profit,
-                            prevTrend?.operating_profit ?? undefined,
-                            { asMoney: true },
-                          )
-                        : undefined
-                    }
                     spark={profitSpark}
                   />
                 )}
-                <KpiCard
-                  label="Net New MRR"
-                  value={money(data.headline.net_new_mrr, { round: true })}
-                  hint={{
-                    definition: `Change in recurring book this ${scopeWord} (not cash collected).`,
-                    source:
-                      "Roster date_signed (new) + client_monthly_snapshots (expansion/contraction) + churn form effective date / churned_at (lost).",
-                    formula: "New MRR + Expansion − Contraction − Lost MRR",
-                  }}
-                  delta={
-                    data.headline.gross_revenue_churn_pct != null
-                      ? {
-                          text: `${pct(data.headline.gross_revenue_churn_pct)} churn`,
-                          good:
-                            data.headline.gross_revenue_churn_pct <= 5
-                              ? true
-                              : data.headline.gross_revenue_churn_pct >= 10
-                                ? false
-                                : null,
-                        }
-                      : undefined
-                  }
-                />
-                {data.unitEconomics.cac == null ? (
-                  <PlaceholderCard
-                    label="CAC"
-                    need="Needs marketing spend + signed closes."
-                  />
+                {t3?.cac == null ? (
+                  <PlaceholderCard label="CAC (T3)" need="Needs marketing spend + closes in last 3 months." />
                 ) : (
                   <KpiCard
                     label="CAC"
-                    value={money(data.unitEconomics.cac, { round: true })}
+                    badge="T3"
+                    value={money(t3.cac, { round: true })}
                     hint={{
-                      definition: `Cost to acquire one signed close this ${scopeWord}.`,
-                      source: `Marketing spend = expense rollup ceo_bucket=cac (or Meta ads if no rollup). Closes = acquisition_closes (${data.unitEconomics.cac_closes} this ${scopeWord}).`,
-                      formula: "Marketing Spend ÷ Signed Closes (non-dismissed acquisition closes)",
+                      definition: "Trailing 3 months cost per signed close — stabler than a single month.",
+                      source: "Expense CAC rollup ÷ acquisition_closes across last 3 trend months.",
+                      formula: "Σ Marketing Spend ÷ Σ Signed Closes (T3)",
                     }}
                     delta={
-                      data.unitEconomics.ltv_cac != null
+                      t3.roas != null
                         ? {
-                            text: `LTV:CAC ${ratio(data.unitEconomics.ltv_cac)}`,
-                            good:
-                              data.unitEconomics.ltv_cac >= 3
-                                ? true
-                                : data.unitEconomics.ltv_cac < 1.5
-                                  ? false
-                                  : null,
+                            text: `ROAS ${ratio(t3.roas)}`,
+                            good: t3.roas >= 2 ? true : t3.roas < 1 ? false : null,
                           }
                         : undefined
                     }
@@ -652,10 +824,11 @@ export default function CeoDashboard({
                 )}
                 <KpiCard
                   label="Signed Closes"
+                  badge="PERIOD"
                   value={int(data.unitEconomics.cac_closes)}
                   hint={{
                     definition: `Acquisition deals closed this ${scopeWord} — the CAC denominator.`,
-                    source: `Acquisition → acquisition_closes (closed_at in ${scopeWord}, not dismissed/deleted).`,
+                    source: "acquisition_closes (closed_at, not dismissed/deleted).",
                     formula: `COUNT(acquisition_closes) where closed_at in ${scopeWord}`,
                   }}
                   delta={{
@@ -664,497 +837,230 @@ export default function CeoDashboard({
                   }}
                 />
               </div>
-              {showPeriodScopeNote && (
-                <p className="text-[11px]" style={{ color: MUTED }}>
-                  Active MRR / clients are live now; cash, churn, closes, and movement are for{" "}
-                  {periodLabel}.
-                </p>
-              )}
 
-              {/* ── Primary composition: bridge + cash/profit ── */}
               <div className="grid gap-4 lg:grid-cols-2">
                 <div
                   className="rounded-xl p-4 space-y-3"
                   style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
                 >
                   <div className="flex items-baseline justify-between gap-2">
-                    <p
-                      className="text-xs font-bold uppercase tracking-widest"
-                      style={{ color: "#64748b" }}
+                    <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#64748b" }}>
+                      Cash composition
+                    </p>
+                    <button
+                      type="button"
+                      className="text-[10px] font-semibold uppercase tracking-wider"
+                      style={{ color: AMBER }}
+                      onClick={() => setCeoTab("cash")}
                     >
-                      MRR bridge
-                    </p>
-                    <p className="text-[10px]" style={{ color: MUTED }}>
-                      Start → End
-                    </p>
-                  </div>
-                  <MrrWaterfall bridge={data.mrrBridge} />
-                  <div className="grid grid-cols-4 gap-2 pt-1">
-                    <MiniStat label="Start" value={money(data.mrrBridge.start_mrr, { round: true })} />
-                    <MiniStat label="New" value={money(data.mrrBridge.new_mrr, { round: true })} good />
-                    <MiniStat
-                      label="Lost"
-                      value={money(data.mrrBridge.lost_mrr, { round: true })}
-                      bad
-                    />
-                    <MiniStat
-                      label="End"
-                      value={money(data.mrrBridge.end_mrr, { round: true })}
-                      accent
-                    />
-                  </div>
-                </div>
-
-                <div
-                  className="rounded-xl p-4 space-y-3"
-                  style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
-                >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <p
-                      className="text-xs font-bold uppercase tracking-widest"
-                      style={{ color: "#64748b" }}
-                    >
-                      Cash vs profit
-                    </p>
-                    <p className="text-[10px]" style={{ color: MUTED }}>
-                      12 months
-                    </p>
+                      Open Cash →
+                    </button>
                   </div>
                   {hasFinanceTrend(data.trend) ? (
                     <FinanceTrendChart trend={data.trend} />
                   ) : (
                     <TrendChart trend={data.trend} />
                   )}
-                  <p className="text-[10px] leading-relaxed" style={{ color: MUTED }}>
-                    {hasFinanceTrend(data.trend)
-                      ? "Marketing spend + operating profit from expense rollups; ROAS = new cash ÷ marketing spend."
-                      : "Cash bars are exact. Profit/CAC trend appears after you roll up expenses for at least one month."}
-                  </p>
                 </div>
-              </div>
-
-              {/* ── Risk strip ── */}
-              <div
-                className="rounded-xl p-4"
-                style={{
-                  background: "linear-gradient(135deg, #0c1528 0%, #0a1424 100%)",
-                  border: "1px solid rgba(245,158,11,0.15)",
-                }}
-              >
-                <p
-                  className="text-xs font-bold uppercase tracking-widest mb-3"
-                  style={{ color: AMBER }}
+                <div
+                  className="rounded-xl p-4 space-y-3"
+                  style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
                 >
-                  Portfolio risk
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <StatCard
-                    label="Top Client %"
-                    value={pct(data.portfolio.top_client_pct)}
-                    hint={{
-                      definition: "How dependent the book is on the single largest client.",
-                      source: "Client Roster → active clients.mrr.",
-                      formula: "MAX(active client MRR) ÷ Active MRR × 100",
-                    }}
-                  />
-                  <StatCard
-                    label="Top 5 %"
-                    value={pct(data.portfolio.top5_pct)}
-                    hint={{
-                      definition: "Concentration across the five largest active accounts.",
-                      source: "Client Roster → active clients.mrr.",
-                      formula: "SUM(top 5 active MRR) ÷ Active MRR × 100",
-                    }}
-                  />
-                  <StatCard
-                    label="At-Risk MRR (90d)"
-                    value={money(data.portfolio.contracts_ending_90d_mrr, { round: true })}
-                    hint={{
-                      definition: "Recurring revenue that could churn if contracts ending soon are not renewed.",
-                      source: "Client Roster → clients.contract_end_date + mrr (active only).",
-                      formula: "SUM(mrr) where lifecycle = active and contract_end_date within 90 days",
-                    }}
-                  />
-                  <StatCard
-                    label="Overdue AR"
-                    value={money(data.revenue.overdue_ar, { round: true })}
-                    hint={{
-                      definition: "Unpaid invoices past due (cash still owed).",
-                      source: "client_billings unpaid balances (all-time, not month-scoped).",
-                      formula: "SUM(amount − amount_paid) where status is overdue/failed and not voided/refunded/passthrough",
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* ── Drill-down sections ── */}
-              <KpiSection
-                title="Revenue & Cash"
-                showDivider
-                footnote="Cash-collected basis (paid_on). Passthrough ad-spend reimbursements are excluded."
-              >
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                  <StatCard
-                    label="New Cash"
-                    value={money(data.revenue.new_cash, { round: true })}
-                    sub={`New-logo cross-check: ${money(data.revenue.new_logo_cash, { round: true })}`}
-                    accent
-                    hint={{
-                      definition: "Front-end cash from new-client charges this month.",
-                      source: "client_billings where revenue_segment = front_end and paid_on in month.",
-                      formula:
-                        "SUM(amount_paid − passthrough_amount) for front_end. Cross-check = first-ever paid billing per client landing this month.",
-                    }}
-                  />
-                  <StatCard
-                    label="Recurring Cash"
-                    value={money(data.revenue.recurring_cash, { round: true })}
-                    hint={{
-                      definition: "Cash from ongoing retainer / back-end billings.",
-                      source: "client_billings where revenue_segment = back_end and paid_on in month.",
-                      formula: "SUM(amount_paid − passthrough_amount) for back_end",
-                    }}
-                  />
-                  <StatCard
-                    label="Total Cash"
-                    value={money(data.revenue.total_cash, { round: true })}
-                    hint={{
-                      definition: "All non-passthrough cash collected in the month.",
-                      source: "client_billings (paid_on).",
-                      formula: "New Cash + Recurring Cash + any untagged-segment cash (still in total)",
-                    }}
-                  />
-                  <StatCard
-                    label="Net of Fees"
-                    value={money(data.revenue.net_of_fees, { round: true })}
-                    hint={{
-                      definition: "Cash after payment-processor fees.",
-                      source: "client_billings.amount_paid and processing_fee.",
-                      formula: "SUM(amount_paid − passthrough_amount − processing_fee) for revenue collections in month",
-                    }}
-                  />
-                  <StatCard
-                    label="Open AR"
-                    value={money(data.revenue.open_ar, { round: true })}
-                    hint={{
-                      definition: "All outstanding unpaid balances (not only this month).",
-                      source: "client_billings unpaid rows.",
-                      formula: "SUM(amount − amount_paid) for open non-passthrough billings",
-                    }}
-                  />
-                  <StatCard
-                    label="ARPA"
-                    value={money(data.headline.arpa, { round: true })}
-                    hint={{
-                      definition: "Average revenue per active account.",
-                      source: "Client Roster active mrr + active client count.",
-                      formula: "Active MRR ÷ Active Clients",
-                    }}
-                  />
-                </div>
-                <div className="grid gap-4 lg:grid-cols-2 mt-4">
-                  <div
-                    className="rounded-xl p-5"
-                    style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
-                  >
-                    <p
-                      className="text-xs font-semibold uppercase tracking-wider mb-3"
-                      style={{ color: MUTED }}
-                    >
-                      Revenue by type
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#64748b" }}>
+                      Live book / risk
                     </p>
-                    <BreakdownBars rows={data.revenue.by_type} empty={`No cash collected this ${scopeWord}.`} />
+                    <button
+                      type="button"
+                      className="text-[10px] font-semibold uppercase tracking-wider"
+                      style={{ color: AMBER }}
+                      onClick={() => setCeoTab("risk")}
+                    >
+                      Open Risk →
+                    </button>
                   </div>
-                  <div
-                    className="rounded-xl p-5"
-                    style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
-                  >
-                    <p
-                      className="text-xs font-semibold uppercase tracking-wider mb-3"
-                      style={{ color: MUTED }}
-                    >
-                      Revenue by lead source
-                    </p>
-                    <BreakdownBars
-                      rows={data.revenue.by_lead_source}
-                      empty={`No lead-source data on this ${scopeWord}'s billings.`}
+                  <div className="grid grid-cols-2 gap-2">
+                    <StatCard
+                      label="Active Clients"
+                      value={int(data.headline.active_clients)}
+                      badge="LIVE"
+                      hint="Current active logos on the roster."
+                    />
+                    <StatCard
+                      label="Top Client %"
+                      value={pct(data.portfolio.top_client_pct)}
+                      badge="LIVE"
+                      hint="Largest active client as share of Active MRR."
+                    />
+                    <StatCard
+                      label="At-Risk MRR (90d)"
+                      value={money(data.portfolio.contracts_ending_90d_mrr, { round: true })}
+                      badge="LIVE"
+                      hint="Active MRR with contract_end_date within 90 days."
+                    />
+                    <StatCard
+                      label="Overdue AR"
+                      value={money(data.revenue.overdue_ar, { round: true })}
+                      badge="ALL-TIME"
+                      hint="Unpaid balances past due — not month-scoped."
                     />
                   </div>
                 </div>
-              </KpiSection>
+              </div>
+            </div>
+          )}
 
-              <KpiSection title="Churn & Retention" showDivider>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                  <StatCard
-                    label="Logo Churn"
-                    value={pct(data.churn.logo_churn_pct)}
-                    hint={{
-                      definition: "Share of the starting book that left this month (by logo count).",
-                      source: "Churn form effective date (preferred) → clients.churned_at → status history. Not billing charges.",
-                      formula: "Departed clients ÷ (Active now − signed this month + departed this month) × 100",
-                    }}
-                  />
-                  <StatCard
-                    label="Revenue Churn"
-                    value={pct(data.churn.gross_revenue_churn_pct)}
-                    hint={{
-                      definition: "Share of start-of-month MRR lost to departures.",
-                      source: "Lost MRR from roster status history; Start MRR from prior-month snapshot (or reconstructed).",
-                      formula: "Lost MRR ÷ Start MRR × 100",
-                    }}
-                  />
-                  <StatCard
-                    label="Net Rev. Retention"
-                    value={pct(data.churn.nrr_pct)}
-                    hint={{
-                      definition: "How much of last month’s recurring book you kept after expansion and churn.",
-                      source: "MRR bridge (roster + snapshots).",
-                      formula: "(Start MRR + Expansion − Contraction − Lost MRR) ÷ Start MRR × 100",
-                    }}
-                  />
-                  <StatCard
-                    label="Quick Ratio"
-                    value={ratio(data.churn.quick_ratio)}
-                    hint={{
-                      definition: "Growth MRR gained vs MRR lost. Above ~4 is healthy SaaS rule of thumb.",
-                      source: "MRR bridge components.",
-                      formula: "(New MRR + Expansion) ÷ (Lost MRR + Contraction)",
-                    }}
-                  />
-                  <StatCard
-                    label="Avg Tenure"
-                    value={
-                      data.churn.avg_tenure_months == null
-                        ? "—"
-                        : `${data.churn.avg_tenure_months.toFixed(1)} mo`
-                    }
-                    hint={{
-                      definition: "Average how long clients stay (used in LTV).",
-                      source: "clients.date_signed → churned_at (or today if still active).",
-                      formula: "MEAN((end − date_signed) in months) across clients with a sign date",
-                    }}
-                  />
-                </div>
-                {data.churn.churned_clients.length > 0 && (
-                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                    <div
-                      className="rounded-xl p-5"
-                      style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
-                    >
-                      <p
-                        className="text-xs font-semibold uppercase tracking-wider mb-3"
-                        style={{ color: MUTED }}
-                      >
-                        Churn reasons ({periodLabel})
-                      </p>
-                      <div className="space-y-2">
-                        {data.churn.churn_by_reason.map((r) => (
-                          <div
-                            key={r.reason_code}
-                            className="flex items-center justify-between text-sm gap-3"
-                          >
-                            <span style={{ color: "#cbd5e1" }}>{reasonLabel(r.reason_code)}</span>
-                            <span className="tabular-nums flex-shrink-0" style={{ color: "#94a3b8" }}>
-                              {r.count} · {money(r.lost_mrr, { round: true })}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div
-                      className="rounded-xl overflow-hidden"
-                      style={{ border: "1px solid rgba(255,255,255,0.06)" }}
-                    >
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr style={{ background: "#050c18" }}>
-                            <th
-                              className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider"
-                              style={{ color: MUTED }}
-                            >
-                              Departures ({data.churn.churned_count})
-                            </th>
-                            <th
-                              className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider"
-                              style={{ color: MUTED }}
-                            >
-                              Status
-                            </th>
-                            <th
-                              className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider"
-                              style={{ color: MUTED }}
-                            >
-                              Reason
-                            </th>
-                            <th
-                              className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider"
-                              style={{ color: MUTED }}
-                            >
-                              MRR lost
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {data.churn.churned_clients.map((c) => (
-                            <tr
-                              key={c.client_id}
-                              style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}
-                            >
-                              <td className="px-4 py-2.5" style={{ color: "#cbd5e1" }}>
-                                {c.name}
-                              </td>
-                              <td className="px-4 py-2.5 text-xs" style={{ color: "#64748b" }}>
-                                {c.departure_status === "off_boarding" ? "Off-boarding" : "Churned"}
-                              </td>
-                              <td className="px-4 py-2.5 text-xs" style={{ color: "#64748b" }}>
-                                {reasonLabel(c.reason_code)}
-                              </td>
-                              <td
-                                className="px-4 py-2.5 text-right tabular-nums"
-                                style={{ color: BAD }}
-                              >
-                                {money(c.mrr, { round: true })}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+          {/* ── MRR & RETENTION ── */}
+          {ceoTab === "mrr" && (
+            <div className="space-y-5">
+              <PanelIntro
+                title="Recurring book"
+                sub="MRR movement and retention for the selected period. Expansion/Contraction need monthly snapshots."
+              />
+
+              {!snapshotsReady && (
+                <HealthBanner
+                  tone="danger"
+                  title="Bridge incomplete — no snapshots"
+                  body="End MRR falls back to live Active MRR for closed months, and Expansion/Contraction stay $0 until snapshots exist. Treat this tab as directional only."
+                />
+              )}
+              {lostMrrSuspect && (
+                <HealthBanner
+                  tone="danger"
+                  title="Lost MRR stamp issue"
+                  body="Departures exist but Lost MRR is ~$0. Revenue churn % and NRR will look artificially healthy."
+                />
+              )}
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <StatCard
+                  label="Net New MRR"
+                  value={money(data.headline.net_new_mrr, { round: true })}
+                  accent
+                  hint={{
+                    definition: `Change in recurring book this ${scopeWord} (not cash).`,
+                    source: "date_signed + snapshots + churn dates.",
+                    formula: "New + Expansion − Contraction − Lost",
+                  }}
+                />
+                <StatCard
+                  label="New MRR"
+                  value={money(data.mrrBridge.new_mrr, { round: true })}
+                  hint="SUM(current clients.mrr) where date_signed in period."
+                />
+                <StatCard
+                  label="Lost MRR"
+                  value={money(data.mrrBridge.lost_mrr, { round: true })}
+                  hint="mrr_at_change at first off_boarding/churned (effective churn date preferred)."
+                />
+                <StatCard
+                  label="End MRR"
+                  value={money(data.mrrBridge.end_mrr, { round: true })}
+                  badge={snapshotsReady && !isLivePeriod ? "SNAPSHOT" : "LIVE FALLBACK"}
+                  hint="Frozen snapshot when available; otherwise live Active MRR."
+                />
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div
+                  className="rounded-xl p-4 space-y-3"
+                  style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#64748b" }}>
+                    MRR bridge
+                  </p>
+                  <MrrWaterfall bridge={data.mrrBridge} />
+                  <div className="grid grid-cols-4 gap-2 pt-1">
+                    <MiniStat label="Start" value={money(data.mrrBridge.start_mrr, { round: true })} />
+                    <MiniStat label="New" value={money(data.mrrBridge.new_mrr, { round: true })} good />
+                    <MiniStat label="Lost" value={money(data.mrrBridge.lost_mrr, { round: true })} bad />
+                    <MiniStat label="End" value={money(data.mrrBridge.end_mrr, { round: true })} accent />
                   </div>
-                )}
-              </KpiSection>
-
-              <KpiSection title="Clients & Portfolio" showDivider>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  <StatCard
-                    label="Active Clients"
-                    value={int(data.headline.active_clients)}
-                    hint={{
-                      definition: "How many clients are currently live on the book.",
-                      source: "Client Roster → clients.lifecycle_status.",
-                      formula: "COUNT(*) where lifecycle_status = active",
-                    }}
-                  />
-                  <StatCard
-                    label="New on Roster"
-                    value={int(data.portfolio.new_clients_signed)}
-                    hint={{
-                      definition: "Roster logos with a sign date in this month (may differ from acquisition closes).",
-                      source: "Client Roster → clients.date_signed.",
-                      formula: "COUNT(*) where date_signed is in the selected month",
-                    }}
-                  />
-                  <StatCard
-                    label="Expansion MRR"
-                    value={money(data.mrrBridge.expansion_mrr, { round: true })}
-                    hint={{
-                      definition: "Upsells on clients who stayed active month-over-month.",
-                      source: "client_monthly_snapshots (prior month vs this month). 0 until snapshots exist.",
-                      formula: "SUM(end_mrr − start_mrr) for clients active in both months where delta > 0",
-                    }}
-                  />
-                  <StatCard
-                    label="Contraction MRR"
-                    value={money(data.mrrBridge.contraction_mrr, { round: true })}
-                    hint={{
-                      definition: "Downsells on retained active clients.",
-                      source: "client_monthly_snapshots. 0 until snapshots exist.",
-                      formula: "SUM(start_mrr − end_mrr) for clients active in both months where delta < 0",
-                    }}
-                  />
                 </div>
+                <div
+                  className="rounded-xl p-4 space-y-3"
+                  style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#64748b" }}>
+                    Retention rates
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <StatCard label="Logo Churn" value={pct(data.churn.logo_churn_pct)} hint="Departed ÷ reconstructed start logos. Historical denominator uses live actives — prefer after snapshot backfill." />
+                    <StatCard label="Revenue Churn" value={pct(data.churn.gross_revenue_churn_pct)} hint="Lost MRR ÷ Start MRR." />
+                    <StatCard label="Net Rev. Retention" value={pct(data.churn.nrr_pct)} hint="(Start + Expansion − Contraction − Lost) ÷ Start." />
+                    <StatCard label="Quick Ratio" value={ratio(data.churn.quick_ratio)} hint="(New + Expansion) ÷ (Lost + Contraction)." />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <StatCard
+                      label="Expansion MRR"
+                      value={money(data.mrrBridge.expansion_mrr, { round: true })}
+                      badge={snapshotsReady ? undefined : "NEEDS SNAPSHOTS"}
+                    />
+                    <StatCard
+                      label="Contraction MRR"
+                      value={money(data.mrrBridge.contraction_mrr, { round: true })}
+                      badge={snapshotsReady ? undefined : "NEEDS SNAPSHOTS"}
+                    />
+                  </div>
+                </div>
+              </div>
 
-                <div className="grid gap-4 lg:grid-cols-2 mt-4">
+              {data.churn.churned_clients.length > 0 && (
+                <div className="grid gap-4 lg:grid-cols-2">
                   <div
                     className="rounded-xl p-5"
                     style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
                   >
-                    <p
-                      className="text-xs font-semibold uppercase tracking-wider mb-3"
-                      style={{ color: MUTED }}
-                    >
-                      Lifecycle funnel
+                    <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: MUTED }}>
+                      Churn reasons ({periodLabel})
                     </p>
                     <div className="space-y-2">
-                      {data.portfolio.lifecycle.map((l) => (
-                        <div key={l.status} className="flex items-center justify-between text-sm">
-                          <span className="capitalize" style={{ color: "#cbd5e1" }}>
-                            {l.status.replace(/_/g, " ")}
-                          </span>
-                          <span className="tabular-nums font-semibold" style={{ color: "#e2e8f0" }}>
-                            {l.count}
+                      {data.churn.churn_by_reason.map((r) => (
+                        <div
+                          key={r.reason_code}
+                          className="flex items-center justify-between text-sm gap-3"
+                        >
+                          <span style={{ color: "#cbd5e1" }}>{reasonLabel(r.reason_code)}</span>
+                          <span className="tabular-nums flex-shrink-0" style={{ color: "#94a3b8" }}>
+                            {r.count} · {money(r.lost_mrr, { round: true })}
                           </span>
                         </div>
                       ))}
                     </div>
                   </div>
                   <div
-                    className="rounded-xl p-5"
-                    style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
-                  >
-                    <p
-                      className="text-xs font-semibold uppercase tracking-wider mb-3"
-                      style={{ color: MUTED }}
-                    >
-                      Active MRR by product
-                    </p>
-                    <BreakdownBars
-                      rows={data.portfolio.by_offer.map((o) => ({
-                        key: `${o.offer} (${o.count})`,
-                        amount: o.mrr,
-                      }))}
-                      empty="No active clients."
-                    />
-                  </div>
-                </div>
-
-                {data.portfolio.contracts_ending_60d.length > 0 && (
-                  <div
-                    className="mt-4 rounded-xl overflow-hidden"
+                    className="rounded-xl overflow-hidden"
                     style={{ border: "1px solid rgba(255,255,255,0.06)" }}
                   >
                     <table className="w-full text-sm">
                       <thead>
                         <tr style={{ background: "#050c18" }}>
-                          <th
-                            className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider"
-                            style={{ color: MUTED }}
-                          >
-                            Contracts ending ≤ 60 days
+                          <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+                            Departures ({data.churn.churned_count})
                           </th>
-                          <th
-                            className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider"
-                            style={{ color: MUTED }}
-                          >
-                            Ends
+                          <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+                            Status
                           </th>
-                          <th
-                            className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider"
-                            style={{ color: MUTED }}
-                          >
-                            MRR
+                          <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+                            Reason
+                          </th>
+                          <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+                            MRR lost
                           </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {data.portfolio.contracts_ending_60d.map((c) => (
-                          <tr
-                            key={c.client_id}
-                            style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}
-                          >
-                            <td className="px-4 py-2.5" style={{ color: "#cbd5e1" }}>
-                              {c.name}
+                        {data.churn.churned_clients.map((c) => (
+                          <tr key={c.client_id} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                            <td className="px-4 py-2.5" style={{ color: "#cbd5e1" }}>{c.name}</td>
+                            <td className="px-4 py-2.5 text-xs" style={{ color: "#64748b" }}>
+                              {c.departure_status === "off_boarding" ? "Off-boarding" : "Churned"}
                             </td>
-                            <td
-                              className="px-4 py-2.5 text-right"
-                              style={{ color: c.days_left <= 14 ? AMBER : "#94a3b8" }}
-                            >
-                              {c.contract_end_date} ({c.days_left}d)
+                            <td className="px-4 py-2.5 text-xs" style={{ color: "#64748b" }}>
+                              {reasonLabel(c.reason_code)}
                             </td>
-                            <td
-                              className="px-4 py-2.5 text-right tabular-nums"
-                              style={{ color: "#e2e8f0" }}
-                            >
+                            <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: BAD }}>
                               {money(c.mrr, { round: true })}
                             </td>
                           </tr>
@@ -1162,15 +1068,92 @@ export default function CeoDashboard({
                       </tbody>
                     </table>
                   </div>
-                )}
-              </KpiSection>
+                </div>
+              )}
+            </div>
+          )}
 
-              <KpiSection
-                title="Unit Economics"
-                showDivider
-                footnote="From expense rollup + portfolio. Prefer Expenses → Roll up over manual edits when the ledger is current."
+          {/* ── CASH & P&L ── */}
+          {ceoTab === "cash" && (
+            <div className="space-y-5">
+              <PanelIntro
+                title="Cash & P&L"
+                sub="Cash-collected basis (paid_on). Passthrough excluded. Prefer quarterly margins when months are lumpy."
+              />
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <StatCard
+                  label="New Cash"
+                  value={money(data.revenue.new_cash, { round: true })}
+                  sub={`New-logo cross-check: ${money(data.revenue.new_logo_cash, { round: true })}`}
+                  accent
+                  hint={{
+                    definition: "Front-end cash from new-client charges.",
+                    source: "client_billings revenue_segment = front_end.",
+                    formula: "SUM(amount_paid − passthrough) for front_end",
+                  }}
+                />
+                <StatCard
+                  label="Recurring Cash"
+                  value={money(data.revenue.recurring_cash, { round: true })}
+                  hint="Back-end retainer collections in period."
+                />
+                <StatCard
+                  label="Total Cash"
+                  value={money(data.revenue.total_cash, { round: true })}
+                  hint="All non-passthrough collected cash in period."
+                />
+                <StatCard
+                  label="Net of Fees"
+                  value={money(data.revenue.net_of_fees, { round: true })}
+                  hint="After processing fees."
+                />
+                <StatCard
+                  label="Open AR"
+                  value={money(data.revenue.open_ar, { round: true })}
+                  badge="ALL-TIME"
+                  hint="Outstanding unpaid balances — not period-scoped."
+                />
+                <StatCard
+                  label="ARPA"
+                  value={money(data.headline.arpa, { round: true })}
+                  badge="LIVE"
+                  hint="Active MRR ÷ Active Clients (current book)."
+                />
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div
+                  className="rounded-xl p-5"
+                  style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: MUTED }}>
+                    Revenue by type
+                  </p>
+                  <BreakdownBars rows={data.revenue.by_type} empty={`No cash collected this ${scopeWord}.`} />
+                </div>
+                <div
+                  className="rounded-xl p-5"
+                  style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: MUTED }}>
+                    Revenue by lead source
+                  </p>
+                  <BreakdownBars
+                    rows={data.revenue.by_lead_source}
+                    empty={`No lead-source data on this ${scopeWord}'s billings.`}
+                  />
+                </div>
+              </div>
+
+              <div
+                className="rounded-xl p-4 space-y-3"
+                style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
               >
-                <div className="flex justify-end mb-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="text-xs font-bold uppercase tracking-widest" style={{ color: "#64748b" }}>
+                    Profit trend
+                  </p>
                   <button
                     onClick={() => setEditing(true)}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold"
@@ -1180,22 +1163,285 @@ export default function CeoDashboard({
                     {granularity !== "month" ? " (end month)" : ""}
                   </button>
                 </div>
+                {hasFinanceTrend(data.trend) ? (
+                  <FinanceTrendChart trend={data.trend} />
+                ) : (
+                  <TrendChart trend={data.trend} />
+                )}
+              </div>
+
+              <KpiSection
+                title="Unit Economics"
+                footnote="Expense rollup + portfolio. Monthly ratios are noisy — cross-check Overview T3."
+              >
                 <UnitEconomicsGrid u={data.unitEconomics} />
               </KpiSection>
+            </div>
+          )}
 
-              {editing && (
-                <FinancialInputsEditor
-                  month={editMonth}
-                  current={data.unitEconomics}
-                  onClose={() => setEditing(false)}
-                  onSaved={() => {
-                    setEditing(false);
-                    setReloadKey((k) => k + 1);
-                  }}
+          {/* ── ACQUISITION ── */}
+          {ceoTab === "acquisition" && (
+            <div className="space-y-5">
+              <PanelIntro
+                title="Acquisition economics"
+                sub="Closes, spend, CAC, and new-cash efficiency. Prefer T3 ratios; monthly CAC swings with small denominators."
+              />
+
+              {closesGap > 0 && (
+                <HealthBanner
+                  tone="info"
+                  title="Two acquisition clocks"
+                  body={`Period closes ${int(data.unitEconomics.cac_closes)} vs roster signed ${int(data.portfolio.new_clients_signed)}. CAC always uses acquisition_closes.`}
                 />
               )}
-            </>
-          ) : null}
+              {newCashDelta > 500 && (
+                <HealthBanner
+                  tone="warn"
+                  title="New cash reconciliation"
+                  body={`Front-end ${money(data.revenue.new_cash, { round: true })} vs first-paid logos ${money(data.revenue.new_logo_cash, { round: true })}.`}
+                />
+              )}
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <StatCard
+                  label="Signed Closes"
+                  value={int(data.unitEconomics.cac_closes)}
+                  accent
+                  hint="CAC denominator for the period."
+                />
+                <StatCard
+                  label="New on Roster"
+                  value={int(data.portfolio.new_clients_signed)}
+                  hint="date_signed in period — may differ from closes."
+                />
+                <StatCard
+                  label="New Cash"
+                  value={money(data.revenue.new_cash, { round: true })}
+                  hint="front_end cash collected in period."
+                />
+                <StatCard
+                  label="New-Logo Cash"
+                  value={money(data.revenue.new_logo_cash, { round: true })}
+                  hint="First-ever paid billing landing in period."
+                />
+                {data.unitEconomics.marketing_spend == null ? (
+                  <PlaceholderCard label="Marketing Spend" need="Roll up expense CAC or Meta spend." />
+                ) : (
+                  <StatCard
+                    label="Marketing Spend"
+                    value={money(data.unitEconomics.marketing_spend, { round: true })}
+                    hint="Expense rollup ceo_bucket=cac (Meta is informational fallback when null)."
+                  />
+                )}
+                {data.unitEconomics.cac == null ? (
+                  <PlaceholderCard label="CAC (period)" need="Needs spend + closes." />
+                ) : (
+                  <StatCard
+                    label="CAC (period)"
+                    value={money(data.unitEconomics.cac, { round: true })}
+                    hint="Period spend ÷ period closes — prefer T3 below when closes < 3."
+                  />
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <StatCard
+                  label="CAC (T3)"
+                  value={t3?.cac == null ? "—" : money(t3.cac, { round: true })}
+                  badge="T3"
+                  accent
+                  hint="Σ spend ÷ Σ closes over trailing 3 months."
+                />
+                <StatCard
+                  label="ROAS (T3)"
+                  value={t3?.roas == null ? "—" : ratio(t3.roas)}
+                  badge="T3"
+                  hint="Σ new cash ÷ Σ marketing spend (T3)."
+                />
+                <StatCard
+                  label="ROAS (period)"
+                  value={data.unitEconomics.roas == null ? "—" : ratio(data.unitEconomics.roas)}
+                  hint="New cash ÷ marketing spend this period."
+                />
+                <StatCard
+                  label="Meta Ad Spend"
+                  value={
+                    data.unitEconomics.acquisition_ad_spend == null
+                      ? "—"
+                      : money(data.unitEconomics.acquisition_ad_spend, { round: true })
+                  }
+                  hint="Informational Meta insights for the period (does not override expense CAC when rollup exists)."
+                />
+              </div>
+
+              <div
+                className="rounded-xl p-4"
+                style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
+              >
+                <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "#64748b" }}>
+                  Spend · profit · ROAS (12 mo)
+                </p>
+                {hasFinanceTrend(data.trend) ? (
+                  <FinanceTrendChart trend={data.trend} />
+                ) : (
+                  <p className="text-sm py-8 text-center" style={{ color: MUTED }}>
+                    Roll up expenses to unlock the acquisition profit chart.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── PORTFOLIO RISK (LIVE) ── */}
+          {ceoTab === "risk" && (
+            <div className="space-y-5">
+              <PanelIntro
+                title="Portfolio risk"
+                sub="Point-in-time book health. No period picker — everything here is as-of now (AR is all-time)."
+                liveOnly
+              />
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <StatCard
+                  label="Active MRR"
+                  value={money(data.headline.active_mrr, { round: true })}
+                  accent
+                  badge="LIVE"
+                />
+                <StatCard
+                  label="Active Clients"
+                  value={int(data.headline.active_clients)}
+                  badge="LIVE"
+                />
+                <StatCard
+                  label="Top Client %"
+                  value={pct(data.portfolio.top_client_pct)}
+                  badge="LIVE"
+                  hint="MAX(active MRR) ÷ Active MRR."
+                />
+                <StatCard
+                  label="Top 5 %"
+                  value={pct(data.portfolio.top5_pct)}
+                  badge="LIVE"
+                />
+                <StatCard
+                  label="At-Risk MRR (90d)"
+                  value={money(data.portfolio.contracts_ending_90d_mrr, { round: true })}
+                  badge="LIVE"
+                />
+                <StatCard
+                  label="Overdue AR"
+                  value={money(data.revenue.overdue_ar, { round: true })}
+                  badge="ALL-TIME"
+                />
+                <StatCard
+                  label="Open AR"
+                  value={money(data.revenue.open_ar, { round: true })}
+                  badge="ALL-TIME"
+                />
+                <StatCard
+                  label="Avg Tenure"
+                  value={
+                    data.churn.avg_tenure_months == null
+                      ? "—"
+                      : `${data.churn.avg_tenure_months.toFixed(1)} mo`
+                  }
+                  badge="LIVE"
+                />
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div
+                  className="rounded-xl p-5"
+                  style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: MUTED }}>
+                    Lifecycle funnel
+                  </p>
+                  <div className="space-y-2">
+                    {data.portfolio.lifecycle.map((l) => (
+                      <div key={l.status} className="flex items-center justify-between text-sm">
+                        <span className="capitalize" style={{ color: "#cbd5e1" }}>
+                          {l.status.replace(/_/g, " ")}
+                        </span>
+                        <span className="tabular-nums font-semibold" style={{ color: "#e2e8f0" }}>
+                          {l.count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div
+                  className="rounded-xl p-5"
+                  style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: MUTED }}>
+                    Active MRR by product
+                  </p>
+                  <BreakdownBars
+                    rows={data.portfolio.by_offer.map((o) => ({
+                      key: `${o.offer} (${o.count})`,
+                      amount: o.mrr,
+                    }))}
+                    empty="No active clients."
+                  />
+                </div>
+              </div>
+
+              {data.portfolio.contracts_ending_60d.length > 0 && (
+                <div
+                  className="rounded-xl overflow-hidden"
+                  style={{ border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ background: "#050c18" }}>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+                          Contracts ending ≤ 60 days
+                        </th>
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+                          Ends
+                        </th>
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
+                          MRR
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.portfolio.contracts_ending_60d.map((c) => (
+                        <tr key={c.client_id} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                          <td className="px-4 py-2.5" style={{ color: "#cbd5e1" }}>{c.name}</td>
+                          <td
+                            className="px-4 py-2.5 text-right"
+                            style={{ color: c.days_left <= 14 ? AMBER : "#94a3b8" }}
+                          >
+                            {c.contract_end_date} ({c.days_left}d)
+                          </td>
+                          <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: "#e2e8f0" }}>
+                            {money(c.mrr, { round: true })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {editing && (
+            <FinancialInputsEditor
+              month={editMonth}
+              current={data.unitEconomics}
+              onClose={() => setEditing(false)}
+              onSaved={() => {
+                setEditing(false);
+                setReloadKey((k) => k + 1);
+              }}
+            />
+          )}
+        </>
+      ) : null}
     </div>
   );
 }
