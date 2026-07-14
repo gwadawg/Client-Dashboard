@@ -785,6 +785,9 @@ create table if not exists team_calls (
   highlights_text  text,
   tags             text[] not null default '{}',
   duration_seconds int,
+  lead_type        text,
+  grade            text,
+  source_event_id  uuid references events(id) on delete set null,
   deleted_at       timestamptz,
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
@@ -801,6 +804,12 @@ create table if not exists team_calls (
   ) stored,
   constraint team_calls_type_check check (
     call_type in ('coaching', 'team_meeting', 'role_play', 'training', '1on1', 'sales_review', 'other')
+  ),
+  constraint team_calls_lead_type_check check (
+    lead_type is null or lead_type in ('RM', 'DSCR', 'HE')
+  ),
+  constraint team_calls_grade_check check (
+    grade is null or grade in ('A+', 'A', 'A-', 'B')
   )
 );
 
@@ -1245,6 +1254,13 @@ create index if not exists team_calls_search on team_calls using gin(search_vect
 create index if not exists team_calls_tags on team_calls using gin(tags);
 create index if not exists team_calls_called_at on team_calls(called_at desc);
 create index if not exists team_calls_call_type on team_calls(call_type);
+create unique index if not exists team_calls_source_event_unique
+  on team_calls (source_event_id)
+  where source_event_id is not null and deleted_at is null;
+create index if not exists team_calls_lead_type on team_calls (lead_type)
+  where lead_type is not null and deleted_at is null;
+create index if not exists team_calls_grade on team_calls (grade)
+  where grade is not null and deleted_at is null;
 create index if not exists client_notes_search on client_notes using gin(search_vector);
 
 -- Unmapped webhook events (arrived before sub-account name existed in roster)
@@ -1458,5 +1474,48 @@ create table if not exists business_expenses (
   ),
   constraint business_expenses_categorized_by_check check (
     categorized_by is null or categorized_by in ('rule', 'user', 'import')
+  )
+);
+
+-- 14b3. Dial Examples (curated call-center + B2B coaching library)
+create table if not exists dial_examples (
+  id uuid primary key default gen_random_uuid(),
+  domain text not null,
+  source text not null,
+  source_id uuid not null,
+  title text not null,
+  recording_url text not null,
+  called_at timestamptz not null,
+  duration_seconds int,
+  agent_name text,
+  lead_name text,
+  lead_phone text,
+  lead_type text,
+  call_type text,
+  grade text,
+  summary text,
+  transcript text,
+  highlights jsonb not null default '[]',
+  tags text[] not null default '{}',
+  client_id uuid references clients(id) on delete set null,
+  lead_id uuid, -- references acquisition_leads(id); table lives in acquisition migrations
+  deleted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid references auth.users(id) on delete set null,
+  updated_by uuid references auth.users(id) on delete set null,
+  constraint dial_examples_domain_check check (domain in ('call_center', 'b2b')),
+  constraint dial_examples_source_check check (
+    source in ('events', 'acquisition_dials', 'acquisition_calls')
+  ),
+  constraint dial_examples_domain_source_check check (
+    (domain = 'call_center' and source = 'events')
+    or (domain = 'b2b' and source in ('acquisition_dials', 'acquisition_calls'))
+  ),
+  constraint dial_examples_lead_type_check check (
+    lead_type is null or lead_type in ('RM', 'DSCR', 'HE')
+  ),
+  constraint dial_examples_grade_check check (
+    grade is null or grade in ('A+', 'A', 'A-', 'B')
   )
 );

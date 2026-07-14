@@ -1,23 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SaveDialExampleModal, { type CallCenterRecordingRow } from "@/components/SaveDialExampleModal";
 
 type Client = { id: string; name: string };
-type Row = {
-  id: string;
-  occurred_at: string;
-  lead_name: string | null;
-  lead_phone: string | null;
-  agent_name: string | null;
-  duration_seconds: number | null;
-  is_pickup: boolean | null;
-  is_conversation: boolean | null;
-  call_status: string | null;
-  recording_url: string;
-  clients: { name: string } | null;
-};
 
-type Props = { clients: Client[]; startDate: string; endDate: string };
+type Props = {
+  clients: Client[];
+  startDate: string;
+  endDate: string;
+  canManage?: boolean;
+};
 
 const OUTCOME_OPTIONS = [
   { value: "all", label: "All Recordings" },
@@ -31,8 +24,8 @@ function fmt(s: number) {
   return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
-export default function RecordingBrowser({ clients, startDate, endDate }: Props) {
-  const [rows, setRows] = useState<Row[]>([]);
+export default function RecordingBrowser({ clients, startDate, endDate, canManage = false }: Props) {
+  const [rows, setRows] = useState<CallCenterRecordingRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [clientFilter, setClientFilter] = useState("");
@@ -40,8 +33,9 @@ export default function RecordingBrowser({ clients, startDate, endDate }: Props)
   const [outcome, setOutcome] = useState("all");
   const [page, setPage] = useState(1);
   const [agents, setAgents] = useState<string[]>([]);
+  const [savingRow, setSavingRow] = useState<CallCenterRecordingRow | null>(null);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
-  // Reset both page and accumulated agent list when filters change
   useEffect(() => { setPage(1); setAgents([]); }, [clientFilter, outcome, startDate, endDate]);
 
   useEffect(() => {
@@ -57,7 +51,9 @@ export default function RecordingBrowser({ clients, startDate, endDate }: Props)
       .then(d => {
         setRows(d.rows ?? []);
         setTotal(d.total ?? 0);
-        const names = (d.rows ?? []).map((r: Row) => r.agent_name).filter(Boolean) as string[];
+        const names = (d.rows ?? [])
+          .map((r: CallCenterRecordingRow) => r.agent_name)
+          .filter(Boolean) as string[];
         setAgents(prev => [...new Set([...prev, ...names])]);
         setLoading(false);
       })
@@ -73,7 +69,6 @@ export default function RecordingBrowser({ clients, startDate, endDate }: Props)
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <select style={selectStyle} value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
           <option value="">All Clients</option>
@@ -89,7 +84,6 @@ export default function RecordingBrowser({ clients, startDate, endDate }: Props)
         <span className="text-sm ml-auto" style={{ color: "#334155" }}>{total.toLocaleString()} recordings</span>
       </div>
 
-      {/* Cards */}
       <div className="space-y-2">
         {loading ? (
           <div className="py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>Loading…</div>
@@ -98,7 +92,6 @@ export default function RecordingBrowser({ clients, startDate, endDate }: Props)
         ) : rows.map(row => (
           <div key={row.id} className="rounded-xl px-5 py-4 flex items-center gap-5"
             style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.05)" }}>
-            {/* Play button */}
             <a href={row.recording_url} target="_blank" rel="noopener noreferrer"
               className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors"
               style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.3)" }}
@@ -109,7 +102,6 @@ export default function RecordingBrowser({ clients, startDate, endDate }: Props)
               </svg>
             </a>
 
-            {/* Info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-sm font-medium" style={{ color: "#e2e8f0" }}>{row.lead_name ?? "Unknown Lead"}</span>
@@ -120,6 +112,9 @@ export default function RecordingBrowser({ clients, startDate, endDate }: Props)
                 {row.is_pickup && !row.is_conversation && (
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(96,165,250,0.12)", color: "#60a5fa" }}>Pickup</span>
                 )}
+                {savedIds.has(row.id) && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(167,139,250,0.12)", color: "#a78bfa" }}>In examples</span>
+                )}
               </div>
               <div className="flex items-center gap-4 mt-1 text-xs" style={{ color: "#475569" }}>
                 <span>{new Date(row.occurred_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
@@ -128,17 +123,32 @@ export default function RecordingBrowser({ clients, startDate, endDate }: Props)
               </div>
             </div>
 
-            {/* Agent */}
             {row.agent_name && (
               <div className="flex-shrink-0 text-right">
                 <span className="text-xs font-medium" style={{ color: "#64748b" }}>{row.agent_name}</span>
               </div>
             )}
+
+            {canManage && (
+              <button
+                type="button"
+                disabled={savedIds.has(row.id)}
+                onClick={() => setSavingRow(row)}
+                className="flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-40"
+                style={{
+                  color: "#f59e0b",
+                  background: "rgba(245,158,11,0.12)",
+                  border: "1px solid rgba(245,158,11,0.3)",
+                }}
+                title={savedIds.has(row.id) ? "Already saved this session" : "Save dial example"}
+              >
+                {savedIds.has(row.id) ? "Saved" : "Save"}
+              </button>
+            )}
           </div>
         ))}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center gap-3 justify-end">
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
@@ -153,6 +163,17 @@ export default function RecordingBrowser({ clients, startDate, endDate }: Props)
             Next →
           </button>
         </div>
+      )}
+
+      {savingRow && (
+        <SaveDialExampleModal
+          row={savingRow}
+          onClose={() => setSavingRow(null)}
+          onSaved={() => {
+            setSavedIds(prev => new Set([...prev, savingRow.id]));
+            setSavingRow(null);
+          }}
+        />
       )}
     </div>
   );

@@ -137,6 +137,22 @@ export default function CallLibraryDetail({
               >
                 {teamCallTypeLabel(call.call_type)}
               </span>
+              {call.lead_type && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                  style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)" }}
+                >
+                  {call.lead_type}
+                </span>
+              )}
+              {call.grade && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                  style={{ color: "#34d399", background: "rgba(52,211,153,0.12)" }}
+                >
+                  Grade {call.grade}
+                </span>
+              )}
               <span className="text-xs" style={{ color: "#64748b" }}>{formatDateTime(call.called_at)}</span>
               {call.duration_seconds != null && call.duration_seconds > 0 && (
                 <span className="text-xs" style={{ color: "#64748b" }}>
@@ -159,7 +175,7 @@ export default function CallLibraryDetail({
           {call.participants && (
             <section>
               <h3 className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: "#475569" }}>
-                Participants
+                {call.source_event_id ? "Rep" : "Participants"}
               </h3>
               <p className="text-sm" style={{ color: "#cbd5e1" }}>{call.participants}</p>
             </section>

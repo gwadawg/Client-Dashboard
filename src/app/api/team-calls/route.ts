@@ -4,6 +4,8 @@ import {
   TEAM_CALL_FIELDS,
   cleanTeamCallTags,
   highlightsToSearchText,
+  isValidTeamCallGrade,
+  isValidTeamCallLeadType,
   isValidTeamCallType,
   normalizeHighlights,
 } from '@/lib/team-calls';
@@ -46,6 +48,8 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const callType = searchParams.get('callType');
+  const leadType = searchParams.get('leadType')?.trim().toUpperCase() || null;
+  const grade = searchParams.get('grade')?.trim() || null;
   const tag = searchParams.get('tag')?.trim().toLowerCase();
   const startDate = searchParams.get('startDate');
   const endDate = searchParams.get('endDate');
@@ -57,6 +61,12 @@ export async function GET(req: Request) {
   if (callType && !isValidTeamCallType(callType)) {
     return NextResponse.json({ error: 'Invalid callType' }, { status: 400 });
   }
+  if (leadType && !isValidTeamCallLeadType(leadType)) {
+    return NextResponse.json({ error: 'Invalid leadType' }, { status: 400 });
+  }
+  if (grade && !isValidTeamCallGrade(grade)) {
+    return NextResponse.json({ error: 'Invalid grade' }, { status: 400 });
+  }
 
   let query = ctx.service
     .from('team_calls')
@@ -66,6 +76,8 @@ export async function GET(req: Request) {
     .range(offset, offset + pageSize - 1);
 
   if (callType) query = query.eq('call_type', callType);
+  if (leadType) query = query.eq('lead_type', leadType);
+  if (grade) query = query.eq('grade', grade);
   if (tag) query = query.contains('tags', [tag]);
   if (startDate) query = query.gte('called_at', `${startDate}T00:00:00.000Z`);
   if (endDate) query = query.lte('called_at', `${endDate}T23:59:59.999Z`);
@@ -126,6 +138,18 @@ export async function POST(req: Request) {
     duration_seconds = Number.isFinite(n) ? Math.floor(n) : null;
   }
 
+  const leadTypeRaw = optionalText(body.lead_type);
+  if (body.lead_type !== undefined && body.lead_type !== null && body.lead_type !== '' && !isValidTeamCallLeadType(leadTypeRaw)) {
+    return NextResponse.json({ error: 'Invalid lead_type (use RM, DSCR, or HE)' }, { status: 400 });
+  }
+
+  const gradeRaw = optionalText(body.grade);
+  if (body.grade !== undefined && body.grade !== null && body.grade !== '' && !isValidTeamCallGrade(gradeRaw)) {
+    return NextResponse.json({ error: 'Invalid grade (use A+, A, A-, or B)' }, { status: 400 });
+  }
+
+  const sourceEventId = optionalText(body.source_event_id);
+
   const row = {
     title,
     call_type: callType,
@@ -138,6 +162,9 @@ export async function POST(req: Request) {
     highlights_text: highlightsToSearchText(highlights) || null,
     tags: cleanTeamCallTags(body.tags),
     duration_seconds,
+    lead_type: isValidTeamCallLeadType(leadTypeRaw) ? leadTypeRaw : null,
+    grade: isValidTeamCallGrade(gradeRaw) ? gradeRaw : null,
+    source_event_id: sourceEventId,
     created_by: ctx.userId,
     updated_by: ctx.userId,
     updated_at: new Date().toISOString(),
@@ -149,7 +176,15 @@ export async function POST(req: Request) {
     .select(TEAM_CALL_FIELDS)
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    if (error.code === '23505' && sourceEventId) {
+      return NextResponse.json(
+        { error: 'This recording is already saved in the Call Library' },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json(
     { call: { ...data, highlights: normalizeHighlights(data.highlights) } },

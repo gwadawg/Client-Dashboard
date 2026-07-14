@@ -4,6 +4,8 @@ import {
   normalizeHighlights,
   parseTimestamp,
   type CallHighlight,
+  type TeamCallGrade,
+  type TeamCallLeadType,
   type TeamCallRow,
 } from '@/lib/team-calls';
 
@@ -24,6 +26,9 @@ export type TeamCallDraft = {
   transcript: string;
   tags: string;
   highlights: HighlightDraft[];
+  lead_type: TeamCallLeadType | '';
+  grade: TeamCallGrade | '';
+  source_event_id: string | null;
 };
 
 export function toDatetimeLocal(iso?: string): string {
@@ -44,6 +49,9 @@ export function defaultTeamCallDraft(callType = 'coaching'): TeamCallDraft {
     transcript: '',
     tags: '',
     highlights: [],
+    lead_type: '',
+    grade: '',
+    source_event_id: null,
   };
 }
 
@@ -106,6 +114,9 @@ export function teamCallDraftToApiBody(draft: TeamCallDraft): Record<string, unk
     highlights,
     highlights_text: highlightsToSearchText(highlights) || null,
     duration_seconds,
+    lead_type: draft.lead_type || null,
+    grade: draft.grade || null,
+    source_event_id: draft.source_event_id,
   };
 }
 
@@ -127,5 +138,37 @@ export function rowToTeamCallDraft(row: TeamCallRow): TeamCallDraft {
     transcript: row.transcript ?? '',
     tags: (row.tags ?? []).join(', '),
     highlights,
+    lead_type: row.lead_type ?? '',
+    grade: row.grade ?? '',
+    source_event_id: row.source_event_id ?? null,
+  };
+}
+
+/** Prefill a library draft from a dial recording row. */
+export function draftFromRecording(row: {
+  id: string;
+  occurred_at: string;
+  lead_name: string | null;
+  agent_name: string | null;
+  duration_seconds: number | null;
+  recording_url: string;
+  clients: { name: string } | null;
+}): TeamCallDraft {
+  const lead = row.lead_name?.trim() || 'Unknown lead';
+  const client = row.clients?.name?.trim();
+  const title = client ? `${lead} · ${client}` : lead;
+  const duration_minutes =
+    row.duration_seconds != null && row.duration_seconds > 0
+      ? String(Math.round((row.duration_seconds / 60) * 10) / 10)
+      : '';
+
+  return {
+    ...defaultTeamCallDraft('sales_review'),
+    title,
+    called_at: toDatetimeLocal(row.occurred_at),
+    participants: row.agent_name?.trim() || '',
+    recording_url: row.recording_url,
+    duration_minutes,
+    source_event_id: row.id,
   };
 }

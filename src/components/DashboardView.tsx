@@ -897,6 +897,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
               onTabChange={setHubTabAndUrl}
               startDate={dateStart}
               endDate={dateEnd}
+              canManage={isOwner || isAdmin}
             />
           )}
 
@@ -918,6 +919,7 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
               preset={preset}
               startDate={dateStart}
               endDate={dateEnd}
+              canManage={isOwner || isAdmin}
             />
           )}
 

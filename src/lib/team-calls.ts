@@ -22,6 +22,27 @@ export const TEAM_CALL_TYPE_OPTIONS: { value: TeamCallTypeCode; label: string }[
   { value: 'other', label: 'Other' },
 ];
 
+/** Product line for exemplar dials saved from Recordings. */
+export const TEAM_CALL_LEAD_TYPE_CODES = ['RM', 'DSCR', 'HE'] as const;
+export type TeamCallLeadType = (typeof TEAM_CALL_LEAD_TYPE_CODES)[number];
+
+export const TEAM_CALL_LEAD_TYPE_OPTIONS: { value: TeamCallLeadType; label: string }[] = [
+  { value: 'RM', label: 'RM — Reverse Mortgage' },
+  { value: 'DSCR', label: 'DSCR' },
+  { value: 'HE', label: 'HE — Home Equity / Call Center' },
+];
+
+/** Quality grade for curated "good call" examples. */
+export const TEAM_CALL_GRADE_CODES = ['A+', 'A', 'A-', 'B'] as const;
+export type TeamCallGrade = (typeof TEAM_CALL_GRADE_CODES)[number];
+
+export const TEAM_CALL_GRADE_OPTIONS: { value: TeamCallGrade; label: string }[] = [
+  { value: 'A+', label: 'A+ — Exceptional' },
+  { value: 'A', label: 'A — Excellent' },
+  { value: 'A-', label: 'A- — Strong' },
+  { value: 'B', label: 'B — Good example' },
+];
+
 export type CallHighlight = {
   at_seconds: number;
   label: string;
@@ -41,20 +62,41 @@ export type TeamCallRow = {
   highlights_text: string | null;
   tags: string[];
   duration_seconds: number | null;
+  lead_type: TeamCallLeadType | null;
+  grade: TeamCallGrade | null;
+  source_event_id: string | null;
   created_at: string;
   updated_at: string;
 };
 
 export const TEAM_CALL_FIELDS =
-  'id, title, call_type, called_at, participants, recording_url, transcript, summary, highlights, highlights_text, tags, duration_seconds, created_at, updated_at, created_by, updated_by';
+  'id, title, call_type, called_at, participants, recording_url, transcript, summary, highlights, highlights_text, tags, duration_seconds, lead_type, grade, source_event_id, created_at, updated_at, created_by, updated_by';
 
 export function isValidTeamCallType(type: string | null | undefined): type is TeamCallTypeCode {
   return !!type && (TEAM_CALL_TYPE_CODES as readonly string[]).includes(type);
 }
 
+export function isValidTeamCallLeadType(type: string | null | undefined): type is TeamCallLeadType {
+  return !!type && (TEAM_CALL_LEAD_TYPE_CODES as readonly string[]).includes(type);
+}
+
+export function isValidTeamCallGrade(grade: string | null | undefined): grade is TeamCallGrade {
+  return !!grade && (TEAM_CALL_GRADE_CODES as readonly string[]).includes(grade);
+}
+
 export function teamCallTypeLabel(type: string | null | undefined): string {
   if (!type) return '—';
   return TEAM_CALL_TYPE_OPTIONS.find(o => o.value === type)?.label ?? type;
+}
+
+export function teamCallLeadTypeLabel(type: string | null | undefined): string {
+  if (!type) return '—';
+  return TEAM_CALL_LEAD_TYPE_OPTIONS.find(o => o.value === type)?.label ?? type;
+}
+
+export function teamCallGradeLabel(grade: string | null | undefined): string {
+  if (!grade) return '—';
+  return TEAM_CALL_GRADE_OPTIONS.find(o => o.value === grade)?.label ?? grade;
 }
 
 /** Format seconds as MM:SS or H:MM:SS when over one hour. */

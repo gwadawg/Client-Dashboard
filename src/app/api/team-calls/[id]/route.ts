@@ -4,6 +4,8 @@ import {
   TEAM_CALL_FIELDS,
   cleanTeamCallTags,
   highlightsToSearchText,
+  isValidTeamCallGrade,
+  isValidTeamCallLeadType,
   isValidTeamCallType,
   normalizeHighlights,
 } from '@/lib/team-calls';
@@ -81,6 +83,36 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (body.duration_seconds !== undefined) {
     const n = body.duration_seconds === null || body.duration_seconds === '' ? null : Number(body.duration_seconds);
     updates.duration_seconds = Number.isFinite(n) ? Math.floor(n!) : null;
+  }
+
+  if (body.lead_type !== undefined) {
+    const leadType = optionalText(body.lead_type);
+    if (leadType === null) {
+      updates.lead_type = null;
+    } else if (leadType === undefined) {
+      // no-op
+    } else if (!isValidTeamCallLeadType(leadType)) {
+      return NextResponse.json({ error: 'Invalid lead_type (use RM, DSCR, or HE)' }, { status: 400 });
+    } else {
+      updates.lead_type = leadType;
+    }
+  }
+
+  if (body.grade !== undefined) {
+    const grade = optionalText(body.grade);
+    if (grade === null) {
+      updates.grade = null;
+    } else if (grade === undefined) {
+      // no-op
+    } else if (!isValidTeamCallGrade(grade)) {
+      return NextResponse.json({ error: 'Invalid grade (use A+, A, A-, or B)' }, { status: 400 });
+    } else {
+      updates.grade = grade;
+    }
+  }
+
+  if (body.source_event_id !== undefined) {
+    updates.source_event_id = optionalText(body.source_event_id) ?? null;
   }
 
   if (Object.keys(updates).length <= 2) {

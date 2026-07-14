@@ -3,6 +3,7 @@
 import AgentPerformance from "../AgentPerformance";
 import AgentCreditQueue from "../AgentCreditQueue";
 import RecordingBrowser from "../RecordingBrowser";
+import DialExamplesLibrary from "../DialExamplesLibrary";
 import GoalTracker from "../GoalTracker";
 import ViewHub from "../nav/ViewHub";
 import { AGENTS_TABS, type AgentsTab } from "@/lib/nav";
@@ -17,6 +18,7 @@ type Props = {
   preset: Preset;
   startDate: string;
   endDate: string;
+  canManage?: boolean;
 };
 
 export default function AgentsHub({
@@ -26,6 +28,7 @@ export default function AgentsHub({
   preset,
   startDate,
   endDate,
+  canManage = false,
 }: Props) {
   return (
     <ViewHub
@@ -43,7 +46,20 @@ export default function AgentsHub({
         <AgentCreditQueue clients={clients} startDate={startDate} endDate={endDate} />
       )}
       {tab === "recordings" && (
-        <RecordingBrowser clients={clients} startDate={startDate} endDate={endDate} />
+        <RecordingBrowser
+          clients={clients}
+          startDate={startDate}
+          endDate={endDate}
+          canManage={canManage}
+        />
+      )}
+      {tab === "examples" && (
+        <DialExamplesLibrary
+          domain="call_center"
+          canManage={canManage}
+          startDate={startDate}
+          endDate={endDate}
+        />
       )}
     </ViewHub>
   );

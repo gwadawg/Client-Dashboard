@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 
   let query = ctx.service
     .from('events')
-    .select('id, occurred_at, lead_name, lead_phone, agent_name, duration_seconds, is_pickup, is_conversation, call_status, recording_url, clients(name)', { count: 'exact' })
+    .select('id, occurred_at, lead_name, lead_phone, agent_name, duration_seconds, is_pickup, is_conversation, call_status, recording_url, client_id, clients(name)', { count: 'exact' })
     .eq('event_type', 'dial')
     .not('recording_url', 'is', null)
     .order('occurred_at', { ascending: false })

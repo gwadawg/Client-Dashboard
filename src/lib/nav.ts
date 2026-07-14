@@ -3,10 +3,10 @@
 
 export type HeatmapTab = "show_rate" | "pickup_rate" | "new_leads";
 export type DataExplorerTab = "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
-export type AcquisitionTab = "appointments" | "credit_queue" | "sales_calls" | "pending_closes" | "log_close";
+export type AcquisitionTab = "appointments" | "credit_queue" | "sales_calls" | "pending_closes" | "log_close" | "call_examples";
 export type AcquisitionDataExplorerTab = "leads" | "appointments" | "offers" | "dials" | "closes" | "ads";
 export type AcquisitionKpiTab = "overview" | "setters" | "closers" | "costs";
-export type AgentsTab = "performance" | "goals" | "credit_queue" | "recordings";
+export type AgentsTab = "performance" | "goals" | "credit_queue" | "recordings" | "examples";
 
 export type HubView = "heatmaps" | "data_explorer" | "acquisition" | "acquisition_data_explorer" | "acquisition_kpis" | "agents";
 
@@ -82,6 +82,7 @@ export const DATA_EXPLORER_TABS: HubTabDef<DataExplorerTab>[] = [
 export const ACQUISITION_TABS: HubTabDef<AcquisitionTab>[] = [
   { key: "appointments", label: "Appointments" },
   { key: "sales_calls", label: "Sales Calls" },
+  { key: "call_examples", label: "Call Examples" },
   { key: "credit_queue", label: "Credit Queue" },
   { key: "log_close", label: "Log Close" },
   { key: "pending_closes", label: "Pending Closes" },
@@ -108,6 +109,7 @@ export const AGENTS_TABS: HubTabDef<AgentsTab>[] = [
   { key: "goals", label: "Goals" },
   { key: "credit_queue", label: "Credit Queue" },
   { key: "recordings", label: "Recordings" },
+  { key: "examples", label: "Examples" },
 ];
 
 /** Hub view → legacy permission keys that grant access. */
@@ -227,7 +229,7 @@ export const NAV: NavItem[] = [
   { view: "acquisition_data_explorer", label: "Acquisition Data",      group: "Acquisition"  },
   { view: "agents",             label: "Call Center Hub",       group: "Team"         },
   { view: "resources",          label: "Resource Library",      group: "Team"         },
-  { view: "call_library",       label: "Call Library",          group: "Team"         },
+  { view: "call_library",       label: "Team Calls",            group: "Team"         },
   { view: "schedule",           label: "Power Dialer Schedule", group: "Team"         },
   { view: "admin_agents",       label: "Team Roster",           group: "Admin"        },
   { view: "admin_clients",      label: "Client Roster",         group: "Admin"        },

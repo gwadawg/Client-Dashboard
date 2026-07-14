@@ -5,6 +5,7 @@ import AcquisitionSalesCalls from "../AcquisitionSalesCalls";
 import AcquisitionPendingCloses from "../AcquisitionPendingCloses";
 import AcquisitionLogClose from "../AcquisitionLogClose";
 import AcquisitionAppointmentsTable from "../AcquisitionAppointmentsTable";
+import DialExamplesLibrary from "../DialExamplesLibrary";
 import ViewHub from "../nav/ViewHub";
 import { ACQUISITION_TABS, type AcquisitionTab } from "@/lib/nav";
 
@@ -13,9 +14,16 @@ type Props = {
   onTabChange: (tab: AcquisitionTab) => void;
   startDate: string;
   endDate: string;
+  canManage?: boolean;
 };
 
-export default function AcquisitionHub({ tab, onTabChange, startDate, endDate }: Props) {
+export default function AcquisitionHub({
+  tab,
+  onTabChange,
+  startDate,
+  endDate,
+  canManage = false,
+}: Props) {
   return (
     <ViewHub
       tabs={ACQUISITION_TABS}
@@ -30,6 +38,14 @@ export default function AcquisitionHub({ tab, onTabChange, startDate, endDate }:
       )}
       {tab === "sales_calls" && (
         <AcquisitionSalesCalls startDate={startDate} endDate={endDate} />
+      )}
+      {tab === "call_examples" && (
+        <DialExamplesLibrary
+          domain="b2b"
+          canManage={canManage}
+          startDate={startDate}
+          endDate={endDate}
+        />
       )}
       {tab === "pending_closes" && <AcquisitionPendingCloses />}
       {tab === "log_close" && <AcquisitionLogClose />}
