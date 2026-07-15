@@ -19,6 +19,8 @@ type Props = {
   hint?: MetricHint | string;
   delta?: KpiDelta;
   spark?: (number | null)[];
+  /** Fine line under the value (e.g. "unique / total"). */
+  caption?: string;
 };
 
 export default function KpiCard({
@@ -29,6 +31,7 @@ export default function KpiCard({
   hint,
   delta,
   spark,
+  caption,
 }: Props) {
   return (
     <div
@@ -67,6 +70,11 @@ export default function KpiCard({
       <span className="text-3xl font-bold pl-3 tabular-nums" style={{ color: "#f1f5f9" }}>
         {value}
       </span>
+      {caption && (
+        <span className="pl-3 text-[10px] font-medium tracking-wide uppercase" style={{ color: "#475569" }}>
+          {caption}
+        </span>
+      )}
       {delta && (
         <span
           className="pl-3 text-[11px] font-semibold flex items-center gap-1"

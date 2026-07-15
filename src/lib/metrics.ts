@@ -67,7 +67,10 @@ export type MetricsResult = {
   qualified_rate: number;
   hot_leads: number;
   out_of_state_leads: number;
+  /** Absolute booking events (includes rebooks / reschedules). */
   booked_appointments: number;
+  /** Distinct leads with at least one booking in range. */
+  unique_booked_appointments: number;
   /** Unique leads with a booking ÷ Qualified Leads (RM default). */
   appt_booking_rate: number;
   /** Unique leads with a booking ÷ Total Leads (HE overview). */
@@ -266,6 +269,7 @@ export function calculateMetrics(
     hot_leads,
     out_of_state_leads,
     booked_appointments: booked,
+    unique_booked_appointments: unique_booked_leads,
     appt_booking_rate: qualified_leads > 0 ? (unique_booked_leads / qualified_leads) * 100 : 0,
     lead_booking_rate: leads > 0 ? (unique_booked_leads / leads) * 100 : 0,
     appts_to_take_place: Math.max(0, booked - shows - no_shows - cancelled - lo_bailed),

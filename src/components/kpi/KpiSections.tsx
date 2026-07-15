@@ -42,6 +42,13 @@ function computeDelta(
   return { text, good };
 }
 
+function formatCardValue(card: KpiCardDefinition, metrics: MetricsResult): string {
+  const primary = formatKpiValue(metrics[card.metric], card.format);
+  if (!card.secondaryMetric) return primary;
+  const secondary = formatKpiValue(metrics[card.secondaryMetric], card.format);
+  return `${primary} / ${secondary}`;
+}
+
 export default function KpiSections({ metrics, reportingType, previous, spark }: Props) {
   const sections = getKpiSections(reportingType);
 
@@ -67,7 +74,7 @@ export default function KpiSections({ metrics, reportingType, previous, spark }:
                 <KpiHeroCard
                   key={card.label}
                   label={card.label}
-                  value={formatKpiValue(metrics[card.metric], card.format)}
+                  value={formatCardValue(card, metrics)}
                 />
               ))
             ) : (
@@ -76,7 +83,8 @@ export default function KpiSections({ metrics, reportingType, previous, spark }:
                   <KpiCard
                     key={`${section.title}-${card.label}`}
                     label={card.label}
-                    value={formatKpiValue(metrics[card.metric], card.format)}
+                    value={formatCardValue(card, metrics)}
+                    caption={card.valueCaption}
                     accent={card.accent}
                     hint={card.hint}
                     delta={
@@ -84,7 +92,10 @@ export default function KpiSections({ metrics, reportingType, previous, spark }:
                         ? computeDelta(card, metrics[card.metric], previous[card.metric])
                         : undefined
                     }
-                    spark={spark?.[card.metric]}
+                    spark={
+                      spark?.[card.metric] ??
+                      (card.secondaryMetric ? spark?.[card.secondaryMetric] : undefined)
+                    }
                   />
                 ))}
               </div>

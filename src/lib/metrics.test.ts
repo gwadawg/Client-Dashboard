@@ -48,6 +48,7 @@ describe('unique-lead rates (booking, hand-raise, conversation)', () => {
     const m = calculateMetrics(events, []);
     assert.equal(m.qualified_leads, 5);
     assert.equal(m.booked_appointments, 4);
+    assert.equal(m.unique_booked_appointments, 2);
     assert.equal(m.appt_booking_rate, 40); // 2 unique ÷ 5
     assert.equal(m.lead_booking_rate, 40);
   });

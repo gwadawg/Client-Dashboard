@@ -34,6 +34,13 @@ export type KpiCardDefinition = {
   /** When comparing periods, a decrease is the good direction (costs, no-shows, cancel rate). */
   lowerIsBetter?: boolean;
   visible?: (metrics: MetricsResult) => boolean;
+  /**
+   * Optional second metric rendered as `primary / secondary`
+   * (e.g. unique booked / total booking events).
+   */
+  secondaryMetric?: keyof MetricsResult;
+  /** Fine caption under a dual value, e.g. "unique / total". */
+  valueCaption?: string;
 };
 
 export type KpiSectionDefinition = {
@@ -73,9 +80,16 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
     variant: "grid",
     gridClassName: DEFAULT_GRID,
     footnote:
-      "Hand Raise Rate and Booking Rate count each lead once — rebooks and claimed-after-booked don't inflate the %. Absolute Appointments Booked still shows every booking event.",
+      "Appointments Booked shows unique leads / total booking events. Booking Rate and Hand Raise Rate use unique leads so rebooks don't inflate %. Cancel rate still uses total bookings.",
     cards: [
-      { label: "Appointments Booked", metric: "booked_appointments", format: "int", hint: "Count of appointments booked in this range." },
+      {
+        label: "Appointments Booked",
+        metric: "unique_booked_appointments",
+        secondaryMetric: "booked_appointments",
+        format: "int",
+        valueCaption: "unique / total",
+        hint: "Unique leads who booked / total appointment_booked events (rebooks & reschedules included in total). Cancel rate uses the total.",
+      },
       {
         label: "Booking Rate",
         metric: "appt_booking_rate",
@@ -174,7 +188,14 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
       "Both show rates ignore appointments that never took place — anything still pending or cancelled is excluded. Net Show Rate counts only lead attendance (Shows vs No Shows); Show Rate (of booked) also counts LO bails against you.",
     cards: [
       { label: "Total Leads", metric: "new_leads", format: "int", hint: "Every new lead/contact ingested in this date range." },
-      { label: "Appointments Booked", metric: "booked_appointments", format: "int", hint: "Count of appointments booked in this range." },
+      {
+        label: "Appointments Booked",
+        metric: "unique_booked_appointments",
+        secondaryMetric: "booked_appointments",
+        format: "int",
+        valueCaption: "unique / total",
+        hint: "Unique leads who booked / total appointment_booked events (rebooks & reschedules included in total). Cancel rate uses the total.",
+      },
       {
         label: "Booking Rate",
         metric: "lead_booking_rate",
