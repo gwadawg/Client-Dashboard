@@ -25,7 +25,7 @@ export async function GET(
   const [{ data: events, error: eventsError }, spendRows] = await Promise.all([
     ctx.service
       .from('events')
-      .select('event_type, occurred_at, is_qualified')
+      .select('event_type, occurred_at, is_qualified, client_id, ghl_contact_id, lead_phone, lead_email, lead_name')
       .eq('client_id', clientId)
       .gte('occurred_at', `${start_date}T00:00:00.000Z`)
       .lte('occurred_at', `${end_date}T23:59:59.999Z`)

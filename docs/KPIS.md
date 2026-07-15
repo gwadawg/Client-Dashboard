@@ -21,7 +21,8 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **Hot Leads** | Leads manually tagged as hot | `COUNT(leads WHERE hot = Y)` | Leads col H |
 | **Out of State Leads** | Leads outside target geography | `COUNT(out-of-state leads)` | Out of State tab / Leads col M |
 | **Appointments Booked** | Every appointment booked | `COUNT(appointment_booked events)` | Appointments tab |
-| **Booking Rate** | Share of qualified (dialable) leads that book | `Appointments Booked ÷ Qualified Leads × 100` | Leads + Appointments |
+| **Booking Rate** | Share of qualified (dialable) leads that book | `Unique leads with appointment_booked ÷ Qualified Leads × 100` | Leads + Appointments |
+| **Hand Raise Rate** | Share of qualified leads showing any intent path | `Unique leads with booked ∪ claimed ∪ live_transfer ÷ Qualified Leads × 100` | Appointments + Claimed + Live Transfers |
 | **Shows** | Lead attended the appointment | `COUNT(show events)` or `Showed? = Y` | Appointments col J |
 | **No Shows** | Lead missed the appointment | `COUNT(no_show events)` or `Showed? = N` | Appointments col J |
 | **LO bailed** | Partner LO missed the appointment with the lead (not a lead no-show) | `COUNT(lo_bailed events)` or `Showed? = X` | Appointments col J |
@@ -30,7 +31,7 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **LO Bail Rate** | Share of bookings the partner LO missed | `LO bailed ÷ Appointments Booked × 100` | Appointments |
 | **Cancellations** | Appointments cancelled | `COUNT(appointment_cancelled)` | GHL cancel trigger |
 | **Cancel Rate** | Cancelled vs scheduled | `Cancellations ÷ (Appointments Booked + Cancellations) × 100` | Appointments |
-| **Conversation Rate** | Client-side conversations per qualified lead | `(Claimed + Shows + Live Transfers) ÷ Qualified Leads × 100` | Leads + Appointments + Live Transfers |
+| **Conversation Rate** | Client-side conversations per qualified lead | `Unique leads with show ∪ claimed ∪ live_transfer ÷ Qualified Leads × 100` | Leads + Appointments + Live Transfers |
 | **Live Transfers** | Live transfer to client/agent | `COUNT(live_transfer events)` | Live Transfers tab |
 | **Total Conversations** | Meaningful completed calls (2 min+) plus client-claimed conversations | `COUNT(dials WHERE is_conversation = true) + COUNT(claimed events)` | Conversations / Claimed tab |
 | **Proposals Made** | Reached proposal stage **or beyond** | `COUNT(unique leads with proposal_made OR submission_made OR loan_funded)` | MLO / Pipeline |
@@ -42,11 +43,12 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 
 ### Formula notes
 
-- **Booking rate:** Qualified leads only (leads you dial). Use the same date window for qualified leads and appointments. Filter both sides by the same client.
+- **Booking rate:** Unique leads with at least one `appointment_booked` in the window ÷ Qualified leads. A lead who books three times still counts once. Use the same date window for both sides and filter by the same client. Absolute **Appointments Booked** remains an event count (rebooks included).
+- **Hand-raise rate:** Unique leads with any of `appointment_booked`, `live_transfer`, or `claimed` ÷ Qualified leads. A lead who books and is later tagged claimed counts once.
 - **Show rate (of booked):** `Shows ÷ (Shows + No Shows + LO bailed)`. Only appointments that actually took place count — anything still **pending** (no outcome yet) or **cancelled** is excluded from the denominator, so the rate isn't dragged down by appointments that never happened. LO bails still count against it (the slot was wasted).
 - **Net show rate (true attendance):** `Shows ÷ (Shows + No Shows)`. Use this to judge lead quality / setter performance: it excludes cancellations, LO bails, and pending appointments, so it isn't dragged down by outcomes the lead is not responsible for. Display it alongside the gross show rate.
 - **LO bail rate:** `LO bailed ÷ Appointments Booked`. Surfaces partner loan-officer no-shows (Showed? = X) as their own KPI rather than burying them in the show rate.
-- **Conversation rate:** `(Claimed + Shows + Live Transfers) ÷ Qualified Leads`. The numerator is the same "client conversations" figure used for Cost per Conversation.
+- **Conversation rate:** Unique leads with any of `show`, `claimed`, or `live_transfer` ÷ Qualified leads. A lead who shows and was also live-transferred counts once. Same unique-conversation figure is the Cost per Conversation denominator.
 - **Cancel rate:** `Cancellations ÷ (Appointments Booked + Cancellations)`. Use the same GHL **appointment ID** (`external_id`) on book and cancel. Prefer `/api/webhooks/appointment-status` with `status: "cancelled"` so the original booking row is updated (see `ccm-appt-cancelled.blueprint.json`).
 - **Appts to take place:** `Booked − Shows − No Shows − Cancellations − LO bailed` (pending / unresolved slots).
 - **Conversion funnel rollup:** Reaching a later stage implies every earlier stage. A lead with only `loan_funded` still counts toward Submissions and Proposals; a lead with only `submission_made` still counts toward Proposals. Implied stages are derived at read time (in `src/lib/metrics.ts`) — we do **not** insert synthetic proposal/submission rows, and each lead is counted once per stage.
@@ -77,7 +79,7 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **CPL** | Cost per lead | `Ad Spend ÷ Total Leads` |
 | **CP Qualified Lead (CPQL)** | Cost per qualified lead | `Ad Spend ÷ Qualified Leads` |
 | **CP Hot Lead (CPH)** | Cost per hot lead | `Ad Spend ÷ Hot Leads` |
-| **CP Conversation** | Cost per client conversation | `Ad Spend ÷ (Live Transfers + Shows + Claimed)` |
+| **CP Conversation** | Cost per client conversation | `Ad Spend ÷ Unique leads with show ∪ claimed ∪ live_transfer` |
 | **CP Appointment** | Cost per booking | `Ad Spend ÷ Appointments Booked` |
 | **CPS** | Cost per show | `Ad Spend ÷ Shows` |
 
@@ -96,7 +98,7 @@ The **Funnel Simulator** tab (`?view=kpi_simulator`) is a forward-looking calcul
 
 Rate cards carry an info tooltip with their formula. Show Quality groups all appointment rates together so the true (net) show rate reads at a glance separate from the client-report rate.
 
-HE clients keep a minimal dashboard (leads, appointments + calling stats). **Booking Rate** on the HE overview uses **Total Leads** as the denominator (`Appointments Booked ÷ Total Leads`), not qualified leads. Other operational metrics (dials, show rate, etc.) remain in other nav views.
+HE clients keep a minimal dashboard (leads, appointments + calling stats). **Booking Rate** on the HE overview uses **Total Leads** as the denominator (`Unique booked leads ÷ Total Leads`), not qualified leads. Other operational metrics (dials, show rate, etc.) remain in other nav views.
 
 ### Client Success tab (RM vs HE)
 
@@ -281,12 +283,12 @@ Document your live Make scenario to match one approach:
 |-----|-----------------|-------|
 | Total Leads | Yes | `lead` events |
 | Appointments Booked | Yes | `appointment_booked` |
-| Booking Rate | Yes | RM: ÷ Qualified Leads; HE overview: ÷ Total Leads (`lead_booking_rate`) |
+| Booking Rate | Yes | RM: unique booked ÷ Qualified; HE overview: unique booked ÷ Total Leads (`lead_booking_rate`) |
 | Shows / No Shows | Yes | |
 | Show Rate (of booked) | Yes | `shows ÷ (shows + no_shows + lo_bailed)` — excludes pending + cancelled |
 | Net Show Rate | Yes | `shows ÷ (shows + no_shows)` — true attendance, excludes cancel/LO bail/pending |
 | LO Bail Rate | Yes | `lo_bailed ÷ appointments booked` |
-| Conversation Rate | Yes | `(claimed + shows + live_transfers) ÷ qualified_leads` |
+| Conversation Rate | Yes | unique (show ∪ claimed ∪ live_transfer) ÷ qualified_leads |
 | Cancellations / Cancel Rate | Yes | `appointment_cancelled`; rate = cancel ÷ (booked + cancel) |
 | Outbound Dials, Pickups, CPL, etc. | Yes | See `src/lib/metrics.ts` |
 | Total Conversations (2 min+) | Yes | Dial conversations plus `claimed` events |
@@ -399,7 +401,7 @@ The **Media Buyer** view (Overview group) ranks Facebook ads **globally across a
 | **CPL** | `Spend ÷ Leads` |
 | **Cost per Show** | `Spend ÷ Shows` |
 | **Cost per Close** | `Spend ÷ Closes` |
-| **Booking Rate** | `Appointments ÷ Qualified × 100` |
+| **Booking Rate** | `Unique booked leads ÷ Qualified × 100` |
 | **Show Rate** | `Shows ÷ (Shows + No Shows) × 100` (net attendance) |
 
 Each ad can also have an **Ad Library** entry (`ad_library` table): a Google Drive link to the creative plus a summary and visual notes. This is curated manually and is the structured input a future "AI recreate this winning ad" feature will use.

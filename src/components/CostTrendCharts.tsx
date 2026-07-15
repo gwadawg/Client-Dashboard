@@ -47,8 +47,8 @@ const CHARTS: {
   {
     key: "cp_conversation",
     title: "Cost per conversation",
-    subtitle: "Ad spend ÷ (live transfers + shows + claimed)",
-    denominatorLabel: "LT + Shows + Claimed",
+    subtitle: "Ad spend ÷ unique conversation leads (show ∪ claimed ∪ LT)",
+    denominatorLabel: "Unique conversation leads",
   },
 ];
 

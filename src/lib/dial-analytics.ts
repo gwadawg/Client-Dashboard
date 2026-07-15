@@ -1,4 +1,5 @@
 import { buildRosterMatcher, type RosterAgent } from "@/lib/agent-roster";
+import { leadIdentityKey } from "@/lib/metrics";
 import {
   computeSpeedToLead,
   type AvailabilityWindow,
@@ -126,6 +127,7 @@ type ClientAcc = {
   leads: number;
   qualified_leads: number;
   appointments: number;
+  unique_booked_leads: Set<string>;
 };
 
 function periodDays(startDate: string | null, endDate: string | null): number {
@@ -170,6 +172,7 @@ export function computeDialAnalytics(
   let summaryLeads = 0;
   let summaryQualified = 0;
   let summaryAppointments = 0;
+  const summaryUniqueBooked = new Set<string>();
   let todayDials = 0;
   let todayPickups = 0;
 
@@ -190,12 +193,18 @@ export function computeDialAnalytics(
 
     if (row.event_type === "appointment_booked") {
       summaryAppointments++;
+      const bookedKey = leadIdentityKey(row);
+      if (bookedKey) summaryUniqueBooked.add(bookedKey);
       const agent = resolveAgentName(resolveAgent, row.agent_name, agentMap);
       if (agent) {
         agent.appointments++;
         if (isToday) agent.today.appointments++;
       }
-      if (row.client_id) ensureClient(clientMap, row.client_id).appointments++;
+      if (row.client_id) {
+        const c = ensureClient(clientMap, row.client_id);
+        c.appointments++;
+        if (bookedKey) c.unique_booked_leads.add(bookedKey);
+      }
       continue;
     }
 
@@ -242,7 +251,8 @@ export function computeDialAnalytics(
 
   const teamPickupRate = pct(summaryPickups, summaryDials);
   const teamDialsPerLead = summaryLeads > 0 ? summaryDials / summaryLeads : 0;
-  const teamBookingRate = pct(summaryAppointments, summaryQualified > 0 ? summaryQualified : summaryLeads);
+  const summaryBookedForRate = summaryUniqueBooked.size > 0 ? summaryUniqueBooked.size : summaryAppointments;
+  const teamBookingRate = pct(summaryBookedForRate, summaryQualified > 0 ? summaryQualified : summaryLeads);
 
   const clientRows: DialAnalyticsClientRow[] = Array.from(clientMap.entries())
     .map(([client_id, acc]) => {
@@ -250,7 +260,8 @@ export function computeDialAnalytics(
       const bookingDenom = acc.qualified_leads > 0 ? acc.qualified_leads : acc.leads;
       const pickup_rate = pct(acc.pickups, acc.dials);
       const dials_per_lead = acc.leads > 0 ? Math.round((acc.dials / acc.leads) * 10) / 10 : 0;
-      const booking_rate = pct(acc.appointments, bookingDenom);
+      const bookedForRate = acc.unique_booked_leads.size > 0 ? acc.unique_booked_leads.size : acc.appointments;
+      const booking_rate = pct(bookedForRate, bookingDenom);
 
       let flag: ClientDialFlag = null;
       let flag_label: string | null = null;
@@ -331,7 +342,7 @@ export function computeDialAnalytics(
       qualified_leads: summaryQualified,
       dials_per_lead: summaryLeads > 0 ? Math.round((summaryDials / summaryLeads) * 10) / 10 : 0,
       appointments: summaryAppointments,
-      booking_rate: pct(summaryAppointments, summaryQualified > 0 ? summaryQualified : summaryLeads),
+      booking_rate: pct(summaryBookedForRate, summaryQualified > 0 ? summaryQualified : summaryLeads),
       avg_speed_to_lead_min: speed.median_min,
       speed_to_lead: speed,
       today_dials: todayDials,
@@ -358,6 +369,7 @@ function ensureClient(map: Map<string, ClientAcc>, clientId: string): ClientAcc 
       leads: 0,
       qualified_leads: 0,
       appointments: 0,
+      unique_booked_leads: new Set(),
     };
     map.set(clientId, acc);
   }

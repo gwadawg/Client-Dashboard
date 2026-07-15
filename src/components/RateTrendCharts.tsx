@@ -32,10 +32,10 @@ const CHARTS: { key: RateKey; title: string; subtitle: string; color: string; he
   { key: "lead_to_qual", title: "Qualified rate", subtitle: "Qualified Leads ÷ Total Leads", color: "#22c55e", rmOnly: true },
   { key: "net_show_rate", title: "Net show rate", subtitle: "Shows ÷ (Shows + No-Shows)", color: "#34d399" },
   { key: "show_rate", title: "Show rate (of booked)", subtitle: "Shows ÷ (Shows + No Shows + LO bailed)", color: "#3b82f6" },
-  { key: "hand_raise_rate", title: "Hand-raise rate", subtitle: "(Booked + Claimed + Live Transfers) ÷ Qualified", color: "#f59e0b", rmOnly: true },
-  { key: "booking_rate", title: "Booking rate", subtitle: "Booked ÷ Qualified Leads", color: "#fb923c", rmOnly: true },
-  { key: "lead_booking_rate", title: "Booking rate", subtitle: "Booked ÷ Total Leads", color: "#f59e0b", heOnly: true },
-  { key: "conversation_rate", title: "Conversation rate", subtitle: "(Claimed + Shows + Live Transfers) ÷ Qualified", color: "#a78bfa" },
+  { key: "hand_raise_rate", title: "Hand-raise rate", subtitle: "Unique (Booked ∪ Claimed ∪ LT) ÷ Qualified", color: "#f59e0b", rmOnly: true },
+  { key: "booking_rate", title: "Booking rate", subtitle: "Unique booked leads ÷ Qualified", color: "#fb923c", rmOnly: true },
+  { key: "lead_booking_rate", title: "Booking rate", subtitle: "Unique booked leads ÷ Total Leads", color: "#f59e0b", heOnly: true },
+  { key: "conversation_rate", title: "Conversation rate", subtitle: "Unique (Show ∪ Claimed ∪ LT) ÷ Qualified", color: "#a78bfa" },
 ];
 
 function formatDateLabel(date: string, granularity: "day" | "week"): string {

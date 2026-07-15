@@ -31,6 +31,11 @@ export type TrendEventRow = {
   event_type: string;
   occurred_at: string;
   is_qualified?: boolean | null;
+  client_id?: string | null;
+  ghl_contact_id?: string | null;
+  lead_phone?: string | null;
+  lead_email?: string | null;
+  lead_name?: string | null;
 };
 
 export type TrendSpendRow = { spend_date: string; amount: number | string };
@@ -63,9 +68,9 @@ export type MetricsResult = {
   hot_leads: number;
   out_of_state_leads: number;
   booked_appointments: number;
-  /** Appointments Booked ÷ Qualified Leads (RM default). */
+  /** Unique leads with a booking ÷ Qualified Leads (RM default). */
   appt_booking_rate: number;
-  /** Appointments Booked ÷ Total Leads (HE overview). */
+  /** Unique leads with a booking ÷ Total Leads (HE overview). */
   lead_booking_rate: number;
   appts_to_take_place: number;
   shows: number;
@@ -75,9 +80,13 @@ export type MetricsResult = {
   net_show_pct: number;
   /** LO bailed ÷ appointments booked. */
   lo_bail_rate: number;
-  /** (claimed + shows + live transfers) ÷ qualified leads. */
+  /** (claimed + shows + live transfers) as unique leads ÷ qualified leads. */
   conversation_rate: number;
-  /** (booked + claimed + live transfers) ÷ qualified — intent to talk, before show. */
+  /**
+   * Unique leads with any hand-raise path (booked, claimed, or live transfer)
+   * ÷ qualified — intent to talk, before show. One lead counted once even if
+   * they booked multiple times or were also claimed / live-transferred.
+   */
   hand_raise_rate: number;
   appointment_cancelled: number;
   cancel_rate: number;
@@ -137,7 +146,14 @@ function normalizePhoneForKey(value: string | null | undefined): string {
   return (value ?? '').replace(/\D/g, '');
 }
 
-function leadIdentityKey(event: EventRow): string | null {
+/** Stable lead identity for unique-rate numerators (book / hand-raise). */
+export function leadIdentityKey(event: {
+  client_id?: string | null;
+  ghl_contact_id?: string | null;
+  lead_phone?: string | null;
+  lead_email?: string | null;
+  lead_name?: string | null;
+}): string | null {
   const clientId = event.client_id ?? '';
   const ghl = (event.ghl_contact_id ?? '').trim();
   if (ghl) return `${clientId}|ghl:${ghl}`;
@@ -232,8 +248,16 @@ export function calculateMetrics(
   const speed = computeSpeedToLead(speedEvents, availability, timeZone);
   const speed_to_lead_min = speed.median_min ?? 0;
 
-  const client_conversations = live_transfers + claimed + shows;
-  const hand_raises = booked + live_transfers + claimed;
+  const unique_booked_leads = uniqueLeadCountForEvents(events, new Set(['appointment_booked']));
+  const unique_hand_raise_leads = uniqueLeadCountForEvents(
+    events,
+    new Set(['appointment_booked', 'live_transfer', 'claimed']),
+  );
+  // Client conversations: show ∪ claimed ∪ live transfer — one lead once.
+  const unique_conversation_leads = uniqueLeadCountForEvents(
+    events,
+    new Set(['show', 'claimed', 'live_transfer']),
+  );
 
   return {
     new_leads: leads,
@@ -242,16 +266,16 @@ export function calculateMetrics(
     hot_leads,
     out_of_state_leads,
     booked_appointments: booked,
-    appt_booking_rate: qualified_leads > 0 ? (booked / qualified_leads) * 100 : 0,
-    lead_booking_rate: leads > 0 ? (booked / leads) * 100 : 0,
+    appt_booking_rate: qualified_leads > 0 ? (unique_booked_leads / qualified_leads) * 100 : 0,
+    lead_booking_rate: leads > 0 ? (unique_booked_leads / leads) * 100 : 0,
     appts_to_take_place: Math.max(0, booked - shows - no_shows - cancelled - lo_bailed),
     shows,
     no_shows,
     show_pct: dispositioned_appointments > 0 ? (shows / dispositioned_appointments) * 100 : 0,
     net_show_pct: shows + no_shows > 0 ? (shows / (shows + no_shows)) * 100 : 0,
     lo_bail_rate: booked > 0 ? (lo_bailed / booked) * 100 : 0,
-    conversation_rate: qualified_leads > 0 ? (client_conversations / qualified_leads) * 100 : 0,
-    hand_raise_rate: qualified_leads > 0 ? (hand_raises / qualified_leads) * 100 : 0,
+    conversation_rate: qualified_leads > 0 ? (unique_conversation_leads / qualified_leads) * 100 : 0,
+    hand_raise_rate: qualified_leads > 0 ? (unique_hand_raise_leads / qualified_leads) * 100 : 0,
     appointment_cancelled: cancelled,
     cancel_rate: scheduled_total > 0 ? (cancelled / scheduled_total) * 100 : 0,
     lo_bailed,
@@ -272,7 +296,7 @@ export function calculateMetrics(
     cpl: leads > 0 ? ad_spend / leads : 0,
     cp_qualified: qualified_leads > 0 ? ad_spend / qualified_leads : 0,
     cp_hot: hot_leads > 0 ? ad_spend / hot_leads : 0,
-    cp_conversation: client_conversations > 0 ? ad_spend / client_conversations : 0,
+    cp_conversation: unique_conversation_leads > 0 ? ad_spend / unique_conversation_leads : 0,
     cp_appt: booked > 0 ? ad_spend / booked : 0,
     cps: shows > 0 ? ad_spend / shows : 0,
     outbound_dials: dial_count,
@@ -330,10 +354,24 @@ export function buildDailyCostSeries(
   rangeStart: string,
   rangeEnd: string,
 ): DailyCostBucket[] {
-  const byDate = new Map<string, DailyCostBucket>();
+  type CostRaw = {
+    date: string;
+    spend: number;
+    leads: number;
+    qualified_leads: number;
+    unique_conversations: Set<string>;
+  };
+
+  const byDate = new Map<string, CostRaw>();
 
   for (const date of eachDateInRange(rangeStart, rangeEnd)) {
-    byDate.set(date, { date, spend: 0, leads: 0, qualified_leads: 0, client_conversations: 0 });
+    byDate.set(date, {
+      date,
+      spend: 0,
+      leads: 0,
+      qualified_leads: 0,
+      unique_conversations: new Set(),
+    });
   }
 
   for (const row of spendRows) {
@@ -355,28 +393,62 @@ export function buildDailyCostSeries(
       e.event_type === 'show' ||
       e.event_type === 'claimed'
     ) {
-      bucket.client_conversations++;
+      const key = leadIdentityKey(e);
+      if (key) bucket.unique_conversations.add(key);
     }
   }
 
-  return eachDateInRange(rangeStart, rangeEnd).map(date => byDate.get(date)!);
+  return eachDateInRange(rangeStart, rangeEnd).map(date => {
+    const b = byDate.get(date)!;
+    return {
+      date: b.date,
+      spend: b.spend,
+      leads: b.leads,
+      qualified_leads: b.qualified_leads,
+      client_conversations: b.unique_conversations.size,
+      _unique_conversations: b.unique_conversations,
+    };
+  }) as (DailyCostBucket & { _unique_conversations: Set<string> })[];
 }
 
 export function rollupCostSeriesToWeeks(daily: DailyCostBucket[]): DailyCostBucket[] {
-  const byWeek = new Map<string, DailyCostBucket>();
-  for (const row of daily) {
+  type DailyWithSet = DailyCostBucket & { _unique_conversations?: Set<string> };
+  const byWeek = new Map<string, {
+    date: string;
+    spend: number;
+    leads: number;
+    qualified_leads: number;
+    unique_conversations: Set<string>;
+  }>();
+  for (const row of daily as DailyWithSet[]) {
     const key = weekStartKey(row.date);
     let bucket = byWeek.get(key);
     if (!bucket) {
-      bucket = { date: key, spend: 0, leads: 0, qualified_leads: 0, client_conversations: 0 };
+      bucket = {
+        date: key,
+        spend: 0,
+        leads: 0,
+        qualified_leads: 0,
+        unique_conversations: new Set(),
+      };
       byWeek.set(key, bucket);
     }
     bucket.spend += row.spend;
     bucket.leads += row.leads;
     bucket.qualified_leads += row.qualified_leads;
-    bucket.client_conversations += row.client_conversations;
+    if (row._unique_conversations) {
+      for (const leadKey of row._unique_conversations) bucket.unique_conversations.add(leadKey);
+    }
   }
-  return [...byWeek.values()].sort((a, b) => a.date.localeCompare(b.date));
+  return [...byWeek.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(b => ({
+      date: b.date,
+      spend: b.spend,
+      leads: b.leads,
+      qualified_leads: b.qualified_leads,
+      client_conversations: b.unique_conversations.size,
+    }));
 }
 
 export function toCostTrendPoints(buckets: DailyCostBucket[]): CostTrendPoint[] {
@@ -400,6 +472,11 @@ export type KpiTimelineEventRow = {
   event_type: string;
   occurred_at: string;
   is_qualified?: boolean | null;
+  client_id?: string | null;
+  ghl_contact_id?: string | null;
+  lead_phone?: string | null;
+  lead_email?: string | null;
+  lead_name?: string | null;
 };
 
 export type KpiTimelineBucket = {
@@ -417,10 +494,12 @@ export type KpiTimelineBucket = {
   cpl: number | null;
   show_rate: number | null;
   net_show_rate: number | null;
+  /** Unique booked leads ÷ Qualified Leads. */
   booking_rate: number | null;
-  /** Appointments Booked ÷ Total Leads (HE overview). */
+  /** Unique booked leads ÷ Total Leads (HE overview). */
   lead_booking_rate: number | null;
   conversation_rate: number | null;
+  /** Unique hand-raise leads (booked ∪ claimed ∪ LT) ÷ Qualified Leads. */
   hand_raise_rate: number | null;
   lead_to_qual: number | null;
 };
@@ -437,6 +516,9 @@ type RawCounts = {
   cancelled: number;
   live_transfers: number;
   claimed: number;
+  unique_booked_leads: Set<string>;
+  unique_hand_raise_leads: Set<string>;
+  unique_conversation_leads: Set<string>;
 };
 
 function emptyCounts(date: string): RawCounts {
@@ -452,12 +534,22 @@ function emptyCounts(date: string): RawCounts {
     cancelled: 0,
     live_transfers: 0,
     claimed: 0,
+    unique_booked_leads: new Set(),
+    unique_hand_raise_leads: new Set(),
+    unique_conversation_leads: new Set(),
   };
 }
 
+function addLeadKey(set: Set<string>, event: KpiTimelineEventRow): void {
+  const key = leadIdentityKey(event);
+  if (key) set.add(key);
+}
+
 function finalizeBucket(c: RawCounts): KpiTimelineBucket {
-  const client_conversations = c.live_transfers + c.claimed + c.shows;
+  const uniqueConversations = c.unique_conversation_leads.size;
   const dispositioned = c.shows + c.no_shows + c.lo_bailed;
+  const uniqueBooked = c.unique_booked_leads.size;
+  const uniqueHandRaise = c.unique_hand_raise_leads.size;
   return {
     date: c.date,
     spend: c.spend,
@@ -466,19 +558,16 @@ function finalizeBucket(c: RawCounts): KpiTimelineBucket {
     booked: c.booked,
     shows: c.shows,
     no_shows: c.no_shows,
-    client_conversations,
-    cpconv: client_conversations > 0 ? c.spend / client_conversations : null,
+    client_conversations: uniqueConversations,
+    cpconv: uniqueConversations > 0 ? c.spend / uniqueConversations : null,
     cpql: c.qualified_leads > 0 ? c.spend / c.qualified_leads : null,
     cpl: c.leads > 0 ? c.spend / c.leads : null,
     show_rate: dispositioned > 0 ? (c.shows / dispositioned) * 100 : null,
     net_show_rate: c.shows + c.no_shows > 0 ? (c.shows / (c.shows + c.no_shows)) * 100 : null,
-    booking_rate: c.qualified_leads > 0 ? (c.booked / c.qualified_leads) * 100 : null,
-    lead_booking_rate: c.leads > 0 ? (c.booked / c.leads) * 100 : null,
-    conversation_rate: c.qualified_leads > 0 ? (client_conversations / c.qualified_leads) * 100 : null,
-    hand_raise_rate:
-      c.qualified_leads > 0
-        ? ((c.booked + c.live_transfers + c.claimed) / c.qualified_leads) * 100
-        : null,
+    booking_rate: c.qualified_leads > 0 ? (uniqueBooked / c.qualified_leads) * 100 : null,
+    lead_booking_rate: c.leads > 0 ? (uniqueBooked / c.leads) * 100 : null,
+    conversation_rate: c.qualified_leads > 0 ? (uniqueConversations / c.qualified_leads) * 100 : null,
+    hand_raise_rate: c.qualified_leads > 0 ? (uniqueHandRaise / c.qualified_leads) * 100 : null,
     lead_to_qual: c.leads > 0 ? (c.qualified_leads / c.leads) * 100 : null,
   };
 }
@@ -514,8 +603,11 @@ export function buildClientKpiTimeline(
       if (e.is_qualified === true) bucket.qualified_leads++;
     } else if (e.event_type === 'appointment_booked') {
       bucket.booked++;
+      addLeadKey(bucket.unique_booked_leads, e);
+      addLeadKey(bucket.unique_hand_raise_leads, e);
     } else if (e.event_type === 'show') {
       bucket.shows++;
+      addLeadKey(bucket.unique_conversation_leads, e);
     } else if (e.event_type === 'no_show') {
       bucket.no_shows++;
     } else if (e.event_type === 'lo_bailed') {
@@ -524,8 +616,12 @@ export function buildClientKpiTimeline(
       bucket.cancelled++;
     } else if (e.event_type === 'live_transfer') {
       bucket.live_transfers++;
+      addLeadKey(bucket.unique_hand_raise_leads, e);
+      addLeadKey(bucket.unique_conversation_leads, e);
     } else if (e.event_type === 'claimed') {
       bucket.claimed++;
+      addLeadKey(bucket.unique_hand_raise_leads, e);
+      addLeadKey(bucket.unique_conversation_leads, e);
     }
   }
 
@@ -553,6 +649,9 @@ export function buildClientKpiTimeline(
     bucket.cancelled += row.cancelled;
     bucket.live_transfers += row.live_transfers;
     bucket.claimed += row.claimed;
+    for (const leadKey of row.unique_booked_leads) bucket.unique_booked_leads.add(leadKey);
+    for (const leadKey of row.unique_hand_raise_leads) bucket.unique_hand_raise_leads.add(leadKey);
+    for (const leadKey of row.unique_conversation_leads) bucket.unique_conversation_leads.add(leadKey);
   }
 
   return [...byWeek.values()]

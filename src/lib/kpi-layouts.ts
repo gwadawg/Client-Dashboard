@@ -73,21 +73,21 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
     variant: "grid",
     gridClassName: DEFAULT_GRID,
     footnote:
-      "Hand Raise Rate counts every intent path — booked appointments, live transfers, and client-claimed — so accounts that live-transfer heavily aren't misread on booking rate alone.",
+      "Hand Raise Rate and Booking Rate count each lead once — rebooks and claimed-after-booked don't inflate the %. Absolute Appointments Booked still shows every booking event.",
     cards: [
       { label: "Appointments Booked", metric: "booked_appointments", format: "int", hint: "Count of appointments booked in this range." },
       {
         label: "Booking Rate",
         metric: "appt_booking_rate",
         format: "pct",
-        hint: "Appointments Booked ÷ Qualified Leads.",
+        hint: "Unique leads who booked ÷ Qualified Leads. A lead who books twice still counts once.",
       },
       {
         label: "Hand Raise Rate",
         metric: "hand_raise_rate",
         format: "pct",
         accent: true,
-        hint: "(Appointments Booked + Live Transfers + Claimed) ÷ Qualified Leads. Every path where a lead signals intent to move forward.",
+        hint: "Unique leads with any intent path (booked, live transfer, or claimed) ÷ Qualified Leads. One lead counted once even across multiple paths.",
       },
       {
         label: "Appts To Take Place",
@@ -145,7 +145,7 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
         label: "Conversation Rate",
         metric: "conversation_rate",
         format: "pct",
-        hint: "(Claimed + Shows + Live Transfers) ÷ Qualified Leads",
+        hint: "Unique leads with a show, claimed, or live transfer ÷ Qualified Leads. One lead counted once across those paths.",
       },
     ],
   },
@@ -154,14 +154,14 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
     variant: "grid",
     gridClassName: COSTS_GRID,
     footnote:
-      "All cost metrics use total ad spend (all platforms). CPQL = spend ÷ qualified leads. CPH = spend ÷ hot leads. Cost per conversation = spend ÷ (live transfers + shows + claimed).",
+      "All cost metrics use total ad spend (all platforms). CPQL = spend ÷ qualified leads. CPH = spend ÷ hot leads. Cost per conversation = spend ÷ unique leads who showed, were claimed, or live-transferred.",
     cards: [
       { label: "Total Spend", metric: "ad_spend", format: "money", accent: true, hint: "All ad spend in this range (Meta + Google + Local Services)." },
       { label: "CPL", metric: "cpl", format: "money", lowerIsBetter: true, hint: "Cost per Lead = Total Spend ÷ Total Leads." },
       { label: "CPQL", metric: "cp_qualified", format: "money", lowerIsBetter: true, hint: "Cost per Qualified Lead = Total Spend ÷ Qualified Leads." },
       { label: "CPH", metric: "cp_hot", format: "money", lowerIsBetter: true, hint: "Cost per Hot Lead = Total Spend ÷ Hot Leads." },
       { label: "Cost per Appointment", metric: "cp_appt", format: "money", lowerIsBetter: true, hint: "Total Spend ÷ Appointments Booked." },
-      { label: "Cost per Conversation", metric: "cp_conversation", format: "money", lowerIsBetter: true, hint: "Total Spend ÷ (Live Transfers + Shows + Claimed)." },
+      { label: "Cost per Conversation", metric: "cp_conversation", format: "money", lowerIsBetter: true, hint: "Total Spend ÷ unique leads who showed, were claimed, or live-transferred." },
     ],
   },
 ];
@@ -179,7 +179,7 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
         label: "Booking Rate",
         metric: "lead_booking_rate",
         format: "pct",
-        hint: "Appointments Booked ÷ Total Leads.",
+        hint: "Unique leads who booked ÷ Total Leads.",
       },
       {
         label: "Appts To Take Place",
