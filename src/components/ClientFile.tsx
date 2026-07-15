@@ -728,7 +728,7 @@ export default function ClientFile({
         ) : editing && client ? (
           <div className="px-6 py-5">
             <ClientFileEditForm
-              key={`${client.id}-${client.churned_at ?? ""}-${client.launch_date ?? ""}-${client.date_signed ?? ""}-${client.clickup_task_id ?? ""}-${client.billing_email ?? ""}-${client.offer ?? ""}`}
+              key={`${client.id}-${client.churned_at ?? ""}-${client.launch_date ?? ""}-${client.date_signed ?? ""}-${client.clickup_task_id ?? ""}-${client.billing_email ?? ""}-${client.offer ?? ""}-${client.ghl_location_id ?? ""}`}
               client={client}
               canViewRevenue={canViewRevenue}
               saving={savingProfile}
@@ -834,6 +834,13 @@ export default function ClientFile({
             <Section title="This offer">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
                 <Detail label="GHL sub-account name" value={offerRow?.name ?? client?.name} />
+                <Detail
+                  label="GHL location ID"
+                  value={client?.ghl_location_id ? (
+                    <span className="font-mono text-sm">{client.ghl_location_id}</span>
+                  ) : null}
+                  missing={!client?.ghl_location_id}
+                />
                 <Detail
                   label="Client vertical"
                   value={client?.reporting_type ? (

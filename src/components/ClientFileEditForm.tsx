@@ -40,6 +40,7 @@ export type EditableClient = {
   daily_adspend: number | null;
   performance_terms: string | null;
   churned_at: string | null;
+  ghl_location_id?: string | null;
 };
 
 type Draft = {
@@ -50,6 +51,7 @@ type Draft = {
   phone: string;
   reporting_type: ReportingType;
   clickup_task_id: string;
+  ghl_location_id: string;
   source: string;
   website: string;
   brokerage_name: string;
@@ -88,6 +90,7 @@ export function clientToDraft(c: EditableClient): Draft {
     phone: c.phone ?? "",
     reporting_type: normalizeReportingType(c.reporting_type),
     clickup_task_id: c.clickup_task_id ?? "",
+    ghl_location_id: c.ghl_location_id ?? "",
     source: normalizeClientLeadSource(c.source) ?? "",
     website: c.website ?? "",
     brokerage_name: c.brokerage_name ?? "",
@@ -119,6 +122,7 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     phone: draft.phone.trim() || null,
     reporting_type: draft.reporting_type,
     clickup_task_id: draft.clickup_task_id.trim() || null,
+    ghl_location_id: draft.ghl_location_id.trim() || null,
     source: normalizeClientLeadSource(draft.source),
     website: draft.website.trim() || null,
     brokerage_name: draft.brokerage_name.trim() || null,
@@ -162,6 +166,7 @@ export function countMissingFields(c: EditableClient | null): number {
     !c.date_signed,
     c.contract_term_months == null,
     !c.billing_type,
+    !c.ghl_location_id?.trim(),
   ];
   return checks.filter(Boolean).length;
 }
@@ -214,6 +219,14 @@ export default function ClientFileEditForm({
       <Section title="Overview">
         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-3">
           <Field label="Sub-account name *" value={draft.name} onChange={v => patch("name", v)} />
+          <Field
+            label="GHL location ID"
+            value={draft.ghl_location_id}
+            onChange={v => patch("ghl_location_id", v)}
+            placeholder="GHL subaccount location id"
+            highlightEmpty
+            mono
+          />
           <Field label="Client name" value={draft.primary_contact_name} onChange={v => patch("primary_contact_name", v)} highlightEmpty />
           <Field label="Email" type="email" value={draft.email} onChange={v => patch("email", v)} highlightEmpty />
           <Field label="Billing email" type="email" value={draft.billing_email} onChange={v => patch("billing_email", v)} highlightEmpty />
@@ -347,7 +360,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function Field({
-  label, value, onChange, type = "text", placeholder, highlightEmpty, wide, multiline,
+  label, value, onChange, type = "text", placeholder, highlightEmpty, wide, multiline, mono,
 }: {
   label: string;
   value: string;
@@ -357,9 +370,10 @@ function Field({
   highlightEmpty?: boolean;
   wide?: boolean;
   multiline?: boolean;
+  mono?: boolean;
 }) {
   const missing = highlightEmpty && !value.trim();
-  const cls = "px-2 py-1.5 rounded-lg text-sm outline-none w-full";
+  const cls = `px-2 py-1.5 rounded-lg text-sm outline-none w-full${mono ? " font-mono" : ""}`;
   return (
     <label className={wide ? "col-span-2 md:col-span-3 flex flex-col gap-1" : "flex flex-col gap-1"}>
       <span className="text-xs uppercase tracking-wider" style={{ color: missing ? "#f59e0b" : "#475569" }}>
