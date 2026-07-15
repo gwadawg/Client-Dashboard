@@ -92,6 +92,7 @@ describe('unique-lead rates (booking, hand-raise, conversation)', () => {
     assert.equal(m.live_transfers, 1);
     assert.equal(m.claimed, 1);
     // Unique conversations: A and B → 2 / 5 = 40%
+    assert.equal(m.unique_conversations, 2);
     assert.equal(m.conversation_rate, 40);
     assert.equal(m.cp_conversation, 100); // 200 / 2 unique
   });

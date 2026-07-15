@@ -83,7 +83,12 @@ export type MetricsResult = {
   net_show_pct: number;
   /** LO bailed ÷ appointments booked. */
   lo_bail_rate: number;
-  /** (claimed + shows + live transfers) as unique leads ÷ qualified leads. */
+  /**
+   * Distinct leads with any client conversation path
+   * (show ∪ claimed ∪ live transfer). One lead counted once.
+   */
+  unique_conversations: number;
+  /** Unique conversations ÷ qualified leads. */
   conversation_rate: number;
   /**
    * Unique leads with any hand-raise path (booked, claimed, or live transfer)
@@ -278,6 +283,7 @@ export function calculateMetrics(
     show_pct: dispositioned_appointments > 0 ? (shows / dispositioned_appointments) * 100 : 0,
     net_show_pct: shows + no_shows > 0 ? (shows / (shows + no_shows)) * 100 : 0,
     lo_bail_rate: booked > 0 ? (lo_bailed / booked) * 100 : 0,
+    unique_conversations: unique_conversation_leads,
     conversation_rate: qualified_leads > 0 ? (unique_conversation_leads / qualified_leads) * 100 : 0,
     hand_raise_rate: qualified_leads > 0 ? (unique_hand_raise_leads / qualified_leads) * 100 : 0,
     appointment_cancelled: cancelled,

@@ -73,6 +73,13 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
       { label: "Out of State Leads", metric: "out_of_state_leads", format: "int", hint: "Leads located outside the target geography." },
       { label: "Claimed", metric: "claimed", format: "int", hint: "Leads the client spoke with or messaged outside our booking flow." },
       { label: "Live Transfers", metric: "live_transfers", format: "int", hint: "Calls transferred live straight to the client / agent." },
+      {
+        label: "Unique Conversations",
+        metric: "unique_conversations",
+        format: "int",
+        accent: true,
+        hint: "Unique leads with a show, claimed, or live transfer. One lead counted once even across multiple paths — this is also the CP Conversation denominator.",
+      },
     ],
   },
   {
@@ -159,7 +166,7 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
         label: "Conversation Rate",
         metric: "conversation_rate",
         format: "pct",
-        hint: "Unique leads with a show, claimed, or live transfer ÷ Qualified Leads. One lead counted once across those paths.",
+        hint: "Unique Conversations ÷ Qualified Leads.",
       },
     ],
   },
