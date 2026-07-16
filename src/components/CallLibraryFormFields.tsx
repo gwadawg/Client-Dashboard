@@ -72,6 +72,25 @@ export default function CallLibraryFormFields({ draft, onChange, disabled }: Pro
         </label>
       </div>
 
+      <label
+        className="flex items-start gap-3 rounded-lg px-3 py-2.5 cursor-pointer"
+        style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)" }}
+      >
+        <input
+          type="checkbox"
+          disabled={disabled}
+          checked={draft.is_private}
+          onChange={e => patch("is_private", e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="block text-sm font-semibold" style={{ color: "#e2e8f0" }}>Private</span>
+          <span className="block text-xs mt-0.5" style={{ color: "#64748b" }}>
+            Only you can see this call in the library
+          </span>
+        </span>
+      </label>
+
       <div className="grid grid-cols-2 gap-3">
         <label className="block space-y-1">
           <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Lead type</span>

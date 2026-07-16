@@ -26,6 +26,45 @@ function parseCalledAt(value: unknown): string | null | undefined {
   return d.toISOString();
 }
 
+function parseIsPrivate(value: unknown): boolean {
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+type TeamCallAccessRow = {
+  id: string;
+  is_private: boolean | null;
+  created_by: string | null;
+};
+
+async function loadTeamCallForAccess(
+  service: {
+    from: (table: string) => {
+      select: (cols: string) => {
+        eq: (col: string, val: string) => {
+          is: (col: string, val: null) => {
+            maybeSingle: () => Promise<{ data: TeamCallAccessRow | null; error: { message: string } | null }>;
+          };
+        };
+      };
+    };
+  },
+  id: string,
+): Promise<{ row: TeamCallAccessRow | null; error: string | null }> {
+  const { data, error } = await service
+    .from('team_calls')
+    .select('id, is_private, created_by')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) return { row: null, error: error.message };
+  return { row: data, error: null };
+}
+
+function canAccessPrivateCall(row: TeamCallAccessRow, userId: string): boolean {
+  if (!row.is_private) return true;
+  return row.created_by === userId;
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -34,6 +73,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params;
   const body = await req.json();
+
+  const { row: existing, error: loadError } = await loadTeamCallForAccess(ctx.service, id);
+  if (loadError) return NextResponse.json({ error: loadError }, { status: 500 });
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (!canAccessPrivateCall(existing, ctx.userId)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
 
   const updates: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
@@ -115,6 +161,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     updates.source_event_id = optionalText(body.source_event_id) ?? null;
   }
 
+  if (body.is_private !== undefined) {
+    updates.is_private = parseIsPrivate(body.is_private);
+  }
+
   if (Object.keys(updates).length <= 2) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   }
@@ -132,7 +182,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: error.message }, { status });
   }
 
-  return NextResponse.json({ call: { ...data, highlights: normalizeHighlights(data.highlights) } });
+  return NextResponse.json({
+    call: {
+      ...data,
+      highlights: normalizeHighlights(data.highlights),
+      is_private: !!(data as { is_private?: boolean }).is_private,
+    },
+  });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -142,6 +198,14 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (denied) return denied;
 
   const { id } = await params;
+
+  const { row: existing, error: loadError } = await loadTeamCallForAccess(ctx.service, id);
+  if (loadError) return NextResponse.json({ error: loadError }, { status: 500 });
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (!canAccessPrivateCall(existing, ctx.userId)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   const { data, error } = await ctx.service
     .from('team_calls')
     .update({

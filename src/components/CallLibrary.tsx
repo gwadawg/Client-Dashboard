@@ -194,7 +194,7 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
       <div>
         <h1 className="text-xl font-bold" style={{ color: "#f1f5f9" }}>Team Calls</h1>
         <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-          Internal coaching, standups, and team meetings — not dial examples. Call-rep and B2B examples live under Agents → Examples and Acquisition → Call Examples.
+          Internal coaching, monthly/quarterly team reviews, standups, and meetings — not dial examples. Call-rep and B2B examples live under Agents → Examples and Acquisition → Call Examples.
         </p>
       </div>
 
@@ -395,6 +395,14 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
                     >
                       {teamCallTypeLabel(row.call_type)}
                     </span>
+                    {row.is_private && (
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full font-semibold shrink-0"
+                        style={{ color: "#f87171", background: "rgba(248,113,113,0.12)" }}
+                      >
+                        Private
+                      </span>
+                    )}
                     {row.lead_type && (
                       <span
                         className="text-xs px-2 py-0.5 rounded-full font-semibold shrink-0"

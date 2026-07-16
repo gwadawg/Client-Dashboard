@@ -788,6 +788,7 @@ create table if not exists team_calls (
   lead_type        text,
   grade            text,
   source_event_id  uuid references events(id) on delete set null,
+  is_private       boolean not null default false,
   deleted_at       timestamptz,
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
@@ -803,7 +804,7 @@ create table if not exists team_calls (
     )
   ) stored,
   constraint team_calls_type_check check (
-    call_type in ('coaching', 'team_meeting', 'role_play', 'training', '1on1', 'sales_review', 'other')
+    call_type in ('coaching', 'team_meeting', 'team_review', 'role_play', 'training', '1on1', 'sales_review', 'other')
   ),
   constraint team_calls_lead_type_check check (
     lead_type is null or lead_type in ('RM', 'DSCR', 'HE')

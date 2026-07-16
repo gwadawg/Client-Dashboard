@@ -3,6 +3,7 @@
 export const TEAM_CALL_TYPE_CODES = [
   'coaching',
   'team_meeting',
+  'team_review',
   'role_play',
   'training',
   '1on1',
@@ -15,6 +16,7 @@ export type TeamCallTypeCode = (typeof TEAM_CALL_TYPE_CODES)[number];
 export const TEAM_CALL_TYPE_OPTIONS: { value: TeamCallTypeCode; label: string }[] = [
   { value: 'coaching', label: 'Coaching' },
   { value: 'team_meeting', label: 'Team Meeting' },
+  { value: 'team_review', label: 'Team Review' },
   { value: 'role_play', label: 'Role Play' },
   { value: 'training', label: 'Training' },
   { value: '1on1', label: '1:1' },
@@ -65,12 +67,14 @@ export type TeamCallRow = {
   lead_type: TeamCallLeadType | null;
   grade: TeamCallGrade | null;
   source_event_id: string | null;
+  is_private: boolean;
   created_at: string;
   updated_at: string;
+  created_by?: string | null;
 };
 
 export const TEAM_CALL_FIELDS =
-  'id, title, call_type, called_at, participants, recording_url, transcript, summary, highlights, highlights_text, tags, duration_seconds, lead_type, grade, source_event_id, created_at, updated_at, created_by, updated_by';
+  'id, title, call_type, called_at, participants, recording_url, transcript, summary, highlights, highlights_text, tags, duration_seconds, lead_type, grade, source_event_id, is_private, created_at, updated_at, created_by, updated_by';
 
 export function isValidTeamCallType(type: string | null | undefined): type is TeamCallTypeCode {
   return !!type && (TEAM_CALL_TYPE_CODES as readonly string[]).includes(type);

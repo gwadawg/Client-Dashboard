@@ -24,13 +24,35 @@ function parseCalledAt(value: unknown): string | null {
   return d.toISOString();
 }
 
-async function fetchAllTags(service: { from: (table: string) => unknown }) {
-  const q = service.from('team_calls') as {
-    select: (cols: string) => {
-      is: (col: string, val: null) => Promise<{ data: { tags: string[] | null }[] | null }>;
+function parseIsPrivate(value: unknown): boolean {
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+/** Non-private rows, plus private rows owned by the current user. */
+function applyTeamCallVisibilityFilter<T extends { or: (filter: string) => T }>(
+  query: T,
+  userId: string,
+): T {
+  return query.or(`is_private.eq.false,created_by.eq.${userId}`);
+}
+
+async function fetchVisibleTags(
+  service: {
+    from: (table: string) => {
+      select: (cols: string) => {
+        is: (col: string, val: null) => {
+          or: (filter: string) => Promise<{ data: { tags: string[] | null }[] | null }>;
+        };
+      };
     };
-  };
-  const { data } = await q.select('tags').is('deleted_at', null);
+  },
+  userId: string,
+) {
+  const { data } = await service
+    .from('team_calls')
+    .select('tags')
+    .is('deleted_at', null)
+    .or(`is_private.eq.false,created_by.eq.${userId}`);
   const tagSet = new Set<string>();
   for (const row of data ?? []) {
     for (const tag of row.tags ?? []) {
@@ -75,6 +97,8 @@ export async function GET(req: Request) {
     .order('called_at', { ascending: false })
     .range(offset, offset + pageSize - 1);
 
+  query = applyTeamCallVisibilityFilter(query, ctx.userId);
+
   if (callType) query = query.eq('call_type', callType);
   if (leadType) query = query.eq('lead_type', leadType);
   if (grade) query = query.eq('grade', grade);
@@ -87,20 +111,20 @@ export async function GET(req: Request) {
       const tsQuery = safe.split(/\s+/).filter(Boolean).join(' & ');
       if (tsQuery) {
         query = query.textSearch('search_vector', tsQuery, { type: 'plain' });
-      } else {
-        query = query.or(
-          `title.ilike.%${safe}%,transcript.ilike.%${safe}%,summary.ilike.%${safe}%,participants.ilike.%${safe}%,highlights_text.ilike.%${safe}%`,
-        );
       }
     }
   }
 
-  const [{ data, count, error }, tags] = await Promise.all([query, fetchAllTags(ctx.service)]);
+  const [{ data, count, error }, tags] = await Promise.all([
+    query,
+    fetchVisibleTags(ctx.service, ctx.userId),
+  ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const rows = (data ?? []).map(row => ({
     ...row,
     highlights: normalizeHighlights(row.highlights),
+    is_private: !!(row as { is_private?: boolean }).is_private,
   }));
 
   return NextResponse.json({ rows, total: count ?? 0, tags });
@@ -165,6 +189,7 @@ export async function POST(req: Request) {
     lead_type: isValidTeamCallLeadType(leadTypeRaw) ? leadTypeRaw : null,
     grade: isValidTeamCallGrade(gradeRaw) ? gradeRaw : null,
     source_event_id: sourceEventId,
+    is_private: parseIsPrivate(body.is_private),
     created_by: ctx.userId,
     updated_by: ctx.userId,
     updated_at: new Date().toISOString(),
@@ -187,7 +212,13 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json(
-    { call: { ...data, highlights: normalizeHighlights(data.highlights) } },
+    {
+      call: {
+        ...data,
+        highlights: normalizeHighlights(data.highlights),
+        is_private: !!(data as { is_private?: boolean }).is_private,
+      },
+    },
     { status: 201 },
   );
 }
