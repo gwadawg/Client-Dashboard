@@ -24,7 +24,9 @@ export type EditableClient = {
   source: string | null;
   website: string | null;
   brokerage_name: string | null;
+  legal_business_name: string | null;
   nmls: string | null;
+  city: string | null;
   state: string | null;
   states_licensed: string[] | null;
   timezone: string | null;
@@ -41,6 +43,9 @@ export type EditableClient = {
   performance_terms: string | null;
   churned_at: string | null;
   ghl_location_id?: string | null;
+  phone_live_transfer: string | null;
+  live_transfer_approved: boolean | null;
+  offer_summary: string | null;
 };
 
 type Draft = {
@@ -55,7 +60,9 @@ type Draft = {
   source: string;
   website: string;
   brokerage_name: string;
+  legal_business_name: string;
   nmls: string;
+  city: string;
   state: string;
   states_licensed: string[];
   timezone: string;
@@ -71,6 +78,9 @@ type Draft = {
   daily_adspend: string;
   performance_terms: string;
   churned_at: string;
+  phone_live_transfer: string;
+  live_transfer_approved: boolean;
+  offer_summary: string;
 };
 
 const LIFECYCLE_OPTIONS = ["new_account", "onboarding", "active", "paused", "off_boarding", "churned"];
@@ -94,7 +104,9 @@ export function clientToDraft(c: EditableClient): Draft {
     source: normalizeClientLeadSource(c.source) ?? "",
     website: c.website ?? "",
     brokerage_name: c.brokerage_name ?? "",
+    legal_business_name: c.legal_business_name ?? "",
     nmls: c.nmls ?? "",
+    city: c.city ?? "",
     state: c.state ?? "",
     states_licensed: c.states_licensed ?? [],
     timezone: c.timezone ?? "",
@@ -110,6 +122,9 @@ export function clientToDraft(c: EditableClient): Draft {
     daily_adspend: c.daily_adspend != null ? String(c.daily_adspend) : "",
     performance_terms: c.performance_terms ?? "",
     churned_at: toDateInputValue(c.churned_at),
+    phone_live_transfer: c.phone_live_transfer ?? "",
+    live_transfer_approved: c.live_transfer_approved === true,
+    offer_summary: c.offer_summary ?? "",
   };
 }
 
@@ -126,7 +141,9 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     source: normalizeClientLeadSource(draft.source),
     website: draft.website.trim() || null,
     brokerage_name: draft.brokerage_name.trim() || null,
+    legal_business_name: draft.legal_business_name.trim() || null,
     nmls: draft.nmls.trim() || null,
+    city: draft.city.trim() || null,
     state: draft.state.trim() || null,
     states_licensed: draft.states_licensed,
     timezone: draft.timezone.trim() || null,
@@ -138,6 +155,9 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     contract_term_months: draft.contract_term_months.trim() || null,
     contract_end_date: draft.contract_end_date || null,
     performance_terms: draft.performance_terms.trim() || null,
+    phone_live_transfer: draft.phone_live_transfer.trim() || null,
+    live_transfer_approved: draft.live_transfer_approved,
+    offer_summary: draft.offer_summary.trim() || null,
   };
   if (draft.lifecycle_status === "churned") {
     body.churned_at = draft.churned_at || null;
@@ -248,8 +268,10 @@ export default function ClientFileEditForm({
             />
           </label>
           <Field label="Website" value={draft.website} onChange={v => patch("website", v)} highlightEmpty />
+          <Field label="Company / brand" value={draft.legal_business_name} onChange={v => patch("legal_business_name", v)} />
           <Field label="Brokerage" value={draft.brokerage_name} onChange={v => patch("brokerage_name", v)} highlightEmpty />
           <Field label="NMLS" value={draft.nmls} onChange={v => patch("nmls", v)} highlightEmpty />
+          <Field label="City" value={draft.city} onChange={v => patch("city", v)} />
           <Field label="State" value={draft.state} onChange={v => patch("state", v)} highlightEmpty />
           <Field
             label="ClickUp task ID"
@@ -257,6 +279,41 @@ export default function ClientFileEditForm({
             onChange={v => patch("clickup_task_id", v)}
             placeholder="e.g. 86abc123"
           />
+          <Field
+            label="Live transfer phone"
+            value={draft.phone_live_transfer}
+            onChange={v => patch("phone_live_transfer", v)}
+            placeholder="Number for live transfers"
+          />
+          <label className="flex flex-col gap-1 justify-end">
+            <span className="text-xs uppercase tracking-wider" style={{ color: "#475569" }}>
+              Accepts live transfers
+            </span>
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none py-2" style={{ color: "#e2e8f0" }}>
+              <input
+                type="checkbox"
+                checked={draft.live_transfer_approved}
+                disabled={busy}
+                onChange={e => patch("live_transfer_approved", e.target.checked)}
+                className="rounded"
+              />
+              Yes
+            </label>
+          </label>
+          <label className="flex flex-col gap-1 col-span-2 md:col-span-3">
+            <span className="text-xs uppercase tracking-wider" style={{ color: "#475569" }}>
+              Offer summary
+            </span>
+            <textarea
+              value={draft.offer_summary}
+              disabled={busy}
+              onChange={e => patch("offer_summary", e.target.value)}
+              rows={2}
+              placeholder="Brief description of what this client is advertising (shown in Client Directory)"
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-y"
+              style={inputStyle()}
+            />
+          </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs uppercase tracking-wider" style={{ color: !draft.states_licensed.length ? "#f59e0b" : "#475569" }}>
               Licensed in{!draft.states_licensed.length ? " · missing" : ""}

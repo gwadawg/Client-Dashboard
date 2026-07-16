@@ -220,7 +220,7 @@ export const NAV: NavItem[] = [
   { view: "client_health",      label: "Client Success",        group: "Clients"      },
   { view: "heatmaps",           label: "Heat Maps",             group: "Clients"      },
   { view: "data_explorer",      label: "Data Explorer",         group: "Clients"      },
-  { view: "state_looker",       label: "State Looker",          group: "Clients"      },
+  { view: "state_looker",       label: "Client Directory",      group: "Clients"      },
   { view: "ceo",                label: "CEO Dashboard",         group: "Executive"    },
   { view: "ceo_raw",            label: "Raw Data",              group: "Executive"    },
   { view: "acquisition_kpis",          label: "Acquisition KPIs",      group: "Acquisition"  },

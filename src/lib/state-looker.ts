@@ -1,3 +1,5 @@
+import { normalizeReportingType } from '@/lib/kpi-layouts';
+import { REPORTING_TYPE_META } from '@/lib/reporting-types';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 
 export type StateLookerClient = {
@@ -9,6 +11,17 @@ export type StateLookerClient = {
   lifecycle_status: string | null;
   is_live: boolean;
   account_display_name: string | null;
+  /** Company / brand (legal business name). Shown separately from brokerage. */
+  company_name: string | null;
+  brokerage_name: string | null;
+  live_transfer_approved: boolean;
+  phone_live_transfer: string | null;
+  offer_summary: string | null;
+  /** Resolved blurb: custom offer_summary, else vertical default description. */
+  offer_blurb: string;
+  website: string | null;
+  city: string | null;
+  state: string | null;
 };
 
 export type StateLookerResult = {
@@ -20,7 +33,7 @@ export type StateLookerResult = {
   };
 };
 
-type RawClientRow = {
+export type RawStateLookerClientRow = {
   id: string;
   name: string;
   reporting_type: string | null;
@@ -29,24 +42,76 @@ type RawClientRow = {
   lifecycle_status: string | null;
   is_live: boolean | null;
   account_group_id: string | null;
+  legal_business_name?: string | null;
+  brokerage_name?: string | null;
+  live_transfer_approved?: boolean | null;
+  phone_live_transfer?: string | null;
+  offer_summary?: string | null;
+  website?: string | null;
+  city?: string | null;
+  state?: string | null;
 };
 
+function trimOrNull(value: string | null | undefined): string | null {
+  const t = typeof value === 'string' ? value.trim() : '';
+  return t || null;
+}
+
+/** Prefer legal business name; fall back to account/LO display name for company. */
+export function resolveCompanyName(
+  legalBusinessName: string | null | undefined,
+  accountDisplayName: string | null | undefined,
+): string | null {
+  return trimOrNull(legalBusinessName) ?? trimOrNull(accountDisplayName);
+}
+
+export function resolveOfferBlurb(
+  offerSummary: string | null | undefined,
+  reportingType: string | null | undefined,
+): string {
+  const custom = trimOrNull(offerSummary);
+  if (custom) return custom;
+  return REPORTING_TYPE_META[normalizeReportingType(reportingType)].description;
+}
+
 export function buildStateLookerResult(
-  rows: RawClientRow[],
+  rows: RawStateLookerClientRow[],
   accountGroups: Record<string, { display_name: string }>,
 ): StateLookerResult {
-  const clients: StateLookerClient[] = rows.map(row => ({
-    id: row.id,
-    name: row.name,
-    reporting_type: row.reporting_type,
-    sales_package: row.sales_package,
-    states_licensed: normalizeStatesLicensed(row.states_licensed) ?? [],
-    lifecycle_status: row.lifecycle_status,
-    is_live: row.is_live === true,
-    account_display_name: row.account_group_id
+  const clients: StateLookerClient[] = rows.map(row => {
+    const account_display_name = row.account_group_id
       ? accountGroups[row.account_group_id]?.display_name ?? null
-      : null,
-  }));
+      : null;
+    const company_name = resolveCompanyName(row.legal_business_name, account_display_name);
+    const brokerage_name = trimOrNull(row.brokerage_name);
+    // Avoid duplicating the same string under Company and Brokerage.
+    const brokerageDistinct =
+      brokerage_name &&
+      company_name &&
+      brokerage_name.toLowerCase() === company_name.toLowerCase()
+        ? null
+        : brokerage_name;
+
+    return {
+      id: row.id,
+      name: row.name,
+      reporting_type: row.reporting_type,
+      sales_package: row.sales_package,
+      states_licensed: normalizeStatesLicensed(row.states_licensed) ?? [],
+      lifecycle_status: row.lifecycle_status,
+      is_live: row.is_live === true,
+      account_display_name,
+      company_name,
+      brokerage_name: brokerageDistinct,
+      live_transfer_approved: row.live_transfer_approved === true,
+      phone_live_transfer: trimOrNull(row.phone_live_transfer),
+      offer_summary: trimOrNull(row.offer_summary),
+      offer_blurb: resolveOfferBlurb(row.offer_summary, row.reporting_type),
+      website: trimOrNull(row.website),
+      city: trimOrNull(row.city),
+      state: trimOrNull(row.state),
+    };
+  });
 
   const by_state: Record<string, string[]> = {};
   for (const client of clients) {

@@ -39,7 +39,7 @@ const CLIENT_NOTES_FIELDS =
   'id, note_type, reason_code, body, created_at, created_by, updated_at, related_call_id';
 
 const FILE_CLIENT_FIELDS =
-  'id, name, identity_client_id, is_live, reporting_type, service_program, sales_package, offer, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, nmls, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, clickup_task_id, created_at, churned_at';
+  'id, name, identity_client_id, is_live, reporting_type, service_program, sales_package, offer, offer_summary, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, legal_business_name, nmls, city, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, clickup_task_id, created_at, churned_at';
 
 const FILE_BILLING_FIELDS =
   'id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, passthrough_amount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, stripe_invoice_id, stripe_payment_intent_id, is_first_payment, created_at';
@@ -177,11 +177,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     'lifecycle_status', 'churned_at', 'performance_terms', 'billing_paused', 'billing_paused_note',
     // Identity / contact (Client Roster + Client File editor)
     'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'ghl_location_id', 'clickup_task_id',
-    'phone', 'source', 'website', 'brokerage_name', 'nmls', 'state', 'states_licensed', 'timezone',
+    'phone', 'source', 'website', 'brokerage_name', 'legal_business_name', 'nmls',
+    'city', 'state', 'states_licensed', 'timezone',
     'identity_client_id',
-    // Kick-off / ops fields
+    // Kick-off / ops fields + setter-facing directory blurb
     'phone_live_transfer', 'phone_notifications', 'live_transfer_approved',
-    'contact_role', 'appointment_settings', 'facebook_page_name',
+    'contact_role', 'appointment_settings', 'facebook_page_name', 'offer_summary',
     // Per-client KPI band overrides (Client Success benchmark editor)
     'kpi_benchmarks',
   ];

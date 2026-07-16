@@ -106,11 +106,16 @@ type FileClient = {
   source: string | null;
   website: string | null;
   brokerage_name: string | null;
+  legal_business_name: string | null;
   nmls: string | null;
+  city: string | null;
   state: string | null;
   states_licensed: string[] | null;
   timezone: string | null;
   ghl_location_id: string | null;
+  phone_live_transfer: string | null;
+  live_transfer_approved: boolean | null;
+  offer_summary: string | null;
   clickup_task_id?: string | null;
   created_at: string | null;
   churned_at: string | null;
@@ -823,9 +828,14 @@ export default function ClientFile({
                 <Detail label="Phone" value={client?.phone} missing={!client?.phone} />
                 <Detail label="Lead source" value={clientLeadSourceLabel(client?.source)} missing={!client?.source} />
                 <Detail label="Website" value={client?.website} missing={!client?.website} />
+                <Detail label="Company / brand" value={client?.legal_business_name} missing={!client?.legal_business_name} />
                 <Detail label="Brokerage" value={client?.brokerage_name} missing={!client?.brokerage_name} />
                 <Detail label="NMLS" value={client?.nmls} missing={!client?.nmls} />
-                <Detail label="State" value={client?.state} missing={!client?.state} />
+                <Detail
+                  label="Location"
+                  value={[client?.city, client?.state].filter(Boolean).join(", ") || null}
+                  missing={!client?.city && !client?.state}
+                />
                 <Detail label="Licensed in" value={formatStatesLicensed(client?.states_licensed)} wide missing={!client?.states_licensed?.length} />
                 <Detail label="Timezone" value={timezoneLabel(client?.timezone)} missing={!client?.timezone} />
               </div>
@@ -841,6 +851,13 @@ export default function ClientFile({
                   ) : null}
                   missing={!client?.ghl_location_id}
                 />
+                <Detail
+                  label="Accepts live transfers"
+                  value={client?.live_transfer_approved === true ? "Yes" : client?.live_transfer_approved === false ? "No" : null}
+                  missing={client?.live_transfer_approved == null}
+                />
+                <Detail label="Live transfer phone" value={client?.phone_live_transfer} missing={!client?.phone_live_transfer} />
+                <Detail label="Offer summary" value={client?.offer_summary} wide missing={!client?.offer_summary} />
                 <Detail
                   label="Client vertical"
                   value={client?.reporting_type ? (

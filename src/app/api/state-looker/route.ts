@@ -2,8 +2,25 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { buildStateLookerResult } from '@/lib/state-looker';
 
-const CLIENT_FIELDS =
-  'id, name, reporting_type, sales_package, states_licensed, lifecycle_status, is_live, account_group_id';
+/** Team-safe fields only — no billing, emails, or internal IDs. */
+const CLIENT_FIELDS = [
+  'id',
+  'name',
+  'reporting_type',
+  'sales_package',
+  'states_licensed',
+  'lifecycle_status',
+  'is_live',
+  'account_group_id',
+  'legal_business_name',
+  'brokerage_name',
+  'live_transfer_approved',
+  'phone_live_transfer',
+  'offer_summary',
+  'website',
+  'city',
+  'state',
+].join(', ');
 
 export async function GET() {
   const ctx = await getAuthContext();

@@ -78,6 +78,7 @@ create table if not exists clients (
 
   -- Offer / identity
   offer               text,       -- RM | DSCR | CALL_CENTER (mirrors reporting_type)
+  offer_summary       text,       -- brief ad/offer blurb for setter-facing directory
   service_program     text,       -- core | lead_gen (RM/DSCR only)
   nmls                text,
   brokerage_name      text,
@@ -130,6 +131,7 @@ alter table clients add column if not exists contract_end_date      date;
 alter table clients add column if not exists cs_status              text;
 alter table clients add column if not exists ad_status              text;
 alter table clients add column if not exists offer                  text;
+alter table clients add column if not exists offer_summary          text;
 alter table clients add column if not exists service_program        text;
 alter table clients add column if not exists nmls                   text;
 alter table clients add column if not exists brokerage_name         text;

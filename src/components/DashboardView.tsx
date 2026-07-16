@@ -36,6 +36,7 @@ import AcquisitionSalesReps from "./AcquisitionSalesReps";
 import ResourcesLibrary from "./ResourcesLibrary";
 import CallLibrary from "./CallLibrary";
 import AutomationsManager from "./AutomationsManager";
+import DataChatPanel from "./DataChatPanel";
 import KpiSections, { type SparkMap } from "./kpi/KpiSections";
 import KpiSection from "./kpi/KpiSection";
 import KpiCard from "./kpi/KpiCard";
@@ -1004,6 +1005,13 @@ export default function DashboardView({ isOwner = false, isAdmin = false, allowe
 
         </main>
       </div>
+
+      <DataChatPanel
+        startDate={dateStart}
+        endDate={dateEnd}
+        clients={clients}
+        selectedClientId={selectedClientId}
+      />
     </div>
   );
 }
