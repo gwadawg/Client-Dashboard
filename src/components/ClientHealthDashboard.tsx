@@ -694,12 +694,6 @@ export default function ClientHealthDashboard(_props: Props) {
         ))}
       </div>
 
-      <PendingInterventionsPanel
-        interventions={pendingInterventions}
-        segment={clientSegment}
-        onOpenClient={(id, name) => setDetail({ id, name })}
-      />
-
       <div
         className="rounded-xl px-4 py-3 text-xs leading-relaxed"
         style={{ background: "#0a1628", border: "1px solid rgba(56,189,248,0.18)", color: "#94a3b8" }}
@@ -1358,6 +1352,12 @@ export default function ClientHealthDashboard(_props: Props) {
           </table>
         </div>
       </div>
+
+      <PendingInterventionsPanel
+        interventions={pendingInterventions}
+        segment={clientSegment}
+        onOpenClient={(id, name) => setDetail({ id, name })}
+      />
 
       <p className="text-[10px]" style={{ color: "#334155" }}>
         {effectiveLens === "media_buyer" ? (
