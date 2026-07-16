@@ -136,37 +136,40 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
     }
 
     setSaving(true);
-    const body = teamCallDraftToApiBody(draft);
+    try {
+      const body = teamCallDraftToApiBody(draft);
 
-    if (modalMode === "add") {
-      const res = await fetch("/api/team-calls", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const d = await res.json();
-      if (!res.ok) {
-        alert(d.error ?? "Failed to save call");
-        setSaving(false);
-        return;
+      if (modalMode === "add") {
+        const res = await fetch("/api/team-calls", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(d.error ?? `Failed to save call (${res.status})`);
+          return;
+        }
+      } else if (modalMode === "edit" && editingRow) {
+        const res = await fetch(`/api/team-calls/${editingRow.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(d.error ?? `Failed to save call (${res.status})`);
+          return;
+        }
       }
-    } else if (modalMode === "edit" && editingRow) {
-      const res = await fetch(`/api/team-calls/${editingRow.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const d = await res.json();
-      if (!res.ok) {
-        alert(d.error ?? "Failed to save call");
-        setSaving(false);
-        return;
-      }
+
+      closeModal();
+      setReloadKey(k => k + 1);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to save call");
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
-    closeModal();
-    setReloadKey(k => k + 1);
   }
 
   async function handleDelete(row: TeamCallRow) {
