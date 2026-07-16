@@ -31,7 +31,8 @@ import ClientActionLog from "./ClientActionLog";
 import ClientTimelineChart from "./ClientTimelineChart";
 import ClientAiDiagnosis from "./ClientAiDiagnosis";
 import PeriodComparison from "./PeriodComparison";
-import { FOCUS_STYLES, type FocusResult } from "@/lib/client-health";
+import ClientKpiStandardsPanel from "./ClientKpiStandardsPanel";
+import { FOCUS_STYLES, type FocusResult, type ClientKpiBenchmarks } from "@/lib/client-health";
 
 type Props = {
   clientId: string;
@@ -68,6 +69,9 @@ type DetailResponse = {
   maturity?: MaturityInfo | null;
   trend: "improved" | "worsened" | "stable" | "new" | "insufficient";
   guidance: ConstraintGuidance;
+  kpi_benchmarks?: ClientKpiBenchmarks | null;
+  kpi_benchmarks_updated_at?: string | null;
+  kpi_benchmarks_note?: string | null;
 };
 
 const TIER_STYLES: Record<HealthTier, { bg: string; text: string; border: string }> = {
@@ -414,6 +418,17 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
               ))}
             </div>
           </div>
+
+          <ClientKpiStandardsPanel
+            clientId={clientId}
+            clientName={data.client_name}
+            isCallCenter={isHe}
+            snapshot={data.current}
+            benchmarks={data.kpi_benchmarks ?? null}
+            updatedAt={data.kpi_benchmarks_updated_at ?? null}
+            note={data.kpi_benchmarks_note ?? null}
+            onSaved={load}
+          />
 
           {/* CRM context */}
           {(crmNotes.length > 0 || crmCalls.length > 0) && (

@@ -1345,7 +1345,7 @@ export default function ClientHealthDashboard(_props: Props) {
                               className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
                               style={{ background: "rgba(96,165,250,0.15)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.3)" }}
                             >
-                              Open diagnosis & action log →
+                              Open diagnosis, KPI standards & action log →
                             </button>
                           </td>
                         </tr>

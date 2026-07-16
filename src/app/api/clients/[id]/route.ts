@@ -155,12 +155,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  // Editable from both the Client Roster and the Client Billing tabs.
-  const denied = requireAnyPermission(ctx, ['admin_clients', 'admin_billing']);
-  if (denied) return denied;
 
   const { id } = await params;
   const body = await req.json();
+
+  // Client Success may update only KPI judgment standards; full client edits stay admin.
+  const kpiOnlyKeys = new Set(['kpi_benchmarks', 'kpi_benchmarks_note']);
+  const bodyKeys = Object.keys(body ?? {});
+  const isKpiOnlyPatch =
+    bodyKeys.length > 0 && bodyKeys.every(k => kpiOnlyKeys.has(k));
+
+  const denied = isKpiOnlyPatch
+    ? requireAnyPermission(ctx, ['admin_clients', 'admin_billing', 'client_health'])
+    : requireAnyPermission(ctx, ['admin_clients', 'admin_billing']);
+  if (denied) return denied;
+
   const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
   const includeRevenue = canViewClientRevenue(subject);
   const revenueFields = new Set(['mrr', 'daily_adspend', 'pay_per_show', 'pay_per_bailed']);

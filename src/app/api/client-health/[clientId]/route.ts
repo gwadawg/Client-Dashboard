@@ -52,7 +52,13 @@ export async function GET(
 
   const [{ data: client, error: clientError }, { data: events, error: eventsError }, { data: actionRows }] =
     await Promise.all([
-      ctx.service.from('clients').select('id, name, is_live, reporting_type, kpi_benchmarks').eq('id', clientId).single(),
+      ctx.service
+        .from('clients')
+        .select(
+          'id, name, is_live, reporting_type, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note',
+        )
+        .eq('id', clientId)
+        .single(),
       ctx.service
         .from('events')
         .select(EVENT_SELECT)
@@ -169,6 +175,13 @@ export async function GET(
 
   const guidance = buildConstraintGuidance(row.current, reporting_type);
 
+  const clientRow = client as {
+    kpi_benchmarks?: unknown;
+    kpi_benchmarks_updated_at?: string | null;
+    kpi_benchmarks_updated_by?: string | null;
+    kpi_benchmarks_note?: string | null;
+  };
+
   return NextResponse.json({
     client_id: client.id,
     client_name: client.name,
@@ -201,5 +214,8 @@ export async function GET(
     trend: row.trend,
     trend_delta_score: row.trend_delta_score,
     guidance,
+    kpi_benchmarks: benchmarks,
+    kpi_benchmarks_updated_at: clientRow.kpi_benchmarks_updated_at ?? null,
+    kpi_benchmarks_note: clientRow.kpi_benchmarks_note ?? null,
   });
 }
