@@ -1,26 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
-import { buildStateLookerResult } from '@/lib/state-looker';
+import { buildStateLookerResult, type RawStateLookerClientRow } from '@/lib/state-looker';
 
 /** Team-safe fields only — no billing, emails, or internal IDs. */
-const CLIENT_FIELDS = [
-  'id',
-  'name',
-  'reporting_type',
-  'sales_package',
-  'states_licensed',
-  'lifecycle_status',
-  'is_live',
-  'account_group_id',
-  'legal_business_name',
-  'brokerage_name',
-  'live_transfer_approved',
-  'phone_live_transfer',
-  'offer_summary',
-  'website',
-  'city',
-  'state',
-].join(', ');
+const CLIENT_FIELDS =
+  'id, name, reporting_type, sales_package, states_licensed, lifecycle_status, is_live, account_group_id, legal_business_name, brokerage_name, live_transfer_approved, phone_live_transfer, offer_summary, website, city, state';
 
 export async function GET() {
   const ctx = await getAuthContext();
@@ -38,7 +22,7 @@ export async function GET() {
     return NextResponse.json({ error: clientsRes.error.message }, { status: 500 });
   }
 
-  const rows = clientsRes.data ?? [];
+  const rows = (clientsRes.data ?? []) as unknown as RawStateLookerClientRow[];
   const groupIds = [...new Set(rows.map(c => c.account_group_id).filter(Boolean))] as string[];
 
   let accountGroups: Record<string, { display_name: string }> = {};
