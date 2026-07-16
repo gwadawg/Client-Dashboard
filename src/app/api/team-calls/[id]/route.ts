@@ -36,30 +36,6 @@ type TeamCallAccessRow = {
   created_by: string | null;
 };
 
-async function loadTeamCallForAccess(
-  service: {
-    from: (table: string) => {
-      select: (cols: string) => {
-        eq: (col: string, val: string) => {
-          is: (col: string, val: null) => {
-            maybeSingle: () => Promise<{ data: TeamCallAccessRow | null; error: { message: string } | null }>;
-          };
-        };
-      };
-    };
-  },
-  id: string,
-): Promise<{ row: TeamCallAccessRow | null; error: string | null }> {
-  const { data, error } = await service
-    .from('team_calls')
-    .select('id, is_private, created_by')
-    .eq('id', id)
-    .is('deleted_at', null)
-    .maybeSingle();
-  if (error) return { row: null, error: error.message };
-  return { row: data, error: null };
-}
-
 function canAccessPrivateCall(row: TeamCallAccessRow, userId: string): boolean {
   if (!row.is_private) return true;
   return row.created_by === userId;
@@ -74,8 +50,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const body = await req.json();
 
-  const { row: existing, error: loadError } = await loadTeamCallForAccess(ctx.service, id);
-  if (loadError) return NextResponse.json({ error: loadError }, { status: 500 });
+  const { data: existingRaw, error: loadError } = await ctx.service
+    .from('team_calls')
+    .select('id, is_private, created_by')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (loadError) return NextResponse.json({ error: loadError.message }, { status: 500 });
+  const existing = existingRaw as TeamCallAccessRow | null;
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!canAccessPrivateCall(existing, ctx.userId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -199,8 +182,15 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
 
-  const { row: existing, error: loadError } = await loadTeamCallForAccess(ctx.service, id);
-  if (loadError) return NextResponse.json({ error: loadError }, { status: 500 });
+  const { data: existingRaw, error: loadError } = await ctx.service
+    .from('team_calls')
+    .select('id, is_private, created_by')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (loadError) return NextResponse.json({ error: loadError.message }, { status: 500 });
+  const existing = existingRaw as TeamCallAccessRow | null;
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!canAccessPrivateCall(existing, ctx.userId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });

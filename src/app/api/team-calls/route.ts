@@ -28,40 +28,6 @@ function parseIsPrivate(value: unknown): boolean {
   return value === true || value === 'true' || value === 1 || value === '1';
 }
 
-/** Non-private rows, plus private rows owned by the current user. */
-function applyTeamCallVisibilityFilter<T extends { or: (filter: string) => T }>(
-  query: T,
-  userId: string,
-): T {
-  return query.or(`is_private.eq.false,created_by.eq.${userId}`);
-}
-
-async function fetchVisibleTags(
-  service: {
-    from: (table: string) => {
-      select: (cols: string) => {
-        is: (col: string, val: null) => {
-          or: (filter: string) => Promise<{ data: { tags: string[] | null }[] | null }>;
-        };
-      };
-    };
-  },
-  userId: string,
-) {
-  const { data } = await service
-    .from('team_calls')
-    .select('tags')
-    .is('deleted_at', null)
-    .or(`is_private.eq.false,created_by.eq.${userId}`);
-  const tagSet = new Set<string>();
-  for (const row of data ?? []) {
-    for (const tag of row.tags ?? []) {
-      if (typeof tag === 'string' && tag.trim()) tagSet.add(tag);
-    }
-  }
-  return [...tagSet].sort();
-}
-
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -94,10 +60,9 @@ export async function GET(req: Request) {
     .from('team_calls')
     .select(TEAM_CALL_FIELDS, { count: 'exact' })
     .is('deleted_at', null)
+    .or(`is_private.eq.false,created_by.eq.${ctx.userId}`)
     .order('called_at', { ascending: false })
     .range(offset, offset + pageSize - 1);
-
-  query = applyTeamCallVisibilityFilter(query, ctx.userId);
 
   if (callType) query = query.eq('call_type', callType);
   if (leadType) query = query.eq('lead_type', leadType);
@@ -115,11 +80,23 @@ export async function GET(req: Request) {
     }
   }
 
-  const [{ data, count, error }, tags] = await Promise.all([
+  const [{ data, count, error }, tagsResult] = await Promise.all([
     query,
-    fetchVisibleTags(ctx.service, ctx.userId),
+    ctx.service
+      .from('team_calls')
+      .select('tags')
+      .is('deleted_at', null)
+      .or(`is_private.eq.false,created_by.eq.${ctx.userId}`),
   ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const tagSet = new Set<string>();
+  for (const row of tagsResult.data ?? []) {
+    for (const t of (row as { tags: string[] | null }).tags ?? []) {
+      if (typeof t === 'string' && t.trim()) tagSet.add(t);
+    }
+  }
+  const tags = [...tagSet].sort();
 
   const rows = (data ?? []).map(row => ({
     ...row,
