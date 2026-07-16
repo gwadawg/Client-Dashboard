@@ -148,6 +148,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     updates.is_private = parseIsPrivate(body.is_private);
   }
 
+  if (body.is_important !== undefined) {
+    updates.is_important = parseIsPrivate(body.is_important);
+  }
+
   if (Object.keys(updates).length <= 2) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   }
@@ -170,6 +174,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ...data,
       highlights: normalizeHighlights(data.highlights),
       is_private: !!(data as { is_private?: boolean }).is_private,
+      is_important: !!(data as { is_important?: boolean }).is_important,
     },
   });
 }

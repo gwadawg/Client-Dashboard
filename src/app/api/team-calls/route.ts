@@ -24,7 +24,7 @@ function parseCalledAt(value: unknown): string | null {
   return d.toISOString();
 }
 
-function parseIsPrivate(value: unknown): boolean {
+function parseBoolFlag(value: unknown): boolean {
   return value === true || value === 'true' || value === 1 || value === '1';
 }
 
@@ -39,6 +39,7 @@ export async function GET(req: Request) {
   const leadType = searchParams.get('leadType')?.trim().toUpperCase() || null;
   const grade = searchParams.get('grade')?.trim() || null;
   const tag = searchParams.get('tag')?.trim().toLowerCase();
+  const importantOnly = searchParams.get('important') === '1' || searchParams.get('important') === 'true';
   const startDate = searchParams.get('startDate');
   const endDate = searchParams.get('endDate');
   const search = searchParams.get('search')?.trim();
@@ -67,6 +68,7 @@ export async function GET(req: Request) {
   if (callType) query = query.eq('call_type', callType);
   if (leadType) query = query.eq('lead_type', leadType);
   if (grade) query = query.eq('grade', grade);
+  if (importantOnly) query = query.eq('is_important', true);
   if (tag) query = query.contains('tags', [tag]);
   if (startDate) query = query.gte('called_at', `${startDate}T00:00:00.000Z`);
   if (endDate) query = query.lte('called_at', `${endDate}T23:59:59.999Z`);
@@ -102,6 +104,7 @@ export async function GET(req: Request) {
     ...row,
     highlights: normalizeHighlights(row.highlights),
     is_private: !!(row as { is_private?: boolean }).is_private,
+    is_important: !!(row as { is_important?: boolean }).is_important,
   }));
 
   return NextResponse.json({ rows, total: count ?? 0, tags });
@@ -166,7 +169,8 @@ export async function POST(req: Request) {
     lead_type: isValidTeamCallLeadType(leadTypeRaw) ? leadTypeRaw : null,
     grade: isValidTeamCallGrade(gradeRaw) ? gradeRaw : null,
     source_event_id: sourceEventId,
-    is_private: parseIsPrivate(body.is_private),
+    is_private: parseBoolFlag(body.is_private),
+    is_important: parseBoolFlag(body.is_important),
     created_by: ctx.userId,
     updated_by: ctx.userId,
     updated_at: new Date().toISOString(),
@@ -194,6 +198,7 @@ export async function POST(req: Request) {
         ...data,
         highlights: normalizeHighlights(data.highlights),
         is_private: !!(data as { is_private?: boolean }).is_private,
+        is_important: !!(data as { is_important?: boolean }).is_important,
       },
     },
     { status: 201 },

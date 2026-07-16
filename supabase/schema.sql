@@ -789,6 +789,7 @@ create table if not exists team_calls (
   grade            text,
   source_event_id  uuid references events(id) on delete set null,
   is_private       boolean not null default false,
+  is_important     boolean not null default false,
   deleted_at       timestamptz,
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),

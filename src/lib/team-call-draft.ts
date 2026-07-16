@@ -30,6 +30,7 @@ export type TeamCallDraft = {
   grade: TeamCallGrade | '';
   source_event_id: string | null;
   is_private: boolean;
+  is_important: boolean;
 };
 
 export function toDatetimeLocal(iso?: string): string {
@@ -54,6 +55,7 @@ export function defaultTeamCallDraft(callType = 'coaching'): TeamCallDraft {
     grade: '',
     source_event_id: null,
     is_private: false,
+    is_important: false,
   };
 }
 
@@ -123,6 +125,7 @@ export function teamCallDraftToApiBody(draft: TeamCallDraft): Record<string, unk
     grade: draft.grade || null,
     source_event_id: draft.source_event_id,
     is_private: !!draft.is_private,
+    is_important: !!draft.is_important,
   };
 }
 
@@ -148,6 +151,7 @@ export function rowToTeamCallDraft(row: TeamCallRow): TeamCallDraft {
     grade: row.grade ?? '',
     source_event_id: row.source_event_id ?? null,
     is_private: !!row.is_private,
+    is_important: !!row.is_important,
   };
 }
 

@@ -56,6 +56,7 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [callTypeFilter, setCallTypeFilter] = useState("");
+  const [importantOnly, setImportantOnly] = useState(false);
   const [tagFilter, setTagFilter] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -71,12 +72,13 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
 
   useEffect(() => {
     setPage(1);
-  }, [callTypeFilter, tagFilter, search, startDate, endDate]);
+  }, [callTypeFilter, importantOnly, tagFilter, search, startDate, endDate]);
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page) });
     if (callTypeFilter) params.set("callType", callTypeFilter);
+    if (importantOnly) params.set("important", "1");
     if (tagFilter) params.set("tag", tagFilter);
     if (search.trim()) params.set("search", search.trim());
     if (startDate) params.set("startDate", startDate);
@@ -91,7 +93,7 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [callTypeFilter, tagFilter, search, page, startDate, endDate, reloadKey]);
+  }, [callTypeFilter, importantOnly, tagFilter, search, page, startDate, endDate, reloadKey]);
 
   const totalPages = Math.max(1, Math.ceil(total / 50));
 
@@ -252,6 +254,21 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
         ))}
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setImportantOnly(v => !v)}
+          className="text-xs font-semibold px-3 py-1.5 rounded-full"
+          style={{
+            color: importantOnly ? "#fbbf24" : "#64748b",
+            background: importantOnly ? "rgba(251,191,36,0.15)" : "rgba(255,255,255,0.04)",
+            border: `1px solid ${importantOnly ? "rgba(251,191,36,0.4)" : "rgba(255,255,255,0.08)"}`,
+          }}
+        >
+          ★ Important only
+        </button>
+      </div>
+
       {allTags.length > 0 && (
         <div className="flex flex-wrap gap-2">
           <button
@@ -333,6 +350,14 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
                     >
                       {teamCallTypeLabel(row.call_type)}
                     </span>
+                    {row.is_important && (
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full font-semibold shrink-0"
+                        style={{ color: "#fbbf24", background: "rgba(251,191,36,0.12)" }}
+                      >
+                        ★ Important
+                      </span>
+                    )}
                     {row.is_private && (
                       <span
                         className="text-xs px-2 py-0.5 rounded-full font-semibold shrink-0"

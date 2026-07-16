@@ -70,13 +70,14 @@ export type TeamCallRow = {
   grade: TeamCallGrade | null;
   source_event_id: string | null;
   is_private: boolean;
+  is_important: boolean;
   created_at: string;
   updated_at: string;
   created_by?: string | null;
 };
 
 export const TEAM_CALL_FIELDS =
-  'id, title, call_type, called_at, participants, recording_url, transcript, summary, highlights, highlights_text, tags, duration_seconds, lead_type, grade, source_event_id, is_private, created_at, updated_at, created_by, updated_by';
+  'id, title, call_type, called_at, participants, recording_url, transcript, summary, highlights, highlights_text, tags, duration_seconds, lead_type, grade, source_event_id, is_private, is_important, created_at, updated_at, created_by, updated_by';
 
 export function isValidTeamCallType(type: string | null | undefined): type is TeamCallTypeCode {
   return !!type && (TEAM_CALL_TYPE_CODES as readonly string[]).includes(type);

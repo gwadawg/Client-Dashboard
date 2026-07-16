@@ -137,6 +137,14 @@ export default function CallLibraryDetail({
               >
                 {teamCallTypeLabel(call.call_type)}
               </span>
+              {call.is_important && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                  style={{ color: "#fbbf24", background: "rgba(251,191,36,0.12)" }}
+                >
+                  ★ Important
+                </span>
+              )}
               {call.is_private && (
                 <span
                   className="text-xs px-2 py-0.5 rounded-full font-semibold"
