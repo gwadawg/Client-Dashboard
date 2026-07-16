@@ -37,6 +37,9 @@ export default function CallHighlightEditor({ highlights, onChange, disabled }: 
       <div className="flex items-center justify-between">
         <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>
           Highlight moments
+          <span className="normal-case font-normal tracking-normal ml-1" style={{ color: "#334155" }}>
+            (optional)
+          </span>
         </span>
         <button
           type="button"
@@ -51,7 +54,7 @@ export default function CallHighlightEditor({ highlights, onChange, disabled }: 
 
       {highlights.length === 0 ? (
         <p className="text-xs" style={{ color: "#475569" }}>
-          Add timestamped takeaways — e.g. 12:34 for objection handling gems.
+          Optional — add timestamped takeaways if useful (e.g. 12:34 for a key decision).
         </p>
       ) : (
         highlights.map((h, i) => (

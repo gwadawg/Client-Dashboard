@@ -2,10 +2,11 @@
 
 export const TEAM_CALL_TYPE_CODES = [
   'coaching',
+  'training',
   'team_meeting',
   'team_review',
+  'interview',
   'role_play',
-  'training',
   '1on1',
   'sales_review',
   'other',
@@ -13,18 +14,19 @@ export const TEAM_CALL_TYPE_CODES = [
 
 export type TeamCallTypeCode = (typeof TEAM_CALL_TYPE_CODES)[number];
 
+/** Types shown in Team Calls UI (internal trainings, reviews, interviews — not sales dials). */
 export const TEAM_CALL_TYPE_OPTIONS: { value: TeamCallTypeCode; label: string }[] = [
   { value: 'coaching', label: 'Coaching' },
-  { value: 'team_meeting', label: 'Team Meeting' },
-  { value: 'team_review', label: 'Team Review' },
-  { value: 'role_play', label: 'Role Play' },
   { value: 'training', label: 'Training' },
+  { value: 'team_meeting', label: 'Team Meeting' },
+  { value: 'team_review', label: 'High-level Reflection / Goal Setting' },
+  { value: 'interview', label: 'Interview' },
+  { value: 'role_play', label: 'Role Play' },
   { value: '1on1', label: '1:1' },
-  { value: 'sales_review', label: 'Sales Review' },
   { value: 'other', label: 'Other' },
 ];
 
-/** Product line for exemplar dials saved from Recordings. */
+/** Product line for exemplar dials saved from Recordings (kept for API/back-compat). */
 export const TEAM_CALL_LEAD_TYPE_CODES = ['RM', 'DSCR', 'HE'] as const;
 export type TeamCallLeadType = (typeof TEAM_CALL_LEAD_TYPE_CODES)[number];
 
@@ -34,7 +36,7 @@ export const TEAM_CALL_LEAD_TYPE_OPTIONS: { value: TeamCallLeadType; label: stri
   { value: 'HE', label: 'HE — Home Equity / Call Center' },
 ];
 
-/** Quality grade for curated "good call" examples. */
+/** Quality grade for curated "good call" examples (kept for API/back-compat). */
 export const TEAM_CALL_GRADE_CODES = ['A+', 'A', 'A-', 'B'] as const;
 export type TeamCallGrade = (typeof TEAM_CALL_GRADE_CODES)[number];
 

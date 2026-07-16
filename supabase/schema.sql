@@ -804,7 +804,7 @@ create table if not exists team_calls (
     )
   ) stored,
   constraint team_calls_type_check check (
-    call_type in ('coaching', 'team_meeting', 'team_review', 'role_play', 'training', '1on1', 'sales_review', 'other')
+    call_type in ('coaching', 'training', 'team_meeting', 'team_review', 'interview', 'role_play', '1on1', 'sales_review', 'other')
   ),
   constraint team_calls_lead_type_check check (
     lead_type is null or lead_type in ('RM', 'DSCR', 'HE')

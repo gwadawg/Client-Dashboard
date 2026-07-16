@@ -145,22 +145,6 @@ export default function CallLibraryDetail({
                   Private
                 </span>
               )}
-              {call.lead_type && (
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                  style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)" }}
-                >
-                  {call.lead_type}
-                </span>
-              )}
-              {call.grade && (
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                  style={{ color: "#34d399", background: "rgba(52,211,153,0.12)" }}
-                >
-                  Grade {call.grade}
-                </span>
-              )}
               <span className="text-xs" style={{ color: "#64748b" }}>{formatDateTime(call.called_at)}</span>
               {call.duration_seconds != null && call.duration_seconds > 0 && (
                 <span className="text-xs" style={{ color: "#64748b" }}>

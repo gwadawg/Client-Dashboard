@@ -1,13 +1,7 @@
 "use client";
 
 import CallHighlightEditor from "@/components/CallHighlightEditor";
-import {
-  TEAM_CALL_GRADE_OPTIONS,
-  TEAM_CALL_LEAD_TYPE_OPTIONS,
-  TEAM_CALL_TYPE_OPTIONS,
-  type TeamCallGrade,
-  type TeamCallLeadType,
-} from "@/lib/team-calls";
+import { TEAM_CALL_TYPE_OPTIONS } from "@/lib/team-calls";
 import type { TeamCallDraft } from "@/lib/team-call-draft";
 
 type Props = {
@@ -41,7 +35,7 @@ export default function CallLibraryFormFields({ draft, onChange, disabled }: Pro
           disabled={disabled}
           value={draft.title}
           onChange={e => patch("title", e.target.value)}
-          placeholder="e.g. Setter coaching — budget objections"
+          placeholder="e.g. June reflection & July goals"
           style={fieldStyle}
         />
       </label>
@@ -58,6 +52,10 @@ export default function CallLibraryFormFields({ draft, onChange, disabled }: Pro
             {TEAM_CALL_TYPE_OPTIONS.map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
+            {/* Legacy types (e.g. sales_review) kept editable if already set */}
+            {!TEAM_CALL_TYPE_OPTIONS.some(o => o.value === draft.call_type) && draft.call_type ? (
+              <option value={draft.call_type}>{draft.call_type}</option>
+            ) : null}
           </select>
         </label>
         <label className="block space-y-1">
@@ -91,39 +89,8 @@ export default function CallLibraryFormFields({ draft, onChange, disabled }: Pro
         </span>
       </label>
 
-      <div className="grid grid-cols-2 gap-3">
-        <label className="block space-y-1">
-          <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Lead type</span>
-          <select
-            disabled={disabled}
-            value={draft.lead_type}
-            onChange={e => patch("lead_type", e.target.value as TeamCallLeadType | "")}
-            style={fieldStyle}
-          >
-            <option value="">—</option>
-            {TEAM_CALL_LEAD_TYPE_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Grade</span>
-          <select
-            disabled={disabled}
-            value={draft.grade}
-            onChange={e => patch("grade", e.target.value as TeamCallGrade | "")}
-            style={fieldStyle}
-          >
-            <option value="">—</option>
-            {TEAM_CALL_GRADE_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-
       <label className="block space-y-1">
-        <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Participants / Rep</span>
+        <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Participants</span>
         <input
           type="text"
           disabled={disabled}
@@ -167,7 +134,7 @@ export default function CallLibraryFormFields({ draft, onChange, disabled }: Pro
           disabled={disabled}
           value={draft.tags}
           onChange={e => patch("tags", e.target.value)}
-          placeholder="objections, setter, role-play (comma-separated)"
+          placeholder="goals, hiring, training (comma-separated)"
           style={fieldStyle}
         />
       </label>
@@ -178,7 +145,7 @@ export default function CallLibraryFormFields({ draft, onChange, disabled }: Pro
           disabled={disabled}
           value={draft.summary}
           onChange={e => patch("summary", e.target.value)}
-          placeholder="Context and overall takeaways from this call…"
+          placeholder="What was covered, decisions made, and next steps…"
           rows={3}
           style={{ ...fieldStyle, resize: "vertical" }}
         />

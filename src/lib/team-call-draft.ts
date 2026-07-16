@@ -83,10 +83,13 @@ export function highlightStoredToDraft(h: CallHighlight): HighlightDraft {
 export function validateTeamCallDraft(draft: TeamCallDraft): string | null {
   if (!draft.title.trim()) return 'Title is required';
   if (!draft.called_at) return 'Call date is required';
+  // Highlights are optional. Incomplete rows are dropped on save.
+  // Only reject a row that has a timestamp filled in but it's invalid.
   for (const h of draft.highlights) {
-    if (!h.timestamp.trim() && !h.label.trim() && !h.takeaway.trim()) continue;
-    if (parseTimestamp(h.timestamp) === null) {
-      return 'Each highlight needs a valid timestamp (MM:SS or H:MM:SS)';
+    const ts = h.timestamp.trim();
+    if (!ts) continue;
+    if (parseTimestamp(ts) === null) {
+      return 'Highlight timestamps must be MM:SS or H:MM:SS (or leave the row empty)';
     }
   }
   return null;

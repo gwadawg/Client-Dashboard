@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import CallLibraryDetail from "@/components/CallLibraryDetail";
 import CallLibraryFormFields from "@/components/CallLibraryFormFields";
 import {
-  TEAM_CALL_GRADE_OPTIONS,
-  TEAM_CALL_LEAD_TYPE_OPTIONS,
   TEAM_CALL_TYPE_OPTIONS,
   teamCallTypeLabel,
   type TeamCallRow,
@@ -58,8 +56,6 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [callTypeFilter, setCallTypeFilter] = useState("");
-  const [leadTypeFilter, setLeadTypeFilter] = useState("");
-  const [gradeFilter, setGradeFilter] = useState("");
   const [tagFilter, setTagFilter] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -75,14 +71,12 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
 
   useEffect(() => {
     setPage(1);
-  }, [callTypeFilter, leadTypeFilter, gradeFilter, tagFilter, search, startDate, endDate]);
+  }, [callTypeFilter, tagFilter, search, startDate, endDate]);
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page) });
     if (callTypeFilter) params.set("callType", callTypeFilter);
-    if (leadTypeFilter) params.set("leadType", leadTypeFilter);
-    if (gradeFilter) params.set("grade", gradeFilter);
     if (tagFilter) params.set("tag", tagFilter);
     if (search.trim()) params.set("search", search.trim());
     if (startDate) params.set("startDate", startDate);
@@ -97,7 +91,7 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [callTypeFilter, leadTypeFilter, gradeFilter, tagFilter, search, page, startDate, endDate, reloadKey]);
+  }, [callTypeFilter, tagFilter, search, page, startDate, endDate, reloadKey]);
 
   const totalPages = Math.max(1, Math.ceil(total / 50));
 
@@ -194,7 +188,7 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
       <div>
         <h1 className="text-xl font-bold" style={{ color: "#f1f5f9" }}>Team Calls</h1>
         <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-          Internal coaching, monthly/quarterly team reviews, standups, and meetings — not dial examples. Call-rep and B2B examples live under Agents → Examples and Acquisition → Call Examples.
+          Internal trainings, coaching, interviews, and high-level reflection / goal-setting calls — not client or sales dials. Dial examples live under Agents → Examples and Acquisition → Call Examples.
         </p>
       </div>
 
@@ -251,65 +245,6 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
             }}
           >
             {o.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setLeadTypeFilter("")}
-          className="text-xs font-semibold px-3 py-1.5 rounded-full"
-          style={{
-            color: !leadTypeFilter ? "#f59e0b" : "#64748b",
-            background: !leadTypeFilter ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.04)",
-            border: `1px solid ${!leadTypeFilter ? "rgba(245,158,11,0.35)" : "rgba(255,255,255,0.08)"}`,
-          }}
-        >
-          All leads
-        </button>
-        {TEAM_CALL_LEAD_TYPE_OPTIONS.map(o => (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => setLeadTypeFilter(leadTypeFilter === o.value ? "" : o.value)}
-            className="text-xs font-semibold px-3 py-1.5 rounded-full"
-            style={{
-              color: leadTypeFilter === o.value ? "#f59e0b" : "#64748b",
-              background: leadTypeFilter === o.value ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.04)",
-              border: `1px solid ${leadTypeFilter === o.value ? "rgba(245,158,11,0.35)" : "rgba(255,255,255,0.08)"}`,
-            }}
-          >
-            {o.value}
-          </button>
-        ))}
-        <span className="text-xs self-center mx-1" style={{ color: "#1e3a5f" }}>|</span>
-        <button
-          type="button"
-          onClick={() => setGradeFilter("")}
-          className="text-xs font-semibold px-3 py-1.5 rounded-full"
-          style={{
-            color: !gradeFilter ? "#34d399" : "#64748b",
-            background: !gradeFilter ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.04)",
-            border: `1px solid ${!gradeFilter ? "rgba(52,211,153,0.3)" : "rgba(255,255,255,0.08)"}`,
-          }}
-        >
-          All grades
-        </button>
-        {TEAM_CALL_GRADE_OPTIONS.map(o => (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => setGradeFilter(gradeFilter === o.value ? "" : o.value)}
-            className="text-xs font-semibold px-3 py-1.5 rounded-full"
-            style={{
-              color: gradeFilter === o.value ? "#34d399" : "#64748b",
-              background: gradeFilter === o.value ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.04)",
-              border: `1px solid ${gradeFilter === o.value ? "rgba(52,211,153,0.3)" : "rgba(255,255,255,0.08)"}`,
-            }}
-            title={o.label}
-          >
-            {o.value}
           </button>
         ))}
       </div>
@@ -401,22 +336,6 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
                         style={{ color: "#f87171", background: "rgba(248,113,113,0.12)" }}
                       >
                         Private
-                      </span>
-                    )}
-                    {row.lead_type && (
-                      <span
-                        className="text-xs px-2 py-0.5 rounded-full font-semibold shrink-0"
-                        style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)" }}
-                      >
-                        {row.lead_type}
-                      </span>
-                    )}
-                    {row.grade && (
-                      <span
-                        className="text-xs px-2 py-0.5 rounded-full font-semibold shrink-0"
-                        style={{ color: "#34d399", background: "rgba(52,211,153,0.12)" }}
-                      >
-                        {row.grade}
                       </span>
                     )}
                     {row.recording_url && (
