@@ -177,43 +177,48 @@ function ClientDirectoryTable({
                     idx < clients.length - 1 ? "1px solid rgba(255,255,255,0.05)" : undefined,
                 }}
               >
-                <td className="px-4 py-3.5 align-top">
-                  <div className="flex flex-col gap-1.5 min-w-[160px]">
-                    <span className="font-medium leading-snug" style={{ color: "#f1f5f9" }}>
-                      {client.name}
-                    </span>
+                <td className="px-4 py-2.5 align-middle">
+                  <div className="flex flex-col gap-0.5 min-w-[150px]">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium leading-snug" style={{ color: "#f1f5f9" }}>
+                        {client.name}
+                      </span>
+                      <ReportingTypeBadge value={client.reporting_type} />
+                      {client.lifecycle_status !== "active" && (
+                        <span
+                          className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                          style={{ color: "#fbbf24", background: "rgba(251,191,36,0.1)" }}
+                        >
+                          {lifecycleStatusLabel(client.lifecycle_status)}
+                        </span>
+                      )}
+                    </div>
                     {client.account_display_name &&
                       client.account_display_name !== client.company_name && (
                         <span className="text-xs" style={{ color: "#64748b" }}>
                           {client.account_display_name}
                         </span>
                       )}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <ReportingTypeBadge value={client.reporting_type} />
-                      <span className="text-[11px] capitalize" style={{ color: "#64748b" }}>
-                        {lifecycleStatusLabel(client.lifecycle_status)}
-                      </span>
-                    </div>
                   </div>
                 </td>
-                <td className="px-4 py-3.5 align-top min-w-[150px]">
+                <td className="px-4 py-2.5 align-middle min-w-[140px]">
                   <CompanyCell client={client} />
                 </td>
-                <td className="px-4 py-3.5 align-top whitespace-nowrap">
+                <td className="px-4 py-2.5 align-middle whitespace-nowrap">
                   <LiveTransferBadge approved={client.live_transfer_approved} />
                 </td>
-                <td className="px-4 py-3.5 align-top min-w-[200px] max-w-[280px]">
-                  <span className="text-sm leading-snug" style={{ color: "#cbd5e1" }} title={client.offer_blurb}>
+                <td className="px-4 py-2.5 align-middle min-w-[180px] max-w-[260px]">
+                  <span className="text-xs leading-snug" style={{ color: "#cbd5e1" }} title={client.offer_blurb}>
                     {client.offer_blurb}
                   </span>
                 </td>
-                <td className="px-4 py-3.5 align-top whitespace-nowrap">
+                <td className="px-4 py-2.5 align-middle whitespace-nowrap">
                   {client.website ? (
                     <a
                       href={websiteHref(client.website)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm underline-offset-2 hover:underline"
+                      className="text-xs underline-offset-2 hover:underline"
                       style={{ color: "#38bdf8" }}
                     >
                       {client.website.replace(/^https?:\/\//i, "")}
@@ -222,10 +227,10 @@ function ClientDirectoryTable({
                     <span style={{ color: "#334155" }}>—</span>
                   )}
                 </td>
-                <td className="px-4 py-3.5 align-top whitespace-nowrap text-sm" style={{ color: "#94a3b8" }}>
+                <td className="px-4 py-2.5 align-middle whitespace-nowrap text-xs" style={{ color: "#94a3b8" }}>
                   {formatLocation(client)}
                 </td>
-                <td className="px-4 py-3.5 align-top whitespace-nowrap text-sm">
+                <td className="px-4 py-2.5 align-middle whitespace-nowrap text-xs">
                   {client.phone_live_transfer ? (
                     <a
                       href={`tel:${client.phone_live_transfer}`}
@@ -244,7 +249,7 @@ function ClientDirectoryTable({
                     <span style={{ color: "#334155" }}>—</span>
                   )}
                 </td>
-                <td className="px-4 py-3.5 align-top min-w-[140px] max-w-[220px]">
+                <td className="px-4 py-2.5 align-middle min-w-[120px] max-w-[200px]">
                   <StatesCell codes={client.states_licensed} highlight={selectedState} />
                 </td>
               </tr>
@@ -498,7 +503,7 @@ export default function StateLooker() {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-full min-h-0">
+    <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>
           Client directory
@@ -553,7 +558,7 @@ export default function StateLooker() {
       />
 
       {tab === "directory" ? (
-        <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
+        <div className="flex flex-col gap-3">
           <p className="text-xs" style={{ color: "#64748b" }}>
             {directoryClients.length} client{directoryClients.length === 1 ? "" : "s"}
             {lifecycleFilter === "active" ? " · active only" : ""}
@@ -564,9 +569,9 @@ export default function StateLooker() {
           />
         </div>
       ) : (
-        <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
+        <div className="flex flex-col lg:flex-row gap-4 items-start">
           <div
-            className="lg:w-72 shrink-0 flex flex-col rounded-xl overflow-hidden min-h-[280px] lg:min-h-0"
+            className="w-full lg:w-72 shrink-0 flex flex-col rounded-xl overflow-hidden max-h-[420px] lg:max-h-[calc(100vh-220px)] lg:sticky lg:top-0"
             style={{ border: "1px solid rgba(255,255,255,0.08)" }}
           >
             <div className="px-3 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -623,7 +628,7 @@ export default function StateLooker() {
             </div>
           </div>
 
-          <div className="flex-1 min-w-0 flex flex-col gap-3 min-h-0 overflow-y-auto">
+          <div className="flex-1 min-w-0 flex flex-col gap-3 w-full">
             {selectedState ? (
               <>
                 <div>
