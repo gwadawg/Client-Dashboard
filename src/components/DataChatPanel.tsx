@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type ScopeId = "fulfillment_kpis" | "setter_performance";
+type ScopeId = "client_questions" | "call_rep_questions" | "client_success";
 
 type ScopeOption = {
   id: ScopeId;
   label: string;
   description: string;
+  usesClientFilter?: boolean;
 };
 
 type ClientOption = { id: string; name: string; is_live?: boolean };
@@ -29,6 +30,24 @@ const panelBg = {
   background: "#0a1628",
   border: "1px solid rgba(255,255,255,0.08)",
 } as React.CSSProperties;
+
+const EXAMPLES: Record<ScopeId, string[]> = {
+  client_questions: [
+    "What states is Community First licensed in?",
+    "Who are the contacts and what’s their show rate this month?",
+    "Summarize the last check-in call with this client.",
+  ],
+  call_rep_questions: [
+    "Who led dials this period?",
+    "What’s team pickup rate?",
+    "Which agents have the best show rate?",
+  ],
+  client_success: [
+    "What’s the health constraint on this account?",
+    "What should I say about their booking drop?",
+    "Find a playbook for LO bail / show issues.",
+  ],
+};
 
 export default function DataChatPanel({
   startDate,
@@ -83,6 +102,7 @@ export default function DataChatPanel({
   }, [messages, loading]);
 
   const scopeMeta = scopes.find(s => s.id === scope);
+  const showClientFilter = scopeMeta?.usesClientFilter !== false;
 
   const liveOnly = clientFilter === "__live__";
   const clientId =
@@ -152,6 +172,33 @@ export default function DataChatPanel({
     setLoading(false);
   };
 
+  const clientFilterSelect = (
+    className: string,
+    onChangeExtra?: () => void,
+  ) => (
+    <select
+      value={clientFilter}
+      onChange={e => {
+        setClientFilter(e.target.value);
+        onChangeExtra?.();
+      }}
+      className={className}
+      style={{
+        background: "#020617",
+        color: "#e2e8f0",
+        border: "1px solid rgba(255,255,255,0.08)",
+      }}
+    >
+      <option value="">All clients</option>
+      <option value="__live__">Live clients only</option>
+      {clients.map(c => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </select>
+  );
+
   if (!open) {
     return (
       <button
@@ -185,7 +232,7 @@ export default function DataChatPanel({
           </p>
           <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
             {step === "scope"
-              ? "Pick a data set first — keeps answers focused and cheap."
+              ? "Pick a chat type — billing & payroll stay locked out."
               : `${scopeMeta?.label ?? "Chat"} · ${startDate} → ${endDate}`}
           </p>
         </div>
@@ -208,7 +255,7 @@ export default function DataChatPanel({
           )}
           {!scopesError && scopes.length === 0 && (
             <p className="text-xs" style={{ color: "#64748b" }}>
-              Loading available data sets…
+              Loading available chats…
             </p>
           )}
           {scopes.map(s => (
@@ -231,34 +278,15 @@ export default function DataChatPanel({
             </button>
           ))}
 
-          {scopes.some(s => s.id === "fulfillment_kpis") && (
-            <div className="pt-2">
-              <label className="block text-xs mb-1.5" style={{ color: "#64748b" }}>
-                Default client filter (used when you start a chat)
-              </label>
-              <select
-                value={clientFilter}
-                onChange={e => setClientFilter(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-sm"
-                style={{
-                  background: "#020617",
-                  color: "#e2e8f0",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                }}
-              >
-                <option value="">All clients</option>
-                <option value="__live__">Live clients only</option>
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] mt-1.5" style={{ color: "#475569" }}>
-                Dates follow the dashboard range: {startDate} → {endDate}
-              </p>
-            </div>
-          )}
+          <div className="pt-2">
+            <label className="block text-xs mb-1.5" style={{ color: "#64748b" }}>
+              Default client filter
+            </label>
+            {clientFilterSelect("w-full rounded-lg px-3 py-2 text-sm")}
+            <p className="text-[11px] mt-1.5" style={{ color: "#475569" }}>
+              Dates follow the dashboard range: {startDate} → {endDate}
+            </p>
+          </div>
         </div>
       ) : (
         <>
@@ -269,54 +297,25 @@ export default function DataChatPanel({
             <button
               type="button"
               onClick={resetScope}
-              className="text-xs"
+              className="text-xs shrink-0"
               style={{ color: "#94a3b8" }}
             >
-              ← Change data set
+              ← Change chat
             </button>
-            {scope === "fulfillment_kpis" && (
-              <select
-                value={clientFilter}
-                onChange={e => {
-                  setClientFilter(e.target.value);
-                  setMessages([]);
-                }}
-                className="max-w-[55%] rounded-md px-2 py-1 text-xs"
-                style={{
-                  background: "#020617",
-                  color: "#cbd5e1",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                }}
-              >
-                <option value="">All clients</option>
-                <option value="__live__">Live only</option>
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            )}
+            {showClientFilter &&
+              clientFilterSelect("max-w-[55%] rounded-md px-2 py-1 text-xs", () =>
+                setMessages([]),
+              )}
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            {messages.length === 0 && (
+            {messages.length === 0 && scope && (
               <div className="text-xs leading-relaxed space-y-2" style={{ color: "#64748b" }}>
-                <p>Ask about numbers in this data set only. Examples:</p>
+                <p>Examples:</p>
                 <ul className="list-disc pl-4 space-y-1">
-                  {scope === "fulfillment_kpis" ? (
-                    <>
-                      <li>What’s the show rate this period?</li>
-                      <li>How many qualified leads vs bookings?</li>
-                      <li>What’s CPConv for Community First?</li>
-                    </>
-                  ) : (
-                    <>
-                      <li>Who led dials this period?</li>
-                      <li>What’s team pickup rate?</li>
-                      <li>Which agents have the best show rate?</li>
-                    </>
-                  )}
+                  {EXAMPLES[scope].map(ex => (
+                    <li key={ex}>{ex}</li>
+                  ))}
                 </ul>
               </div>
             )}

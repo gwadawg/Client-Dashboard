@@ -1,11 +1,11 @@
 /**
- * Data Chat — scoped analytics assistant.
+ * Data Chat — scoped analytics + success coaching assistant.
  *
  * Layer map (context engineering):
- * - scopes.ts   → session locks + permission gates (what may load)
+ * - scopes.ts   → session locks + permission gates + tool allowlists
  * - tool-defs.ts → minimal model-facing tool schemas
- * - tools.ts     → trimmed JSON from existing metric libs (cold evidence → warm payload)
- * - prompt.ts    → hot runtime policy (no KPI formula dump)
+ * - tools.ts     → trimmed JSON from existing libs (never billing/payroll)
+ * - prompt.ts    → hot runtime policy
  * - run.ts       → Anthropic tool loop
  *
  * Product docs: docs/DATA_CHAT.md · KPI truth: docs/KPIS.md

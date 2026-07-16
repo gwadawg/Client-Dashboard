@@ -1,39 +1,64 @@
 # Data Chat — Mr. Waiz
 
-Scoped, tool-calling analytics assistant inside the dashboard. The user picks a
-**data set** before chatting so the model never sees the whole warehouse.
+Scoped, tool-calling assistant inside the dashboard. The user picks a **chat
+type** before asking so the model never sees the whole warehouse — and never
+sees billing/payroll.
 
 **Owner:** product / call-center ops  
-**Status:** live (v1)  
-**KPI truth:** [`docs/KPIS.md`](KPIS.md) — Data Chat does not redefine formulas.
+**Status:** live (v2 scopes)  
+**KPI truth:** [`docs/KPIS.md`](KPIS.md)
 
 ---
 
-## Context model (why it is shaped this way)
+## Context model
 
 | Layer | What loads | Where |
 |-------|------------|--------|
-| Session lock | One scope + date range + optional client | UI → `POST /api/ai/data-chat` body |
-| Hot policy | Short system prompt (no formula dump) | `src/lib/ai/data-chat/prompt.ts` |
-| Warm tools | 2 tools per scope, trimmed JSON | `tool-defs.ts` + `tools.ts` |
-| Cold evidence | Events / spend / roster via existing libs | `metrics.ts`, `dial-analytics.ts`, … |
+| Session lock | One scope + date range + optional client | UI → API body |
+| Hot policy | Short system prompt + hard exclusions | `prompt.ts` |
+| Warm tools | Small allowlisted tool set per scope | `tool-defs.ts` + `tools.ts` |
+| Cold evidence | DB / library fetched **only when a tool runs** | metrics, clients, calls, library |
 
-**Rule:** expand by adding a new scope (or a named tool), not by widening an
-existing tool to “all tables.”
+**Rule:** expand by adding a scope or a named tool. Do not widen a tool to “all tables.”
+
+**Hard exclusions (all scopes):** MRR, invoices, Stripe, payroll, expense ledger, billing amounts.
 
 ---
 
-## v1 scopes
+## Scopes (v2)
 
-| Scope id | UI label | Permissions (any) | Tools |
-|----------|----------|-------------------|--------|
-| `fulfillment_kpis` | Client fulfillment KPIs | `dashboard`, `agents` | `get_fulfillment_metrics`, `list_clients` |
-| `setter_performance` | Setter / dialer performance | `dial_analytics`, `agents`, `agent_scorecards` | `get_dial_performance`, `get_agent_scorecards` |
+| Scope id | UI label | Tools (summary) |
+|----------|----------|-----------------|
+| `client_questions` | Client Questions | profile + contacts + fulfillment KPIs + call search/detail |
+| `call_rep_questions` | Call Rep Questions | dial analytics + agent scorecards |
+| `client_success` | Client Success | profile + KPIs + health snapshot + notes + interventions + playbook search/load |
 
-Filters locked for the conversation:
+Permissions are listed in `src/lib/ai/data-chat/scopes.ts` (any-of keys per scope).
 
-- `start_date` / `end_date` (from dashboard date preset)
-- optional `client_id` or `live_only`
+---
+
+## Connecting a business knowledge repo (token-safe)
+
+Do **not** paste the other repo into the system prompt.
+
+Best pattern (matches Client Success today):
+
+1. **Curate** high-signal docs (playbooks, SOPs, response frameworks) into Mr. Waiz
+   `content/library/` / `library_documents` (or a dedicated knowledge table).
+2. **Index** metadata only (title, description, department, slug) — always cheap.
+3. **Retrieve on demand** via tools:
+   - `search_playbooks(query)` → metadata hits
+   - `get_playbook(slug)` → truncated body for that one doc
+4. Optional later: embeddings / chunk RAG over the synced library so search is
+   semantic; still only inject top-k chunks when the tool runs.
+
+Sync options from an external business repo (e.g. Wm-os):
+
+- CI job / script that copies approved markdown into `content/library`
+- Or webhook that upserts `library_documents` rows
+- Never auto-ingest billing/payroll folders
+
+Chat SDK / Slack can reuse the same `runDataChat` + scopes later; keep one brain.
 
 ---
 
@@ -41,60 +66,23 @@ Filters locked for the conversation:
 
 ```
 src/lib/ai/data-chat/
-  scopes.ts      # registry + permission gates + tool allowlists
-  tool-defs.ts   # Anthropic schemas only
-  tools.ts       # executors (trimmed payloads)
-  prompt.ts      # runtime system prompt
-  run.ts         # Anthropic tool loop
-  index.ts       # public exports
+  scopes.ts      # registry + permissions + allowlists
+  tool-defs.ts   # Anthropic schemas
+  tools.ts       # trimmed executors (no billing fields)
+  prompt.ts      # runtime policy
+  run.ts         # tool loop
+  index.ts
 
-src/app/api/ai/data-chat/route.ts   # GET scopes · POST chat
-src/components/DataChatPanel.tsx    # scope picker → chat UI
+src/app/api/ai/data-chat/route.ts
+src/components/DataChatPanel.tsx
 ```
-
-Related one-shot AI (not chat): `src/lib/ai-diagnose.ts` + client-health diagnose route.
 
 ---
 
-## API
+## Extending
 
-```
-GET  /api/ai/data-chat
-POST /api/ai/data-chat
-```
-
-**POST body**
-
-```json
-{
-  "scope": "fulfillment_kpis",
-  "filters": {
-    "start_date": "2026-07-01",
-    "end_date": "2026-07-16",
-    "client_id": null,
-    "live_only": true
-  },
-  "messages": [{ "role": "user", "content": "What's the show rate?" }]
-}
-```
-
-Auth: logged-in user; scope forbidden → 403. Needs `ANTHROPIC_API_KEY`.
-
----
-
-## Extending (checklist)
-
-1. Add scope row in `scopes.ts` (permissions + tool name list).
-2. Add Anthropic schemas in `tool-defs.ts`.
-3. Implement trimmed executor in `tools.ts` (reuse `src/lib/*` metrics helpers — do not query ad hoc).
-4. Gate with the same permission keys as the underlying dashboard API.
-5. Update this doc’s scope table.
-6. Keep payloads small (summaries / top-N rows, no raw event dumps).
-
----
-
-## Non-goals (v1)
-
-- Whole-database RAG or embeddings
-- Expenses / payroll / acquisition funnel (separate future scopes)
-- Streaming UI (can add later without changing the scope model)
+1. Add scope row in `scopes.ts`.
+2. Schemas in `tool-defs.ts`.
+3. Executor in `tools.ts` (reuse `src/lib/*`; strip confidential columns).
+4. Update this doc.
+5. Keep payloads small (snippets / top-N / truncated bodies).

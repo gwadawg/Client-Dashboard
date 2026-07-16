@@ -9,7 +9,11 @@ import {
   type DataChatScope,
 } from '@/lib/ai/data-chat';
 
-const SCOPES = new Set<DataChatScope>(['fulfillment_kpis', 'setter_performance']);
+const SCOPES = new Set<DataChatScope>([
+  'client_questions',
+  'call_rep_questions',
+  'client_success',
+]);
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -29,6 +33,7 @@ export async function GET() {
       id: s.id,
       label: s.label,
       description: s.description,
+      usesClientFilter: s.usesClientFilter,
     })),
   });
 }
@@ -58,7 +63,10 @@ export async function POST(req: Request) {
   const scope = payload.scope;
   if (typeof scope !== 'string' || !SCOPES.has(scope as DataChatScope)) {
     return NextResponse.json(
-      { error: 'scope must be fulfillment_kpis or setter_performance' },
+      {
+        error:
+          'scope must be client_questions, call_rep_questions, or client_success',
+      },
       { status: 400 },
     );
   }

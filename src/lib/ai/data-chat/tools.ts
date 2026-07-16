@@ -15,9 +15,20 @@ import {
 import { buildRosterMatcher } from '../../agent-roster';
 import { fetchAgentEventsInRange } from '../../agent-event-fetch';
 import { computeSpeedToLead, type SpeedToLeadEventRow } from '../../speed-to-lead';
+import { CLIENT_CONTACT_FIELDS } from '../../client-contacts';
+import { CLIENT_CALL_FIELDS } from '../../client-calls';
+import { LIBRARY_DOCS } from '../../library-manifest';
+import { loadLibraryDoc } from '../../library-content';
 import { TOOLS_BY_SCOPE, type DataChatFilters, type DataChatScope } from './scopes';
 
 export type { DataChatFilters, DataChatScope };
+
+/** Profile fields safe for chat — no MRR, billing, adspend contracts. */
+const SAFE_CLIENT_FIELDS =
+  'id, name, is_live, reporting_type, service_program, sales_package, offer, offer_summary, lifecycle_status, client_stage, primary_contact_name, email, phone, website, brokerage_name, legal_business_name, nmls, city, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, launch_date, date_signed, source, created_at';
+
+const PLAYBOOK_BODY_MAX = 6000;
+const TRANSCRIPT_SNIPPET = 280;
 
 const METRICS_EVENT_SELECT =
   'client_id, event_type, ghl_contact_id, lead_phone, lead_email, lead_name, phone_number_used, agent_name, occurred_at, occurred_at_has_time, lead_created_at, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state';
@@ -360,6 +371,262 @@ async function fetchAgentScorecards(ctx: AuthContext, filters: DataChatFilters) 
   };
 }
 
+function resolveRequiredClientId(
+  filters: DataChatFilters,
+  input: Record<string, unknown>,
+): string {
+  const fromInput =
+    typeof input.client_id === 'string' && input.client_id.trim()
+      ? input.client_id.trim()
+      : null;
+  const id = fromInput || filters.client_id || null;
+  if (!id) {
+    throw new Error('client_id is required — pick a client in the filter or pass client_id.');
+  }
+  return id;
+}
+
+function clampLimit(value: unknown, fallback: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.min(max, Math.floor(value)));
+}
+
+function snippet(text: string | null | undefined, max = TRANSCRIPT_SNIPPET): string | null {
+  if (!text?.trim()) return null;
+  const t = text.trim().replace(/\s+/g, ' ');
+  return t.length <= max ? t : `${t.slice(0, max)}…`;
+}
+
+async function fetchClientProfile(ctx: AuthContext, clientId: string) {
+  const [{ data: client, error: clientError }, { data: contacts, error: contactsError }] =
+    await Promise.all([
+      ctx.service.from('clients').select(SAFE_CLIENT_FIELDS).eq('id', clientId).single(),
+      ctx.service
+        .from('client_contacts')
+        .select(CLIENT_CONTACT_FIELDS)
+        .eq('client_id', clientId)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true }),
+    ]);
+
+  if (clientError || !client) {
+    throw new Error(clientError?.message ?? 'Client not found');
+  }
+  if (contactsError) throw new Error(contactsError.message);
+
+  return {
+    client,
+    contacts: (contacts ?? []).map(c => ({
+      id: c.id,
+      contact_type: c.contact_type,
+      name: c.name,
+      email: c.email,
+      phone: c.phone,
+      nmls: c.nmls,
+      states_licensed: c.states_licensed,
+      notes: c.notes,
+    })),
+  };
+}
+
+async function searchClientCalls(
+  ctx: AuthContext,
+  clientId: string,
+  callType?: string,
+  limit = 10,
+) {
+  let query = ctx.service
+    .from('client_calls')
+    .select(
+      'id, client_id, call_type, called_at, disposition, duration_seconds, notes, attendees, transcript, follow_up_due_at, recording_url',
+    )
+    .eq('client_id', clientId)
+    .is('deleted_at', null)
+    .order('called_at', { ascending: false })
+    .limit(limit);
+
+  if (callType?.trim()) {
+    query = query.eq('call_type', callType.trim());
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return {
+    client_id: clientId,
+    calls: (data ?? []).map(row => ({
+      id: row.id,
+      call_type: row.call_type,
+      called_at: row.called_at,
+      disposition: row.disposition,
+      duration_seconds: row.duration_seconds,
+      follow_up_due_at: row.follow_up_due_at,
+      has_recording: !!row.recording_url,
+      has_transcript: !!row.transcript,
+      notes_snippet: snippet(row.notes, 200),
+      transcript_snippet: snippet(row.transcript),
+      attendees: row.attendees,
+    })),
+  };
+}
+
+async function fetchClientCall(ctx: AuthContext, callId: string) {
+  const { data, error } = await ctx.service
+    .from('client_calls')
+    .select(CLIENT_CALL_FIELDS)
+    .eq('id', callId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('Call not found');
+
+  return {
+    call: {
+      id: data.id,
+      client_id: data.client_id,
+      call_type: data.call_type,
+      called_at: data.called_at,
+      disposition: data.disposition,
+      duration_seconds: data.duration_seconds,
+      follow_up_due_at: data.follow_up_due_at,
+      notes: data.notes,
+      attendees: data.attendees,
+      checkin_form: data.checkin_form,
+      recording_url: data.recording_url,
+      transcript: data.transcript
+        ? data.transcript.length > 20000
+          ? `${data.transcript.slice(0, 20000)}…[truncated]`
+          : data.transcript
+        : null,
+    },
+  };
+}
+
+async function fetchClientHealthSummary(ctx: AuthContext, clientId: string) {
+  const [{ data: client }, { data: snapshot }, { data: actions }] = await Promise.all([
+    ctx.service
+      .from('clients')
+      .select('id, name, lifecycle_status, cs_status, ad_status, is_live')
+      .eq('id', clientId)
+      .maybeSingle(),
+    ctx.service
+      .from('client_health_snapshots')
+      .select(
+        'id, period_start, period_end, window_code, cpconv, cpql, cpl, conversation_yield, show_rate, booking_rate, lead_to_qual, attention_score, worst_tier, primary_constraint, constraint_label, created_at',
+      )
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    ctx.service
+      .from('client_action_logs')
+      .select('id, title, layer, constraint_label, status, review_date, created_at')
+      .eq('client_id', clientId)
+      .in('status', ['planned', 'in_progress', 'measuring'])
+      .order('review_date', { ascending: true })
+      .limit(10),
+  ]);
+
+  if (!client) throw new Error('Client not found');
+
+  return {
+    client: {
+      id: client.id,
+      name: client.name,
+      lifecycle_status: client.lifecycle_status,
+      cs_status: client.cs_status,
+      ad_status: client.ad_status,
+      is_live: client.is_live,
+    },
+    latest_snapshot: snapshot ?? null,
+    open_interventions: actions ?? [],
+  };
+}
+
+async function fetchClientNotes(ctx: AuthContext, clientId: string, limit = 15) {
+  const { data, error } = await ctx.service
+    .from('client_notes')
+    .select('id, note_type, reason_code, body, related_call_id, created_at')
+    .eq('client_id', clientId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+
+  return {
+    client_id: clientId,
+    notes: (data ?? []).map(n => ({
+      id: n.id,
+      note_type: n.note_type,
+      reason_code: n.reason_code,
+      body: snippet(n.body, 800) ?? '',
+      related_call_id: n.related_call_id,
+      created_at: n.created_at,
+    })),
+  };
+}
+
+async function fetchClientInterventions(ctx: AuthContext, clientId: string, limit = 15) {
+  const { data, error } = await ctx.service
+    .from('client_action_logs')
+    .select(
+      'id, title, layer, constraint_label, change_description, hypothesis, success_metric, status, review_date, outcome_notes, created_at',
+    )
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+  return { client_id: clientId, interventions: data ?? [] };
+}
+
+function searchPlaybooks(query: string, department?: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) throw new Error('query is required');
+
+  const dept = department?.trim().toLowerCase();
+  const hits = LIBRARY_DOCS.filter(doc => {
+    if (doc.status === 'draft') return false;
+    if (dept && (doc.department ?? '') !== dept && !doc.domain.includes(dept)) return false;
+    const hay = `${doc.title} ${doc.description} ${doc.slug} ${doc.domain} ${doc.artifact_type}`.toLowerCase();
+    return q.split(/\s+/).every(token => hay.includes(token));
+  })
+    .slice(0, 12)
+    .map(doc => ({
+      slug: doc.slug,
+      title: doc.title,
+      description: doc.description,
+      department: doc.department ?? null,
+      domain: doc.domain,
+      artifact_type: doc.artifact_type,
+      owner: doc.owner,
+    }));
+
+  return { query: q, department: dept ?? null, results: hits };
+}
+
+async function fetchPlaybook(slug: string) {
+  const doc = await loadLibraryDoc(slug);
+  if (!doc) throw new Error(`Playbook not found: ${slug}`);
+
+  const body =
+    doc.body.length > PLAYBOOK_BODY_MAX
+      ? `${doc.body.slice(0, PLAYBOOK_BODY_MAX)}\n\n…[truncated — ask a narrower question or another section]`
+      : doc.body;
+
+  return {
+    slug: doc.meta.slug,
+    title: doc.meta.title,
+    description: doc.meta.description,
+    department: doc.meta.department ?? null,
+    artifact_type: doc.meta.artifact_type,
+    source: doc.source,
+    body,
+  };
+}
+
 export async function executeDataChatTool(
   ctx: AuthContext,
   scope: DataChatScope,
@@ -386,6 +653,47 @@ export async function executeDataChatTool(
       return fetchDialPerformance(ctx, filters, overrideClientId);
     case 'get_agent_scorecards':
       return fetchAgentScorecards(ctx, filters);
+    case 'get_client_profile':
+      return fetchClientProfile(ctx, resolveRequiredClientId(filters, input));
+    case 'search_client_calls':
+      return searchClientCalls(
+        ctx,
+        resolveRequiredClientId(filters, input),
+        typeof input.call_type === 'string' ? input.call_type : undefined,
+        clampLimit(input.limit, 10, 20),
+      );
+    case 'get_client_call': {
+      const callId =
+        typeof input.call_id === 'string' && input.call_id.trim()
+          ? input.call_id.trim()
+          : '';
+      if (!callId) throw new Error('call_id is required');
+      return fetchClientCall(ctx, callId);
+    }
+    case 'get_client_health_summary':
+      return fetchClientHealthSummary(ctx, resolveRequiredClientId(filters, input));
+    case 'get_client_notes':
+      return fetchClientNotes(
+        ctx,
+        resolveRequiredClientId(filters, input),
+        clampLimit(input.limit, 15, 30),
+      );
+    case 'get_client_interventions':
+      return fetchClientInterventions(
+        ctx,
+        resolveRequiredClientId(filters, input),
+        clampLimit(input.limit, 15, 30),
+      );
+    case 'search_playbooks': {
+      const query = typeof input.query === 'string' ? input.query : '';
+      const department = typeof input.department === 'string' ? input.department : undefined;
+      return searchPlaybooks(query, department);
+    }
+    case 'get_playbook': {
+      const slug = typeof input.slug === 'string' ? input.slug.trim() : '';
+      if (!slug) throw new Error('slug is required');
+      return fetchPlaybook(slug);
+    }
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
