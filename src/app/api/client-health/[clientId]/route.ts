@@ -16,8 +16,9 @@ import { normalizeReportingType, usesCallCenterKpiLayout } from '@/lib/kpi-layou
 import { fetchCombinedSpendForMetrics, fetchMetaClicksSum } from '@/lib/spend';
 import type { EventRow } from '@/lib/metrics';
 
+// Lead identity required for unique conversation / hand-raise / booking rates.
 const EVENT_SELECT =
-  'occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state';
+  'occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state, ghl_contact_id, lead_phone, lead_email, lead_name, client_id';
 
 type DatedEventRow = EventRow & { occurred_at: string };
 

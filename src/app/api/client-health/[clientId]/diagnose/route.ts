@@ -73,7 +73,7 @@ export async function POST(
       ctx.service
         .from('events')
         .select(
-          'event_type, occurred_at, is_qualified, is_pickup, is_conversation, speed_to_lead_seconds, is_hot, is_out_of_state',
+          'event_type, occurred_at, is_qualified, is_pickup, is_conversation, speed_to_lead_seconds, is_hot, is_out_of_state, ghl_contact_id, lead_phone, lead_email, lead_name, client_id',
         )
         .eq('client_id', clientId)
         .gte('occurred_at', `${w30Start}T00:00:00.000Z`)

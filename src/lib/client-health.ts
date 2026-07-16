@@ -400,11 +400,12 @@ export function buildClientHealthSnapshot(
   // metric. Previously this was shows-only (= CPS) mislabeled as CPConv; corrected to
   // the conversation-inclusive definition so the live-transfer path is credited.
   const cpconv = metrics.cp_conversation;
-  // A conversation = live transfer + show + claimed. Used as the CPConv denominator and
-  // for conversation yield below.
-  const conversation_count = metrics.live_transfers + metrics.claimed + metrics.shows;
-  // Conversation yield = conversations ÷ qualified leads (credits the live-transfer path,
-  // not just shows), keeping CPQL ÷ CY == CPConv consistent.
+  // Unique leads who showed, were claimed, or live-transferred — same denominator as
+  // metrics.cp_conversation. Raw event sums double-count and inflated the volume guard
+  // so a $0 CPConv (missing identity fields) could still grade as "Above KPI".
+  const conversation_count = metrics.unique_conversations;
+  // Conversation yield = unique conversations ÷ qualified leads (credits the live-transfer
+  // path, not just shows), keeping CPQL ÷ CY == CPConv consistent.
   const conversation_yield =
     metrics.qualified_leads > 0 ? conversation_count / metrics.qualified_leads : 0;
 
@@ -622,10 +623,10 @@ export function buildConstraintGuidance(
   const m = snapshot.metrics;
   const layer = CONSTRAINT_LAYER[snapshot.constraint];
 
-  const conversationCount = m.live_transfers + m.claimed + m.shows;
+  const conversationCount = m.unique_conversations;
   const cpconvMath =
     conversationCount > 0
-      ? `${formatMoney(m.ad_spend)} spend ÷ ${conversationCount} conversation${conversationCount === 1 ? '' : 's'} (live transfers + shows + claimed) = ${formatMoney(snapshot.cpconv)} CPConv`
+      ? `${formatMoney(m.ad_spend)} spend ÷ ${conversationCount} unique conversation${conversationCount === 1 ? '' : 's'} (show ∪ claimed ∪ live transfer) = ${formatMoney(snapshot.cpconv)} CPConv`
       : `No conversations in period — CPConv cannot be computed (${formatMoney(m.ad_spend)} spend, 0 conversations)`;
 
   const crossCheck =
@@ -633,7 +634,7 @@ export function buildConstraintGuidance(
       ? `Cross-check: CPQL ${formatMoney(snapshot.cpql)} ÷ CY ${snapshot.conversation_yield.toFixed(3)} = ${formatMoney(
           snapshot.cpql / snapshot.conversation_yield,
         )}`
-      : 'Cross-check unavailable (need qualified leads + shows).';
+      : 'Cross-check unavailable (need qualified leads + conversations).';
 
   const base = { layer, cpconvMath, crossCheck };
 
@@ -1311,7 +1312,7 @@ export function buildRecentLeading(
     qualified_leads: m.qualified_leads,
     dials: m.outbound_dials,
     lead_to_qualified_pct: m.new_leads > 0 ? (m.qualified_leads / m.new_leads) * 100 : 0,
-    conversations: m.live_transfers + m.claimed + m.shows,
+    conversations: m.unique_conversations,
     booking_rate: isHe ? m.lead_booking_rate : m.appt_booking_rate,
     hand_raise_rate: m.hand_raise_rate,
     cpl,

@@ -138,7 +138,7 @@ function minVolumeForMetric(key: SuccessMetricKey, snap: ClientHealthSnapshot): 
   const m = snap.metrics;
   switch (key) {
     case 'cpconv':
-      return m.live_transfers + m.claimed + m.shows >= 5;
+      return m.unique_conversations >= 5;
     case 'cpql':
       return m.qualified_leads >= 3;
     case 'cpl':

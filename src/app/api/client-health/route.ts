@@ -22,8 +22,11 @@ import { normalizeReportingType, usesCallCenterKpiLayout } from '@/lib/kpi-layou
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import type { EventRow, SpendRow } from '@/lib/metrics';
 
+// Lead identity fields are required: calculateMetrics dedupes conversations /
+// hand-raises / bookings via leadIdentityKey (ghl_contact_id → phone → email → name).
+// Omitting them zeros unique_conversations → CPConv $0 and hand-raise 0%.
 const EVENT_SELECT =
-  'client_id, occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state';
+  'client_id, occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state, ghl_contact_id, lead_phone, lead_email, lead_name';
 
 type SpendByClientRow = {
   client_id: string;

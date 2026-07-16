@@ -109,7 +109,7 @@ export async function POST(req: Request) {
       ctx.service
         .from('events')
         .select(
-          'occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state',
+          'occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state, ghl_contact_id, lead_phone, lead_email, lead_name, client_id',
         )
         .eq('client_id', client_id)
         .gte('occurred_at', `${baselineStart}T00:00:00.000Z`)
@@ -250,7 +250,7 @@ async function evaluateOneAction(
     ctx.service
       .from('events')
       .select(
-        'occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state',
+        'occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state, ghl_contact_id, lead_phone, lead_email, lead_name, client_id',
       )
       .eq('client_id', action.client_id)
       .gte('occurred_at', `${changeDate}T00:00:00.000Z`)
