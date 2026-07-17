@@ -20,6 +20,7 @@ export type View =
   | "client_health"
   | "ops_overview"
   | "state_looker"
+  | "team_dashboard_ccm"
   | HubView
   | "resources"
   | "call_library"
@@ -206,6 +207,7 @@ export function tabLabelForHub(hub: HubView, tab: string): string | undefined {
 
 // Sidebar group ordering.
 export const NAV_GROUPS = [
+  "Team Dashboards",
   "Clients",
   "Executive",
   "Acquisition",
@@ -214,6 +216,7 @@ export const NAV_GROUPS = [
 ] as const;
 
 export const NAV: NavItem[] = [
+  { view: "team_dashboard_ccm", label: "CCM Command",           group: "Team Dashboards" },
   { view: "dashboard",          label: "Client KPIs",           group: "Clients"      },
   { view: "kpi_simulator",      label: "Funnel Simulator",      group: "Clients"      },
   { view: "dial_analytics",     label: "Dial Analytics",        group: "Clients"      },
