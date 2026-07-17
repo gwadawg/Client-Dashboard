@@ -1190,8 +1190,10 @@ function compareLeadingMomentum(
 }
 
 /**
- * Focus triage: Act now = 911 on 30d north star OR 911 on leading KPIs.
- * Monitor = Below KPI only (not normal campaign variance). Momentum is informational.
+ * Focus triage (Overview / account lens):
+ * - Act now = 911 on matured north star only (CPConv for RM; worst graded for HE)
+ * - Leading-only 911s (CPL / CPQL / qual / hand-raise) → Monitor — early warning, not account 911
+ * - Recovering = weak north star with improving leading momentum
  */
 export function computeFocus(
   current: ClientHealthSnapshot,
@@ -1212,11 +1214,11 @@ export function computeFocus(
     current.worst_tier === 'below' ||
     (current.grades.find(g => g.key === 'cps')?.tier === 'below' && !isHe);
 
-  if (verdictCritical || leadingCritical) {
+  if (verdictCritical) {
     return {
       focus: 'act_now',
       label: 'Act now',
-      verdict_critical: verdictCritical,
+      verdict_critical: true,
       leading_critical: leadingCritical,
     };
   }
@@ -1226,19 +1228,20 @@ export function computeFocus(
       focus: 'recovering',
       label: 'Recovering',
       verdict_critical: false,
-      leading_critical: false,
+      leading_critical: leadingCritical,
     };
   }
 
   if (
     current.worst_tier === 'below' ||
+    leadingCritical ||
     (recent?.leading_grades.some(g => g.tier === 'below') ?? false)
   ) {
     return {
       focus: 'monitor',
-      label: 'Monitor',
+      label: leadingCritical ? 'Leading watch' : 'Monitor',
       verdict_critical: false,
-      leading_critical: false,
+      leading_critical: leadingCritical,
     };
   }
 
