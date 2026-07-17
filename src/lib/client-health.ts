@@ -155,11 +155,11 @@ export const FRESH_LAUNCH_DAYS = 14;
 export const FRESH_LAUNCH_RM_KEYS: KpiKey[] = [
   'cpl',
   'cpql',
-  'lead_booking_rate',
+  'hand_raise_rate',
   'lead_to_qualified',
 ];
 
-export const FRESH_LAUNCH_HE_KEYS: KpiKey[] = ['lead_booking_rate'];
+export const FRESH_LAUNCH_HE_KEYS: KpiKey[] = ['hand_raise_rate'];
 
 export type FreshLaunchSnapshot = {
   launch_date: string;
@@ -262,9 +262,9 @@ export type KpiBandSpec = {
  * are layered on top of these; anything not overridden falls back here.
  */
 /** KPIs graded for HE (appointment-only) clients — no ad-cost metrics, no pickup (text bookings). */
-export const HE_KPI_KEYS: KpiKey[] = ['lead_booking_rate', 'show_rate'];
+export const HE_KPI_KEYS: KpiKey[] = ['hand_raise_rate', 'show_rate'];
 
-/** KPIs graded for RM (paid-ads) clients — pickup omitted (many bookings via text). */
+/** KPIs graded for RM (paid-ads) clients — pickup omitted (many bookings via text). Booking-only rate is not graded. */
 export const RM_KPI_KEYS: KpiKey[] = [
   'lead_to_qualified', 'hand_raise_rate', 'show_rate', 'close_rate', 'cpl', 'cpql', 'cps',
 ];
@@ -278,8 +278,12 @@ export const DEFAULT_KPI_BANDS: Record<KpiKey, KpiBandSpec> = {
   show_rate:         { bands: { critical: 55, below: 63, at: 70 }, higherIsBetter: true, unit: 'pct' },
   close_rate:        { bands: { critical: 10, below: 20, at: 35 }, higherIsBetter: true, unit: 'pct' },
   cpl:               { bands: { critical: 25, below: 20, at: 15 }, higherIsBetter: false, unit: 'money' },
-  cpql:              { bands: { critical: 35, below: 30, at: 20 }, higherIsBetter: false, unit: 'money' },
-  cps:               { bands: { critical: 200, below: 150, at: 100 }, higherIsBetter: false, unit: 'money' },
+  // Downstream cost defaults are derived from CPL and the matching global
+  // conversion band:
+  //   CPQL   = CPL ÷ lead-to-qualified %
+  //   CPConv = CPQL ÷ hand-raise / conversation %
+  cpql:              { bands: { critical: 62.5, below: 40, at: 23.08 }, higherIsBetter: false, unit: 'money' },
+  cps:               { bands: { critical: 312.5, below: 160, at: 76.92 }, higherIsBetter: false, unit: 'money' },
 };
 
 /** Minimum denominator per KPI before it can be graded (volume guard). */
@@ -307,9 +311,30 @@ export type ClientKpiBenchmarks = Partial<Record<KpiKey, Bands>>;
 /** Merge a client's overrides over the global defaults for one KPI. */
 function resolveBands(key: KpiKey, overrides?: ClientKpiBenchmarks | null): KpiBandSpec {
   const def = DEFAULT_KPI_BANDS[key];
-  const ov = overrides?.[key];
-  if (!ov) return def;
-  return { ...def, bands: { ...def.bands, ...ov } };
+  const cplOverride = overrides?.cpl;
+
+  // Conversion standards are global. CPL is the only client-specific input;
+  // CPQL and CPConv are always derived from it so legacy independent overrides
+  // cannot produce a mathematically inconsistent cost stack.
+  if (key === 'cpl') {
+    return cplOverride
+      ? { ...def, bands: { ...def.bands, ...cplOverride } }
+      : def;
+  }
+  if ((key === 'cpql' || key === 'cps') && cplOverride) {
+    const bands: Bands = {};
+    for (const band of ['critical', 'below', 'at'] as const) {
+      const cpl = cplOverride[band] ?? DEFAULT_KPI_BANDS.cpl.bands[band];
+      const qual = DEFAULT_KPI_BANDS.lead_to_qualified.bands[band];
+      const conversation = DEFAULT_KPI_BANDS.hand_raise_rate.bands[band];
+      if (cpl == null || qual == null || conversation == null) continue;
+      const cpql = cpl / (qual / 100);
+      bands[band] =
+        Math.round((key === 'cpql' ? cpql : cpql / (conversation / 100)) * 100) / 100;
+    }
+    return { ...def, bands };
+  }
+  return def;
 }
 
 type ClientEventRow = EventRow & { client_id: string };
@@ -454,7 +479,7 @@ export function buildClientHealthSnapshot(
   };
 }
 
-/** HE (appointment-only) health snapshot — grades booking + show only. */
+/** HE (appointment-only) health snapshot — grades unique hand-raise + show only. */
 export function buildHeClientHealthSnapshot(
   events: EventRow[],
   benchmarks?: ClientKpiBenchmarks | null,
@@ -465,18 +490,29 @@ export function buildHeClientHealthSnapshot(
   const close_rate_pct =
     metrics.shows > 0 ? (metrics.closed / metrics.shows) * 100 : 0;
 
+  // HE conversion = unique hand-raises (booked ∪ claimed ∪ LT) ÷ total leads.
+  // Uses lead_booking_rate bands (calibrated for ÷ all leads, not ÷ qualified).
+  const heHandRaisePct = metrics.lead_hand_raise_rate;
+
   const grade = (key: KpiKey, value: number, display: string, denominator: number): KpiGrade => {
-    const spec = resolveBands(key, benchmarks);
+    const spec =
+      key === 'hand_raise_rate'
+        ? resolveBands('lead_booking_rate', benchmarks)
+        : resolveBands(key, benchmarks);
+    const minDenom =
+      key === 'hand_raise_rate'
+        ? KPI_MIN_DENOMINATOR.lead_booking_rate
+        : KPI_MIN_DENOMINATOR[key];
     return gradeKpi(
       key,
       value,
       display,
-      tierFromBands(value, spec.bands, spec.higherIsBetter, KPI_MIN_DENOMINATOR[key], denominator),
+      tierFromBands(value, spec.bands, spec.higherIsBetter, minDenom, denominator),
     );
   };
 
   const grades: KpiGrade[] = [
-    grade('lead_booking_rate', metrics.lead_booking_rate, formatPct(metrics.lead_booking_rate), metrics.new_leads),
+    grade('hand_raise_rate', heHandRaisePct, formatPct(heHandRaisePct), metrics.new_leads),
     grade('show_rate', metrics.net_show_pct, formatPct(metrics.net_show_pct), metrics.shows + metrics.no_shows),
   ];
 
@@ -582,12 +618,12 @@ function inferHeConstraint(
     return { constraint: 'insufficient_data', constraint_label: 'No activity in period' };
   }
 
-  const bookingBad =
-    byKey.lead_booking_rate?.tier === 'critical' || byKey.lead_booking_rate?.tier === 'below';
+  const handRaiseBad =
+    byKey.hand_raise_rate?.tier === 'critical' || byKey.hand_raise_rate?.tier === 'below';
   const showBad = byKey.show_rate?.tier === 'critical' || byKey.show_rate?.tier === 'below';
 
-  if (bookingBad) {
-    return { constraint: 'call_center', constraint_label: 'Call center — script / booking flow' };
+  if (handRaiseBad) {
+    return { constraint: 'call_center', constraint_label: 'Call center — script / booking / LT flow' };
   }
   if (showBad && metrics.booked_appointments >= 3) {
     return { constraint: 'show_rate', constraint_label: 'Show rate — confirmations / LO prep' };
@@ -804,26 +840,27 @@ export function buildConstraintGuidance(
 
 function buildHeConstraintGuidance(snapshot: ClientHealthSnapshot): ConstraintGuidance {
   const m = snapshot.metrics;
+  const heHandRaisePct = m.lead_hand_raise_rate;
   const base = {
     layer: CONSTRAINT_LAYER[snapshot.constraint],
-    cpconvMath: `${m.outbound_dials} outbound dials · ${m.new_leads} leads · ${m.booked_appointments} booked`,
-    crossCheck: `Booking ${m.lead_booking_rate.toFixed(1)}% (÷ total leads) · Show ${m.net_show_pct.toFixed(0)}% · ${m.outbound_dials} dials`,
+    cpconvMath: `${m.outbound_dials} outbound dials · ${m.new_leads} leads · ${m.unique_hand_raises} unique hand-raises`,
+    crossCheck: `Hand-raise ${heHandRaisePct.toFixed(1)}% (unique ÷ total leads) · Show ${m.net_show_pct.toFixed(0)}% · ${m.outbound_dials} dials`,
   };
 
   switch (snapshot.constraint) {
     case 'call_center':
       return {
         ...base,
-        headline: 'Call center — leads are not converting to booked appointments',
-        whatsWrong: `Booking rate is ${m.lead_booking_rate.toFixed(
+        headline: 'Call center — leads are not converting to hand-raises',
+        whatsWrong: `Unique hand-raise rate is ${heHandRaisePct.toFixed(
           1,
-        )}% (÷ total leads). With ${m.outbound_dials} dials in period, the constraint is in the booking script or text follow-up.`,
+        )}% (÷ total leads). With ${m.outbound_dials} dials in period, the constraint is in the booking / LT script or text follow-up.`,
         fixSteps: [
           {
             owner: 'CSR manager (L3)',
             action: 'Audit booking script and text/SMS cadence — many HE bookings happen without a long phone pickup.',
             timebox: '5 business days',
-            successMetric: 'Lead booking rate ≥ 8%',
+            successMetric: 'Unique hand-raise rate ≥ 8% (÷ total leads)',
           },
           {
             owner: 'CSR manager (L3)',
@@ -837,7 +874,7 @@ function buildHeConstraintGuidance(snapshot: ClientHealthSnapshot): ConstraintGu
       return {
         ...base,
         headline: 'Show rate — booked appointments are not showing up',
-        whatsWrong: `Booking is healthy but only ${m.net_show_pct.toFixed(
+        whatsWrong: `Hand-raise is healthy but only ${m.net_show_pct.toFixed(
           0,
         )}% of resolved appointments showed (${m.shows} shows of ${m.shows + m.no_shows} resolved).`,
         fixSteps: [
@@ -874,7 +911,7 @@ function buildHeConstraintGuidance(snapshot: ClientHealthSnapshot): ConstraintGu
       return {
         ...base,
         headline: 'Healthy — within KPI range',
-        whatsWrong: `Booking ${m.lead_booking_rate.toFixed(1)}%, show ${m.net_show_pct.toFixed(
+        whatsWrong: `Hand-raise ${heHandRaisePct.toFixed(1)}%, show ${m.net_show_pct.toFixed(
           0,
         )}% — all at or above target.`,
         fixSteps: [
@@ -883,7 +920,7 @@ function buildHeConstraintGuidance(snapshot: ClientHealthSnapshot): ConstraintGu
             action: 'Log weekly and monitor the recent trend for early slides.',
           },
         ],
-        doNotDo: ['Do not chase volume at the expense of booking or show rate.'],
+        doNotDo: ['Do not chase volume at the expense of hand-raise or show rate.'],
       };
   }
 }
@@ -1066,7 +1103,7 @@ function computeFreshOverallTier(graded: KpiGrade[]): HealthTier {
   );
 }
 
-/** Grade a newly launched client on CPL / CPQL / booking (no CPConv). */
+/** Grade a newly launched client on CPL / CPQL / hand-raise (no CPConv). */
 export function buildFreshLaunchSnapshot(
   events: EventRow[],
   spendRows: SpendRow[],
@@ -1082,25 +1119,7 @@ export function buildFreshLaunchSnapshot(
     : buildClientHealthSnapshot(events, spendRows, benchmarks);
   const m = snap.metrics;
   const keys = isHe ? FRESH_LAUNCH_HE_KEYS : FRESH_LAUNCH_RM_KEYS;
-  let grades = snap.grades.filter(g => keys.includes(g.key));
-  if (!isHe && !grades.some(g => g.key === 'lead_booking_rate')) {
-    const spec = resolveBands('lead_booking_rate', benchmarks);
-    grades = [
-      ...grades,
-      gradeKpi(
-        'lead_booking_rate',
-        m.lead_booking_rate,
-        formatPct(m.lead_booking_rate),
-        tierFromBands(
-          m.lead_booking_rate,
-          spec.bands,
-          spec.higherIsBetter,
-          KPI_MIN_DENOMINATOR.lead_booking_rate,
-          m.new_leads,
-        ),
-      ),
-    ];
-  }
+  const grades = snap.grades.filter(g => keys.includes(g.key));
   const graded = grades.filter(g => g.tier !== 'insufficient');
 
   return {
@@ -1151,7 +1170,7 @@ export function getRecentPriorPeriod(
 const LEADING_RM_FUNNEL_KEYS: KpiKey[] = ['lead_to_qualified', 'hand_raise_rate'];
 const LEADING_RM_COST_KEYS: KpiKey[] = ['cpl', 'cpql'];
 const LEADING_RM_KEYS: KpiKey[] = [...LEADING_RM_COST_KEYS, ...LEADING_RM_FUNNEL_KEYS];
-const LEADING_HE_KEYS: KpiKey[] = ['lead_booking_rate'];
+const LEADING_HE_KEYS: KpiKey[] = ['hand_raise_rate'];
 
 function gradeLeadingOnly(
   snap: ClientHealthSnapshot,
@@ -1172,12 +1191,10 @@ function compareLeadingMomentum(
   if (!prior) return 'insufficient';
   const checks: boolean[] = [];
   if (current.leads >= 5 && prior.leads >= 5) {
-    if (isHe) {
-      checks.push(current.booking_rate >= prior.booking_rate);
-    } else {
-      checks.push(current.hand_raise_rate >= prior.hand_raise_rate);
+    checks.push(current.hand_raise_rate >= prior.hand_raise_rate);
+    if (!isHe) {
+      checks.push(current.lead_to_qualified_pct >= prior.lead_to_qualified_pct);
     }
-    checks.push(current.lead_to_qualified_pct >= prior.lead_to_qualified_pct);
   }
   if (current.cpl > 0 && prior.cpl > 0) checks.push(current.cpl <= prior.cpl);
   if (current.cpql > 0 && prior.cpql > 0) checks.push(current.cpql <= prior.cpql);
@@ -1316,8 +1333,9 @@ export function buildRecentLeading(
     dials: m.outbound_dials,
     lead_to_qualified_pct: m.new_leads > 0 ? (m.qualified_leads / m.new_leads) * 100 : 0,
     conversations: m.unique_conversations,
+    /** Reference only — unique booked ÷ denom. Not a graded benchmark. */
     booking_rate: isHe ? m.lead_booking_rate : m.appt_booking_rate,
-    hand_raise_rate: m.hand_raise_rate,
+    hand_raise_rate: isHe ? m.lead_hand_raise_rate : m.hand_raise_rate,
     cpl,
     cpql,
     ...(costSlice

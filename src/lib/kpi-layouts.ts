@@ -87,7 +87,7 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
     variant: "grid",
     gridClassName: DEFAULT_GRID,
     footnote:
-      "Appointments Booked shows unique leads / total booking events. Booking Rate and Hand Raise Rate use unique leads so rebooks don't inflate %. Cancel rate still uses total bookings.",
+      "Hand Raise Rate is the conversion benchmark (unique leads booked ∪ claimed ∪ LT). Booking Rate is reference only. Appointments Booked shows unique / total events.",
     cards: [
       {
         label: "Appointments Booked",
@@ -98,17 +98,17 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
         hint: "Unique leads who booked / total appointment_booked events (rebooks & reschedules included in total). Cancel rate uses the total.",
       },
       {
-        label: "Booking Rate",
-        metric: "appt_booking_rate",
-        format: "pct",
-        hint: "Unique leads who booked ÷ Qualified Leads. A lead who books twice still counts once.",
-      },
-      {
         label: "Hand Raise Rate",
         metric: "hand_raise_rate",
         format: "pct",
         accent: true,
-        hint: "Unique leads with any intent path (booked, live transfer, or claimed) ÷ Qualified Leads. One lead counted once even across multiple paths.",
+        hint: "Unique leads with any intent path (booked, live transfer, or claimed) ÷ Qualified Leads. One lead counted once — the Client Success conversion benchmark.",
+      },
+      {
+        label: "Booking Rate (ref)",
+        metric: "appt_booking_rate",
+        format: "pct",
+        hint: "Reference only — unique booked ÷ Qualified. Prefer Hand Raise Rate (credits LT/claimed).",
       },
       {
         label: "Appts To Take Place",
@@ -204,10 +204,17 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
         hint: "Unique leads who booked / total appointment_booked events (rebooks & reschedules included in total). Cancel rate uses the total.",
       },
       {
-        label: "Booking Rate",
+        label: "Hand Raise Rate",
+        metric: "lead_hand_raise_rate",
+        format: "pct",
+        accent: true,
+        hint: "Unique leads with booked ∪ claimed ∪ live transfer ÷ Total Leads. One lead once — HE conversion benchmark.",
+      },
+      {
+        label: "Booking Rate (ref)",
         metric: "lead_booking_rate",
         format: "pct",
-        hint: "Unique leads who booked ÷ Total Leads.",
+        hint: "Reference only — unique booked ÷ Total Leads. Prefer Hand Raise Rate.",
       },
       {
         label: "Appts To Take Place",

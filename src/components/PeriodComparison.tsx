@@ -45,14 +45,18 @@ function verdictRows(
   const pm = prior.metrics;
   const rows: RowDef[] = [
     {
-      label: isHe ? "Booking rate (÷ leads)" : "CPConv",
-      current: isHe ? `${cm.lead_booking_rate.toFixed(1)}%` : fmtMoney(current.cpconv),
-      prior: isHe ? `${pm.lead_booking_rate.toFixed(1)}%` : fmtMoney(prior.cpconv),
+      label: isHe ? "Hand-raise (unique ÷ leads)" : "CPConv",
+      current: isHe
+        ? `${cm.lead_hand_raise_rate.toFixed(1)}%`
+        : fmtMoney(current.cpconv),
+      prior: isHe
+        ? `${pm.lead_hand_raise_rate.toFixed(1)}%`
+        : fmtMoney(prior.cpconv),
       delta: isHe
-        ? `${(cm.lead_booking_rate - pm.lead_booking_rate).toFixed(1)} pts`
+        ? `${(cm.lead_hand_raise_rate - pm.lead_hand_raise_rate).toFixed(1)} pts`
         : fmtMoney(current.cpconv - prior.cpconv),
       improved: isHe
-        ? deltaNum(cm.lead_booking_rate, pm.lead_booking_rate, false)
+        ? deltaNum(cm.lead_hand_raise_rate, pm.lead_hand_raise_rate, false)
         : deltaNum(current.cpconv, prior.cpconv, true),
     },
     {
@@ -78,13 +82,6 @@ function verdictRows(
       delta: `${(cm.hand_raise_rate - pm.hand_raise_rate).toFixed(0)} pts`,
       improved: deltaNum(cm.hand_raise_rate, pm.hand_raise_rate, false),
     });
-    rows.splice(2, 0, {
-      label: "Appt booked only (÷ qual)",
-      current: `${cm.appt_booking_rate.toFixed(0)}%`,
-      prior: `${pm.appt_booking_rate.toFixed(0)}%`,
-      delta: `${(cm.appt_booking_rate - pm.appt_booking_rate).toFixed(0)} pts`,
-      improved: deltaNum(cm.appt_booking_rate, pm.appt_booking_rate, false),
-    });
     rows.push({
       label: "CPQL",
       current: fmtMoney(current.cpql),
@@ -100,19 +97,11 @@ function leadingRows(recent: RecentLeading, prior: RecentLeading | null, isHe: b
   if (!prior) return [];
   const rows: RowDef[] = [
     {
-      label: isHe ? "Booking rate (÷ leads)" : "Hand-raise rate",
-      current: isHe
-        ? `${recent.booking_rate.toFixed(1)}%`
-        : `${recent.hand_raise_rate.toFixed(1)}%`,
-      prior: isHe
-        ? `${prior.booking_rate.toFixed(1)}%`
-        : `${prior.hand_raise_rate.toFixed(1)}%`,
-      delta: isHe
-        ? `${(recent.booking_rate - prior.booking_rate).toFixed(1)} pts`
-        : `${(recent.hand_raise_rate - prior.hand_raise_rate).toFixed(1)} pts`,
-      improved: isHe
-        ? deltaNum(recent.booking_rate, prior.booking_rate, false)
-        : deltaNum(recent.hand_raise_rate, prior.hand_raise_rate, false),
+      label: isHe ? "Hand-raise (unique ÷ leads)" : "Hand-raise rate",
+      current: `${recent.hand_raise_rate.toFixed(1)}%`,
+      prior: `${prior.hand_raise_rate.toFixed(1)}%`,
+      delta: `${(recent.hand_raise_rate - prior.hand_raise_rate).toFixed(1)} pts`,
+      improved: deltaNum(recent.hand_raise_rate, prior.hand_raise_rate, false),
     },
     {
       label: "Leads",

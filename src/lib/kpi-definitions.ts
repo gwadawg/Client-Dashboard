@@ -32,6 +32,8 @@ export type KpiDefinition = {
 };
 
 export const COST_KPI_KEYS: KpiKey[] = ['cpl', 'cpql', 'cps'];
+export const COST_BAND_KEYS = ['critical', 'below', 'at'] as const;
+export type CostBandKey = (typeof COST_BAND_KEYS)[number];
 
 export const RATE_KPI_KEYS: KpiKey[] = [
   'lead_to_qualified',
@@ -64,7 +66,7 @@ export const KPI_DEFINITIONS: Record<KpiKey, KpiDefinition> = {
     formula: 'Total ad spend ÷ Qualified leads',
     owner: 'media_buyer',
     ownerLabel: 'Media Buyer',
-    perClientEditable: true,
+    perClientEditable: false,
     fixHints: [
       'Improve lead quality messaging (intent, equity, age)',
       'Align Meta targeting with qualification criteria',
@@ -79,7 +81,7 @@ export const KPI_DEFINITIONS: Record<KpiKey, KpiDefinition> = {
     formula: 'Total ad spend ÷ Unique conversation leads',
     owner: 'shared',
     ownerLabel: 'Shared (Media + CCM)',
-    perClientEditable: true,
+    perClientEditable: false,
     fixHints: [
       'If CPL/CPQL are fine but CPConv is high → conversion leak (CCM)',
       'If CPL/CPQL are high → fix upstream cost first (Media)',
@@ -117,27 +119,28 @@ export const KPI_DEFINITIONS: Record<KpiKey, KpiDefinition> = {
   },
   booking_rate: {
     key: 'booking_rate',
-    meaning: 'Share of qualified leads who booked an appointment (appointments path only).',
+    meaning:
+      'Reference only — unique booked ÷ qualified. Not a Client Success benchmark (use hand-raise; credits LT/claimed and avoids rebook inflation).',
     formula: 'Unique booked leads ÷ Qualified leads × 100',
     owner: 'ccm',
     ownerLabel: 'CCM / Call center',
     perClientEditable: false,
     fixHints: [
-      'Calendar availability and setter script',
-      'Prefer hand-raise / conversation rate when LT volume is high',
+      'Prefer hand-raise rate as the conversion benchmark',
+      'Do not grade accounts on booking-only when LT/claimed volume exists',
     ],
     librarySlug: null,
   },
   lead_booking_rate: {
     key: 'lead_booking_rate',
-    meaning: 'Share of all leads who booked (HE / appointment-only clients).',
+    meaning:
+      'Reference only — unique booked ÷ total leads (HE). Not graded; HE conversion uses unique hand-raise ÷ total leads.',
     formula: 'Unique booked leads ÷ Total leads × 100',
     owner: 'ccm',
     ownerLabel: 'CCM / Call center',
     perClientEditable: false,
     fixHints: [
-      'Dial coverage and contact rate',
-      'Booking script and calendar density',
+      'Prefer unique hand-raise ÷ total leads for HE grading',
     ],
     librarySlug: null,
   },
@@ -202,9 +205,78 @@ export function resolveKpiBands(
   overrides?: ClientKpiBenchmarks | null,
 ): Bands {
   const def = DEFAULT_KPI_BANDS[key].bands;
-  const ov = overrides?.[key];
-  if (!ov) return { ...def };
-  return { ...def, ...ov };
+  if (key === 'cpl') return { ...def, ...(overrides?.cpl ?? {}) };
+  if (key === 'cpql' || key === 'cps') {
+    const derived = deriveCostBenchmarksFromCpl(overrides?.cpl);
+    return { ...def, ...(derived?.[key] ?? {}) };
+  }
+  // Conversion standards are intentionally global for every client.
+  return { ...def };
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Derive the full cost stack from the only client-specific input: CPL.
+ *
+ * CPQL   = CPL ÷ lead-to-qualified rate
+ * CPConv = CPQL ÷ conversation yield
+ *
+ * Conversion assumptions are the global rate bands. Conversation yield uses the
+ * hand-raise standard because Client Success defines the downstream conversion
+ * path as booked ∪ claimed ∪ live transfer. Sparse CPL input inherits the global
+ * CPL for that band. No CPL overrides means "use defaults" and returns null.
+ */
+export function deriveCostBenchmarksFromCpl(
+  cplOverrides?: Bands | null,
+): ClientKpiBenchmarks | null {
+  const customCpl: Bands = {};
+  for (const band of COST_BAND_KEYS) {
+    const value = cplOverrides?.[band];
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+      customCpl[band] = value;
+    }
+  }
+  if (Object.keys(customCpl).length === 0) return null;
+
+  const cpl: Bands = {};
+  const cpql: Bands = {};
+  const cps: Bands = {};
+
+  for (const band of COST_BAND_KEYS) {
+    const cplValue = customCpl[band] ?? DEFAULT_KPI_BANDS.cpl.bands[band];
+    const qualPct = DEFAULT_KPI_BANDS.lead_to_qualified.bands[band];
+    const conversationPct = DEFAULT_KPI_BANDS.hand_raise_rate.bands[band];
+    if (cplValue == null || qualPct == null || conversationPct == null) continue;
+
+    const cpqlValue = cplValue / (qualPct / 100);
+    cpl[band] = cplValue;
+    cpql[band] = roundMoney(cpqlValue);
+    cps[band] = roundMoney(cpqlValue / (conversationPct / 100));
+  }
+
+  return { cpl, cpql, cps };
+}
+
+/**
+ * API boundary normalization: regardless of which editor submits benchmarks,
+ * retain only CPL as the manual input and regenerate downstream cost bands.
+ */
+export function normalizeClientKpiBenchmarks(
+  input: unknown,
+): ClientKpiBenchmarks | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const candidate = input as ClientKpiBenchmarks;
+  const cpl: Bands = {};
+  for (const band of COST_BAND_KEYS) {
+    const value = candidate.cpl?.[band];
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+      cpl[band] = value;
+    }
+  }
+  return Object.keys(cpl).length > 0 ? { cpl } : null;
 }
 
 export function formatBandValue(key: KpiKey, value: number | undefined): string {

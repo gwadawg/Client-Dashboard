@@ -51,7 +51,9 @@ function stubRow(opts: {
         qualified_leads: 50,
         appt_booking_rate: opts.appt_booking_rate ?? 30,
         conversation_rate: opts.conversation_rate ?? 30,
+        unique_hand_raises: 15,
         hand_raise_rate: 30,
+        lead_hand_raise_rate: 15,
         net_show_pct: 70,
         lead_booking_rate: 8,
         outbound_dials: 200,
@@ -151,7 +153,7 @@ describe('mediaBuyerStatus', () => {
 });
 
 describe('ccmStatus', () => {
-  it('stays healthy when only CPConv / CPL are 911', () => {
+  it('stays healthy when only CPConv / CPL are 911 and booking-only would have been red', () => {
     const row = stubRow({
       worst: 'critical',
       grades: [
@@ -160,7 +162,7 @@ describe('ccmStatus', () => {
         grade('cps', 'critical'),
         grade('cpl', 'critical'),
       ],
-      appt_booking_rate: 30,
+      appt_booking_rate: 10, // would be 911 if booking were graded
       conversation_rate: 30,
     });
     assert.notEqual(ccmStatus(row, false), 'critical');
@@ -174,6 +176,19 @@ describe('ccmStatus', () => {
         grade('show_rate', 'critical'),
         grade('hand_raise_rate', 'above'),
       ],
+    });
+    assert.equal(ccmStatus(row, false), 'critical');
+  });
+
+  it('is critical when unique hand-raise is critical even if booking-only looks fine', () => {
+    const row = stubRow({
+      worst: 'at',
+      grades: [
+        grade('show_rate', 'above'),
+        grade('hand_raise_rate', 'critical'),
+      ],
+      appt_booking_rate: 35,
+      conversation_rate: 30,
     });
     assert.equal(ccmStatus(row, false), 'critical');
   });

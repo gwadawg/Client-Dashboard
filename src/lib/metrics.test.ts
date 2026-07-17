@@ -51,6 +51,8 @@ describe('unique-lead rates (booking, hand-raise, conversation)', () => {
     assert.equal(m.unique_booked_appointments, 2);
     assert.equal(m.appt_booking_rate, 40); // 2 unique ÷ 5
     assert.equal(m.lead_booking_rate, 40);
+    assert.equal(m.unique_hand_raises, 2);
+    assert.equal(m.lead_hand_raise_rate, 40);
   });
 
   it('counts a lead once in hand-raise when booked and later claimed', () => {
@@ -70,7 +72,9 @@ describe('unique-lead rates (booking, hand-raise, conversation)', () => {
     assert.equal(m.claimed, 1);
     assert.equal(m.live_transfers, 1);
     // Unique hand-raises: A and B → 2 / 5 = 40%
+    assert.equal(m.unique_hand_raises, 2);
     assert.equal(m.hand_raise_rate, 40);
+    assert.equal(m.lead_hand_raise_rate, 40);
     // Unique booked: A → 1 / 5 = 20%
     assert.equal(m.appt_booking_rate, 20);
   });

@@ -21,7 +21,8 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **Hot Leads** | Leads manually tagged as hot | `COUNT(leads WHERE hot = Y)` | Leads col H |
 | **Out of State Leads** | Leads outside target geography | `COUNT(out-of-state leads)` | Out of State tab / Leads col M |
 | **Appointments Booked** | Every appointment booked | `COUNT(appointment_booked events)` | Appointments tab |
-| **Booking Rate** | Share of qualified (dialable) leads that book | `Unique leads with appointment_booked ÷ Qualified Leads × 100` | Leads + Appointments |
+| **Booking Rate** | Reference only (not graded) | `Unique leads with appointment_booked ÷ Qualified Leads × 100` | Leads + Appointments |
+| **Hand Raise Rate** | **Conversion benchmark** — share of qualified leads who raised their hand | `Unique leads with booked ∪ claimed ∪ live_transfer ÷ Qualified × 100` | Appointments + Claimed + LT |
 | **Hand Raise Rate** | Share of qualified leads showing any intent path | `Unique leads with booked ∪ claimed ∪ live_transfer ÷ Qualified Leads × 100` | Appointments + Claimed + Live Transfers |
 | **Shows** | Lead attended the appointment | `COUNT(show events)` or `Showed? = Y` | Appointments col J |
 | **No Shows** | Lead missed the appointment | `COUNT(no_show events)` or `Showed? = N` | Appointments col J |
@@ -106,16 +107,18 @@ The **Client Success** view (`client_health`) splits clients by `reporting_type`
 
 | Segment | Clients | Graded KPIs | Account (Overview) tier |
 |---------|---------|-------------|-------------------------|
-| **Paid Ads (RM + DSCR)** | paid-ads reporting types | Lead-to-qualified, hand-raise, show, close, CPL, CPQL, CPConv | North star = **CPConv** only |
-| **Call Center (HE)** | appointment-only / HE | Lead booking rate (÷ total leads), net show rate | Worst of booking + show |
+| **Paid Ads (RM + DSCR)** | paid-ads reporting types | Lead-to-qualified, **unique hand-raise**, show, close, CPL, CPQL, CPConv | North star = **CPConv** only |
+| **Call Center (HE)** | appointment-only / HE | **Unique hand-raise** (÷ total leads), net show rate | Worst of hand-raise + show |
 
 **Role lenses (same data, different 911):**
 
 | Lens | Status drivers | Does not grade |
 |------|----------------|----------------|
-| **Overview** | CPConv (RM) / booking+show (HE). Focus **Act now** = north-star 911 only; leading cost/funnel reds → Monitor / Leading watch | — |
-| **Media Buyer** | Worst of CPL, CPQL, lead→qualified (leading 7d preferred) | CPConv, booking, show |
-| **CCM** | Worst of booking, hand-raise, show, conversation % | CPL, CPQL, CPConv |
+| **Overview** | CPConv (RM) / hand-raise+show (HE). Focus **Act now** = north-star 911 only; leading cost/funnel reds → Monitor / Leading watch | — |
+| **Media Buyer** | Worst of CPL, CPQL, lead→qualified (leading 7d preferred) | CPConv, hand-raise, show |
+| **CCM** | Worst of **unique hand-raise**, show, conversation % | CPL, CPQL, CPConv, booking-only |
+
+**Conversion benchmark = unique hand-raise** (`Unique leads with booked ∪ claimed ∪ live_transfer`), not booking-only rate. Multiple appointment events for one lead count once. Booking-only rates remain available as reference, not Client Success grades.
 
 HE accounts have **no ad-cost grading** (CPL / CPQL / CPConv are omitted). **Outbound dials** are shown for volume context but are not tiered. Detail drill-down shows **Account** + **lane** badges when opened from Media / CCM so CPConv 911 is never mistaken for that seat’s scorecard. Per-client benchmark overrides in Admin → Client Roster allow CPL customization (CPQL / CPConv derive from CPL + global conversion bands).
 

@@ -76,23 +76,23 @@ export function mediaBuyerStatus(row: ClientHealthRow): HealthTier {
 }
 
 /**
- * CCM owns post-lead conversion — booking, hand-raise, show, conversation rate.
- * Never CPL / CPQL / CPConv.
+ * CCM owns post-lead conversion — unique hand-raise, show, conversation rate.
+ * Booking-only rate is not graded (rebooks / multi-events inflate it; LT/claimed
+ * would be missed). Never CPL / CPQL / CPConv.
  */
 export function ccmStatus(row: ClientHealthRow, isHe: boolean): HealthTier {
   const m = row.current.metrics;
   const show = gradeOf(row, 'show_rate');
-  const hand = isHe ? 'insufficient' : gradeOf(row, 'hand_raise_rate');
-  const book = isHe
-    ? gradeOf(row, 'lead_booking_rate')
-    : rateTierFromBands('booking_rate', m.appt_booking_rate, m.qualified_leads, 5);
-  const conv = rateTierFromBands(
-    'hand_raise_rate',
-    m.conversation_rate,
-    m.qualified_leads,
-    5,
-  );
-  const graded = [show, hand, book, conv].filter(t => t !== 'insufficient');
+  const hand = gradeOf(row, 'hand_raise_rate');
+  const conv = isHe
+    ? 'insufficient'
+    : rateTierFromBands(
+        'hand_raise_rate',
+        m.conversation_rate,
+        m.qualified_leads,
+        5,
+      );
+  const graded = [show, hand, conv].filter(t => t !== 'insufficient');
   if (graded.length === 0) return 'insufficient';
   return worstTier(...graded);
 }

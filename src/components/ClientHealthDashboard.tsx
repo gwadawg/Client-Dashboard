@@ -128,7 +128,7 @@ const RM_CHART_METRICS: { key: SortKey; label: string }[] = [
 const HE_CHART_METRICS: { key: SortKey; label: string }[] = [
   { key: "priority", label: "Attention score" },
   { key: "show_rate", label: "Show rate % (true)" },
-  { key: "booking_rate", label: "Booking rate (÷ leads)" },
+  { key: "hand_raise", label: "Hand-raise % (÷ leads)" },
   { key: "dials", label: "Outbound dials" },
 ];
 
@@ -142,13 +142,11 @@ const CCM_CHART_METRICS_RM: { key: SortKey; label: string }[] = [
   { key: "hand_raise", label: "Hand-raise %" },
   { key: "show_rate", label: "Show rate %" },
   { key: "conv_rate", label: "Conversation %" },
-  { key: "booking_rate", label: "Booking % (÷ qual)" },
 ];
 
 const CCM_CHART_METRICS_HE: { key: SortKey; label: string }[] = [
-  { key: "booking_rate", label: "Booking % (÷ leads)" },
+  { key: "hand_raise", label: "Hand-raise % (÷ leads)" },
   { key: "show_rate", label: "Show rate %" },
-  { key: "conv_rate", label: "Conversation %" },
   { key: "dials", label: "Outbound dials" },
 ];
 
@@ -167,7 +165,7 @@ const DEPT_TABS: {
   {
     key: "overview",
     label: "Overview",
-    blurb: "Account north star — CPConv (RM) or booking/show (HE). Role KPIs live on Media / CCM tabs.",
+    blurb: "Account north star — CPConv (RM) or hand-raise/show (HE). Role KPIs live on Media / CCM tabs.",
   },
   {
     key: "media_buyer",
@@ -178,7 +176,7 @@ const DEPT_TABS: {
   {
     key: "ccm",
     label: "CCM",
-    blurb: "Your lane only — booking, hand-raise, show, and conversation rate. Account CPConv is on Overview.",
+    blurb: "Your lane only — unique hand-raise, show, and conversation rate. Account CPConv is on Overview.",
   },
 ];
 
@@ -374,7 +372,13 @@ export default function ClientHealthDashboard(_props: Props) {
         return dir * (av - bv);
       }
       if (sortKey === "hand_raise") {
-        return dir * (a.current.metrics.hand_raise_rate - b.current.metrics.hand_raise_rate);
+        const av = isCallCenterSegment
+          ? a.current.metrics.lead_hand_raise_rate
+          : a.current.metrics.hand_raise_rate;
+        const bv = isCallCenterSegment
+          ? b.current.metrics.lead_hand_raise_rate
+          : b.current.metrics.hand_raise_rate;
+        return dir * (av - bv);
       }
       if (sortKey === "conv_rate") {
         return dir * (a.current.metrics.conversation_rate - b.current.metrics.conversation_rate);
@@ -432,12 +436,11 @@ export default function ClientHealthDashboard(_props: Props) {
             : TIER_WEIGHT[deptStatus(r, effectiveLens, isCallCenterSegment)];
       } else if (chartMetric === "show_rate") value = r.current.metrics.net_show_pct;
       else if (chartMetric === "cps") value = r.current.metrics.cp_conversation;
-      else if (chartMetric === "booking_rate") {
+      else if (chartMetric === "hand_raise") {
         value = isCallCenterSegment
-          ? r.current.metrics.lead_booking_rate
-          : r.current.metrics.appt_booking_rate;
-      } else if (chartMetric === "hand_raise") value = r.current.metrics.hand_raise_rate;
-      else if (chartMetric === "conv_rate") value = r.current.metrics.conversation_rate;
+          ? r.current.metrics.lead_hand_raise_rate
+          : r.current.metrics.hand_raise_rate;
+      } else if (chartMetric === "conv_rate") value = r.current.metrics.conversation_rate;
       else if (chartMetric === "cpl") value = r.recent?.cpl ?? r.current.metrics.cpl;
       else if (chartMetric === "cpql") value = r.recent?.cpql ?? r.current.cpql;
       else if (chartMetric === "dials") value = r.current.metrics.outbound_dials;
@@ -457,20 +460,19 @@ export default function ClientHealthDashboard(_props: Props) {
     if (segment === "CALL_CENTER" && deptLens === "media_buyer") {
       setDeptLens("ccm");
       setSortKey("dept_status");
-      setChartMetric("booking_rate");
+      setChartMetric("hand_raise");
       return;
     }
     if (segment === "CALL_CENTER") {
-      if (sortKey === "cps" || sortKey === "cpl" || sortKey === "cpql" || sortKey === "hand_raise") {
+      if (sortKey === "cps" || sortKey === "cpl" || sortKey === "cpql") {
         setSortKey(deptLens === "ccm" ? "dept_status" : "priority");
       }
       if (
         chartMetric === "cps" ||
         chartMetric === "cpl" ||
-        chartMetric === "cpql" ||
-        chartMetric === "hand_raise"
+        chartMetric === "cpql"
       ) {
-        setChartMetric(deptLens === "ccm" ? "booking_rate" : "priority");
+        setChartMetric(deptLens === "ccm" ? "hand_raise" : "priority");
       }
     }
   }
@@ -486,7 +488,7 @@ export default function ClientHealthDashboard(_props: Props) {
     } else if (lens === "ccm") {
       setSortKey("dept_status");
       setSortAsc(false);
-      setChartMetric(isCallCenterSegment ? "booking_rate" : "hand_raise");
+      setChartMetric("hand_raise");
     } else {
       setSortKey("priority");
       setChartMetric("priority");
@@ -511,11 +513,11 @@ export default function ClientHealthDashboard(_props: Props) {
     }
     if (effectiveLens === "ccm") {
       return isCallCenterSegment
-        ? ["Client", "CCM status", "30d book", "30d show", "Conv %", "7d book", "Leads", "Dials", "Follow-up", ""]
-        : ["Client", "CCM status", "Hand-raise", "Booking", "Show", "Conv %", "7d hand-raise", "Follow-up", ""];
+        ? ["Client", "CCM status", "Hand-raise", "Show", "7d hand-raise", "Leads", "Dials", "Follow-up", ""]
+        : ["Client", "CCM status", "Hand-raise", "Show", "Conv %", "7d hand-raise", "Follow-up", ""];
     }
     return isCallCenterSegment
-      ? ["Client", "Focus", "30d status", `7d book`, "Follow-up", "Leads", "Dials", "30d book", "30d show", ""]
+      ? ["Client", "Focus", "30d status", "7d hand-raise", "Follow-up", "Leads", "Dials", "30d hand-raise", "30d show", ""]
       : ["Client", "Focus", "30d CPConv", "7d CPL", "7d CPQL", "7d qual", "7d hand-raise", "30d show", "Follow-up", ""];
   }, [effectiveLens, isCallCenterSegment]);
 
@@ -634,7 +636,7 @@ export default function ClientHealthDashboard(_props: Props) {
         ) : effectiveLens === "ccm" ? (
           <>
             <span style={{ color: "#38bdf8", fontWeight: 600 }}>CCM lens.</span>{" "}
-            Status = worst of booking, hand-raise, show, and conversation rate. Account CPConv lives on Overview — not your scorecard.
+            Status = worst of unique hand-raise, show, and conversation rate. Booking-only is not graded. Account CPConv lives on Overview — not your scorecard.
           </>
         ) : (
           <>
@@ -709,10 +711,9 @@ export default function ClientHealthDashboard(_props: Props) {
           )}
           {effectiveLens === "ccm" && (
             <>
-              {!isCallCenterSegment && <option value="hand_raise">Sort: Hand-raise</option>}
-              <option value="booking_rate">Sort: Booking rate</option>
+              <option value="hand_raise">Sort: Hand-raise</option>
               <option value="show_rate">Sort: Show rate</option>
-              <option value="conv_rate">Sort: Conversation %</option>
+              {!isCallCenterSegment && <option value="conv_rate">Sort: Conversation %</option>}
               {isCallCenterSegment && <option value="dials">Sort: Outbound dials</option>}
             </>
           )}
@@ -722,7 +723,7 @@ export default function ClientHealthDashboard(_props: Props) {
               <option value="show_rate">Sort: Show rate</option>
               {isCallCenterSegment ? (
                 <>
-                  <option value="booking_rate">Sort: Booking rate (÷ leads)</option>
+                  <option value="hand_raise">Sort: Hand-raise (÷ leads)</option>
                   <option value="dials">Sort: Outbound dials</option>
                 </>
               ) : (
@@ -782,7 +783,7 @@ export default function ClientHealthDashboard(_props: Props) {
                 Fresh launches
               </h3>
               <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
-                First {FRESH_LAUNCH_DAYS} days after launch — graded on CPL, CPQL, qual %, and booking (no CPConv yet).
+                First {FRESH_LAUNCH_DAYS} days after launch — graded on CPL, CPQL, qual %, and unique hand-raise (no CPConv yet).
               </p>
             </div>
             <span className="text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: "#38bdf8", background: "rgba(56,189,248,0.12)" }}>
@@ -794,8 +795,8 @@ export default function ClientHealthDashboard(_props: Props) {
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                   {(isCallCenterSegment
-                    ? ["Client", "Day", "Status", "Booking %", "Leads", "Dials", ""]
-                    : ["Client", "Day", "Status", "CPL", "CPQL", "Qual %", "Booking %", "Leads", ""]
+                    ? ["Client", "Day", "Status", "Hand-raise %", "Leads", "Dials", ""]
+                    : ["Client", "Day", "Status", "CPL", "CPQL", "Qual %", "Hand-raise %", "Leads", ""]
                   ).map(h => (
                     <th
                       key={h}
@@ -830,8 +831,8 @@ export default function ClientHealthDashboard(_props: Props) {
                         <>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                              <KpiDot tier={freshGrade(row, "lead_booking_rate")} />
-                              {freshGradeDisplay(row, "lead_booking_rate")}
+                              <KpiDot tier={freshGrade(row, "hand_raise_rate")} />
+                              {freshGradeDisplay(row, "hand_raise_rate")}
                             </div>
                           </td>
                           <td className="px-4 py-3 tabular-nums" style={{ color: "#94a3b8" }}>
@@ -863,8 +864,8 @@ export default function ClientHealthDashboard(_props: Props) {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                              <KpiDot tier={freshGrade(row, "lead_booking_rate")} />
-                              {freshGradeDisplay(row, "lead_booking_rate")}
+                              <KpiDot tier={freshGrade(row, "hand_raise_rate")} />
+                              {freshGradeDisplay(row, "hand_raise_rate")}
                             </div>
                           </td>
                           <td className="px-4 py-3 tabular-nums" style={{ color: "#94a3b8" }}>
@@ -959,10 +960,8 @@ export default function ClientHealthDashboard(_props: Props) {
                   const lead = row.recent;
                   const leadGrade = (key: KpiKey) => leadingGradeFor(lead, key);
                   const status = deptStatus(row, effectiveLens, isCallCenterSegment);
-                  const bookPct = isCallCenterSegment ? m.lead_booking_rate : m.appt_booking_rate;
-                  const bookTier = isCallCenterSegment
-                    ? grade("lead_booking_rate")?.tier ?? "insufficient"
-                    : rateTierFromBands("booking_rate", m.appt_booking_rate, m.qualified_leads, 5);
+                  const handPct = isCallCenterSegment ? m.lead_hand_raise_rate : m.hand_raise_rate;
+                  const handTier = grade("hand_raise_rate")?.tier ?? "insufficient";
                   const convTier = rateTierFromBands(
                     "hand_raise_rate",
                     m.conversation_rate,
@@ -1036,18 +1035,10 @@ export default function ClientHealthDashboard(_props: Props) {
                             <td className="px-4 py-3">
                               <TierBadge tier={status} />
                             </td>
-                            {!isCallCenterSegment && (
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                  <KpiDot tier={grade("hand_raise_rate")?.tier ?? "insufficient"} />
-                                  {m.hand_raise_rate.toFixed(0)}%
-                                </div>
-                              </td>
-                            )}
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                <KpiDot tier={bookTier} />
-                                {bookPct.toFixed(1)}%
+                                <KpiDot tier={handTier} />
+                                {handPct.toFixed(isCallCenterSegment ? 1 : 0)}%
                               </div>
                             </td>
                             <td className="px-4 py-3">
@@ -1056,18 +1047,12 @@ export default function ClientHealthDashboard(_props: Props) {
                                 {m.net_show_pct.toFixed(0)}%
                               </div>
                             </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                <KpiDot tier={convTier} />
-                                {m.conversation_rate.toFixed(0)}%
-                              </div>
-                            </td>
                             {isCallCenterSegment ? (
                               <>
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                    <KpiDot tier={leadGrade("lead_booking_rate")} />
-                                    {(lead?.booking_rate ?? 0).toFixed(1)}%
+                                    <KpiDot tier={leadGrade("hand_raise_rate")} />
+                                    {(lead?.hand_raise_rate ?? 0).toFixed(1)}%
                                   </div>
                                 </td>
                                 <td className="px-4 py-3 tabular-nums" style={{ color: "#94a3b8" }}>
@@ -1078,12 +1063,20 @@ export default function ClientHealthDashboard(_props: Props) {
                                 </td>
                               </>
                             ) : (
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                  <KpiDot tier={leadGrade("hand_raise_rate")} />
-                                  {(lead?.hand_raise_rate ?? 0).toFixed(0)}%
-                                </div>
-                              </td>
+                              <>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                    <KpiDot tier={convTier} />
+                                    {m.conversation_rate.toFixed(0)}%
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
+                                    <KpiDot tier={leadGrade("hand_raise_rate")} />
+                                    {(lead?.hand_raise_rate ?? 0).toFixed(0)}%
+                                  </div>
+                                </td>
+                              </>
                             )}
                           </>
                         ) : (
@@ -1104,8 +1097,8 @@ export default function ClientHealthDashboard(_props: Props) {
                             {isCallCenterSegment ? (
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                  <KpiDot tier={leadGrade("lead_booking_rate")} />
-                                  {(lead?.booking_rate ?? 0).toFixed(1)}%
+                                  <KpiDot tier={leadGrade("hand_raise_rate")} />
+                                  {(lead?.hand_raise_rate ?? 0).toFixed(1)}%
                                 </div>
                               </td>
                             ) : (
@@ -1165,8 +1158,8 @@ export default function ClientHealthDashboard(_props: Props) {
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2 tabular-nums" style={{ color: "#94a3b8" }}>
-                                <KpiDot tier={grade("lead_booking_rate")?.tier ?? "insufficient"} />
-                                {m.lead_booking_rate.toFixed(1)}%
+                                <KpiDot tier={grade("hand_raise_rate")?.tier ?? "insufficient"} />
+                                {handPct.toFixed(1)}%
                               </div>
                             </td>
                             <td className="px-4 py-3">
@@ -1215,7 +1208,12 @@ export default function ClientHealthDashboard(_props: Props) {
                                 Prior period: {row.prior.metrics.new_leads} leads
                                 {isCallCenterSegment ? (
                                   <>
-                                    {" "}· {row.prior.metrics.outbound_dials} dials · {row.prior.metrics.lead_booking_rate.toFixed(1)}% book · {row.prior.metrics.net_show_pct.toFixed(0)}% show
+                                    {" "}· {row.prior.metrics.outbound_dials} dials ·{" "}
+                                    {(row.prior.metrics.new_leads > 0
+                                      ? (row.prior.metrics.unique_hand_raises / row.prior.metrics.new_leads) * 100
+                                      : 0
+                                    ).toFixed(1)}
+                                    % hand-raise · {row.prior.metrics.net_show_pct.toFixed(0)}% show
                                   </>
                                 ) : (
                                   <>
@@ -1235,12 +1233,11 @@ export default function ClientHealthDashboard(_props: Props) {
                                   <span>{row.recent.leads} leads</span>
                                   <span>{row.recent.dials} dials</span>
                                   {isCallCenterSegment ? (
-                                    <span>{row.recent.booking_rate.toFixed(1)}% booking (÷ leads)</span>
+                                    <span>{row.recent.hand_raise_rate.toFixed(1)}% hand-raise (÷ leads)</span>
                                   ) : (
                                     <>
                                       <span>{row.recent.lead_to_qualified_pct.toFixed(0)}% lead→qual</span>
                                       <span>{row.recent.hand_raise_rate.toFixed(0)}% hand-raise</span>
-                                      <span style={{ color: "#475569" }}>({row.recent.booking_rate.toFixed(0)}% booked)</span>
                                       <span>
                                         CPL ${Math.round(row.recent.cpl)} · CPQL ${Math.round(row.recent.cpql)}
                                       </span>
@@ -1265,7 +1262,7 @@ export default function ClientHealthDashboard(_props: Props) {
                             )}
                             {isCallCenterSegment && (
                               <p className="text-[10px] mt-2" style={{ color: "#475569" }}>
-                                HE booking rate = appointments booked ÷ total leads (not qualified leads).
+                                HE hand-raise = unique (booked ∪ claimed ∪ LT) ÷ total leads — one lead once.
                               </p>
                             )}
                             <button
@@ -1299,17 +1296,18 @@ export default function ClientHealthDashboard(_props: Props) {
           <>Media Buyer: status = worst of CPL / CPQL / lead→qualified. Expanded grades show your lane only.</>
         ) : effectiveLens === "ccm" ? (
           <>
-            CCM: status = worst of booking, hand-raise, show, and conversation %
-            {isCallCenterSegment ? " (HE booking ÷ total leads)." : " (RM booking ÷ qualified)."} Account CPConv is on Overview.
+            CCM: status = worst of unique hand-raise, show, and conversation %
+            {isCallCenterSegment ? " (HE hand-raise ÷ total leads)." : " (RM hand-raise ÷ qualified)."}{" "}
+            Booking-only is not graded. Account CPConv is on Overview.
           </>
         ) : isCallCenterSegment ? (
           <>
-            HE baseline: 30d matured booking + show. Leading {LEADING_WINDOW_DAYS}d booking in table. Act now = north-star 911 only; leading reds = Monitor / Leading watch.
+            HE baseline: 30d matured unique hand-raise + show. Leading {LEADING_WINDOW_DAYS}d hand-raise in table. Act now = north-star 911 only; leading reds = Monitor / Leading watch.
           </>
         ) : (
           <>
             RM baseline: 30d matured CPConv north star. Leading {LEADING_WINDOW_DAYS}d CPL/CPQL/qual/hand-raise in table.
-            Act now = CPConv 911 only; leading cost/funnel reds = Monitor / Leading watch.
+            Act now = CPConv 911 only; leading cost/funnel reds = Monitor / Leading watch. Conversion benchmark = unique hand-raise (not booking-only).
           </>
         )}
       </p>

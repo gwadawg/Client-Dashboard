@@ -91,11 +91,21 @@ export type MetricsResult = {
   /** Unique conversations ÷ qualified leads. */
   conversation_rate: number;
   /**
+   * Distinct leads with any hand-raise path (booked ∪ claimed ∪ live transfer).
+   * One lead counted once even with multiple booking events.
+   */
+  unique_hand_raises: number;
+  /**
    * Unique leads with any hand-raise path (booked, claimed, or live transfer)
    * ÷ qualified — intent to talk, before show. One lead counted once even if
    * they booked multiple times or were also claimed / live-transferred.
    */
   hand_raise_rate: number;
+  /**
+   * Unique hand-raises ÷ total leads × 100 (HE conversion benchmark).
+   * Same numerator as hand_raise_rate; denominator is all leads, not qualified.
+   */
+  lead_hand_raise_rate: number;
   appointment_cancelled: number;
   cancel_rate: number;
   /** Partner LO did not attend scheduled appointment with lead (“bailed”). */
@@ -285,7 +295,9 @@ export function calculateMetrics(
     lo_bail_rate: booked > 0 ? (lo_bailed / booked) * 100 : 0,
     unique_conversations: unique_conversation_leads,
     conversation_rate: qualified_leads > 0 ? (unique_conversation_leads / qualified_leads) * 100 : 0,
+    unique_hand_raises: unique_hand_raise_leads,
     hand_raise_rate: qualified_leads > 0 ? (unique_hand_raise_leads / qualified_leads) * 100 : 0,
+    lead_hand_raise_rate: leads > 0 ? (unique_hand_raise_leads / leads) * 100 : 0,
     appointment_cancelled: cancelled,
     cancel_rate: scheduled_total > 0 ? (cancelled / scheduled_total) * 100 : 0,
     lo_bailed,
