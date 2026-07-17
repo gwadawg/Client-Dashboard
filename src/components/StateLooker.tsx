@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReportingTypeBadge from "@/components/ReportingTypeBadge";
 import { lifecycleStatusLabel } from "@/lib/client-feedback";
 import { normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
@@ -60,27 +60,92 @@ function websiteHref(url: string): string {
   return `https://${url}`;
 }
 
-function StatesCell({ codes, highlight }: { codes: string[]; highlight?: string }) {
+function stateLabel(code: string): string {
+  return US_STATES.find(s => s.code === code)?.name ?? code;
+}
+
+function StatesDropdown({
+  codes,
+  highlight,
+  open,
+  onToggle,
+}: {
+  codes: string[];
+  highlight?: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (!open || !buttonRef.current) {
+      setMenuPos(null);
+      return;
+    }
+    const rect = buttonRef.current.getBoundingClientRect();
+    const menuWidth = 200;
+    const left = Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const top = spaceBelow < 220 ? Math.max(8, rect.top - 8 - Math.min(224, codes.length * 28 + 8)) : rect.bottom + 4;
+    setMenuPos({ top, left: Math.max(8, left) });
+  }, [open, codes.length]);
+
   if (!codes.length) {
     return <span style={{ color: "#475569" }}>—</span>;
   }
 
+  const label =
+    codes.length === 1
+      ? codes[0]
+      : highlight && codes.includes(highlight)
+        ? `${highlight} · ${codes.length}`
+        : `${codes.length} states`;
+
   return (
-    <span className="text-xs leading-relaxed" style={{ color: "#94a3b8" }}>
-      {codes.map((code, i) => (
-        <span key={code}>
-          {i > 0 && ", "}
-          <span
-            style={{
-              color: code === highlight ? "#f59e0b" : "#94a3b8",
-              fontWeight: code === highlight ? 600 : 400,
-            }}
-          >
-            {code}
-          </span>
-        </span>
-      ))}
-    </span>
+    <div className="relative" data-states-dropdown>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={onToggle}
+        className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md whitespace-nowrap transition-colors"
+        style={{
+          color: open ? "#e2e8f0" : "#94a3b8",
+          background: open ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
+          border: `1px solid ${open ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.08)"}`,
+        }}
+        aria-expanded={open}
+      >
+        {label}
+        <span style={{ color: "#64748b", fontSize: 9 }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && menuPos && (
+        <div
+          data-states-dropdown
+          className="fixed z-50 min-w-[180px] max-h-56 overflow-y-auto rounded-lg py-1 shadow-xl"
+          style={{
+            top: menuPos.top,
+            left: menuPos.left,
+            background: "#0f2040",
+            border: "1px solid rgba(255,255,255,0.12)",
+          }}
+        >
+          {codes.map(code => (
+            <div
+              key={code}
+              className="px-3 py-1.5 text-xs flex items-center justify-between gap-3"
+              style={{
+                color: code === highlight ? "#fbbf24" : "#cbd5e1",
+                background: code === highlight ? "rgba(251,191,36,0.08)" : undefined,
+              }}
+            >
+              <span className="font-semibold">{code}</span>
+              <span style={{ color: "#64748b" }}>{stateLabel(code)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -89,26 +154,24 @@ function CompanyCell({ client }: { client: StateLookerClient }) {
     return <span style={{ color: "#334155" }}>—</span>;
   }
 
+  const title = [client.company_name, client.brokerage_name ? `Brokerage: ${client.brokerage_name}` : null]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <div className="flex flex-col gap-0.5 min-w-0">
-      {client.company_name && (
-        <span className="font-medium truncate" style={{ color: "#e2e8f0" }} title={client.company_name}>
-          {client.company_name}
-        </span>
-      )}
-      {client.brokerage_name && (
-        <span className="text-xs truncate" style={{ color: "#94a3b8" }} title={client.brokerage_name}>
-          {client.company_name ? `Brokerage: ${client.brokerage_name}` : client.brokerage_name}
-        </span>
-      )}
-    </div>
+    <span className="block truncate text-xs max-w-[160px]" style={{ color: "#e2e8f0" }} title={title}>
+      {client.company_name ?? client.brokerage_name}
+      {client.company_name && client.brokerage_name ? (
+        <span style={{ color: "#64748b" }}> · {client.brokerage_name}</span>
+      ) : null}
+    </span>
   );
 }
 
 function LiveTransferBadge({ approved }: { approved: boolean }) {
   return (
     <span
-      className="inline-flex text-xs font-semibold px-2 py-0.5 rounded-md"
+      className="inline-flex text-[11px] font-semibold px-1.5 py-0.5 rounded"
       style={{
         color: approved ? "#34d399" : "#64748b",
         background: approved ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.04)",
@@ -128,6 +191,19 @@ function ClientDirectoryTable({
   selectedState?: string;
   emptyMessage: string;
 }) {
+  const [openStatesId, setOpenStatesId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!openStatesId) return;
+    function onDocClick(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-states-dropdown]")) return;
+      setOpenStatesId(null);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [openStatesId]);
+
   if (!clients.length) {
     return (
       <div
@@ -153,13 +229,23 @@ function ClientDirectoryTable({
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+        <table className="w-full text-sm border-collapse table-fixed min-w-[960px]">
+          <colgroup>
+            <col style={{ width: "18%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "20%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "9%" }} />
+          </colgroup>
           <thead>
             <tr style={{ background: "rgba(255,255,255,0.03)" }}>
               {headers.map(h => (
                 <th
                   key={h.key}
-                  className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap text-left"
+                  className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap text-left"
                   style={{ color: "#64748b", borderBottom: "1px solid rgba(255,255,255,0.08)" }}
                 >
                   {h.label}
@@ -177,49 +263,55 @@ function ClientDirectoryTable({
                     idx < clients.length - 1 ? "1px solid rgba(255,255,255,0.05)" : undefined,
                 }}
               >
-                <td className="px-4 py-2.5 align-middle">
-                  <div className="flex flex-col gap-0.5 min-w-[150px]">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium leading-snug" style={{ color: "#f1f5f9" }}>
-                        {client.name}
+                <td className="px-3 py-1.5 align-middle">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className="font-medium text-sm truncate"
+                      style={{ color: "#f1f5f9" }}
+                      title={
+                        client.account_display_name &&
+                        client.account_display_name !== client.company_name
+                          ? `${client.name} · ${client.account_display_name}`
+                          : client.name
+                      }
+                    >
+                      {client.name}
+                    </span>
+                    <ReportingTypeBadge value={client.reporting_type} />
+                    {client.lifecycle_status !== "active" && (
+                      <span
+                        className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0"
+                        style={{ color: "#fbbf24", background: "rgba(251,191,36,0.1)" }}
+                      >
+                        {lifecycleStatusLabel(client.lifecycle_status)}
                       </span>
-                      <ReportingTypeBadge value={client.reporting_type} />
-                      {client.lifecycle_status !== "active" && (
-                        <span
-                          className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                          style={{ color: "#fbbf24", background: "rgba(251,191,36,0.1)" }}
-                        >
-                          {lifecycleStatusLabel(client.lifecycle_status)}
-                        </span>
-                      )}
-                    </div>
-                    {client.account_display_name &&
-                      client.account_display_name !== client.company_name && (
-                        <span className="text-xs" style={{ color: "#64748b" }}>
-                          {client.account_display_name}
-                        </span>
-                      )}
+                    )}
                   </div>
                 </td>
-                <td className="px-4 py-2.5 align-middle min-w-[140px]">
+                <td className="px-3 py-1.5 align-middle">
                   <CompanyCell client={client} />
                 </td>
-                <td className="px-4 py-2.5 align-middle whitespace-nowrap">
+                <td className="px-3 py-1.5 align-middle whitespace-nowrap">
                   <LiveTransferBadge approved={client.live_transfer_approved} />
                 </td>
-                <td className="px-4 py-2.5 align-middle min-w-[180px] max-w-[260px]">
-                  <span className="text-xs leading-snug" style={{ color: "#cbd5e1" }} title={client.offer_blurb}>
+                <td className="px-3 py-1.5 align-middle">
+                  <span
+                    className="block text-xs truncate"
+                    style={{ color: "#cbd5e1" }}
+                    title={client.offer_blurb}
+                  >
                     {client.offer_blurb}
                   </span>
                 </td>
-                <td className="px-4 py-2.5 align-middle whitespace-nowrap">
+                <td className="px-3 py-1.5 align-middle">
                   {client.website ? (
                     <a
                       href={websiteHref(client.website)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs underline-offset-2 hover:underline"
+                      className="block text-xs truncate underline-offset-2 hover:underline"
                       style={{ color: "#38bdf8" }}
+                      title={client.website}
                     >
                       {client.website.replace(/^https?:\/\//i, "")}
                     </a>
@@ -227,19 +319,20 @@ function ClientDirectoryTable({
                     <span style={{ color: "#334155" }}>—</span>
                   )}
                 </td>
-                <td className="px-4 py-2.5 align-middle whitespace-nowrap text-xs" style={{ color: "#94a3b8" }}>
+                <td className="px-3 py-1.5 align-middle whitespace-nowrap text-xs truncate" style={{ color: "#94a3b8" }}>
                   {formatLocation(client)}
                 </td>
-                <td className="px-4 py-2.5 align-middle whitespace-nowrap text-xs">
+                <td className="px-3 py-1.5 align-middle whitespace-nowrap text-xs">
                   {client.phone_live_transfer ? (
                     <a
                       href={`tel:${client.phone_live_transfer}`}
+                      className="truncate block"
                       style={{
                         color: client.live_transfer_approved ? "#e2e8f0" : "#64748b",
                       }}
                       title={
                         client.live_transfer_approved
-                          ? undefined
+                          ? client.phone_live_transfer
                           : "Live transfers not approved for this client"
                       }
                     >
@@ -249,8 +342,15 @@ function ClientDirectoryTable({
                     <span style={{ color: "#334155" }}>—</span>
                   )}
                 </td>
-                <td className="px-4 py-2.5 align-middle min-w-[120px] max-w-[200px]">
-                  <StatesCell codes={client.states_licensed} highlight={selectedState} />
+                <td className="px-3 py-1.5 align-middle">
+                  <StatesDropdown
+                    codes={client.states_licensed}
+                    highlight={selectedState}
+                    open={openStatesId === client.id}
+                    onToggle={() =>
+                      setOpenStatesId(prev => (prev === client.id ? null : client.id))
+                    }
+                  />
                 </td>
               </tr>
             ))}
