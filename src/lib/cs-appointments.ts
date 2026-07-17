@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { onCsAppointmentTouchpointHooks } from '@/lib/cs-touchpoint-rules';
 
 export const CS_CALL_TYPES = ['onboarding', 'launch', 'checkin'] as const;
 export type CsCallType = (typeof CS_CALL_TYPES)[number];
@@ -187,6 +188,18 @@ export async function upsertCsAppointment(
     .select('id')
     .eq('clickup_task_id', clickupTaskId)
     .maybeSingle();
+
+  try {
+    await onCsAppointmentTouchpointHooks(service, {
+      appointmentId: id,
+      clientId: client?.id ?? null,
+      callType: config.call_type,
+      status,
+      scheduledAt,
+    });
+  } catch (err) {
+    console.error('[cs_touchpoints] appointment hook failed', err);
+  }
 
   return {
     ok: true,

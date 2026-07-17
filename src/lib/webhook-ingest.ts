@@ -3,12 +3,14 @@ import { normalizeStoredAgentName } from '@/lib/agent-name-aliases';
 import { isAiBookedFromPayload } from '@/lib/credit-queue-eligibility';
 import { parseYnFlag } from '@/lib/metrics';
 import { resolveClientId } from '@/lib/resolve-client';
+import { recordingUrlField } from '@/lib/recording-url';
 import {
   normalizeTimestamp,
   normalizeTimeZone,
   CALL_CENTER_TIMEZONE,
   INGEST_SOURCE_TIMEZONE,
 } from '@/lib/time';
+import { onEventTouchpointHooks } from '@/lib/cs-touchpoint-rules';
 
 export const VALID_EVENT_TYPES = [
   'dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked',
@@ -33,21 +35,6 @@ export function normalizeEventType(eventType: string): string {
   if (eventType === 'loan_processing') return 'submission_made';
   if (eventType === 'closed') return 'loan_funded';
   return eventType;
-}
-
-function recordingUrlField(v: unknown): string | null {
-  if (v == null) return null;
-  if (Array.isArray(v)) {
-    for (const item of v) {
-      const url = recordingUrlField(item);
-      if (url) return url;
-    }
-    return null;
-  }
-  const s = jsonSafeString(v);
-  if (!s) return null;
-  if (s.startsWith('http://') || s.startsWith('https://')) return s;
-  return null;
 }
 
 function resolveRecordingUrl(payload: Record<string, unknown>): string | null {
@@ -377,6 +364,19 @@ export async function ingestWebhookEvent(
       };
     }
     return { error: error.message, status: 500 };
+  }
+
+  if (inserted?.id && client_id) {
+    try {
+      await onEventTouchpointHooks(service, {
+        clientId: client_id,
+        eventType: normalizedEventType,
+        eventId: inserted.id,
+        occurredAt: typeof payload.occurred_at === 'string' ? payload.occurred_at : null,
+      });
+    } catch (err) {
+      console.error('[cs_touchpoints] event hook failed', err);
+    }
   }
 
   return {

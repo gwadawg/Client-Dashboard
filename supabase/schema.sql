@@ -318,7 +318,7 @@ create table if not exists agents (
   ended_on              date,
   created_at            timestamptz default now(),
   constraint agents_pay_type_check check (
-    pay_type in ('call_rep', 'b2b_setter', 'admin', 'media_buyer', 'operations', 'other')
+    pay_type in ('call_rep', 'b2b_setter', 'admin', 'media_buyer', 'operations', 'client_success', 'ccm', 'other')
   )
 );
 
@@ -1326,6 +1326,30 @@ create index if not exists client_form_submissions_client_id_idx on client_form_
 create index if not exists client_form_submissions_form_type_idx on client_form_submissions(form_type);
 create index if not exists client_form_submissions_status_idx on client_form_submissions(status) where status = 'unmapped';
 
+-- End-of-day forms (Media Buyer, Client Success, CCM).
+create table if not exists eod_form_submissions (
+  id                     uuid primary key default gen_random_uuid(),
+  agent_id               uuid not null references agents(id) on delete cascade,
+  department             text not null,
+  work_date              date not null,
+  status                 text not null default 'submitted',
+  submitted_by_user_id   uuid references auth.users(id) on delete set null,
+  submitted_by_label     text,
+  responses              jsonb not null default '{}'::jsonb,
+  submitted_at           timestamptz not null default now(),
+  updated_at             timestamptz not null default now(),
+  constraint eod_form_submissions_department_check check (
+    department in ('media_buyer', 'client_success', 'ccm')
+  ),
+  constraint eod_form_submissions_status_check check (
+    status in ('draft', 'submitted')
+  ),
+  constraint eod_form_submissions_unique_day unique (agent_id, department, work_date)
+);
+create index if not exists eod_form_submissions_agent_id_idx on eod_form_submissions (agent_id);
+create index if not exists eod_form_submissions_department_idx on eod_form_submissions (department);
+create index if not exists eod_form_submissions_work_date_idx on eod_form_submissions (work_date desc);
+
 -- Workspace Slack channels + future notification automations (phase 1: storage only).
 create table if not exists slack_channels (
   id           uuid primary key default gen_random_uuid(),
@@ -1564,3 +1588,62 @@ create index if not exists cs_appointments_clickup_scheduled_idx
 
 create index if not exists cs_appointments_calendar_id_idx
   on cs_appointments (calendar_id);
+
+-- 14b5. CS Slack touchpoint work queue (Follow-ups)
+create table if not exists cs_touchpoints (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references clients(id) on delete cascade,
+  touchpoint_type text not null,
+  cycle_key text not null,
+  status text not null default 'open',
+  due_at timestamptz not null,
+  triggered_at timestamptz not null default now(),
+  completed_at timestamptz,
+  snoozed_until timestamptz,
+  trigger_source text not null,
+  source_ref text,
+  playbook_stage text,
+  slack_sent boolean not null default false,
+  slack_snippet text,
+  completion_note text,
+  completed_by uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint cs_touchpoints_type_check check (
+    touchpoint_type in (
+      'post_ob',
+      'mid_build',
+      'pre_launch',
+      'launch_day',
+      'm1_expectation_reset',
+      'first_lead',
+      'first_qc',
+      'first_booking',
+      'first_show',
+      'm2_biweekly'
+    )
+  ),
+  constraint cs_touchpoints_status_check check (
+    status in ('open', 'snoozed', 'done', 'skipped')
+  ),
+  constraint cs_touchpoints_trigger_source_check check (
+    trigger_source in (
+      'cs_appointment',
+      'client_call',
+      'event',
+      'schedule',
+      'manual'
+    )
+  ),
+  constraint cs_touchpoints_client_type_cycle_key unique (client_id, touchpoint_type, cycle_key)
+);
+
+create index if not exists cs_touchpoints_open_due_idx
+  on cs_touchpoints (due_at)
+  where status in ('open', 'snoozed');
+
+create index if not exists cs_touchpoints_client_completed_idx
+  on cs_touchpoints (client_id, completed_at desc nulls last);
+
+create index if not exists cs_touchpoints_status_due_idx
+  on cs_touchpoints (status, due_at);

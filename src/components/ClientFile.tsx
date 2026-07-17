@@ -168,13 +168,14 @@ type ActivityRow = {
   source_table: string;
 };
 
-type TabKey = "overview" | "records" | "activity" | "cs_calls" | "billing";
+type TabKey = "overview" | "records" | "activity" | "cs_calls" | "touchpoints" | "billing";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "records", label: "Forms & history" },
   { key: "activity", label: "Calls & notes" },
   { key: "cs_calls", label: "CS Calls" },
+  { key: "touchpoints", label: "Touchpoints" },
   { key: "billing", label: "Billing" },
 ];
 
@@ -313,6 +314,26 @@ export default function ClientFile({
       calendar_name: string | null;
     }>
   >([]);
+  const [touchpointsOpen, setTouchpointsOpen] = useState<
+    Array<{
+      id: string;
+      touchpoint_type: string;
+      status: string;
+      due_at: string;
+      slack_snippet: string | null;
+    }>
+  >([]);
+  const [touchpointsHistory, setTouchpointsHistory] = useState<
+    Array<{
+      id: string;
+      touchpoint_type: string;
+      status: string;
+      due_at: string;
+      completed_at: string | null;
+      slack_snippet: string | null;
+    }>
+  >([]);
+  const [touchpointLabels, setTouchpointLabels] = useState<Record<string, string>>({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -324,6 +345,8 @@ export default function ClientFile({
         if (d.error) {
           setError(d.error);
           setCsAppointments([]);
+          setTouchpointsOpen([]);
+          setTouchpointsHistory([]);
         } else {
           setClient(d.client ?? null);
           setOfferRow(d.offer ? { name: d.offer.name, reporting_type: d.offer.reporting_type ?? null } : null);
@@ -349,6 +372,22 @@ export default function ClientFile({
             }
           } else {
             setCsAppointments([]);
+          }
+
+          try {
+            const tpRes = await fetch(`/api/clients/${clientId}/touchpoints`);
+            const tpData = await tpRes.json().catch(() => ({}));
+            if (tpRes.ok) {
+              setTouchpointsOpen(tpData.open ?? []);
+              setTouchpointsHistory(tpData.history ?? []);
+              setTouchpointLabels(tpData.labels ?? {});
+            } else {
+              setTouchpointsOpen([]);
+              setTouchpointsHistory([]);
+            }
+          } catch {
+            setTouchpointsOpen([]);
+            setTouchpointsHistory([]);
           }
         }
         setActivities(activityRes.activities ?? []);
@@ -1334,6 +1373,76 @@ export default function ClientFile({
                       </tbody>
                     </table>
                   </div>
+                )}
+              </Section>
+            </div>
+            )}
+
+            {activeTab === "touchpoints" && (
+            <div className="space-y-7">
+              <Section title="Open follow-ups">
+                <p className="text-xs mb-3" style={{ color: "#64748b" }}>
+                  Slack touchpoints due for this account. Clear them from Client Success → Follow-ups.
+                </p>
+                {touchpointsOpen.length === 0 ? (
+                  <p className="text-sm py-6 text-center" style={{ color: "#334155" }}>
+                    No open touchpoints.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {touchpointsOpen.map(t => (
+                      <li
+                        key={t.id}
+                        className="rounded-lg px-3 py-2 text-sm"
+                        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                      >
+                        <span style={{ color: "#e2e8f0" }}>
+                          {touchpointLabels[t.touchpoint_type] ?? t.touchpoint_type}
+                        </span>
+                        <span className="ml-2 text-xs" style={{ color: "#64748b" }}>
+                          due {new Date(t.due_at).toLocaleDateString()}
+                          {t.status === "snoozed" ? " · snoozed" : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Section>
+              <Section title="History">
+                {touchpointsHistory.length === 0 ? (
+                  <p className="text-sm py-6 text-center" style={{ color: "#334155" }}>
+                    No completed touchpoints yet.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {touchpointsHistory.map(t => (
+                      <li
+                        key={t.id}
+                        className="rounded-lg px-3 py-2 text-sm"
+                        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                      >
+                        <div className="flex justify-between gap-2">
+                          <span style={{ color: "#e2e8f0" }}>
+                            {touchpointLabels[t.touchpoint_type] ?? t.touchpoint_type}
+                          </span>
+                          <span className="text-xs" style={{ color: "#64748b" }}>
+                            {t.status}
+                            {t.completed_at
+                              ? ` · ${new Date(t.completed_at).toLocaleDateString()}`
+                              : ""}
+                          </span>
+                        </div>
+                        {t.slack_snippet && (
+                          <p
+                            className="text-xs mt-1.5 whitespace-pre-wrap line-clamp-3"
+                            style={{ color: "#94a3b8" }}
+                          >
+                            {t.slack_snippet}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </Section>
             </div>

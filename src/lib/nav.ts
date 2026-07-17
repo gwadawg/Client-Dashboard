@@ -7,8 +7,16 @@ export type AcquisitionTab = "appointments" | "credit_queue" | "sales_calls" | "
 export type AcquisitionDataExplorerTab = "leads" | "appointments" | "offers" | "dials" | "closes" | "ads";
 export type AcquisitionKpiTab = "overview" | "setters" | "closers" | "costs";
 export type AgentsTab = "performance" | "goals" | "credit_queue" | "recordings" | "examples";
+export type ClientSuccessTab = "health" | "followups";
 
-export type HubView = "heatmaps" | "data_explorer" | "acquisition" | "acquisition_data_explorer" | "acquisition_kpis" | "agents";
+export type HubView =
+  | "heatmaps"
+  | "data_explorer"
+  | "acquisition"
+  | "acquisition_data_explorer"
+  | "acquisition_kpis"
+  | "agents"
+  | "client_health";
 
 export type View =
   | "dashboard"
@@ -17,7 +25,6 @@ export type View =
   | "ceo_raw"
   | "dial_analytics"
   | "media_buyer"
-  | "client_health"
   | "ops_overview"
   | "state_looker"
   | "team_dashboard_ccm"
@@ -114,6 +121,11 @@ export const AGENTS_TABS: HubTabDef<AgentsTab>[] = [
   { key: "examples", label: "Examples" },
 ];
 
+export const CLIENT_SUCCESS_TABS: HubTabDef<ClientSuccessTab>[] = [
+  { key: "health", label: "Health" },
+  { key: "followups", label: "Follow-ups" },
+];
+
 /** Hub view → legacy permission keys that grant access. */
 export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
   heatmaps: ["heatmap_show", "heatmap_pickup", "heatmap_leads"],
@@ -140,6 +152,7 @@ export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
     "acquisition_ads",
   ],
   agents: ["agent_stats", "agent_scorecards", "agent_credit_queue", "recordings", "goals"],
+  client_health: ["client_health"],
 };
 
 /** All legacy keys still honored in stored permissions (soft deprecation). */
@@ -182,6 +195,7 @@ export const HUB_VIEWS: HubView[] = [
   "acquisition_data_explorer",
   "acquisition_kpis",
   "agents",
+  "client_health",
 ];
 
 export const HUB_TAB_LABELS: Record<HubView, HubTabDef<string>[]> = {
@@ -191,6 +205,7 @@ export const HUB_TAB_LABELS: Record<HubView, HubTabDef<string>[]> = {
   acquisition_data_explorer: ACQUISITION_DATA_EXPLORER_TABS,
   acquisition_kpis: ACQUISITION_KPI_TABS,
   agents: AGENTS_TABS,
+  client_health: CLIENT_SUCCESS_TABS,
 };
 
 export function isHubView(view: string): view is HubView {

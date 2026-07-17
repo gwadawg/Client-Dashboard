@@ -26,6 +26,7 @@ import {
   defaultTabForHub,
   isHubView,
   tabLabelForHub,
+  HUB_TAB_LABELS,
   type View,
   type HubView,
   type HeatmapTab,
@@ -34,6 +35,7 @@ import {
   type AcquisitionDataExplorerTab,
   type AcquisitionKpiTab,
   type AgentsTab,
+  type ClientSuccessTab,
   resolveViewFromParams,
 } from "@/lib/nav";
 import { hasPermission, canViewClientRevenue, canAccessAutomations, type AllowedPermissions } from "@/lib/permissions";
@@ -71,6 +73,7 @@ const AcquisitionHub = lazyTab(() => import("./hubs/AcquisitionHub"));
 const AcquisitionKpiHub = lazyTab(() => import("./hubs/AcquisitionKpiHub"));
 const AcquisitionDataExplorerHub = lazyTab(() => import("./hubs/AcquisitionDataExplorerHub"));
 const AgentsHub = lazyTab(() => import("./hubs/AgentsHub"));
+const ClientSuccessHub = lazyTab(() => import("./hubs/ClientSuccessHub"));
 const ClientRoster = lazyTab(() => import("./ClientRoster"));
 const BillingManager = lazyTab(() => import("./BillingManager"));
 const AgentPayrollReport = lazyTab(() => import("./AgentPayrollReport"));
@@ -79,7 +82,6 @@ const CostTrendCharts = lazyTab(() => import("./CostTrendCharts"), "Loading cost
 const RateTrendCharts = lazyTab(() => import("./RateTrendCharts"), "Loading rate trends…");
 const ClientConversionsView = lazyTab(() => import("./ClientConversionsView"));
 const FunnelSimulatorView = lazyTab(() => import("./FunnelSimulatorView"));
-const ClientHealthDashboard = lazyTab(() => import("./ClientHealthDashboard"));
 const OpsOverview = lazyTab(() => import("./OpsOverview"));
 const CcmCommandDashboard = lazyTab(() => import("./team-dashboards/CcmCommandDashboard"));
 const StateLooker = lazyTab(() => import("./StateLooker"));
@@ -91,7 +93,10 @@ const AcquisitionSalesReps = lazyTab(() => import("./AcquisitionSalesReps"));
 const ResourcesLibrary = lazyTab(() => import("./ResourcesLibrary"), "Loading library…");
 const CallLibrary = lazyTab(() => import("./CallLibrary"));
 const AutomationsManager = lazyTab(() => import("./AutomationsManager"));
-const DataChatPanel = lazyTab(() => import("./DataChatPanel"));
+const DataChatPanel = dynamic(() => import("./DataChatPanel"), {
+  loading: () => null,
+  ssr: false,
+});
 
 type TrendsPayload = {
   granularity: "day" | "week";
@@ -100,6 +105,33 @@ type TrendsPayload = {
 };
 
 type Client = { id: string; name: string; is_live?: boolean; reporting_type?: ReportingType };
+
+function DataChatLauncher(props: {
+  startDate: string;
+  endDate: string;
+  clients: Client[];
+  selectedClientId: string;
+}) {
+  const [ready, setReady] = useState(false);
+  if (!ready) {
+    return (
+      <button
+        type="button"
+        onClick={() => setReady(true)}
+        className="fixed bottom-5 right-5 z-40 rounded-full px-4 py-3 text-sm font-semibold shadow-lg"
+        style={{
+          background: "#1e3a5f",
+          color: "#e2e8f0",
+          border: "1px solid rgba(148,163,184,0.25)",
+        }}
+        aria-label="Open data chat"
+      >
+        Data Chat
+      </button>
+    );
+  }
+  return <DataChatPanel {...props} defaultOpen />;
+}
 
 const LEGACY_VIEW_KEYS = new Set(Object.keys(LEGACY_VIEW_REDIRECTS));
 
@@ -282,6 +314,8 @@ type DashboardViewProps = {
   allowedPermissions?: AllowedPermissions;
   /** Role home when URL has no view — e.g. CCM → team_dashboard_ccm */
   homeView?: View | null;
+  /** Server-prefetched client list so the dropdown is ready on first paint. */
+  initialClients?: Client[];
 };
 
 export default function DashboardView({
@@ -289,6 +323,7 @@ export default function DashboardView({
   isAdmin = false,
   allowedPermissions = null,
   homeView = null,
+  initialClients = [],
 }: DashboardViewProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -330,7 +365,7 @@ export default function DashboardView({
 
   const [view, setView] = useState<View>(() => resolveInitialView());
   const [hubTab, setHubTab] = useState<string | null>(() => parseUrlView(searchParams).tab);
-  const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<Client[]>(initialClients);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [offerScope, setOfferScope] = useState("");
   const [preset, setPreset] = useState<DatePreset>("this_month");
@@ -364,7 +399,13 @@ export default function DashboardView({
     } else {
       params.set("view", target);
       if (isHubView(target)) {
-        const nextTab = tab ?? hubTab ?? defaultTabForHub(target);
+        const hub = target as HubView;
+        const tabs = HUB_TAB_LABELS[hub];
+        const candidate = tab ?? hubTab;
+        const nextTab =
+          candidate && tabs.some(t => t.key === candidate)
+            ? candidate
+            : defaultTabForHub(hub);
         setHubTab(nextTab);
         params.set("tab", nextTab);
       } else {
@@ -425,8 +466,9 @@ export default function DashboardView({
   }, [searchParams]);
 
   useEffect(() => {
+    if (initialClients.length) return;
     fetch("/api/clients").then(r => r.json()).then(d => setClients(d.clients ?? []));
-  }, []);
+  }, [initialClients.length]);
 
   useEffect(() => {
     if (view !== "dashboard") {
@@ -1066,7 +1108,16 @@ export default function DashboardView({
             <CallLibrary canManage={isOwner || isAdmin} startDate={dateStart} endDate={dateEnd} />
           )}
 
-          {view === "client_health" && <ClientHealthDashboard />}
+          {view === "client_health" && (
+            <ClientSuccessHub
+              tab={
+                hubTab && HUB_TAB_LABELS.client_health.some(t => t.key === hubTab)
+                  ? (hubTab as ClientSuccessTab)
+                  : "health"
+              }
+              onTabChange={setHubTabAndUrl}
+            />
+          )}
 
           {view === "ops_overview" && <OpsOverview />}
 
@@ -1119,7 +1170,7 @@ export default function DashboardView({
         </main>
       </div>
 
-      <DataChatPanel
+      <DataChatLauncher
         startDate={dateStart}
         endDate={dateEnd}
         clients={clients}
