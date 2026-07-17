@@ -94,9 +94,9 @@ export type ClientFocus = 'act_now' | 'monitor' | 'recovering' | 'on_track';
 export type FocusResult = {
   focus: ClientFocus;
   label: string;
-  /** 911 on 30d north star (CPConv for RM, any graded HE KPI). */
+  /** 911 on matured north star (CPConv for RM, any graded HE KPI). */
   verdict_critical: boolean;
-  /** 911 on leading KPIs in the recent window (CPL/CPQL/booking/qual — not CPConv). */
+  /** 911 on leading KPIs in the recent window — early warning only (not Act now). */
   leading_critical: boolean;
 };
 

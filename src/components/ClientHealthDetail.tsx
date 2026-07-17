@@ -2,15 +2,31 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  FOCUS_STYLES,
   KPI_META,
   TIER_LABEL,
   type ClientHealthSnapshot,
+  type ClientKpiBenchmarks,
   type ConstraintGuidance,
+  type FocusResult,
   type FunnelLayer,
   type HealthTier,
   type KpiKey,
   type RecentLeading,
 } from "@/lib/client-health";
+import {
+  DEPT_LENS_LABEL,
+  deptStatusFromSnapshot,
+  type DeptLens,
+} from "@/lib/dept-health";
+import { usesCallCenterKpiLayout } from "@/lib/kpi-layouts";
+import { callTypeLabel } from "@/lib/client-calls";
+import { noteTypeLabel, reasonLabel } from "@/lib/client-feedback";
+import ClientActionLog from "./ClientActionLog";
+import ClientTimelineChart from "./ClientTimelineChart";
+import ClientAiDiagnosis from "./ClientAiDiagnosis";
+import PeriodComparison from "./PeriodComparison";
+import ClientKpiStandardsPanel from "./ClientKpiStandardsPanel";
 
 type MaturityInfo = {
   days: number;
@@ -24,21 +40,14 @@ type MaturityInfo = {
   recent_start: string;
   recent_end: string;
 };
-import { normalizeReportingType, usesCallCenterKpiLayout } from "@/lib/kpi-layouts";
-import { callTypeLabel } from "@/lib/client-calls";
-import { noteTypeLabel, reasonLabel } from "@/lib/client-feedback";
-import ClientActionLog from "./ClientActionLog";
-import ClientTimelineChart from "./ClientTimelineChart";
-import ClientAiDiagnosis from "./ClientAiDiagnosis";
-import PeriodComparison from "./PeriodComparison";
-import ClientKpiStandardsPanel from "./ClientKpiStandardsPanel";
-import { FOCUS_STYLES, type FocusResult, type ClientKpiBenchmarks } from "@/lib/client-health";
 
 type Props = {
   clientId: string;
   clientName: string;
   startDate: string;
   endDate: string;
+  /** Active department lens from the list — role badges when not overview. */
+  lens?: DeptLens;
   onBack: () => void;
   onOpenClientFile?: () => void;
 };
@@ -111,7 +120,15 @@ const cardStyle = {
   border: "1px solid rgba(255,255,255,0.06)",
 } as React.CSSProperties;
 
-export default function ClientHealthDetail({ clientId, clientName, startDate, endDate, onBack, onOpenClientFile }: Props) {
+export default function ClientHealthDetail({
+  clientId,
+  clientName,
+  startDate,
+  endDate,
+  lens = "overview",
+  onBack,
+  onOpenClientFile,
+}: Props) {
   const [data, setData] = useState<DetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -184,7 +201,25 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
       ) : data ? (
         (() => {
           const isHe = usesCallCenterKpiLayout(data.reporting_type);
-          const layerGroups = isHe ? HE_LAYER_GROUPS : LAYER_GROUPS;
+          const roleStatus =
+            lens === "overview"
+              ? null
+              : deptStatusFromSnapshot(data.current, data.recent ?? null, lens, isHe);
+          const mediaLayers = new Set<FunnelLayer>(["L1", "L2"]);
+          const ccmLayers = new Set<FunnelLayer>(["L3", "L4"]);
+          const baseGroups = isHe ? HE_LAYER_GROUPS : LAYER_GROUPS;
+          const layerGroups =
+            lens === "media_buyer"
+              ? [
+                  ...baseGroups.filter(g => mediaLayers.has(g.layer)),
+                  ...baseGroups.filter(g => !mediaLayers.has(g.layer)),
+                ]
+              : lens === "ccm"
+                ? [
+                    ...baseGroups.filter(g => ccmLayers.has(g.layer)),
+                    ...baseGroups.filter(g => !ccmLayers.has(g.layer)),
+                  ]
+                : baseGroups;
           const m = data.current.metrics;
 
           return (
@@ -212,7 +247,7 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                   Baseline ends ~7d before today (matured cohorts). Leading KPIs use the calendar-last {data.maturity?.leading_window_days ?? data.maturity?.recent_window_days ?? 7} days through today.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col items-end gap-2">
                 {onOpenClientFile && (
                   <button
                     type="button"
@@ -223,18 +258,38 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                     Open client file
                   </button>
                 )}
-                <TierBadge tier={data.current.worst_tier} />
-                {data.focus && (
-                  <span
-                    className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md"
-                    style={{
-                      background: FOCUS_STYLES[data.focus.focus].bg,
-                      color: FOCUS_STYLES[data.focus.focus].text,
-                      border: `1px solid ${FOCUS_STYLES[data.focus.focus].border}`,
-                    }}
-                  >
-                    {data.focus.label}
-                  </span>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "#64748b" }}>
+                      Account
+                    </span>
+                    <TierBadge tier={data.current.worst_tier} />
+                  </div>
+                  {roleStatus != null && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "#64748b" }}>
+                        {DEPT_LENS_LABEL[lens]}
+                      </span>
+                      <TierBadge tier={roleStatus} />
+                    </div>
+                  )}
+                  {lens === "overview" && data.focus && (
+                    <span
+                      className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md"
+                      style={{
+                        background: FOCUS_STYLES[data.focus.focus].bg,
+                        color: FOCUS_STYLES[data.focus.focus].text,
+                        border: `1px solid ${FOCUS_STYLES[data.focus.focus].border}`,
+                      }}
+                    >
+                      {data.focus.label}
+                    </span>
+                  )}
+                </div>
+                {roleStatus != null && (
+                  <p className="text-[10px] max-w-xs text-right" style={{ color: "#475569" }}>
+                    Account = north star (CPConv). {DEPT_LENS_LABEL[lens]} = your lane only — do not treat Account 911 as your scorecard.
+                  </p>
                 )}
               </div>
             </div>
@@ -386,12 +441,23 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
           <div className="rounded-xl p-5" style={cardStyle}>
             <h3 className="text-base font-semibold mb-3" style={{ color: "#e2e8f0" }}>
               Layer scorecard
+              {lens !== "overview" && (
+                <span className="ml-2 text-xs font-normal" style={{ color: "#64748b" }}>
+                  ({DEPT_LENS_LABEL[lens]} layers first)
+                </span>
+              )}
             </h3>
             <div className="space-y-3">
-              {layerGroups.map(group => (
-                <div key={group.layer}>
+              {layerGroups.map(group => {
+                const isPrimary =
+                  lens === "overview" ||
+                  (lens === "media_buyer" && mediaLayers.has(group.layer)) ||
+                  (lens === "ccm" && ccmLayers.has(group.layer));
+                return (
+                <div key={group.layer} style={{ opacity: isPrimary ? 1 : 0.45 }}>
                   <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#475569" }}>
                     {group.label}
+                    {!isPrimary ? " · other lane" : ""}
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {group.keys.map(key => {
@@ -401,7 +467,12 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                         <div
                           key={key}
                           className="rounded-lg px-3 py-2"
-                          style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.05)" }}
+                          style={{
+                            background: "#050c18",
+                            border: isPrimary
+                              ? "1px solid rgba(56,189,248,0.22)"
+                              : "1px solid rgba(255,255,255,0.05)",
+                          }}
                         >
                           <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "#475569" }}>
                             {KPI_META[key].short}
@@ -415,7 +486,8 @@ export default function ClientHealthDetail({ clientId, clientName, startDate, en
                     })}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

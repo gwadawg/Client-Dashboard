@@ -102,14 +102,22 @@ HE clients keep a minimal dashboard (leads, appointments + calling stats). **Boo
 
 ### Client Success tab (RM vs HE)
 
-The **Client Success** view (`client_health`) splits clients by `reporting_type`:
+The **Client Success** view (`client_health`) splits clients by `reporting_type` and by **department lens**:
 
-| Segment | Clients | Graded KPIs | Overall tier |
-|---------|---------|-------------|--------------|
-| **Paid Ads (RM)** | `reporting_type = RM` | Lead-to-qualified, pickup, booking (÷ qualified), show, close, CPL, CPQL, CPConv | North star = CPConv |
-| **Appointment Only (HE)** | `reporting_type = HE` | Lead booking rate (÷ total leads), net show rate, pickup rate | Worst of the three |
+| Segment | Clients | Graded KPIs | Account (Overview) tier |
+|---------|---------|-------------|-------------------------|
+| **Paid Ads (RM + DSCR)** | paid-ads reporting types | Lead-to-qualified, hand-raise, show, close, CPL, CPQL, CPConv | North star = **CPConv** only |
+| **Call Center (HE)** | appointment-only / HE | Lead booking rate (÷ total leads), net show rate | Worst of booking + show |
 
-HE accounts have **no ad-cost grading** (CPL / CPQL / CPConv are omitted). **Outbound dials** are shown in the HE table for volume context but are not tiered. Per-client benchmark overrides in Admin → Client Roster respect the segment (3 KPIs for HE, 8 for RM).
+**Role lenses (same data, different 911):**
+
+| Lens | Status drivers | Does not grade |
+|------|----------------|----------------|
+| **Overview** | CPConv (RM) / booking+show (HE). Focus **Act now** = north-star 911 only; leading cost/funnel reds → Monitor / Leading watch | — |
+| **Media Buyer** | Worst of CPL, CPQL, lead→qualified (leading 7d preferred) | CPConv, booking, show |
+| **CCM** | Worst of booking, hand-raise, show, conversation % | CPL, CPQL, CPConv |
+
+HE accounts have **no ad-cost grading** (CPL / CPQL / CPConv are omitted). **Outbound dials** are shown for volume context but are not tiered. Detail drill-down shows **Account** + **lane** badges when opened from Media / CCM so CPConv 911 is never mistaken for that seat’s scorecard. Per-client benchmark overrides in Admin → Client Roster allow CPL customization (CPQL / CPConv derive from CPL + global conversion bands).
 
 ---
 

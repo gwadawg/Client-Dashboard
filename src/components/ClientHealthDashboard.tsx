@@ -14,7 +14,6 @@ import {
 import { Fragment } from "react";
 import {
   computePriorityScore,
-  DEFAULT_KPI_BANDS,
   FOCUS_STYLES,
   FRESH_LAUNCH_DAYS,
   KPI_META,
@@ -27,6 +26,14 @@ import {
   type KpiKey,
   type PendingIntervention,
 } from "@/lib/client-health";
+import {
+  DEPT_LENS_LABEL,
+  TIER_WEIGHT,
+  deptStatus,
+  gradesForLens,
+  rateTierFromBands,
+  type DeptLens,
+} from "@/lib/dept-health";
 import Link from "next/link";
 import ClientFile from "./ClientFile";
 import ClientHealthDetail from "./ClientHealthDetail";
@@ -45,9 +52,6 @@ type Props = {
 
 type ClientSegment = "RM" | "CALL_CENTER";
 
-/** Department lens — same /api/client-health payload, different columns & priority. */
-type DeptLens = "overview" | "media_buyer" | "ccm";
-
 type SortKey =
   | "priority"
   | "focus"
@@ -62,83 +66,6 @@ type SortKey =
   | "hand_raise"
   | "conv_rate"
   | "dept_status";
-
-const TIER_WEIGHT: Record<HealthTier, number> = {
-  critical: 4,
-  below: 3,
-  at: 2,
-  above: 1,
-  insufficient: 0,
-};
-
-function worstTier(...tiers: HealthTier[]): HealthTier {
-  return tiers.reduce(
-    (worst, t) => (TIER_WEIGHT[t] > TIER_WEIGHT[worst] ? t : worst),
-    "above" as HealthTier,
-  );
-}
-
-/** Grade a rate % against DEFAULT_KPI_BANDS (or booking bands for conversation rate). */
-function rateTierFromBands(
-  key: KpiKey,
-  value: number,
-  denominator: number,
-  minDenom: number,
-): HealthTier {
-  if (denominator < minDenom) return "insufficient";
-  const { bands, higherIsBetter } = DEFAULT_KPI_BANDS[key];
-  if (higherIsBetter) {
-    if (bands.critical != null && value < bands.critical) return "critical";
-    if (bands.below != null && value < bands.below) return "below";
-    if (bands.at != null && value < bands.at) return "at";
-    return "above";
-  }
-  if (bands.critical != null && value > bands.critical) return "critical";
-  if (bands.below != null && value > bands.below) return "below";
-  if (bands.at != null && value > bands.at) return "at";
-  return "above";
-}
-
-function gradeOf(row: ClientHealthRow, key: KpiKey): HealthTier {
-  return row.current.grades.find(g => g.key === key)?.tier ?? "insufficient";
-}
-
-/** Media Buyer owns lead cost — CPL + CPQL (prefer leading 7d when graded). */
-function mediaBuyerStatus(row: ClientHealthRow): HealthTier {
-  const lead = row.recent;
-  const cpl = leadingGradeFor(lead, "cpl");
-  const cpql = leadingGradeFor(lead, "cpql");
-  const cplTier = cpl !== "insufficient" ? cpl : gradeOf(row, "cpl");
-  const cpqlTier = cpql !== "insufficient" ? cpql : gradeOf(row, "cpql");
-  const graded = [cplTier, cpqlTier].filter(t => t !== "insufficient");
-  if (graded.length === 0) return "insufficient";
-  return worstTier(...graded);
-}
-
-/** CCM owns post-lead conversion — booking, hand-raise, show, conversation rate. */
-function ccmStatus(row: ClientHealthRow, isHe: boolean): HealthTier {
-  const m = row.current.metrics;
-  const show = gradeOf(row, "show_rate");
-  const hand = isHe ? "insufficient" : gradeOf(row, "hand_raise_rate");
-  const book = isHe
-    ? gradeOf(row, "lead_booking_rate")
-    : rateTierFromBands("booking_rate", m.appt_booking_rate, m.qualified_leads, 5);
-  const conv = rateTierFromBands(
-    "hand_raise_rate",
-    m.conversation_rate,
-    m.qualified_leads,
-    5,
-  );
-  const graded = [show, hand, book, conv].filter(t => t !== "insufficient");
-  if (graded.length === 0) return "insufficient";
-  return worstTier(...graded);
-}
-
-function deptStatus(row: ClientHealthRow, lens: DeptLens, isHe: boolean): HealthTier {
-  if (lens === "media_buyer") return mediaBuyerStatus(row);
-  if (lens === "ccm") return ccmStatus(row, isHe);
-  return row.current.worst_tier;
-}
 
 /**
  * Standardized grading windows. Each is a fixed trailing period that ends at the
@@ -240,18 +167,18 @@ const DEPT_TABS: {
   {
     key: "overview",
     label: "Overview",
-    blurb: "Full account health — CPConv north star + leading costs and funnel.",
+    blurb: "Account north star — CPConv (RM) or booking/show (HE). Role KPIs live on Media / CCM tabs.",
   },
   {
     key: "media_buyer",
     label: "Media Buyer",
-    blurb: "Lead-gen ownership — CPL and CPQL. Who is expensive upstream?",
+    blurb: "Your lane only — CPL, CPQL, and lead→qualified. Account CPConv is on Overview.",
     rmOnly: true,
   },
   {
     key: "ccm",
     label: "CCM",
-    blurb: "Call-center ownership — booking, hand-raise, show, and conversation rate.",
+    blurb: "Your lane only — booking, hand-raise, show, and conversation rate. Account CPConv is on Overview.",
   },
 ];
 
@@ -327,7 +254,7 @@ export default function ClientHealthDashboard(_props: Props) {
   const [chartMetric, setChartMetric] = useState<SortKey>("priority");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [hideInactive, setHideInactive] = useState(true);
-  const [detail, setDetail] = useState<{ id: string; name: string } | null>(null);
+  const [detail, setDetail] = useState<{ id: string; name: string; lens: DeptLens } | null>(null);
   const [fileFor, setFileFor] = useState<{ id: string; name: string } | null>(null);
   const [summaryStats, setSummaryStats] = useState({
     act_now: 0,
@@ -600,6 +527,7 @@ export default function ClientHealthDashboard(_props: Props) {
           clientName={detail.name}
           startDate={startDate}
           endDate={endDate}
+          lens={detail.lens}
           onBack={() => setDetail(null)}
           onOpenClientFile={() => setFileFor({ id: detail.id, name: detail.name })}
         />
@@ -701,19 +629,19 @@ export default function ClientHealthDashboard(_props: Props) {
         {effectiveLens === "media_buyer" ? (
           <>
             <span style={{ color: "#38bdf8", fontWeight: 600 }}>Media Buyer lens.</span>{" "}
-            Status = worst of CPL / CPQL (leading 7d preferred, else 30d baseline). Same accounts and drill-down as Overview — only the columns change.
+            Status = worst of CPL / CPQL / lead→qualified (leading 7d preferred). Account CPConv lives on Overview — not your scorecard.
           </>
         ) : effectiveLens === "ccm" ? (
           <>
             <span style={{ color: "#38bdf8", fontWeight: 600 }}>CCM lens.</span>{" "}
-            Status = worst of booking, hand-raise, show, and conversation rate on the matured baseline. Leading window is early warning only.
+            Status = worst of booking, hand-raise, show, and conversation rate. Account CPConv lives on Overview — not your scorecard.
           </>
         ) : (
           <>
             <span style={{ color: "#38bdf8", fontWeight: 600 }}>Two windows.</span>{" "}
             <strong>Baseline</strong> ({startDate} → {endDate}) ends {MATURITY_DAYS} days before today so CPConv, show, and close reflect resolved cohorts.{" "}
             <strong>Leading</strong> (
-            {maturity?.leading_start ?? "…"} → {maturity?.leading_end ?? "today"}) is calendar-last {LEADING_WINDOW_DAYS} days through today.
+            {maturity?.leading_start ?? "…"} → {maturity?.leading_end ?? "today"}) is calendar-last {LEADING_WINDOW_DAYS} days through today. Act now = north-star 911 only.
           </>
         )}
       </div>
@@ -887,7 +815,7 @@ export default function ClientHealthDashboard(_props: Props) {
                       key={row.client_id}
                       className="cursor-pointer transition-colors"
                       style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                      onClick={() => setDetail({ id: row.client_id, name: row.client_name })}
+                      onClick={() => setDetail({ id: row.client_id, name: row.client_name, lens: effectiveLens })}
                     >
                       <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>
                         {row.client_name}
@@ -1261,9 +1189,11 @@ export default function ClientHealthDashboard(_props: Props) {
                               style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.05)" }}
                             >
                               <p className="col-span-full text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "#475569" }}>
-                                Baseline grades · {startDate} → {endDate}
+                                {effectiveLens === "overview"
+                                  ? `Baseline grades · ${startDate} → ${endDate}`
+                                  : `${DEPT_LENS_LABEL[effectiveLens]} lane grades · ${startDate} → ${endDate}`}
                               </p>
-                              {row.current.grades.map(g => (
+                              {gradesForLens(row.current.grades, effectiveLens).map(g => (
                                 <div key={g.key}>
                                   <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "#475569" }}>
                                     {KPI_META[g.key].short}
@@ -1274,6 +1204,11 @@ export default function ClientHealthDashboard(_props: Props) {
                                   <TierBadge tier={g.tier} />
                                 </div>
                               ))}
+                              {effectiveLens !== "overview" && (
+                                <p className="col-span-full text-[10px] mt-1" style={{ color: "#334155" }}>
+                                  Account north star (CPConv) is on Overview — not graded as {DEPT_LENS_LABEL[effectiveLens]} status.
+                                </p>
+                              )}
                             </div>
                             {row.prior && row.prior.metrics.new_leads + row.prior.metrics.booked_appointments > 0 && (
                               <p className="text-xs mt-2" style={{ color: "#475569" }}>
@@ -1335,7 +1270,7 @@ export default function ClientHealthDashboard(_props: Props) {
                             )}
                             <button
                               type="button"
-                              onClick={() => setDetail({ id: row.client_id, name: row.client_name })}
+                              onClick={() => setDetail({ id: row.client_id, name: row.client_name, lens: effectiveLens })}
                               className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
                               style={{ background: "rgba(96,165,250,0.15)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.3)" }}
                             >
@@ -1356,25 +1291,25 @@ export default function ClientHealthDashboard(_props: Props) {
       <PendingInterventionsPanel
         interventions={pendingInterventions}
         segment={clientSegment}
-        onOpenClient={(id, name) => setDetail({ id, name })}
+        onOpenClient={(id, name) => setDetail({ id, name, lens: effectiveLens })}
       />
 
       <p className="text-[10px]" style={{ color: "#334155" }}>
         {effectiveLens === "media_buyer" ? (
-          <>Media Buyer: status = worst of CPL / CPQL. Drill-down still shows full grades for context.</>
+          <>Media Buyer: status = worst of CPL / CPQL / lead→qualified. Expanded grades show your lane only.</>
         ) : effectiveLens === "ccm" ? (
           <>
             CCM: status = worst of booking, hand-raise, show, and conversation %
-            {isCallCenterSegment ? " (HE booking ÷ total leads)." : " (RM booking ÷ qualified)."}
+            {isCallCenterSegment ? " (HE booking ÷ total leads)." : " (RM booking ÷ qualified)."} Account CPConv is on Overview.
           </>
         ) : isCallCenterSegment ? (
           <>
-            HE baseline: 30d matured booking + show. Leading {LEADING_WINDOW_DAYS}d booking in table. Focus = 911 on verdict or leading window.
+            HE baseline: 30d matured booking + show. Leading {LEADING_WINDOW_DAYS}d booking in table. Act now = north-star 911 only; leading reds = Monitor / Leading watch.
           </>
         ) : (
           <>
-            RM baseline: 30d matured CPConv + show. Leading {LEADING_WINDOW_DAYS}d CPL/CPQL/qual/hand-raise in table (calendar through today).
-            Focus = 911 on CPConv or leading cost/funnel KPIs.
+            RM baseline: 30d matured CPConv north star. Leading {LEADING_WINDOW_DAYS}d CPL/CPQL/qual/hand-raise in table.
+            Act now = CPConv 911 only; leading cost/funnel reds = Monitor / Leading watch.
           </>
         )}
       </p>
