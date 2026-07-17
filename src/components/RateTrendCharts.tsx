@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -14,16 +13,12 @@ import type { KpiTimelineBucket } from "@/lib/metrics";
 import { usesCallCenterKpiLayout, type ReportingType } from "@/lib/kpi-layouts";
 
 type Props = {
-  clientId?: string;
-  liveOnly?: boolean;
-  startDate: string;
-  endDate: string;
-  reportingType?: ReportingType;
-};
-
-type TrendsResponse = {
-  granularity: "day" | "week";
   kpiSeries: KpiTimelineBucket[];
+  granularity: "day" | "week";
+  loading?: boolean;
+  error?: string;
+  hasDateRange: boolean;
+  reportingType?: ReportingType;
 };
 
 type RateKey = "net_show_rate" | "show_rate" | "lead_to_qual" | "hand_raise_rate" | "booking_rate" | "lead_booking_rate" | "conversation_rate";
@@ -106,32 +101,15 @@ function ChartPanel({
   );
 }
 
-export default function RateTrendCharts({ clientId, liveOnly, startDate, endDate, reportingType = "RM" }: Props) {
-  const [data, setData] = useState<TrendsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!startDate || !endDate) {
-      queueMicrotask(() => setData(null));
-      return;
-    }
-    queueMicrotask(() => { setLoading(true); setError(""); });
-    const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
-    if (clientId) params.set("client_id", clientId);
-    else if (liveOnly) params.set("live_only", "true");
-
-    fetch(`/api/metrics/trends?${params}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) { setError(d.error); setData(null); }
-        else setData(d);
-        setLoading(false);
-      })
-      .catch(() => { setError("Failed to load rate trends"); setLoading(false); });
-  }, [clientId, liveOnly, startDate, endDate]);
-
-  if (!startDate || !endDate) {
+export default function RateTrendCharts({
+  kpiSeries,
+  granularity,
+  loading = false,
+  error = "",
+  hasDateRange,
+  reportingType = "RM",
+}: Props) {
+  if (!hasDateRange) {
     return <p className="text-xs" style={{ color: "#475569" }}>Select a date range to view rate trends.</p>;
   }
   if (loading) {
@@ -147,9 +125,7 @@ export default function RateTrendCharts({ clientId, liveOnly, startDate, endDate
   }
   if (error) return <p className="text-xs text-red-400">{error}</p>;
 
-  const series = data?.kpiSeries ?? [];
-  const granularity = data?.granularity ?? "day";
-  const hasActivity = series.some(p => p.booked > 0 || p.leads > 0);
+  const hasActivity = kpiSeries.some(p => p.booked > 0 || p.leads > 0);
 
   if (!hasActivity) {
     return (
@@ -170,7 +146,7 @@ export default function RateTrendCharts({ clientId, liveOnly, startDate, endDate
           subtitle={chart.subtitle}
           dataKey={chart.key}
           color={chart.color}
-          data={series}
+          data={kpiSeries}
           granularity={granularity}
         />
       ))}

@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -13,15 +12,11 @@ import {
 import type { CostTrendPoint } from "@/lib/metrics";
 
 type Props = {
-  clientId?: string;
-  liveOnly?: boolean;
-  startDate: string;
-  endDate: string;
-};
-
-type TrendsResponse = {
-  granularity: "day" | "week";
   series: CostTrendPoint[];
+  granularity: "day" | "week";
+  loading?: boolean;
+  error?: string;
+  hasDateRange: boolean;
 };
 
 type ChartKey = "cpl" | "cp_qualified" | "cp_conversation";
@@ -173,41 +168,14 @@ function ChartPanel({
   );
 }
 
-export default function CostTrendCharts({ clientId, liveOnly, startDate, endDate }: Props) {
-  const [data, setData] = useState<TrendsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!startDate || !endDate) {
-      setData(null);
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-    const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
-    if (clientId) params.set("client_id", clientId);
-    else if (liveOnly) params.set("live_only", "true");
-
-    fetch(`/api/metrics/trends?${params}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) {
-          setError(d.error);
-          setData(null);
-        } else {
-          setData(d);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        setError("Failed to load cost trends");
-        setLoading(false);
-      });
-  }, [clientId, liveOnly, startDate, endDate]);
-
-  if (!startDate || !endDate) {
+export default function CostTrendCharts({
+  series,
+  granularity,
+  loading = false,
+  error = "",
+  hasDateRange,
+}: Props) {
+  if (!hasDateRange) {
     return (
       <p className="text-xs" style={{ color: "#475569" }}>
         Select a date range to view cost trends.
@@ -231,8 +199,6 @@ export default function CostTrendCharts({ clientId, liveOnly, startDate, endDate
     return <p className="text-xs text-red-400">{error}</p>;
   }
 
-  const series = data?.series ?? [];
-  const granularity = data?.granularity ?? "day";
   const hasActivity = series.some(p => p.spend > 0 || p.leads > 0);
 
   if (!hasActivity) {

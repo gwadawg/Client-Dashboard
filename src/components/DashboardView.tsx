@@ -1,48 +1,17 @@
 "use client";
 
 import Image from "next/image";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import { Suspense, useCallback, useEffect, useState, type ComponentType } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ClientSelect from "./ClientSelect";
-import AgentAdmin from "./AgentAdmin";
-import OfferCatalogManager from "./OfferCatalogManager";
-import ClientCallsBrowser from "./ClientCallsBrowser";
-import SetterSchedule from "./SetterSchedule";
-import HeatMapsHub from "./hubs/HeatMapsHub";
-import DataExplorerHub from "./hubs/DataExplorerHub";
-import AcquisitionHub from "./hubs/AcquisitionHub";
-import AcquisitionKpiHub from "./hubs/AcquisitionKpiHub";
-import AcquisitionDataExplorerHub from "./hubs/AcquisitionDataExplorerHub";
-import AgentsHub from "./hubs/AgentsHub";
-import ClientRoster from "./ClientRoster";
-import BillingManager from "./BillingManager";
-import AgentPayrollReport from "./AgentPayrollReport";
-import UserManager from "./UserManager";
-import AgentCreditQueue from "./AgentCreditQueue";
-import CostTrendCharts from "./CostTrendCharts";
-import RateTrendCharts from "./RateTrendCharts";
 import ShowQualityBar from "./ShowQualityBar";
 import ConversionFunnel from "./ConversionFunnel";
-import ClientConversionsView from "./ClientConversionsView";
-import FunnelSimulatorView from "./FunnelSimulatorView";
-import ClientHealthDashboard from "./ClientHealthDashboard";
-import OpsOverview from "./OpsOverview";
-import CcmCommandDashboard from "./team-dashboards/CcmCommandDashboard";
-import StateLooker from "./StateLooker";
-import DialAnalytics from "./DialAnalytics";
-import MediaBuyer from "./MediaBuyer";
-import AcquisitionMarketing from "./AcquisitionMarketing";
-import CeoDashboard from "./CeoDashboard";
-import AcquisitionSalesReps from "./AcquisitionSalesReps";
-import ResourcesLibrary from "./ResourcesLibrary";
-import CallLibrary from "./CallLibrary";
-import AutomationsManager from "./AutomationsManager";
-import DataChatPanel from "./DataChatPanel";
 import KpiSections, { type SparkMap } from "./kpi/KpiSections";
 import KpiSection from "./kpi/KpiSection";
 import KpiCard from "./kpi/KpiCard";
-import type { KpiTimelineBucket, MetricsResult } from "@/lib/metrics";
+import type { CostTrendPoint, KpiTimelineBucket, MetricsResult } from "@/lib/metrics";
 import {
   DEFAULT_REPORTING_TYPE,
   formatKpiValue,
@@ -70,6 +39,65 @@ import {
 import { hasPermission, canViewClientRevenue, canAccessAutomations, type AllowedPermissions } from "@/lib/permissions";
 import DateRangeFilter from "./DateRangeFilter";
 import { type DatePreset, getDateRange } from "@/lib/date-presets";
+
+function TabLoading({ label = "Loading…" }: { label?: string }) {
+  return (
+    <div className="flex items-center justify-center py-16 gap-3" style={{ color: "#334155" }}>
+      <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+      <span className="text-sm font-medium">{label}</span>
+    </div>
+  );
+}
+
+function lazyTab<T extends ComponentType<any>>(
+  loader: () => Promise<{ default: T }>,
+  label?: string,
+) {
+  return dynamic(loader, {
+    loading: () => <TabLoading label={label} />,
+  });
+}
+
+const AgentAdmin = lazyTab(() => import("./AgentAdmin"));
+const OfferCatalogManager = lazyTab(() => import("./OfferCatalogManager"));
+const ClientCallsBrowser = lazyTab(() => import("./ClientCallsBrowser"));
+const SetterSchedule = lazyTab(() => import("./SetterSchedule"));
+const HeatMapsHub = lazyTab(() => import("./hubs/HeatMapsHub"));
+const DataExplorerHub = lazyTab(() => import("./hubs/DataExplorerHub"));
+const AcquisitionHub = lazyTab(() => import("./hubs/AcquisitionHub"));
+const AcquisitionKpiHub = lazyTab(() => import("./hubs/AcquisitionKpiHub"));
+const AcquisitionDataExplorerHub = lazyTab(() => import("./hubs/AcquisitionDataExplorerHub"));
+const AgentsHub = lazyTab(() => import("./hubs/AgentsHub"));
+const ClientRoster = lazyTab(() => import("./ClientRoster"));
+const BillingManager = lazyTab(() => import("./BillingManager"));
+const AgentPayrollReport = lazyTab(() => import("./AgentPayrollReport"));
+const UserManager = lazyTab(() => import("./UserManager"));
+const CostTrendCharts = lazyTab(() => import("./CostTrendCharts"), "Loading cost trends…");
+const RateTrendCharts = lazyTab(() => import("./RateTrendCharts"), "Loading rate trends…");
+const ClientConversionsView = lazyTab(() => import("./ClientConversionsView"));
+const FunnelSimulatorView = lazyTab(() => import("./FunnelSimulatorView"));
+const ClientHealthDashboard = lazyTab(() => import("./ClientHealthDashboard"));
+const OpsOverview = lazyTab(() => import("./OpsOverview"));
+const CcmCommandDashboard = lazyTab(() => import("./team-dashboards/CcmCommandDashboard"));
+const StateLooker = lazyTab(() => import("./StateLooker"));
+const DialAnalytics = lazyTab(() => import("./DialAnalytics"));
+const MediaBuyer = lazyTab(() => import("./MediaBuyer"));
+const AcquisitionMarketing = lazyTab(() => import("./AcquisitionMarketing"));
+const CeoDashboard = lazyTab(() => import("./CeoDashboard"));
+const AcquisitionSalesReps = lazyTab(() => import("./AcquisitionSalesReps"));
+const ResourcesLibrary = lazyTab(() => import("./ResourcesLibrary"), "Loading library…");
+const CallLibrary = lazyTab(() => import("./CallLibrary"));
+const AutomationsManager = lazyTab(() => import("./AutomationsManager"));
+const DataChatPanel = lazyTab(() => import("./DataChatPanel"));
+
+type TrendsPayload = {
+  granularity: "day" | "week";
+  kpiSeries: KpiTimelineBucket[];
+  series: CostTrendPoint[];
+};
 
 type Client = { id: string; name: string; is_live?: boolean; reporting_type?: ReportingType };
 
@@ -312,6 +340,9 @@ export default function DashboardView({
   const [prevMetrics, setPrevMetrics] = useState<MetricsResult | null>(null);
   const [compare, setCompare] = useState(false);
   const [sparkMap, setSparkMap] = useState<SparkMap | null>(null);
+  const [trends, setTrends] = useState<TrendsPayload | null>(null);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [trendsError, setTrendsError] = useState("");
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [overduePending, setOverduePending] = useState<number | null>(null);
   const [heatmapDays, setHeatmapDays] = useState(0);
@@ -453,18 +484,53 @@ export default function DashboardView({
       .catch(() => setPrevMetrics(null));
   }, [view, compare, selectedClientId, offerScope, preset, customStart, customEnd]);
 
-  // Per-card sparklines: pull the daily/weekly KPI timeline and map each series
-  // onto the metric key its card uses. Skipped for unbounded (all-time) ranges.
+  // Trends once for sparklines + rate/cost charts. Skipped for unbounded ranges.
   useEffect(() => {
-    if (view !== "dashboard") { setSparkMap(null); return; }
+    if (view !== "dashboard") {
+      setSparkMap(null);
+      setTrends(null);
+      setTrendsError("");
+      setTrendsLoading(false);
+      return;
+    }
     const { start, end } = preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
-    if (!start || !end) { setSparkMap(null); return; }
+    if (!start || !end) {
+      setSparkMap(null);
+      setTrends(null);
+      setTrendsError("");
+      setTrendsLoading(false);
+      return;
+    }
+    queueMicrotask(() => {
+      setTrendsLoading(true);
+      setTrendsError("");
+    });
     const params = new URLSearchParams({ start_date: start, end_date: end });
     appendDashboardMetricsParams(params);
     fetch(`/api/metrics/trends?${params}`)
       .then(r => r.json())
-      .then(d => setSparkMap(buildSparkMap(d.kpiSeries ?? [])))
-      .catch(() => setSparkMap(null));
+      .then(d => {
+        if (d.error) {
+          setTrendsError(typeof d.error === "string" ? d.error : "Failed to load trends");
+          setTrends(null);
+          setSparkMap(null);
+        } else {
+          const kpiSeries = (d.kpiSeries ?? []) as KpiTimelineBucket[];
+          setTrends({
+            granularity: d.granularity === "week" ? "week" : "day",
+            kpiSeries,
+            series: (d.series ?? []) as CostTrendPoint[],
+          });
+          setSparkMap(buildSparkMap(kpiSeries));
+        }
+        setTrendsLoading(false);
+      })
+      .catch(() => {
+        setTrendsError("Failed to load trends");
+        setTrends(null);
+        setSparkMap(null);
+        setTrendsLoading(false);
+      });
   }, [view, selectedClientId, offerScope, preset, customStart, customEnd]);
 
   // Past-due, un-dispositioned appointment backlog. Deliberately keyed only on
@@ -864,10 +930,11 @@ export default function DashboardView({
 
                 <KpiSection title="Rate Trends" showDivider>
                   <RateTrendCharts
-                    clientId={selectedClientId === "__live__" ? "" : selectedClientId}
-                    liveOnly={selectedClientId === "__live__"}
-                    startDate={dateStart}
-                    endDate={dateEnd}
+                    kpiSeries={trends?.kpiSeries ?? []}
+                    granularity={trends?.granularity ?? "day"}
+                    loading={trendsLoading}
+                    error={trendsError}
+                    hasDateRange={Boolean(dateStart && dateEnd)}
                     reportingType={dashboardReportingType}
                   />
                 </KpiSection>
@@ -875,10 +942,11 @@ export default function DashboardView({
                 {dashboardReportingType === "RM" && (
                   <KpiSection title="Cost Trends" showDivider>
                     <CostTrendCharts
-                      clientId={selectedClientId === "__live__" ? "" : selectedClientId}
-                      liveOnly={selectedClientId === "__live__"}
-                      startDate={dateStart}
-                      endDate={dateEnd}
+                      series={trends?.series ?? []}
+                      granularity={trends?.granularity ?? "day"}
+                      loading={trendsLoading}
+                      error={trendsError}
+                      hasDateRange={Boolean(dateStart && dateEnd)}
                     />
                   </KpiSection>
                 )}
@@ -1004,7 +1072,7 @@ export default function DashboardView({
 
           {view === "team_dashboard_ccm" && (
             <CcmCommandDashboard
-              onNavigate={(next, tab) => goToView(next as View, tab)}
+              onNavigate={(next: string, tab?: string) => goToView(next as View, tab)}
             />
           )}
 
