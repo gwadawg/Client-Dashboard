@@ -22,6 +22,8 @@ export type StateLookerClient = {
   website: string | null;
   city: string | null;
   state: string | null;
+  /** Openable GHL subaccount URL (stored URL or built from location id). */
+  ghl_subaccount_url: string | null;
 };
 
 export type StateLookerResult = {
@@ -50,11 +52,28 @@ export type RawStateLookerClientRow = {
   website?: string | null;
   city?: string | null;
   state?: string | null;
+  ghl_subaccount_url?: string | null;
+  ghl_location_id?: string | null;
 };
 
 function trimOrNull(value: string | null | undefined): string | null {
   const t = typeof value === 'string' ? value.trim() : '';
   return t || null;
+}
+
+/** Prefer stored subaccount URL; else build from GHL location id. */
+export function resolveGhlSubaccountUrl(
+  url: string | null | undefined,
+  locationId: string | null | undefined,
+): string | null {
+  const stored = trimOrNull(url);
+  if (stored) {
+    if (/^https?:\/\//i.test(stored)) return stored;
+    return `https://${stored}`;
+  }
+  const loc = trimOrNull(locationId);
+  if (!loc) return null;
+  return `https://app.gohighlevel.com/v2/location/${loc}`;
 }
 
 /** Prefer legal business name; fall back to account/LO display name for company. */
@@ -110,6 +129,7 @@ export function buildStateLookerResult(
       website: trimOrNull(row.website),
       city: trimOrNull(row.city),
       state: trimOrNull(row.state),
+      ghl_subaccount_url: resolveGhlSubaccountUrl(row.ghl_subaccount_url, row.ghl_location_id),
     };
   });
 

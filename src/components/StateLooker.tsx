@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReportingTypeBadge from "@/components/ReportingTypeBadge";
 import { lifecycleStatusLabel } from "@/lib/client-feedback";
 import { normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
@@ -182,14 +182,36 @@ function LiveTransferBadge({ approved }: { approved: boolean }) {
   );
 }
 
+function groupClientsByOffer(clients: StateLookerClient[]): {
+  type: ReportingType;
+  clients: StateLookerClient[];
+}[] {
+  const buckets = new Map<ReportingType, StateLookerClient[]>();
+  for (const type of REPORTING_TYPES) buckets.set(type, []);
+
+  for (const client of clients) {
+    const type = normalizeReportingType(client.reporting_type);
+    buckets.get(type)!.push(client);
+  }
+
+  return REPORTING_TYPES
+    .map(type => ({
+      type,
+      clients: [...(buckets.get(type) ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+    .filter(group => group.clients.length > 0);
+}
+
 function ClientDirectoryTable({
   clients,
   selectedState,
   emptyMessage,
+  groupByOffer = false,
 }: {
   clients: StateLookerClient[];
   selectedState?: string;
   emptyMessage: string;
+  groupByOffer?: boolean;
 }) {
   const [openStatesId, setOpenStatesId] = useState<string | null>(null);
 
@@ -203,6 +225,13 @@ function ClientDirectoryTable({
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [openStatesId]);
+
+  const groups = useMemo(() => {
+    if (!groupByOffer) {
+      return [{ type: null as ReportingType | null, clients: [...clients].sort((a, b) => a.name.localeCompare(b.name)) }];
+    }
+    return groupClientsByOffer(clients).map(g => ({ type: g.type as ReportingType | null, clients: g.clients }));
+  }, [clients, groupByOffer]);
 
   if (!clients.length) {
     return (
@@ -224,21 +253,143 @@ function ClientDirectoryTable({
     { key: "location", label: "Location" },
     { key: "phone", label: "LT phone" },
     { key: "states", label: "Licensed states" },
+    { key: "ghl", label: "GHL" },
   ];
+  const colCount = headers.length;
+
+  function renderClientRow(client: StateLookerClient, isLast: boolean) {
+    return (
+      <tr
+        key={client.id}
+        className="transition-colors hover:bg-white/[0.02]"
+        style={{
+          borderBottom: isLast ? undefined : "1px solid rgba(255,255,255,0.05)",
+        }}
+      >
+        <td className="px-3 py-1.5 align-middle">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span
+              className="font-medium text-sm truncate"
+              style={{ color: "#f1f5f9" }}
+              title={
+                client.account_display_name &&
+                client.account_display_name !== client.company_name
+                  ? `${client.name} · ${client.account_display_name}`
+                  : client.name
+              }
+            >
+              {client.name}
+            </span>
+            {!groupByOffer && <ReportingTypeBadge value={client.reporting_type} />}
+            {client.lifecycle_status !== "active" && (
+              <span
+                className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0"
+                style={{ color: "#fbbf24", background: "rgba(251,191,36,0.1)" }}
+              >
+                {lifecycleStatusLabel(client.lifecycle_status)}
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="px-3 py-1.5 align-middle">
+          <CompanyCell client={client} />
+        </td>
+        <td className="px-3 py-1.5 align-middle whitespace-nowrap">
+          <LiveTransferBadge approved={client.live_transfer_approved} />
+        </td>
+        <td className="px-3 py-1.5 align-middle">
+          <span
+            className="block text-xs truncate"
+            style={{ color: "#cbd5e1" }}
+            title={client.offer_blurb}
+          >
+            {client.offer_blurb}
+          </span>
+        </td>
+        <td className="px-3 py-1.5 align-middle">
+          {client.website ? (
+            <a
+              href={websiteHref(client.website)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-xs truncate underline-offset-2 hover:underline"
+              style={{ color: "#38bdf8" }}
+              title={client.website}
+            >
+              {client.website.replace(/^https?:\/\//i, "")}
+            </a>
+          ) : (
+            <span style={{ color: "#334155" }}>—</span>
+          )}
+        </td>
+        <td className="px-3 py-1.5 align-middle whitespace-nowrap text-xs truncate" style={{ color: "#94a3b8" }}>
+          {formatLocation(client)}
+        </td>
+        <td className="px-3 py-1.5 align-middle whitespace-nowrap text-xs">
+          {client.phone_live_transfer ? (
+            <a
+              href={`tel:${client.phone_live_transfer}`}
+              className="truncate block"
+              style={{
+                color: client.live_transfer_approved ? "#e2e8f0" : "#64748b",
+              }}
+              title={
+                client.live_transfer_approved
+                  ? client.phone_live_transfer
+                  : "Live transfers not approved for this client"
+              }
+            >
+              {client.phone_live_transfer}
+            </a>
+          ) : (
+            <span style={{ color: "#334155" }}>—</span>
+          )}
+        </td>
+        <td className="px-3 py-1.5 align-middle">
+          <StatesDropdown
+            codes={client.states_licensed}
+            highlight={selectedState}
+            open={openStatesId === client.id}
+            onToggle={() =>
+              setOpenStatesId(prev => (prev === client.id ? null : client.id))
+            }
+          />
+        </td>
+        <td className="px-3 py-1.5 align-middle whitespace-nowrap">
+          {client.ghl_subaccount_url ? (
+            <a
+              href={client.ghl_subaccount_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-medium underline-offset-2 hover:underline"
+              style={{ color: "#38bdf8" }}
+              title="Open GHL subaccount"
+            >
+              Open
+              <span aria-hidden style={{ fontSize: 10 }}>↗</span>
+            </a>
+          ) : (
+            <span style={{ color: "#334155" }}>—</span>
+          )}
+        </td>
+      </tr>
+    );
+  }
 
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse table-fixed min-w-[960px]">
+        <table className="w-full text-sm border-collapse table-fixed min-w-[1040px]">
           <colgroup>
-            <col style={{ width: "18%" }} />
-            <col style={{ width: "14%" }} />
-            <col style={{ width: "9%" }} />
-            <col style={{ width: "20%" }} />
-            <col style={{ width: "12%" }} />
+            <col style={{ width: "16%" }} />
+            <col style={{ width: "13%" }} />
             <col style={{ width: "8%" }} />
-            <col style={{ width: "10%" }} />
+            <col style={{ width: "18%" }} />
+            <col style={{ width: "11%" }} />
+            <col style={{ width: "8%" }} />
             <col style={{ width: "9%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "8%" }} />
           </colgroup>
           <thead>
             <tr style={{ background: "rgba(255,255,255,0.03)" }}>
@@ -254,106 +405,39 @@ function ClientDirectoryTable({
             </tr>
           </thead>
           <tbody>
-            {clients.map((client, idx) => (
-              <tr
-                key={client.id}
-                className="transition-colors hover:bg-white/[0.02]"
-                style={{
-                  borderBottom:
-                    idx < clients.length - 1 ? "1px solid rgba(255,255,255,0.05)" : undefined,
-                }}
-              >
-                <td className="px-3 py-1.5 align-middle">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span
-                      className="font-medium text-sm truncate"
-                      style={{ color: "#f1f5f9" }}
-                      title={
-                        client.account_display_name &&
-                        client.account_display_name !== client.company_name
-                          ? `${client.name} · ${client.account_display_name}`
-                          : client.name
-                      }
-                    >
-                      {client.name}
-                    </span>
-                    <ReportingTypeBadge value={client.reporting_type} />
-                    {client.lifecycle_status !== "active" && (
-                      <span
-                        className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0"
-                        style={{ color: "#fbbf24", background: "rgba(251,191,36,0.1)" }}
+            {groups.map(group => {
+              const meta = group.type ? REPORTING_TYPE_META[group.type] : null;
+              return (
+                <Fragment key={group.type ?? "all"}>
+                  {groupByOffer && meta && (
+                    <tr>
+                      <td
+                        colSpan={colCount}
+                        className="px-3 py-2"
+                        style={{
+                          background: meta.background,
+                          borderTop: "1px solid rgba(255,255,255,0.06)",
+                          borderBottom: "1px solid rgba(255,255,255,0.06)",
+                        }}
                       >
-                        {lifecycleStatusLabel(client.lifecycle_status)}
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-3 py-1.5 align-middle">
-                  <CompanyCell client={client} />
-                </td>
-                <td className="px-3 py-1.5 align-middle whitespace-nowrap">
-                  <LiveTransferBadge approved={client.live_transfer_approved} />
-                </td>
-                <td className="px-3 py-1.5 align-middle">
-                  <span
-                    className="block text-xs truncate"
-                    style={{ color: "#cbd5e1" }}
-                    title={client.offer_blurb}
-                  >
-                    {client.offer_blurb}
-                  </span>
-                </td>
-                <td className="px-3 py-1.5 align-middle">
-                  {client.website ? (
-                    <a
-                      href={websiteHref(client.website)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block text-xs truncate underline-offset-2 hover:underline"
-                      style={{ color: "#38bdf8" }}
-                      title={client.website}
-                    >
-                      {client.website.replace(/^https?:\/\//i, "")}
-                    </a>
-                  ) : (
-                    <span style={{ color: "#334155" }}>—</span>
+                        <div className="flex items-center gap-2">
+                          <ReportingTypeBadge value={group.type} />
+                          <span className="text-xs font-semibold" style={{ color: meta.color }}>
+                            {meta.label}
+                          </span>
+                          <span className="text-[11px]" style={{ color: "#64748b" }}>
+                            {group.clients.length} client{group.clients.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
                   )}
-                </td>
-                <td className="px-3 py-1.5 align-middle whitespace-nowrap text-xs truncate" style={{ color: "#94a3b8" }}>
-                  {formatLocation(client)}
-                </td>
-                <td className="px-3 py-1.5 align-middle whitespace-nowrap text-xs">
-                  {client.phone_live_transfer ? (
-                    <a
-                      href={`tel:${client.phone_live_transfer}`}
-                      className="truncate block"
-                      style={{
-                        color: client.live_transfer_approved ? "#e2e8f0" : "#64748b",
-                      }}
-                      title={
-                        client.live_transfer_approved
-                          ? client.phone_live_transfer
-                          : "Live transfers not approved for this client"
-                      }
-                    >
-                      {client.phone_live_transfer}
-                    </a>
-                  ) : (
-                    <span style={{ color: "#334155" }}>—</span>
+                  {group.clients.map((client, idx) =>
+                    renderClientRow(client, idx === group.clients.length - 1),
                   )}
-                </td>
-                <td className="px-3 py-1.5 align-middle">
-                  <StatesDropdown
-                    codes={client.states_licensed}
-                    highlight={selectedState}
-                    open={openStatesId === client.id}
-                    onToggle={() =>
-                      setOpenStatesId(prev => (prev === client.id ? null : client.id))
-                    }
-                  />
-                </td>
-              </tr>
-            ))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -666,6 +750,7 @@ export default function StateLooker() {
           <ClientDirectoryTable
             clients={directoryClients}
             emptyMessage="No clients match the current filters."
+            groupByOffer
           />
         </div>
       ) : (
@@ -744,6 +829,7 @@ export default function StateLooker() {
                   clients={selectedClients}
                   selectedState={selectedState}
                   emptyMessage={`No clients licensed in ${selectedStateMeta?.name ?? selectedState} with the current filters.`}
+                  groupByOffer
                 />
               </>
             ) : (

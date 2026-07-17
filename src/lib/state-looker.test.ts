@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   buildStateLookerResult,
   resolveCompanyName,
+  resolveGhlSubaccountUrl,
   resolveOfferBlurb,
 } from '@/lib/state-looker';
 
@@ -16,6 +17,22 @@ describe('state-looker directory fields', () => {
   it('uses custom offer summary when present', () => {
     assert.equal(resolveOfferBlurb('HELOC for investment properties', 'DSCR'), 'HELOC for investment properties');
     assert.match(resolveOfferBlurb(null, 'RM'), /reverse mortgage/i);
+  });
+
+  it('resolves GHL subaccount URL from stored url or location id', () => {
+    assert.equal(
+      resolveGhlSubaccountUrl('https://app.gohighlevel.com/v2/location/abc', null),
+      'https://app.gohighlevel.com/v2/location/abc',
+    );
+    assert.equal(
+      resolveGhlSubaccountUrl('app.gohighlevel.com/v2/location/abc', null),
+      'https://app.gohighlevel.com/v2/location/abc',
+    );
+    assert.equal(
+      resolveGhlSubaccountUrl(null, 'loc_123'),
+      'https://app.gohighlevel.com/v2/location/loc_123',
+    );
+    assert.equal(resolveGhlSubaccountUrl(null, null), null);
   });
 
   it('builds team-safe client rows and state index', () => {
@@ -38,6 +55,7 @@ describe('state-looker directory fields', () => {
           website: 'https://acme.example',
           city: 'Austin',
           state: 'TX',
+          ghl_location_id: 'loc_c1',
         },
         {
           id: 'c2',
@@ -56,6 +74,7 @@ describe('state-looker directory fields', () => {
           website: null,
           city: null,
           state: 'TX',
+          ghl_subaccount_url: 'https://app.gohighlevel.com/v2/location/stored',
         },
       ],
       { g1: { display_name: 'Acme Account' } },
@@ -75,10 +94,12 @@ describe('state-looker directory fields', () => {
     assert.equal(c1.website, 'https://acme.example');
     assert.equal(c1.city, 'Austin');
     assert.equal(c1.state, 'TX');
+    assert.equal(c1.ghl_subaccount_url, 'https://app.gohighlevel.com/v2/location/loc_c1');
 
     const c2 = result.clients.find(c => c.id === 'c2')!;
     assert.equal(c2.company_name, 'Same Name');
     assert.equal(c2.brokerage_name, null, 'duplicate company/brokerage should collapse');
     assert.match(c2.offer_blurb, /DSCR/i);
+    assert.equal(c2.ghl_subaccount_url, 'https://app.gohighlevel.com/v2/location/stored');
   });
 });
