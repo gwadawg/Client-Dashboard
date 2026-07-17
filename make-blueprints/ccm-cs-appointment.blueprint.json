@@ -1,0 +1,89 @@
+{
+  "name": "CCM - CS Appointment → Mr. Waiz",
+  "flow": [
+    {
+      "id": 1,
+      "module": "app#call-center-mastery-qeqot5:watchEventsManualPlacement",
+      "version": 1,
+      "parameters": {
+        "__IMTHOOK__": 0
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0 },
+        "restore": {
+          "parameters": {
+            "__IMTHOOK__": {
+              "data": { "editable": "false" },
+              "label": "CS Appointment webhook — point GHL CS calendar create/update/delete here"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "__IMTHOOK__",
+            "type": "hook:app#call-center-mastery-qeqot53",
+            "label": "Webhook",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompression": true
+      },
+      "mapper": {
+        "url": "https://YOUR_APP_URL/api/webhooks/cs-appointments",
+        "serializeUrl": false,
+        "method": "POST",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer YOUR_ADMIN_WEBHOOK_SECRET"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "qs": [],
+        "bodyType": "raw",
+        "parseResponse": false,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "",
+        "shareCookies": false,
+        "ca": "",
+        "useMtls": false,
+        "contentType": "application/json",
+        "data": "{\"ghl_appointment_id\": \"{{1.appointment.id}}\", \"clickup_task_id\": \"{{1.contact.customField.clickup_task_id}}\", \"calendar_id\": \"{{1.calendar.id}}\", \"calendar_name\": \"{{1.calendar.name}}\", \"scheduled_at\": \"{{1.appointment.startTime}}\", \"booked_at\": \"{{1.appointment.dateAdded}}\", \"status\": \"scheduled\"}"
+      },
+      "metadata": {
+        "designer": { "x": 300, "y": 0, "name": "Send CS appointment to Mr. Waiz" }
+      }
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "us1.make.com"
+  }
+}

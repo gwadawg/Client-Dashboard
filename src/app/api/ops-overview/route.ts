@@ -12,6 +12,7 @@ import {
 import { getDateRange, ymdLocal } from '@/lib/date-presets';
 import { isKickoffIncomplete } from '@/lib/kickoff';
 import { defaultHealthGradingRange, loadClientHealthBundle } from '@/lib/load-client-health';
+import { listUpcomingCsAppointments } from '@/lib/cs-appointments';
 
 const ONBOARDING_STATUSES = new Set(['new_account', 'onboarding']);
 
@@ -81,6 +82,7 @@ export async function GET() {
       health,
       agentEvents,
       enrichedBookings,
+      csUpcoming,
     ] = await Promise.all([
       ctx.service
         .from('clients')
@@ -101,6 +103,7 @@ export async function GET() {
       }),
       fetchAgentEventsInRange(ctx.service, weekRange.start, weekRange.end),
       fetchEnrichedBookingsInRange(ctx.service, weekRange.start, weekRange.end),
+      listUpcomingCsAppointments(ctx.service, { days: 14 }),
     ]);
 
     if (clientsError) {
@@ -318,6 +321,17 @@ export async function GET() {
       bookings: leaderboardRows.reduce((s, a) => s + a.week_bookings, 0),
     };
 
+    const cs_upcoming = csUpcoming.map(a => ({
+      id: a.id,
+      clickup_task_id: a.clickup_task_id,
+      client_id: a.client_id,
+      client_name: a.client_name,
+      call_type: a.call_type,
+      scheduled_at: a.scheduled_at,
+      calendar_name: a.calendar_name,
+    }));
+    const cs_unmapped_count = cs_upcoming.filter(a => !a.client_id).length;
+
     return NextResponse.json({
       generated_at: new Date().toISOString(),
       today: todayLocal,
@@ -332,10 +346,13 @@ export async function GET() {
         on_track: health.summary.on_track,
         recovering: health.summary.recovering,
         offboarding_or_paused: offboardingClients.length,
+        cs_upcoming: cs_upcoming.length,
+        cs_unmapped: cs_unmapped_count,
       },
       onboarding,
       fresh_launched,
       underperforming,
+      cs_upcoming,
       floor: {
         team_today,
         team_week,
@@ -347,6 +364,8 @@ export async function GET() {
         underperforming: 'Health focus = act_now (excludes fresh launches)',
         active: 'lifecycle_status = active',
         leaderboard: 'Call reps only (pay_type = call_rep); dials + credited bookings',
+        cs_upcoming:
+          'Scheduled CS onboarding / launch / check-in appointments in the next 14 days (GHL CS calendars)',
       },
     });
   } catch (e) {

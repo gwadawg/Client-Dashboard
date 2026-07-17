@@ -1523,3 +1523,44 @@ create table if not exists dial_examples (
     grade is null or grade in ('A+', 'A', 'A-', 'B')
   )
 );
+
+-- 14b4. Client Success appointments (onboarding / launch / check-in calendars)
+-- Client key is clickup_task_id (soft join to clients). Call type lives on calendar config only.
+create table if not exists cs_calendar_config (
+  calendar_id   text primary key,
+  calendar_name text not null,
+  call_type     text not null,
+  constraint cs_calendar_config_type_check check (
+    call_type in ('onboarding', 'launch', 'checkin')
+  )
+);
+
+create table if not exists cs_appointments (
+  id                  uuid primary key default gen_random_uuid(),
+  clickup_task_id     text not null,
+  ghl_appointment_id  text not null,
+  calendar_id         text not null,
+  calendar_name       text,
+  booked_at           timestamptz,
+  scheduled_at        timestamptz not null,
+  status              text not null default 'scheduled',
+  title               text,
+  assigned_to         text,
+  raw                 jsonb not null default '{}',
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now(),
+  constraint cs_appointments_status_check check (
+    status in ('scheduled', 'cancelled', 'completed', 'no_show')
+  ),
+  constraint cs_appointments_ghl_appointment_id_key unique (ghl_appointment_id)
+);
+
+create index if not exists cs_appointments_scheduled_upcoming_idx
+  on cs_appointments (scheduled_at)
+  where status = 'scheduled';
+
+create index if not exists cs_appointments_clickup_scheduled_idx
+  on cs_appointments (clickup_task_id, scheduled_at);
+
+create index if not exists cs_appointments_calendar_id_idx
+  on cs_appointments (calendar_id);

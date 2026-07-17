@@ -13,6 +13,8 @@ type OpsCounts = {
   on_track: number;
   recovering: number;
   offboarding_or_paused: number;
+  cs_upcoming?: number;
+  cs_unmapped?: number;
 };
 
 type OnboardingRow = {
@@ -56,6 +58,16 @@ type LeaderRow = {
   week_bookings: number;
 };
 
+type CsUpcomingRow = {
+  id: string;
+  clickup_task_id: string;
+  client_id: string | null;
+  client_name: string | null;
+  call_type: "onboarding" | "launch" | "checkin" | null;
+  scheduled_at: string;
+  calendar_name: string | null;
+};
+
 type OpsPayload = {
   generated_at: string;
   today: string;
@@ -65,6 +77,7 @@ type OpsPayload = {
   onboarding: OnboardingRow[];
   fresh_launched: FreshRow[];
   underperforming: UnderRow[];
+  cs_upcoming?: CsUpcomingRow[];
   floor: {
     team_today: { dials: number; bookings: number };
     team_week: { dials: number; bookings: number };
@@ -127,6 +140,25 @@ function EmptyLine({ text }: { text: string }) {
       {text}
     </p>
   );
+}
+
+function csTypeLabel(type: CsUpcomingRow["call_type"]): string {
+  if (type === "onboarding") return "Onboarding";
+  if (type === "launch") return "Launch";
+  if (type === "checkin") return "Check-in";
+  return "CS Call";
+}
+
+function formatCsWhen(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function SectionHead({
@@ -284,6 +316,43 @@ export default function OpsOverview() {
           accent="#34d399"
           hint={counts.offboarding_or_paused > 0 ? `${counts.offboarding_or_paused} paused/OB` : undefined}
         />
+      </div>
+
+      {/* Upcoming CS calls */}
+      <div className="rounded-xl p-4" style={PANEL}>
+        <SectionHead
+          title="Upcoming CS calls"
+          subtitle={
+            counts.cs_unmapped
+              ? `Next 14 days · ${counts.cs_unmapped} unmapped ClickUp ID${counts.cs_unmapped === 1 ? "" : "s"}`
+              : "Next 14 days · onboarding, launch, check-in"
+          }
+        />
+        {(data.cs_upcoming ?? []).length === 0 ? (
+          <EmptyLine text="No CS calls scheduled in the next 14 days" />
+        ) : (
+          <ul className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+            {(data.cs_upcoming ?? []).map(row => (
+              <li key={row.id} className="py-2.5 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: "#e2e8f0" }}>
+                    {row.client_name ?? (
+                      <span style={{ color: "#fbbf24" }}>
+                        Unmapped · {row.clickup_task_id}
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
+                    {csTypeLabel(row.call_type)}
+                  </p>
+                </div>
+                <span className="text-xs tabular-nums shrink-0 text-right" style={{ color: "#94a3b8" }}>
+                  {formatCsWhen(row.scheduled_at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Onboarding + Fresh */}

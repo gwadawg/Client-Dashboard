@@ -50,6 +50,7 @@ import ClientAccountOffersPanel from "@/components/ClientAccountOffersPanel";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import type { ClientContact } from "@/lib/client-contacts";
+import { csCallTypeLabel, type CsCallType } from "@/lib/cs-appointments";
 
 // The client "file": a single place to oversee everything about one client.
 // Profile, billing history, lifecycle transitions, and ongoing notes.
@@ -167,12 +168,13 @@ type ActivityRow = {
   source_table: string;
 };
 
-type TabKey = "overview" | "records" | "activity" | "billing";
+type TabKey = "overview" | "records" | "activity" | "cs_calls" | "billing";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "records", label: "Forms & history" },
   { key: "activity", label: "Calls & notes" },
+  { key: "cs_calls", label: "CS Calls" },
   { key: "billing", label: "Billing" },
 ];
 
@@ -302,6 +304,15 @@ export default function ClientFile({
   const [showLaunch, setShowLaunch] = useState(false);
   const [showOffboard, setShowOffboard] = useState(false);
   const [offerRow, setOfferRow] = useState<{ name: string; reporting_type: string | null } | null>(null);
+  const [csAppointments, setCsAppointments] = useState<
+    Array<{
+      id: string;
+      scheduled_at: string;
+      status: string;
+      call_type: CsCallType | null;
+      calendar_name: string | null;
+    }>
+  >([]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -309,9 +320,10 @@ export default function ClientFile({
       fetch(`/api/clients/${clientId}`).then(r => r.json()),
       fetch(`/api/clients/${clientId}/activity?limit=80`).then(r => r.json()),
     ])
-      .then(([d, activityRes]) => {
+      .then(async ([d, activityRes]) => {
         if (d.error) {
           setError(d.error);
+          setCsAppointments([]);
         } else {
           setClient(d.client ?? null);
           setOfferRow(d.offer ? { name: d.offer.name, reporting_type: d.offer.reporting_type ?? null } : null);
@@ -323,6 +335,21 @@ export default function ClientFile({
           setFormSubmissions(d.form_submissions ?? []);
           if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
           setError(null);
+
+          const clickupId = (d.client?.clickup_task_id as string | null | undefined)?.trim();
+          if (clickupId) {
+            try {
+              const csRes = await fetch(
+                `/api/cs-appointments?clickup_task_id=${encodeURIComponent(clickupId)}&history=1`,
+              );
+              const csData = await csRes.json().catch(() => ({}));
+              setCsAppointments(csRes.ok ? (csData.appointments ?? []) : []);
+            } catch {
+              setCsAppointments([]);
+            }
+          } else {
+            setCsAppointments([]);
+          }
         }
         setActivities(activityRes.activities ?? []);
         setLoading(false);
@@ -1229,6 +1256,86 @@ export default function ClientFile({
                 </div>
               )}
             </section>
+            </div>
+            )}
+
+            {activeTab === "cs_calls" && (
+            <div className="space-y-7">
+              <Section title="CS call history">
+                <p className="text-xs mb-3" style={{ color: "#64748b" }}>
+                  Onboarding, launch, and check-in appointments from Client Success calendars
+                  {client?.clickup_task_id ? "" : " — add a ClickUp task ID to sync these"}.
+                </p>
+                {!client?.clickup_task_id ? (
+                  <p className="text-sm py-6 text-center" style={{ color: "#334155" }}>
+                    No ClickUp task ID on this client — CS appointments map by ClickUp ID.
+                  </p>
+                ) : csAppointments.length === 0 ? (
+                  <p className="text-sm py-6 text-center" style={{ color: "#334155" }}>
+                    No CS appointments recorded yet for this ClickUp ID.
+                  </p>
+                ) : (
+                  <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr style={{ background: "#0a1628" }}>
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>When</th>
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>Type</th>
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>Status</th>
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>Calendar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {csAppointments.map(a => {
+                          const d = new Date(a.scheduled_at);
+                          const when = Number.isFinite(d.getTime())
+                            ? d.toLocaleString(undefined, {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })
+                            : a.scheduled_at;
+                          const isUpcoming =
+                            a.status === "scheduled" &&
+                            Number.isFinite(d.getTime()) &&
+                            d.getTime() >= Date.now();
+                          return (
+                            <tr
+                              key={a.id}
+                              className="border-t"
+                              style={{ borderColor: "rgba(255,255,255,0.04)" }}
+                            >
+                              <td className="px-3 py-2.5 tabular-nums whitespace-nowrap" style={{ color: isUpcoming ? "#e2e8f0" : "#94a3b8" }}>
+                                {when}
+                              </td>
+                              <td className="px-3 py-2.5" style={{ color: "#cbd5e1" }}>
+                                {csCallTypeLabel(a.call_type)}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <span
+                                  className="text-[11px] font-semibold px-2 py-0.5 rounded-md capitalize"
+                                  style={{
+                                    color: isUpcoming ? "#38bdf8" : "#94a3b8",
+                                    background: isUpcoming ? "rgba(56,189,248,0.12)" : "rgba(148,163,184,0.1)",
+                                  }}
+                                >
+                                  {a.status.replace(/_/g, " ")}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5" style={{ color: "#64748b" }}>
+                                {a.calendar_name ?? "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Section>
             </div>
             )}
 

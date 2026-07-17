@@ -83,6 +83,10 @@ type Client = {
   engagement_kind?: string | null;
   total_paid?: number;
   form_progress?: Partial<Record<"new_client" | "onboarding" | "kickoff" | "launch", boolean>>;
+  next_cs_call?: {
+    scheduled_at: string;
+    call_type: "onboarding" | "launch" | "checkin" | null;
+  } | null;
 };
 
 /** Benchmark overrides untouched for this long are flagged for review. */
@@ -133,7 +137,7 @@ const SECTION_ACCENT: Record<SectionKey, string> = {
 };
 
 /** Optional middle columns, swapped per role-based view preset. */
-type ColumnKey = "stage" | "tenure" | "adspend" | "launch";
+type ColumnKey = "stage" | "tenure" | "adspend" | "launch" | "cs_call";
 
 type RosterView = "full" | "cs" | "media";
 
@@ -144,8 +148,8 @@ const ROSTER_VIEWS: { key: RosterView; label: string }[] = [
 ];
 
 const VIEW_COLUMNS: Record<RosterView, ColumnKey[]> = {
-  full: ["stage", "tenure", "adspend"],
-  cs: ["stage", "tenure"],
+  full: ["stage", "tenure", "cs_call", "adspend"],
+  cs: ["stage", "tenure", "cs_call"],
   media: ["launch", "adspend", "tenure"],
 };
 
@@ -174,6 +178,36 @@ const COLUMN_DEFS: Record<ColumnKey, { header: string; revenueOnly?: boolean; re
   launch: {
     header: "Launch",
     render: c => <span className="text-xs whitespace-nowrap" style={{ color: c.launch_date ? "#cbd5e1" : "#334155" }}>{c.launch_date ? formatDate(c.launch_date) : "—"}</span>,
+  },
+  cs_call: {
+    header: "Next CS",
+    render: c => {
+      const next = c.next_cs_call;
+      if (!next?.scheduled_at) {
+        return <span className="text-xs" style={{ color: "#334155" }}>—</span>;
+      }
+      const d = new Date(next.scheduled_at);
+      const when = Number.isFinite(d.getTime())
+        ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+        : next.scheduled_at.slice(0, 10);
+      const type =
+        next.call_type === "onboarding"
+          ? "OB"
+          : next.call_type === "launch"
+            ? "Launch"
+            : next.call_type === "checkin"
+              ? "CI"
+              : "CS";
+      return (
+        <span
+          className="text-xs whitespace-nowrap"
+          style={{ color: "#cbd5e1" }}
+          title={d.toLocaleString()}
+        >
+          {when} · {type}
+        </span>
+      );
+    },
   },
 };
 
@@ -424,6 +458,29 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     refreshUnmappedCount();
   }, []);
 
+  async function attachNextCsCalls(loaded: Client[]): Promise<Client[]> {
+    const clickupIds = [
+      ...new Set(loaded.map(c => c.clickup_task_id).filter((id): id is string => !!id)),
+    ];
+    if (clickupIds.length === 0) return loaded;
+    try {
+      const csRes = await fetch(
+        `/api/cs-appointments?scope=next_by_clickup&clickup_task_ids=${encodeURIComponent(clickupIds.join(","))}`,
+      );
+      const csData = await csRes.json().catch(() => ({}));
+      const nextMap = (csData.next_by_clickup ?? {}) as Record<
+        string,
+        { scheduled_at: string; call_type: "onboarding" | "launch" | "checkin" | null }
+      >;
+      return loaded.map(c => ({
+        ...c,
+        next_cs_call: c.clickup_task_id ? nextMap[c.clickup_task_id] ?? null : null,
+      }));
+    } catch {
+      return loaded;
+    }
+  }
+
   useEffect(() => {
     fetch("/api/clients?detail=1")
       .then(async r => {
@@ -435,9 +492,10 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
           return;
         }
         setLoadError(null);
-        setClients(d.clients ?? []);
+        const loaded: Client[] = d.clients ?? [];
         if (typeof d.can_view_revenue === "boolean") setShowRevenue(d.can_view_revenue);
         else if (typeof d.can_view_total_paid === "boolean") setShowRevenue(d.can_view_total_paid);
+        setClients(await attachNextCsCalls(loaded));
         setLoading(false);
       });
   }, []);
@@ -459,7 +517,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
       return;
     }
     setLoadError(null);
-    setClients(d.clients ?? []);
+    setClients(await attachNextCsCalls(d.clients ?? []));
     if (typeof d.can_view_revenue === "boolean") setShowRevenue(d.can_view_revenue);
     else if (typeof d.can_view_total_paid === "boolean") setShowRevenue(d.can_view_total_paid);
     void refreshUnmappedCount();

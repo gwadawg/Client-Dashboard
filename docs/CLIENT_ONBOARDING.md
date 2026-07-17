@@ -11,6 +11,8 @@ Mr. Waiz (Supabase `clients` table) is the **source of truth** for client data. 
 | 3. Kickoff | CS manager | Kick-Off wizard in Client Roster | Ops fields + PM brief (JSON audit) |
 | 4. Launch | Ops | Launch checklist wizard | `lifecycle_status: active`, `launch_date`, Slack via Make |
 
+**Scheduled CS calls** (onboarding / launch / check-in calendars from GHL Client Success) sync via Make into `cs_appointments` and show on Ops Overview + Client Roster/File. See [`docs/CS_APPOINTMENTS.md`](CS_APPOINTMENTS.md).
+
 ## 1. New Client (GHL + Make)
 
 1. Closer submits **GHL New Client Form** after payment.
