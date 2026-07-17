@@ -18,6 +18,7 @@ export type View =
   | "dial_analytics"
   | "media_buyer"
   | "client_health"
+  | "ops_overview"
   | "state_looker"
   | HubView
   | "resources"
@@ -218,6 +219,7 @@ export const NAV: NavItem[] = [
   { view: "dial_analytics",     label: "Dial Analytics",        group: "Clients"      },
   { view: "media_buyer",        label: "Media Buyer",           group: "Clients"      },
   { view: "client_health",      label: "Client Success",        group: "Clients"      },
+  { view: "ops_overview",       label: "Ops Overview",          group: "Clients"      },
   { view: "heatmaps",           label: "Heat Maps",             group: "Clients"      },
   { view: "data_explorer",      label: "Data Explorer",         group: "Clients"      },
   { view: "state_looker",       label: "Client Directory",      group: "Clients"      },
