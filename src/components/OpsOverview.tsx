@@ -266,7 +266,7 @@ export default function OpsOverview() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>
-            Ops Overview
+            Ops Dashboard
           </h2>
           <p className="text-sm mt-1 max-w-2xl" style={{ color: "#64748b" }}>
             Portfolio pulse for Laura &amp; Christian — onboarding, fresh launches, Act Now accounts, and floor dials/bookings.

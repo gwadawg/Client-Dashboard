@@ -217,12 +217,12 @@ export const NAV_GROUPS = [
 
 export const NAV: NavItem[] = [
   { view: "team_dashboard_ccm", label: "CCM Command",           group: "Team Dashboards" },
+  { view: "ops_overview",       label: "Ops Dashboard",         group: "Team Dashboards" },
   { view: "dashboard",          label: "Client KPIs",           group: "Clients"      },
   { view: "kpi_simulator",      label: "Funnel Simulator",      group: "Clients"      },
   { view: "dial_analytics",     label: "Dial Analytics",        group: "Clients"      },
-  { view: "media_buyer",        label: "Media Buyer",           group: "Clients"      },
+  { view: "media_buyer",        label: "Ad Performance",        group: "Clients"      },
   { view: "client_health",      label: "Client Success",        group: "Clients"      },
-  { view: "ops_overview",       label: "Ops Overview",          group: "Clients"      },
   { view: "heatmaps",           label: "Heat Maps",             group: "Clients"      },
   { view: "data_explorer",      label: "Data Explorer",         group: "Clients"      },
   { view: "state_looker",       label: "Client Directory",      group: "Clients"      },
