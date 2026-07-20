@@ -163,8 +163,29 @@ export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
 
   if (!data) return null;
 
-  const { underperforming, freshLaunches, onboarding, dayContext, counts } = data;
+  const {
+    underperforming,
+    freshLaunches,
+    onboarding,
+    reflectionsDue,
+    dayContext,
+    counts,
+  } = data;
   const modeLabel = dayContext.mode === "tech" ? "Tech block" : "Buy-default";
+
+  function formatMetric(key: string | null, value: number | null): string {
+    if (value == null || !Number.isFinite(value)) return "—";
+    if (key === "cpl" || key === "cpql" || key === "cpconv") return money(value);
+    if (
+      key === "lead_to_qual" ||
+      key === "optin_rate" ||
+      key === "show_rate" ||
+      key === "hand_raise_rate"
+    ) {
+      return pct(value);
+    }
+    return String(Math.round(value * 100) / 100);
+  }
 
   return (
     <div className="mb-command space-y-6">
@@ -224,11 +245,24 @@ export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
             "linear-gradient(145deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.6) 100%)",
         }}
       >
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Stat
-            label="Underperforming"
-            value={String(counts.underperforming)}
-            accent={counts.underperforming > 0 ? "#f87171" : "#34d399"}
+            label="Reflections due"
+            value={String(counts.reflections_due)}
+            sub={
+              counts.reflections_overdue > 0
+                ? `${counts.reflections_overdue} overdue`
+                : counts.reflections_due > 0
+                  ? "Check if change worked"
+                  : "None today"
+            }
+            accent={
+              counts.reflections_overdue > 0
+                ? "#f87171"
+                : counts.reflections_due > 0
+                  ? "#fbbf24"
+                  : "#34d399"
+            }
           />
           <Stat
             label={`Fresh launches (≤${MB_LAUNCH_CHECK_DAYS}d)`}
@@ -242,6 +276,11 @@ export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
           />
           <Stat label="Onboarding queue" value={String(counts.onboarding)} />
           <Stat
+            label="Underperforming"
+            value={String(counts.underperforming)}
+            accent={counts.underperforming > 0 ? "#f87171" : "#34d399"}
+          />
+          <Stat
             label="Today mode"
             value={modeLabel}
             sub={dayContext.is_tech_block_day ? "Tue/Wed AM tech protected" : "Buy-default"}
@@ -251,12 +290,18 @@ export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-6 items-start">
         <div className="space-y-6 min-w-0">
-          {/* Underperforming */}
+          {/* 1. Reflections due — check if yesterday's change worked */}
           <section
             className="rounded-xl border p-5"
             style={{
-              borderColor: "rgba(148,163,184,0.15)",
-              background: "rgba(15,23,42,0.55)",
+              borderColor:
+                counts.reflections_due > 0
+                  ? "rgba(251,191,36,0.35)"
+                  : "rgba(148,163,184,0.15)",
+              background:
+                counts.reflections_due > 0
+                  ? "linear-gradient(145deg, rgba(251,191,36,0.08) 0%, rgba(15,23,42,0.7) 100%)"
+                  : "rgba(15,23,42,0.55)",
             }}
           >
             <div className="flex items-center justify-between mb-4">
@@ -264,80 +309,123 @@ export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
                 className="text-xs font-semibold uppercase tracking-[0.16em]"
                 style={{ color: "#94a3b8" }}
               >
-                Underperforming clients
+                Reflections due
                 <span
                   className="ml-2 normal-case tracking-normal font-normal"
                   style={{ color: "#475569" }}
                 >
-                  MB lens · CPL / CPQL / Qual %
+                  Account changes with review today — did it work?
                 </span>
               </h2>
               <button
                 type="button"
-                onClick={() => go("media_buyer")}
+                onClick={() => go("client_health")}
                 className="text-xs hover:underline"
                 style={{ color: "#64748b" }}
               >
-                Ad Performance →
+                Client Success →
               </button>
             </div>
 
-            {underperforming.length === 0 ? (
-              <p className="text-sm py-6" style={{ color: "#34d399" }}>
-                No underperforming ads accounts — keep testing.
+            {reflectionsDue.length === 0 ? (
+              <p className="text-sm py-6" style={{ color: "#64748b" }}>
+                No L1/L2 account changes due for review today.
               </p>
             ) : (
-              <ul className="divide-y" style={{ borderColor: "rgba(51,65,85,0.6)" }}>
-                {underperforming.map(c => {
-                  const color = TIER_COLOR[c.mb_tier] ?? TIER_COLOR.insufficient;
-                  return (
-                    <li key={c.client_id}>
-                      <button
-                        type="button"
-                        onClick={() => go("media_buyer")}
-                        className="w-full text-left py-3 flex flex-wrap items-center justify-between gap-3 hover:bg-white/[0.02] transition-colors"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div
-                            className="text-sm font-medium truncate"
+              <ul className="space-y-3">
+                {reflectionsDue.map(row => (
+                  <li
+                    key={row.id}
+                    className="rounded-lg border p-4"
+                    style={{
+                      borderColor: row.overdue
+                        ? "rgba(248,113,113,0.4)"
+                        : "rgba(251,191,36,0.3)",
+                      background: "rgba(2,6,23,0.5)",
+                    }}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className="text-sm font-medium"
                             style={{ color: "#e2e8f0" }}
                           >
-                            {c.client_name}
-                          </div>
-                          <div className="text-xs mt-0.5" style={{ color: "#64748b" }}>
-                            {c.constraint_label}
-                            {c.red_kpis.length > 0 ? ` · ${c.red_kpis.join(", ")}` : ""}
-                            {c.days_live != null ? ` · ${c.days_live}d live` : ""}
-                          </div>
-                          <div
-                            className="flex flex-wrap gap-3 mt-1.5 text-[11px] tabular-nums"
-                            style={{ color: "#94a3b8" }}
+                            {row.client_name}
+                          </span>
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded"
+                            style={{
+                              color: row.overdue ? "#f87171" : "#fbbf24",
+                              background: row.overdue
+                                ? "rgba(248,113,113,0.15)"
+                                : "rgba(251,191,36,0.15)",
+                            }}
                           >
-                            <span>CPL {money(c.cpl)}</span>
-                            <span>CPQL {money(c.cpql)}</span>
-                            <span>Qual {pct(c.qual_pct)}</span>
-                          </div>
+                            {row.overdue ? "Overdue" : "Due today"}
+                          </span>
+                          {row.layer && (
+                            <span
+                              className="text-[10px] uppercase tracking-wider"
+                              style={{ color: "#64748b" }}
+                            >
+                              {row.layer}
+                            </span>
+                          )}
                         </div>
-                        <span
-                          className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded shrink-0"
-                          style={{ color, background: `${color}18` }}
+                        <div className="text-sm mt-1" style={{ color: "#cbd5e1" }}>
+                          {row.title}
+                        </div>
+                        {row.change_description && (
+                          <p className="text-xs mt-1.5 leading-snug" style={{ color: "#94a3b8" }}>
+                            Changed: {row.change_description}
+                          </p>
+                        )}
+                        {row.hypothesis && (
+                          <p className="text-xs mt-1 leading-snug" style={{ color: "#64748b" }}>
+                            Hypothesis: {row.hypothesis}
+                          </p>
+                        )}
+                        <div
+                          className="flex flex-wrap gap-3 mt-2 text-[11px] tabular-nums"
+                          style={{ color: "#94a3b8" }}
                         >
-                          {c.mb_tier_label}
-                        </span>
+                          {row.success_metric_label && (
+                            <span>Metric: {row.success_metric_label}</span>
+                          )}
+                          <span>
+                            Baseline {formatMetric(row.success_metric, row.baseline_value)}
+                          </span>
+                          {row.target_value != null && (
+                            <span>
+                              Target {formatMetric(row.success_metric, row.target_value)}
+                            </span>
+                          )}
+                          {row.change_date && <span>Changed {row.change_date}</span>}
+                          {row.review_date && <span>Review {row.review_date}</span>}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => go("client_health")}
+                        className="text-xs shrink-0 hover:underline"
+                        style={{ color: "#60a5fa" }}
+                      >
+                        Record outcome →
                       </button>
-                    </li>
-                  );
-                })}
+                    </div>
+                  </li>
+                ))}
               </ul>
             )}
-            {data.errors.underperforming && (
+            {data.errors.reflections && (
               <p className="text-xs mt-3" style={{ color: "#f87171" }}>
-                Health feed: {data.errors.underperforming}
+                Reflections feed: {data.errors.reflections}
               </p>
             )}
           </section>
 
-          {/* Fresh launches */}
+          {/* 2. Fresh launches */}
           <section
             className="rounded-xl border p-5"
             style={{
@@ -452,7 +540,7 @@ export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
             )}
           </section>
 
-          {/* Onboarding */}
+          {/* 3. Onboarding */}
           <section
             className="rounded-xl border p-5"
             style={{
@@ -532,6 +620,92 @@ export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
             {data.errors.onboarding && (
               <p className="text-xs mt-3" style={{ color: "#f87171" }}>
                 Onboarding feed: {data.errors.onboarding}
+              </p>
+            )}
+          </section>
+
+          {/* 4. Underperforming — bottom */}
+          <section
+            className="rounded-xl border p-5"
+            style={{
+              borderColor: "rgba(148,163,184,0.15)",
+              background: "rgba(15,23,42,0.55)",
+            }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2
+                className="text-xs font-semibold uppercase tracking-[0.16em]"
+                style={{ color: "#94a3b8" }}
+              >
+                Underperforming clients
+                <span
+                  className="ml-2 normal-case tracking-normal font-normal"
+                  style={{ color: "#475569" }}
+                >
+                  MB lens · CPL / CPQL / Qual %
+                </span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => go("media_buyer")}
+                className="text-xs hover:underline"
+                style={{ color: "#64748b" }}
+              >
+                Ad Performance →
+              </button>
+            </div>
+
+            {underperforming.length === 0 ? (
+              <p className="text-sm py-6" style={{ color: "#34d399" }}>
+                No underperforming ads accounts — keep testing.
+              </p>
+            ) : (
+              <ul className="divide-y" style={{ borderColor: "rgba(51,65,85,0.6)" }}>
+                {underperforming.map(c => {
+                  const color = TIER_COLOR[c.mb_tier] ?? TIER_COLOR.insufficient;
+                  return (
+                    <li key={c.client_id}>
+                      <button
+                        type="button"
+                        onClick={() => go("media_buyer")}
+                        className="w-full text-left py-3 flex flex-wrap items-center justify-between gap-3 hover:bg-white/[0.02] transition-colors"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div
+                            className="text-sm font-medium truncate"
+                            style={{ color: "#e2e8f0" }}
+                          >
+                            {c.client_name}
+                          </div>
+                          <div className="text-xs mt-0.5" style={{ color: "#64748b" }}>
+                            {c.constraint_label}
+                            {c.red_kpis.length > 0 ? ` · ${c.red_kpis.join(", ")}` : ""}
+                            {c.days_live != null ? ` · ${c.days_live}d live` : ""}
+                          </div>
+                          <div
+                            className="flex flex-wrap gap-3 mt-1.5 text-[11px] tabular-nums"
+                            style={{ color: "#94a3b8" }}
+                          >
+                            <span>CPL {money(c.cpl)}</span>
+                            <span>CPQL {money(c.cpql)}</span>
+                            <span>Qual {pct(c.qual_pct)}</span>
+                          </div>
+                        </div>
+                        <span
+                          className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded shrink-0"
+                          style={{ color, background: `${color}18` }}
+                        >
+                          {c.mb_tier_label}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {data.errors.underperforming && (
+              <p className="text-xs mt-3" style={{ color: "#f87171" }}>
+                Health feed: {data.errors.underperforming}
               </p>
             )}
           </section>

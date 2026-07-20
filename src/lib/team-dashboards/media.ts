@@ -6,10 +6,16 @@
 import {
   daysSinceLaunch,
   KPI_META,
+  SUCCESS_METRIC_META,
   TIER_LABEL,
   type HealthTier,
   type KpiGrade,
+  type SuccessMetricKey,
 } from '@/lib/client-health';
+import {
+  OPEN_ACTION_STATUSES,
+  summarizeOpenAction,
+} from '@/lib/client-health-interventions';
 import { ymdLocal } from '@/lib/date-presets';
 import { gradesForLens, mediaBuyerStatus, TIER_WEIGHT } from '@/lib/dept-health';
 import { isKickoffIncomplete } from '@/lib/kickoff';
@@ -24,6 +30,15 @@ import type { createServiceClient } from '@/lib/supabase';
 export const MB_LAUNCH_CHECK_DAYS = 7;
 
 const ONBOARDING_STATUSES = new Set(['new_account', 'onboarding']);
+
+/** Ads / landing layers Christian owns on Client Success interventions. */
+const MB_ACTION_LAYERS = new Set(['L1', 'L2']);
+const MB_SUCCESS_METRICS = new Set([
+  'cpl',
+  'cpql',
+  'lead_to_qual',
+  'optin_rate',
+]);
 
 export type MbLaunchCheckField = 'funnel' | 'ads_manager' | 'mr_waiz';
 
@@ -68,22 +83,64 @@ export type MbOnboardingClient = {
   next_gate: string;
 };
 
+/** Open L1/L2 account changes whose review_date is today or overdue. */
+export type MbReflectionDue = {
+  id: string;
+  client_id: string;
+  client_name: string;
+  title: string;
+  layer: string | null;
+  status: string;
+  success_metric: string | null;
+  success_metric_label: string | null;
+  change_date: string | null;
+  review_date: string | null;
+  baseline_value: number | null;
+  target_value: number | null;
+  change_description: string | null;
+  hypothesis: string | null;
+  overdue: boolean;
+  due_today: boolean;
+};
+
 export type MediaBuyerCommandPayload = {
   generated_at: string;
   today: string;
   health_period: { start: string; end: string };
   counts: {
+    reflections_due: number;
+    reflections_overdue: number;
     underperforming: number;
     fresh_launches: number;
     fresh_incomplete: number;
     onboarding: number;
   };
+  reflectionsDue: MbReflectionDue[];
   underperforming: MbUnderperformingClient[];
   freshLaunches: MbFreshLaunchClient[];
   onboarding: MbOnboardingClient[];
   dayContext: MbDayContext;
-  errors: { underperforming?: string; fresh?: string; onboarding?: string };
+  errors: {
+    underperforming?: string;
+    fresh?: string;
+    onboarding?: string;
+    reflections?: string;
+  };
 };
+
+function isMbOwnedAction(opts: {
+  layer: string | null;
+  success_metric: string | null;
+}): boolean {
+  if (opts.layer && MB_ACTION_LAYERS.has(opts.layer)) return true;
+  if (opts.success_metric && MB_SUCCESS_METRICS.has(opts.success_metric)) return true;
+  return false;
+}
+
+function metricLabel(key: string | null): string | null {
+  if (!key) return null;
+  return SUCCESS_METRIC_META[key as SuccessMetricKey]?.label ?? key;
+}
 
 function daysBetween(fromYmd: string | null | undefined, toYmd: string): number | null {
   if (!fromYmd) return null;
@@ -134,31 +191,41 @@ export async function buildMediaBuyerCommandPayload(
   let underperforming: MbUnderperformingClient[] = [];
   let freshLaunches: MbFreshLaunchClient[] = [];
   let onboarding: MbOnboardingClient[] = [];
+  let reflectionsDue: MbReflectionDue[] = [];
 
-  const [clientsRes, onboardingCallsRes, checksRes, healthResult] = await Promise.all([
-    service
-      .from('clients')
-      .select(
-        'id, name, lifecycle_status, launch_date, date_signed, last_status_changed_at, created_at, ghl_location_id, primary_contact_name, reporting_type, is_live',
-      )
-      .order('name'),
-    service
-      .from('client_calls')
-      .select('client_id, recording_url, call_type, called_at')
-      .eq('call_type', 'onboarding')
-      .order('called_at', { ascending: false }),
-    service.from('mb_launch_checks').select(
-      'client_id, funnel_checked_at, ads_manager_checked_at, mr_waiz_checked_at',
-    ),
-    loadClientHealthBundle(service, {
-      start_date: healthRange.start,
-      end_date: healthRange.end,
-      live_only: true,
-    }).catch((e: unknown) => {
-      errors.underperforming = e instanceof Error ? e.message : String(e);
-      return null;
-    }),
-  ]);
+  const [clientsRes, onboardingCallsRes, checksRes, actionsRes, healthResult] =
+    await Promise.all([
+      service
+        .from('clients')
+        .select(
+          'id, name, lifecycle_status, launch_date, date_signed, last_status_changed_at, created_at, ghl_location_id, primary_contact_name, reporting_type, is_live',
+        )
+        .order('name'),
+      service
+        .from('client_calls')
+        .select('client_id, recording_url, call_type, called_at')
+        .eq('call_type', 'onboarding')
+        .order('called_at', { ascending: false }),
+      service.from('mb_launch_checks').select(
+        'client_id, funnel_checked_at, ads_manager_checked_at, mr_waiz_checked_at',
+      ),
+      service
+        .from('client_action_logs')
+        .select(
+          'id, client_id, title, layer, status, success_metric, change_date, review_date, baseline_value, target_value, change_description, hypothesis, created_at, baseline_snapshot_id, outcome_value, outcome_recorded_at',
+        )
+        .in('status', [...OPEN_ACTION_STATUSES])
+        .not('review_date', 'is', null)
+        .lte('review_date', today),
+      loadClientHealthBundle(service, {
+        start_date: healthRange.start,
+        end_date: healthRange.end,
+        live_only: true,
+      }).catch((e: unknown) => {
+        errors.underperforming = e instanceof Error ? e.message : String(e);
+        return null;
+      }),
+    ]);
 
   if (clientsRes.error) {
     errors.onboarding = clientsRes.error.message;
@@ -170,8 +237,12 @@ export async function buildMediaBuyerCommandPayload(
   if (checksRes.error && !errors.fresh) {
     errors.fresh = checksRes.error.message;
   }
+  if (actionsRes.error) {
+    errors.reflections = actionsRes.error.message;
+  }
 
   const allClients = clientsRes.data ?? [];
+  const clientNameById = new Map(allClients.map(c => [c.id as string, c.name as string]));
   const checksById = new Map<string, MbLaunchChecks>();
   for (const row of checksRes.data ?? []) {
     checksById.set(row.client_id, {
@@ -187,6 +258,60 @@ export async function buildMediaBuyerCommandPayload(
       latestOnboardingCall.set(call.client_id, { recording_url: call.recording_url });
     }
   }
+
+  // ── Reflections due (L1/L2 account changes — review today or overdue) ─────
+  reflectionsDue = (actionsRes.data ?? [])
+    .filter(a =>
+      isMbOwnedAction({
+        layer: (a.layer as string | null) ?? null,
+        success_metric: (a.success_metric as string | null) ?? null,
+      }),
+    )
+    .map(a => {
+      const summary = summarizeOpenAction(
+        {
+          id: a.id,
+          client_id: a.client_id,
+          created_at: a.created_at,
+          change_date: a.change_date,
+          title: a.title,
+          success_metric: a.success_metric,
+          baseline_value: a.baseline_value != null ? Number(a.baseline_value) : null,
+          target_value: a.target_value != null ? Number(a.target_value) : null,
+          baseline_snapshot_id: a.baseline_snapshot_id,
+          review_date: a.review_date,
+          status: a.status,
+          outcome_value: a.outcome_value != null ? Number(a.outcome_value) : null,
+          outcome_recorded_at: a.outcome_recorded_at,
+        },
+        today,
+      );
+      const review = (a.review_date as string | null)?.slice(0, 10) ?? null;
+      return {
+        id: a.id as string,
+        client_id: a.client_id as string,
+        client_name: clientNameById.get(a.client_id) ?? 'Unknown',
+        title: a.title as string,
+        layer: (a.layer as string | null) ?? null,
+        status: a.status as string,
+        success_metric: (a.success_metric as string | null) ?? null,
+        success_metric_label: metricLabel((a.success_metric as string | null) ?? null),
+        change_date: (a.change_date as string | null)?.slice(0, 10) ?? null,
+        review_date: review,
+        baseline_value: a.baseline_value != null ? Number(a.baseline_value) : null,
+        target_value: a.target_value != null ? Number(a.target_value) : null,
+        change_description: (a.change_description as string | null) ?? null,
+        hypothesis: (a.hypothesis as string | null) ?? null,
+        overdue: summary.overdue,
+        due_today: review === today,
+      };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.overdue) - Number(a.overdue) ||
+        (a.review_date ?? '').localeCompare(b.review_date ?? '') ||
+        a.client_name.localeCompare(b.client_name),
+    );
 
   // ── Onboarding queue ──────────────────────────────────────────────────────
   onboarding = allClients
@@ -299,6 +424,7 @@ export async function buildMediaBuyerCommandPayload(
   }
 
   const fresh_incomplete = freshLaunches.filter(f => !f.all_checked).length;
+  const reflections_overdue = reflectionsDue.filter(r => r.overdue).length;
 
   return {
     generated_at: new Date().toISOString(),
@@ -308,11 +434,14 @@ export async function buildMediaBuyerCommandPayload(
       end: healthRange.end,
     },
     counts: {
+      reflections_due: reflectionsDue.length,
+      reflections_overdue,
       underperforming: underperforming.length,
       fresh_launches: freshLaunches.length,
       fresh_incomplete,
       onboarding: onboarding.length,
     },
+    reflectionsDue,
     underperforming,
     freshLaunches,
     onboarding,
