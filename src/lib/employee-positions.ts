@@ -6,6 +6,8 @@ export const EMPLOYEE_POSITIONS = [
   'admin',
   'media_buyer',
   'operations',
+  'client_success',
+  'ccm',
   'other',
 ] as const;
 
@@ -17,12 +19,14 @@ export const POSITION_LABELS: Record<EmployeePosition, string> = {
   admin: 'Admin',
   media_buyer: 'Media Buyer',
   operations: 'Operations',
+  client_success: 'Client Success',
+  ccm: 'Call Center Manager',
   other: 'Other (salaried)',
 };
 
 export const POSITION_GROUPS = {
   commission: ['call_rep', 'b2b_setter'] as const,
-  salaried: ['admin', 'media_buyer', 'operations', 'other'] as const,
+  salaried: ['admin', 'media_buyer', 'operations', 'client_success', 'ccm', 'other'] as const,
 };
 
 export type CommissionPosition = (typeof POSITION_GROUPS.commission)[number];
@@ -57,6 +61,10 @@ export function positionAccent(position: EmployeePosition): string {
       return '#34d399';
     case 'operations':
       return '#94a3b8';
+    case 'client_success':
+      return '#38bdf8';
+    case 'ccm':
+      return '#f472b6';
     default:
       return '#64748b';
   }

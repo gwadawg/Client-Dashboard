@@ -9,8 +9,11 @@ import {
   positionAccent,
   type EmployeePosition,
 } from "@/lib/employee-positions";
+import { departmentForPosition, eodFormHref } from "@/lib/eod-forms";
 import type { TeamRosterRow } from "@/lib/team-roster-api";
 import EmployeePayHistory from "./EmployeePayHistory";
+import EodHistorySection from "./EodHistorySection";
+import EodAdminHistory from "./EodAdminHistory";
 
 type PayRates = {
   base_salary: number;
@@ -81,6 +84,7 @@ export default function AgentAdmin() {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [panel, setPanel] = useState<"roster" | "eod">("roster");
 
   function load() {
     setLoading(true);
@@ -294,7 +298,32 @@ export default function AgentAdmin() {
             One record per team member — position, pay rates, and optional dashboard login. Former staff stay as Alumni so historical payroll still attributes correctly.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
+          {([
+            { id: "roster" as const, label: "Roster" },
+            { id: "eod" as const, label: "EOD log" },
+          ]).map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setPanel(t.id)}
+              className="px-3 py-1.5 text-xs font-semibold"
+              style={{
+                background: panel === t.id ? "rgba(245,158,11,0.2)" : "transparent",
+                color: panel === t.id ? "#fbbf24" : "#64748b",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {panel === "eod" ? (
+        <EodAdminHistory />
+      ) : (
+      <>
+      <div className="flex flex-wrap items-center justify-end gap-2">
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as StatusFilter)}
@@ -326,7 +355,6 @@ export default function AgentAdmin() {
             </button>
           )}
         </div>
-      </div>
 
       {error && (
         <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
@@ -473,6 +501,24 @@ export default function AgentAdmin() {
               <div className="pt-3 mt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                 <EmployeePayHistory agentId={selected.id} compact />
               </div>
+              <div className="pt-3 mt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                <EodHistorySection
+                  agentId={selected.id}
+                  department={departmentForPosition(selected.pay_type as EmployeePosition)}
+                  compact
+                />
+                {!departmentForPosition(selected.pay_type as EmployeePosition) && (
+                  <p className="text-[11px] mt-2" style={{ color: "#64748b" }}>
+                    EOD forms are for Media Buyer, Client Success, and CCM positions.{" "}
+                    <a href="/forms" className="font-semibold" style={{ color: "#38bdf8" }}>Team Forms</a>
+                  </p>
+                )}
+                {departmentForPosition(selected.pay_type as EmployeePosition) && (
+                  <p className="text-[11px] mt-2 font-mono" style={{ color: "#475569" }}>
+                    {eodFormHref(departmentForPosition(selected.pay_type as EmployeePosition)!)}
+                  </p>
+                )}
+              </div>
               <div className="flex flex-wrap gap-2 pt-2">
                 <button type="button" onClick={() => { setEditingId(selected.id); setEditState(agentToEdit(selected)); }}
                   className="text-xs px-3 py-1.5 rounded-lg font-semibold"
@@ -562,6 +608,8 @@ export default function AgentAdmin() {
               style={{ background: "#f59e0b", color: "#fff" }}>{saving ? "Saving…" : "Save changes"}</button>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

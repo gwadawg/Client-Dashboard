@@ -11,6 +11,33 @@ export type InternalFormDef = {
 
 export const INTERNAL_FORMS: InternalFormDef[] = [
   {
+    slug: "eod-media-buyer",
+    title: "EOD — Media Buyer / Ops",
+    description:
+      "End-of-day check-in for media buying and tech blocks. Accomplishments, unfinished work, productivity rating, and seat-specific shutdown items.",
+    href: "/forms/eod/media-buyer",
+    audience: "Media Buyer",
+    tags: ["eod", "media-buyer", "daily"],
+  },
+  {
+    slug: "eod-client-success",
+    title: "EOD — Client Success",
+    description:
+      "End-of-day check-in for client health, launches, follow-ups, and people/payroll cadence.",
+    href: "/forms/eod/client-success",
+    audience: "Client Success",
+    tags: ["eod", "client-success", "daily"],
+  },
+  {
+    slug: "eod-ccm",
+    title: "EOD — Call Center Manager",
+    description:
+      "End-of-day check-in for floor training, dial pace, Booking/Show, stack bugs, and setter EOD.",
+    href: "/forms/eod/ccm",
+    audience: "Call Center Manager",
+    tags: ["eod", "ccm", "daily"],
+  },
+  {
     slug: "acquisition-demo-booked",
     title: "Demo Booking Credit",
     description:

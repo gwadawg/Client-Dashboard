@@ -20,7 +20,9 @@ const BYPASS_ROUTES = [
   '/auth',
   '/report',
   '/forms/acquisition',
+  '/forms/eod',
   '/api/acquisition/forms',
+  '/api/eod',
   '/api/acquisition/webhooks',
   '/api/acquisition/ad-insights',
 ];
@@ -29,6 +31,12 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (BYPASS_ROUTES.some(r => pathname.startsWith(r))) {
+    return NextResponse.next();
+  }
+
+  // API routes authenticate in-handler via getAuthContext(). Skipping middleware
+  // here removes a duplicate Supabase getUser() round-trip on every fetch.
+  if (pathname.startsWith('/api/')) {
     return NextResponse.next();
   }
 
