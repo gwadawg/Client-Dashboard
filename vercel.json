@@ -3,6 +3,10 @@
     {
       "path": "/api/business/snapshot?run=1",
       "schedule": "0 6 1 * *"
+    },
+    {
+      "path": "/api/cs-touchpoints/run-schedule",
+      "schedule": "0 12 * * *"
     }
   ]
 }
