@@ -246,6 +246,9 @@ export default function EodFormClient({ department }: { department: EodDepartmen
     }
   }
 
+  const selectedAgent = agents.find(a => a.id === agentId) ?? null;
+  const identityReady = Boolean(agentId);
+
   if (success) {
     return (
       <div className="max-w-lg mx-auto text-center space-y-4 py-12">
@@ -281,7 +284,7 @@ export default function EodFormClient({ department }: { department: EodDepartmen
       )}
 
       <section className="space-y-4">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Who & when</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Step 1 — Who & when</h2>
         <div>
           <label className="block text-xs font-medium text-slate-400 mb-1">You</label>
           <select
@@ -314,7 +317,36 @@ export default function EodFormClient({ department }: { department: EodDepartmen
             style={inputStyle}
           />
         </div>
+        {!identityReady && !loadingAgents && agents.length > 0 && (
+          <p className="text-xs" style={{ color: "#64748b" }}>
+            Select your name above to open today&apos;s questions.
+          </p>
+        )}
       </section>
+
+      {identityReady && selectedAgent && (
+        <>
+          <div
+            className="rounded-xl px-4 py-3 flex items-center justify-between gap-3"
+            style={{ background: "rgba(56,189,248,0.08)", border: "1px solid rgba(56,189,248,0.2)" }}
+          >
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>
+                Filling as {selectedAgent.name}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
+                Work date {workDate} · Step 2 — answer below, then submit
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAgentId("")}
+              className="text-[11px] font-semibold shrink-0"
+              style={{ color: "#7dd3fc" }}
+            >
+              Change
+            </button>
+          </div>
 
       <section className="space-y-4">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Shared</h2>
@@ -567,6 +599,8 @@ export default function EodFormClient({ department }: { department: EodDepartmen
       >
         {submitting ? "Submitting…" : "Submit EOD"}
       </button>
+        </>
+      )}
     </form>
   );
 }
