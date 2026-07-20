@@ -150,3 +150,61 @@ export function cycleKeyOb(appointmentId: string): string {
 export function cycleKeyBiweekly(dueAt: string): string {
   return `m2:${cycleKeyFromDate(dueAt)}`;
 }
+
+/** Days from tenure anchor before Month 2+ schedule-only pulses begin. */
+export const M1_DURATION_DAYS = 30;
+
+/** Prefer launch_date; fall back to date_signed. */
+export function tenureAnchor(client: {
+  launch_date?: string | null;
+  date_signed?: string | null;
+}): string | null {
+  const launch = client.launch_date?.trim();
+  if (launch) return launch.slice(0, 10);
+  const signed = client.date_signed?.trim();
+  if (signed) return signed.slice(0, 10);
+  return null;
+}
+
+/** Whole UTC calendar days since anchor date (YYYY-MM-DD or ISO). */
+export function daysSinceAnchor(anchor: string, now: Date = new Date()): number {
+  const day = anchor.slice(0, 10);
+  const anchorUtc = Date.UTC(
+    Number(day.slice(0, 4)),
+    Number(day.slice(5, 7)) - 1,
+    Number(day.slice(8, 10)),
+  );
+  const nowUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.floor((nowUtc - anchorUtc) / 86_400_000);
+}
+
+/** Month 1 = days 0–29 from tenure anchor. */
+export function isMonth1(anchor: string, now: Date = new Date()): boolean {
+  return daysSinceAnchor(anchor, now) < M1_DURATION_DAYS;
+}
+
+/**
+ * Whether event-driven first_* touchpoints may be created.
+ * - No anchor: allow (pre-launch / early first leads).
+ * - With anchor: only during Month 1 (day 0–29).
+ */
+export function allowEventTouchpoints(
+  client: { launch_date?: string | null; date_signed?: string | null },
+  now: Date = new Date(),
+): boolean {
+  const anchor = tenureAnchor(client);
+  if (!anchor) return true;
+  return isMonth1(anchor, now);
+}
+
+export function tenurePhaseLabel(
+  client: { launch_date?: string | null; date_signed?: string | null },
+  now: Date = new Date(),
+): { days: number | null; phase: 'prelaunch' | 'm1' | 'm2' | 'unknown' } {
+  const anchor = tenureAnchor(client);
+  if (!anchor) return { days: null, phase: 'unknown' };
+  const days = daysSinceAnchor(anchor, now);
+  if (days < 0) return { days, phase: 'prelaunch' };
+  if (days < M1_DURATION_DAYS) return { days, phase: 'm1' };
+  return { days, phase: 'm2' };
+}

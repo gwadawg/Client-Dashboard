@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import ClientFile from "@/components/ClientFile";
 import {
   CS_TOUCHPOINT_LABELS,
+  tenurePhaseLabel,
   type CsTouchpointType,
 } from "@/lib/cs-touchpoints";
 
@@ -17,7 +18,13 @@ type TouchpointRow = {
   due_at: string;
   trigger_source: string;
   playbook_stage: string | null;
-  clients: { id: string; name: string } | null;
+  clients: {
+    id: string;
+    name: string;
+    launch_date: string | null;
+    date_signed: string | null;
+    lifecycle_status: string | null;
+  } | null;
 };
 
 type Props = {
@@ -31,6 +38,16 @@ function formatDue(iso: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function formatTenure(client: TouchpointRow["clients"]): string {
+  if (!client) return "—";
+  const { days, phase } = tenurePhaseLabel(client);
+  if (days == null) return "No launch/signed";
+  if (phase === "m1") return `Day ${days} · M1`;
+  if (phase === "m2") return `Day ${days} · M2+`;
+  if (phase === "prelaunch") return `Day ${days}`;
+  return `Day ${days}`;
 }
 
 export default function CsTouchpointsQueue({ onOpenClient }: Props) {
@@ -136,6 +153,9 @@ export default function CsTouchpointsQueue({ onOpenClient }: Props) {
           <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
             Clear the queue before EOD. Complete requires the Slack message you sent.
           </p>
+          <p className="text-[11px] mt-1" style={{ color: "#475569" }}>
+            Month 1 = event milestones · Month 2+ = scheduled every 14 days
+          </p>
         </div>
         <input
           value={search}
@@ -199,6 +219,7 @@ export default function CsTouchpointsQueue({ onOpenClient }: Props) {
             <thead>
               <tr style={{ background: "rgba(255,255,255,0.03)", color: "#64748b" }}>
                 <th className="text-left font-medium px-3 py-2">Client</th>
+                <th className="text-left font-medium px-3 py-2">Tenure</th>
                 <th className="text-left font-medium px-3 py-2">Touchpoint</th>
                 <th className="text-left font-medium px-3 py-2">Due</th>
                 <th className="text-left font-medium px-3 py-2">Source</th>
@@ -220,6 +241,9 @@ export default function CsTouchpointsQueue({ onOpenClient }: Props) {
                     >
                       {row.clients?.name ?? "Client"}
                     </button>
+                  </td>
+                  <td className="px-3 py-2.5 text-xs" style={{ color: "#94a3b8" }}>
+                    {formatTenure(row.clients)}
                   </td>
                   <td className="px-3 py-2.5" style={{ color: "#cbd5e1" }}>
                     {CS_TOUCHPOINT_LABELS[row.touchpoint_type] ?? row.touchpoint_type}

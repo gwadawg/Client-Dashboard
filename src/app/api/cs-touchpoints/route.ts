@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   let query = ctx.service
     .from('cs_touchpoints')
     .select(
-      'id, client_id, touchpoint_type, cycle_key, status, due_at, triggered_at, completed_at, snoozed_until, trigger_source, source_ref, playbook_stage, slack_sent, slack_snippet, completion_note, created_at, updated_at, clients(id, name)',
+      'id, client_id, touchpoint_type, cycle_key, status, due_at, triggered_at, completed_at, snoozed_until, trigger_source, source_ref, playbook_stage, slack_sent, slack_snippet, completion_note, created_at, updated_at, clients(id, name, launch_date, date_signed, lifecycle_status)',
       { count: 'exact' },
     )
     .order('due_at', { ascending: true })
