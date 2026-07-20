@@ -58,6 +58,8 @@ const VIEW_ALIASES: Record<string, string[]> = {
   ceo_raw: ["ceo"],
   // Leadership (Laura-class / ops / CEO) can open CCM Command without a dedicated grant.
   team_dashboard_ccm: ["ops_overview", "client_health", "ceo"],
+  // Ops / ads / CS / CEO can open Media Buyer Command without a dedicated grant.
+  team_dashboard_media: ["ops_overview", "media_buyer", "client_health", "ceo"],
 };
 
 /** All keys that satisfy a permission check (hub ↔ legacy children). */

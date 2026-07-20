@@ -28,6 +28,7 @@ export type View =
   | "ops_overview"
   | "state_looker"
   | "team_dashboard_ccm"
+  | "team_dashboard_media"
   | HubView
   | "resources"
   | "call_library"
@@ -232,6 +233,7 @@ export const NAV_GROUPS = [
 
 export const NAV: NavItem[] = [
   { view: "team_dashboard_ccm", label: "CCM Command",           group: "Team Dashboards" },
+  { view: "team_dashboard_media", label: "Media Buyer Command", group: "Team Dashboards" },
   { view: "ops_overview",       label: "Ops Dashboard",         group: "Team Dashboards" },
   { view: "dashboard",          label: "Client KPIs",           group: "Clients"      },
   { view: "kpi_simulator",      label: "Funnel Simulator",      group: "Clients"      },
