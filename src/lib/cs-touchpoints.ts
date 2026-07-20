@@ -154,6 +154,23 @@ export function cycleKeyBiweekly(dueAt: string): string {
 /** Days from tenure anchor before Month 2+ schedule-only pulses begin. */
 export const M1_DURATION_DAYS = 30;
 
+/**
+ * Next biweekly pulse on the launch-aligned grid: anchor+30, then +14…
+ * Always returns a date on that grid that is today or in the future (UTC day).
+ * Does not collapse missed slots onto "now" — advances to the next launch-relative day.
+ */
+export function nextM2BiweeklyDueIso(anchorYmd: string, now: Date = new Date()): string {
+  const anchor = anchorYmd.slice(0, 10);
+  let due = new Date(`${anchor}T12:00:00.000Z`);
+  due.setUTCDate(due.getUTCDate() + M1_DURATION_DAYS);
+
+  const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  while (due.getTime() < todayStart) {
+    due = new Date(due.getTime() + 14 * 86_400_000);
+  }
+  return due.toISOString();
+}
+
 /** Prefer launch_date; fall back to date_signed. */
 export function tenureAnchor(client: {
   launch_date?: string | null;

@@ -23,6 +23,17 @@ const DRY_RUN = !process.argv.includes('--apply');
 const M1_DURATION_DAYS = 30;
 const M2_INTERVAL_DAYS = 14;
 
+function nextM2BiweeklyDueIso(anchorYmd, now = new Date()) {
+  const anchor = String(anchorYmd).slice(0, 10);
+  let due = new Date(`${anchor}T12:00:00.000Z`);
+  due.setUTCDate(due.getUTCDate() + M1_DURATION_DAYS);
+  const todayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  while (due.getTime() < todayStart) {
+    due = new Date(due.getTime() + M2_INTERVAL_DAYS * 86_400_000);
+  }
+  return due.toISOString();
+}
+
 const EVENT_TO_TP = {
   lead: 'first_lead',
   appointment_booked: 'first_booking',
@@ -228,15 +239,11 @@ async function main() {
       continue;
     }
 
-    let due = new Date(addDaysIso(`${anchor}T12:00:00.000Z`, M1_DURATION_DAYS));
-    while (due.getTime() + M2_INTERVAL_DAYS * 86_400_000 <= now.getTime()) {
-      due = new Date(due.getTime() + M2_INTERVAL_DAYS * 86_400_000);
-    }
-    const dueIso = due.toISOString() < nowIso ? nowIso : due.toISOString();
+    const dueIso = nextM2BiweeklyDueIso(anchor, now);
     const biCycle = cycleKeyBiweekly(dueIso);
     const key = `${c.id}|m2_biweekly|${biCycle}`;
     if (existingKeys.has(key)) {
-      summary.m2Scheduled.push({ name: c.name, days, action: 'cycle_exists' });
+      summary.m2Scheduled.push({ name: c.name, days, action: 'cycle_exists', due: dueIso.slice(0, 10) });
       continue;
     }
 

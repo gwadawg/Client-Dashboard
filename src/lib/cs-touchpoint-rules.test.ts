@@ -5,6 +5,7 @@ import {
   daysSinceAnchor,
   isMonth1,
   M1_DURATION_DAYS,
+  nextM2BiweeklyDueIso,
   tenureAnchor,
   tenurePhaseLabel,
 } from './cs-touchpoints';
@@ -108,5 +109,15 @@ describe('tenurePhaseLabel', () => {
       tenurePhaseLabel({ launch_date: null, date_signed: null }, now),
       { days: null, phase: 'unknown' },
     );
+  });
+});
+
+describe('nextM2BiweeklyDueIso', () => {
+  it('stays on launch+30 / +14 grid and does not clamp to now', () => {
+    const now = new Date('2026-07-20T15:00:00.000Z');
+    // launch 2026-06-08 → +30 = 2026-07-08 → next on/after Jul 20 = 2026-07-22
+    assert.equal(nextM2BiweeklyDueIso('2026-06-08', now).slice(0, 10), '2026-07-22');
+    // launch 2026-06-20 → +30 = 2026-07-20 → due that day
+    assert.equal(nextM2BiweeklyDueIso('2026-06-20', now).slice(0, 10), '2026-07-20');
   });
 });

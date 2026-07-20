@@ -8,6 +8,7 @@ import {
   cycleKeyOb,
   daysSinceAnchor,
   M1_DURATION_DAYS,
+  nextM2BiweeklyDueIso,
   tenureAnchor,
   upsertCsTouchpoint,
   type CsTouchpointType,
@@ -18,13 +19,13 @@ export {
   daysSinceAnchor,
   isMonth1,
   M1_DURATION_DAYS,
+  nextM2BiweeklyDueIso,
   tenureAnchor,
   tenurePhaseLabel,
 } from '@/lib/cs-touchpoints';
 
 const MID_BUILD_DAYS = 3;
 const M1_RESET_DAYS = 6;
-const M2_INTERVAL_DAYS = 14;
 
 const EVENT_TO_TOUCHPOINT: Partial<Record<string, CsTouchpointType>> = {
   lead: 'first_lead',
@@ -241,12 +242,8 @@ export async function runCsTouchpointSchedule(
       .maybeSingle();
     if (openPulse?.id) continue;
 
-    // First M2 slot = anchor + 30, then every 14 days
-    const launchPlus30 = addDaysIso(`${anchor}T12:00:00.000Z`, M1_DURATION_DAYS);
-    let due = new Date(launchPlus30);
-    while (due.getTime() + M2_INTERVAL_DAYS * 86_400_000 <= now.getTime()) {
-      due = new Date(due.getTime() + M2_INTERVAL_DAYS * 86_400_000);
-    }
+    // First M2 slot = anchor + 30, then every 14 days (launch-aligned, not "today")
+    const dueIso = nextM2BiweeklyDueIso(anchor, now);
 
     // If last completed biweekly was < 14 days ago, wait
     const { data: lastPulse } = await service
@@ -260,16 +257,15 @@ export async function runCsTouchpointSchedule(
       .maybeSingle();
     if (lastPulse?.completed_at) {
       const nextOk =
-        new Date(lastPulse.completed_at).getTime() + M2_INTERVAL_DAYS * 86_400_000;
+        new Date(lastPulse.completed_at).getTime() + 14 * 86_400_000;
       if (nextOk > now.getTime()) continue;
     }
 
-    const dueIso = due.toISOString();
     const r = await upsertCsTouchpoint(service, {
       client_id: c.id as string,
       touchpoint_type: 'm2_biweekly',
       cycle_key: cycleKeyBiweekly(dueIso),
-      due_at: dueIso < nowIso ? nowIso : dueIso,
+      due_at: dueIso,
       trigger_source: 'schedule',
       source_ref: 'run-schedule',
     });
