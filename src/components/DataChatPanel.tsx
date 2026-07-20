@@ -24,6 +24,7 @@ type Props = {
   endDate: string;
   clients: ClientOption[];
   selectedClientId: string;
+  defaultOpen?: boolean;
 };
 
 const panelBg = {
@@ -54,8 +55,9 @@ export default function DataChatPanel({
   endDate,
   clients,
   selectedClientId,
+  defaultOpen = false,
 }: Props) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [scopes, setScopes] = useState<ScopeOption[]>([]);
   const [scopesError, setScopesError] = useState<string | null>(null);
   const [step, setStep] = useState<"scope" | "chat">("scope");
