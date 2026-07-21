@@ -25,6 +25,7 @@ const BYPASS_ROUTES = [
   '/api/eod',
   '/api/acquisition/webhooks',
   '/api/acquisition/ad-insights',
+  // /api/onboard/* already covered by '/api/onboard' above
 ];
 
 export async function middleware(request: NextRequest) {

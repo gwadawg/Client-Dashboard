@@ -51,6 +51,7 @@ create table if not exists clients (
   reporting_type   text    not null default 'RM',
   ghl_location_id  text,
   share_token      text,
+  team_invite_token text,
   created_at       timestamptz default now(),
 
   -- Lifecycle (mirrors ClickUp "Clients" list)
@@ -1302,6 +1303,11 @@ create index if not exists pending_events_ghl_location_pending
 
 -- Client onboarding form submissions (audit trail; checklist answers in JSONB).
 alter table clients add column if not exists headshot_url text;
+alter table clients add column if not exists team_invite_token text;
+
+create unique index if not exists clients_team_invite_token_uidx
+  on clients(team_invite_token)
+  where team_invite_token is not null;
 
 create table if not exists client_form_submissions (
   id            uuid primary key default gen_random_uuid(),

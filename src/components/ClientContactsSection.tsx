@@ -299,8 +299,57 @@ export default function ClientContactsSection({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<ContactDraft>({ ...EMPTY_DRAFT });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   const primaryName = primary.primary_contact_name || primary.primary_contact;
+
+  async function fetchInviteLink(rotate = false): Promise<string | null> {
+    setInviteBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/team-invite`, {
+        method: rotate ? "POST" : "GET",
+        headers: rotate ? { "Content-Type": "application/json" } : undefined,
+        body: rotate ? JSON.stringify({ rotate: true }) : undefined,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to get invite link");
+      setInviteUrl(data.url);
+      return data.url as string;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to get invite link");
+      return null;
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function copyInviteLink() {
+    const url = inviteUrl ?? (await fetchInviteLink(false));
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setInviteCopied(true);
+      window.setTimeout(() => setInviteCopied(false), 2000);
+    } catch {
+      setError("Could not copy — select the link and copy manually");
+    }
+  }
+
+  async function rotateInviteLink() {
+    if (!window.confirm("Rotate this link? The old link will stop working.")) return;
+    const url = await fetchInviteLink(true);
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setInviteCopied(true);
+      window.setTimeout(() => setInviteCopied(false), 2000);
+    } catch {
+      /* url is shown below for manual copy */
+    }
+  }
 
   async function submitAdd() {
     if (!canSaveDraft(draft)) return;
@@ -416,9 +465,58 @@ export default function ClientContactsSection({
         </div>
       </div>
 
+      <div
+        className="rounded-lg px-4 py-3 space-y-2"
+        style={{ background: "#080f1e", border: "1px solid rgba(56,189,248,0.15)" }}
+      >
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#64748b" }}>
+              Team invite link
+            </p>
+            <p className="text-sm mt-1" style={{ color: "#94a3b8" }}>
+              Unique to this client file. Send it so LOAs / Co-LOs can add themselves.
+            </p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0 flex-wrap">
+            <button
+              type="button"
+              onClick={copyInviteLink}
+              disabled={inviteBusy}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+              style={{
+                color: "#38bdf8",
+                background: "rgba(56,189,248,0.12)",
+                border: "1px solid rgba(56,189,248,0.25)",
+                opacity: inviteBusy ? 0.5 : 1,
+              }}
+            >
+              {inviteBusy ? "…" : inviteCopied ? "Copied!" : "Copy link"}
+            </button>
+            <button
+              type="button"
+              onClick={rotateInviteLink}
+              disabled={inviteBusy}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+              style={{ color: "#64748b", opacity: inviteBusy ? 0.5 : 1 }}
+            >
+              Rotate
+            </button>
+          </div>
+        </div>
+        {inviteUrl && (
+          <p
+            className="text-xs font-mono break-all px-2 py-1.5 rounded"
+            style={{ color: "#64748b", background: "#050c18" }}
+          >
+            {inviteUrl}
+          </p>
+        )}
+      </div>
+
       {contacts.length === 0 ? (
         <p className="text-sm py-3 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>
-          No additional contacts yet. Add an LOA or Co-LO if this account has a team.
+          No additional contacts yet. Add an LOA or Co-LO if this account has a team — or send the invite link above.
         </p>
       ) : (
         <div className="space-y-2">

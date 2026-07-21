@@ -66,6 +66,20 @@ Clients enter email + phone (required for matching), licensed states, business i
 - **1 match** → fields applied to `clients`, `new_account` → `onboarding`, then **GHL tag** + **ClickUp comment** + **Slack ops alert**. GHL/ClickUp only run when matched.
 - **0 or 2+ matches** → `client_form_submissions` row with `status: unmapped`; **Slack ops alert** explains the match failure. Resolve in **Client Roster → Unmapped onboarding forms** — linking to a client then triggers GHL + ClickUp.
 
+### Team member invite (unique per client)
+
+Primary onboarding stays on the universal `/onboard` link. For additional users (LOA / Co-LO / other), use the **unique team invite** on Client File → Contacts:
+
+- **Copy link** generates (or returns) `clients.team_invite_token` → `/onboard/team/<token>`
+- Submit writes directly to `client_contacts` for that client (no email/phone matching)
+- **Rotate** invalidates the old token and copies a new URL
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `GET /api/clients/[id]/team-invite` | Admin session | Ensure token + return URL |
+| `POST /api/clients/[id]/team-invite` `{ rotate: true }` | Admin session | Rotate token |
+| `GET/POST /api/onboard/team` | Public (token) | Prefetch + submit team member form |
+
 ### Onboarding complete side effects (direct API)
 
 When a matched client submits `/onboard`, Mr. Waiz:
@@ -187,6 +201,8 @@ Roster shows progress strip: Sign | OB | KO | Live.
 | `POST /api/admin/onboard` | Bearer `ADMIN_WEBHOOK_SECRET` | New client from Make |
 | `PATCH /api/admin/clients/[id]` | Bearer `ADMIN_WEBHOOK_SECRET` | `slack_id`, integration fields |
 | `POST /api/onboard/submit` | Public | Client onboarding form |
+| `GET/POST /api/onboard/team` | Public (token) | Team member invite form |
+| `GET/POST /api/clients/[id]/team-invite` | Admin session | Copy / rotate team invite URL |
 | `GET/POST /api/form-submissions/pending` | Admin session | Unmapped OB queue |
 | `POST /api/clients/[id]/kickoff` | Admin session | Kickoff wizard |
 | `POST /api/clients/[id]/launch` | Admin session | Launch checklist |
