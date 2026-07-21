@@ -12,6 +12,8 @@ export type AgentPerformanceRow = {
   pickup_rate: number;
   conversations: number;
   conversation_rate: number;
+  /** Unique leads with show ∪ live_transfer (floor-board Conversations). */
+  show_lt_conversations: number;
   appointments: number;
   callbacks: number;
   live_transfers: number;
@@ -40,6 +42,7 @@ export type AgentGoal = {
   metric: string;
   target: number;
   period: string;
+  month?: string | null;
 };
 
 export type ComparisonMetricKey =
