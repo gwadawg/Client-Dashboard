@@ -1704,3 +1704,69 @@ create index if not exists cs_touchpoints_client_completed_idx
 
 create index if not exists cs_touchpoints_status_due_idx
   on cs_touchpoints (status, due_at);
+  where status in ('open', 'snoozed');
+
+create index if not exists cs_touchpoints_client_completed_idx
+  on cs_touchpoints (client_id, completed_at desc nulls last);
+
+create index if not exists cs_touchpoints_status_due_idx
+  on cs_touchpoints (status, due_at);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Team meeting runbooks (templates + instances)
+-- Spec: Wm-os docs/plans/2026-07-21-team-call-runbooks-design.md
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists team_meeting_templates (
+  id              uuid primary key default gen_random_uuid(),
+  slug            text not null unique,
+  title           text not null,
+  theme           text not null default '',
+  call_type       text not null,
+  weekdays        int[] not null default '{}',
+  default_time    time not null,
+  duration_min    int not null default 30,
+  host_role       text not null,
+  attendee_roles  text[] not null default '{}',
+  agenda_md       text not null default '',
+  checklist       jsonb not null default '[]'::jsonb,
+  disposition     jsonb not null default '[]'::jsonb,
+  active          boolean not null default true,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  constraint team_meeting_templates_call_type_check check (
+    call_type in (
+      'coaching', 'training', 'team_meeting', 'team_review',
+      'interview', 'role_play', '1on1', 'sales_review', 'other'
+    )
+  ),
+  constraint team_meeting_templates_host_role_check check (
+    host_role in ('ccm', 'client_success', 'ceo', 'shared')
+  )
+);
+
+create table if not exists team_meeting_instances (
+  id                uuid primary key default gen_random_uuid(),
+  template_id       uuid not null
+    references team_meeting_templates(id) on delete cascade,
+  scheduled_at      timestamptz not null,
+  status            text not null default 'scheduled',
+  host_agent_id     uuid references agents(id) on delete set null,
+  checklist_state   jsonb not null default '{}'::jsonb,
+  responses         jsonb not null default '{}'::jsonb,
+  recording_url     text,
+  notes             text,
+  team_call_id      uuid references team_calls(id) on delete set null,
+  completed_at      timestamptz,
+  completed_by      uuid references auth.users(id) on delete set null,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  constraint team_meeting_instances_status_check check (
+    status in (
+      'scheduled', 'in_progress', 'completed', 'skipped', 'cancelled'
+    )
+  ),
+  constraint team_meeting_instances_unique_slot
+    unique (template_id, scheduled_at)
+);
+
+create index if not exists team_meeting_instances_scheduled_at_idx

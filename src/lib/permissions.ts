@@ -60,6 +60,8 @@ const VIEW_ALIASES: Record<string, string[]> = {
   team_dashboard_ccm: ["ops_overview", "client_health", "ceo"],
   // Ops / ads / CS / CEO can open Media Buyer Command without a dedicated grant.
   team_dashboard_media: ["ops_overview", "media_buyer", "client_health", "ceo"],
+  // Lead seats with Call Library / CCM / Ops / CEO can open Team Meetings.
+  team_meetings: ["call_library", "team_dashboard_ccm", "ops_overview", "ceo"],
 };
 
 /** All keys that satisfy a permission check (hub ↔ legacy children). */

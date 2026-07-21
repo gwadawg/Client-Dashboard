@@ -31,6 +31,7 @@ export type View =
   | "team_dashboard_media"
   | HubView
   | "resources"
+  | "team_meetings"
   | "call_library"
   | "admin_agents"
   | "admin_clients"
@@ -253,6 +254,7 @@ export const NAV: NavItem[] = [
   { view: "acquisition_data_explorer", label: "Acquisition Data",      group: "Acquisition"  },
   { view: "agents",             label: "Call Center Hub",       group: "Team"         },
   { view: "resources",          label: "Resource Library",      group: "Team"         },
+  { view: "team_meetings",      label: "Team Meetings",         group: "Team"         },
   { view: "call_library",       label: "Team Calls",            group: "Team"         },
   { view: "admin_agents",       label: "Team Roster",           group: "Admin"        },
   { view: "admin_clients",      label: "Client Roster",         group: "Admin"        },

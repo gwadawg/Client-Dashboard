@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CcmCommandPayload } from "@/lib/team-dashboards/ccm";
+import type { TeamMeetingInstanceView } from "@/lib/team-meetings";
+import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz } from "@/lib/team-meetings";
 
 const POLL_MS = 90_000;
 
@@ -148,6 +150,8 @@ export default function CcmCommandDashboard({ onNavigate }: Props) {
           Bring Booking % / Show % / dial reds and name one commitment per red for Laura.
         </div>
       )}
+
+      <TodayTeamMeetingsStrip onOpen={() => go("team_meetings")} />
 
       {/* Band 1 — Situation */}
       <section
@@ -537,5 +541,51 @@ function DeepLink({ label, onClick }: { label: string; onClick: () => void }) {
     >
       {label} →
     </button>
+  );
+}
+
+function TodayTeamMeetingsStrip({ onOpen }: { onOpen: () => void }) {
+  const [rows, setRows] = useState<TeamMeetingInstanceView[]>([]);
+
+  useEffect(() => {
+    const today = todayYmdInCallCenterTz();
+    fetch(`/api/team-meetings?from=${today}&to=${today}`)
+      .then(r => r.json())
+      .then(d => setRows(d.rows ?? []))
+      .catch(() => setRows([]));
+  }, []);
+
+  if (!rows.length) return null;
+
+  return (
+    <section
+      className="rounded-xl border px-4 py-3"
+      style={{
+        borderColor: "rgba(148,163,184,0.15)",
+        background: "rgba(15,23,42,0.7)",
+      }}
+    >
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: "#94a3b8" }}>
+          Today&apos;s meetings
+        </h2>
+        <DeepLink label="Open Team Meetings" onClick={onOpen} />
+      </div>
+      <ul className="space-y-1.5">
+        {rows.slice(0, 5).map(row => (
+          <li key={row.id} className="flex items-center justify-between gap-2 text-sm">
+            <span style={{ color: "#e2e8f0" }}>{row.template.title}</span>
+            <span className="text-xs tabular-nums shrink-0" style={{ color: "#64748b" }}>
+              {new Date(row.scheduled_at).toLocaleTimeString("en-US", {
+                timeZone: CALL_CENTER_TIMEZONE,
+                hour: "numeric",
+                minute: "2-digit",
+              })}{" "}
+              · {row.status.replace("_", " ")}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
