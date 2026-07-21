@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import {
+  CCM_DIAL_TARGETS_MISS_REASONS,
   EOD_DEPARTMENT_LABELS,
   type EodDepartment,
 } from "@/lib/eod-forms";
@@ -131,8 +132,6 @@ export default function EodFormClient({ department }: { department: EodDepartmen
   const [unfinished, setUnfinished] = useState<string[]>([""]);
   const [tomorrowPriorities, setTomorrowPriorities] = useState("");
   const [productivity, setProductivity] = useState(7);
-  const [doneForDay, setDoneForDay] = useState(true);
-  const [doneNote, setDoneNote] = useState("");
 
   // Media buyer / ops
   const [recentLaunchesChecked, setRecentLaunchesChecked] = useState(true);
@@ -153,10 +152,13 @@ export default function EodFormClient({ department }: { department: EodDepartmen
   const [coachingFocus, setCoachingFocus] = useState("");
   const [settersOnTime, setSettersOnTime] = useState(true);
   const [attendanceNotes, setAttendanceNotes] = useState("");
-  const [dialTargets, setDialTargets] = useState("");
+  const [dialTargetsHit, setDialTargetsHit] = useState(true);
+  const [dialTargetsMissReason, setDialTargetsMissReason] = useState("");
   const [underKpi, setUnderKpi] = useState(true);
   const [underKpiNotes, setUnderKpiNotes] = useState("");
   const [stackBugs, setStackBugs] = useState("None open");
+  const [ccmSlackCleared, setCcmSlackCleared] = useState(true);
+  const [ccmSlackNotes, setCcmSlackNotes] = useState("");
 
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -192,8 +194,6 @@ export default function EodFormClient({ department }: { department: EodDepartmen
       unfinished,
       tomorrow_priorities: tomorrowPriorities,
       productivity_rating: productivity,
-      done_for_day: doneForDay,
-      done_for_day_note: doneNote,
     };
 
     if (department === "media_buyer") {
@@ -217,11 +217,14 @@ export default function EodFormClient({ department }: { department: EodDepartmen
         training_ran: trainingRan,
         coaching_focus: coachingFocus,
         setters_on_time: settersOnTime,
-        attendance_notes: attendanceNotes,
-        dial_targets_vs_hit: dialTargets,
+        attendance_notes: settersOnTime ? "" : attendanceNotes,
+        dial_targets_hit: dialTargetsHit,
+        dial_targets_miss_reason: dialTargetsHit ? "" : dialTargetsMissReason,
         under_kpi_coverage: underKpi,
         under_kpi_notes: underKpiNotes,
         stack_bugs_status: stackBugs,
+        slack_channels_cleared: ccmSlackCleared,
+        slack_channels_notes: ccmSlackCleared ? "" : ccmSlackNotes,
       });
     }
 
@@ -391,20 +394,6 @@ export default function EodFormClient({ department }: { department: EodDepartmen
             <span>10</span>
           </div>
         </div>
-        <YesNo label="Done for the day (self-cert)" value={doneForDay} onChange={setDoneForDay} />
-        {!doneForDay && (
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">What&apos;s still blocking shutdown?</label>
-            <input
-              type="text"
-              required
-              value={doneNote}
-              onChange={e => setDoneNote(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm"
-              style={inputStyle}
-            />
-          </div>
-        )}
       </section>
 
       {department === "media_buyer" && (
@@ -538,28 +527,55 @@ export default function EodFormClient({ department }: { department: EodDepartmen
               required={trainingRan}
             />
           </div>
-          <YesNo label="Setters on time (or late/missing handled same day)?" value={settersOnTime} onChange={setSettersOnTime} />
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Attendance notes</label>
-            <input
-              type="text"
-              value={attendanceNotes}
-              onChange={e => setAttendanceNotes(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm"
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Dial / booking targets vs hit</label>
-            <textarea
-              required
-              rows={2}
-              value={dialTargets}
-              onChange={e => setDialTargets(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm"
-              style={inputStyle}
-            />
-          </div>
+          <YesNo
+            label="Setters on time (or late/missing handled same day)?"
+            value={settersOnTime}
+            onChange={v => {
+              setSettersOnTime(v);
+              if (v) setAttendanceNotes("");
+            }}
+          />
+          {!settersOnTime && (
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Attendance notes</label>
+              <input
+                type="text"
+                required
+                value={attendanceNotes}
+                onChange={e => setAttendanceNotes(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm"
+                style={inputStyle}
+                placeholder="Who was late/missing · how it was handled…"
+              />
+            </div>
+          )}
+          <YesNo
+            label="Dial / booking targets hit?"
+            value={dialTargetsHit}
+            onChange={v => {
+              setDialTargetsHit(v);
+              if (v) setDialTargetsMissReason("");
+            }}
+          />
+          {!dialTargetsHit && (
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Why were targets missed?</label>
+              <select
+                required
+                value={dialTargetsMissReason}
+                onChange={e => setDialTargetsMissReason(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm"
+                style={inputStyle}
+              >
+                <option value="">Select a reason…</option>
+                {CCM_DIAL_TARGETS_MISS_REASONS.map(reason => (
+                  <option key={reason} value={reason}>
+                    {reason}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <YesNo label="Under-KPI clients have dial coverage if needed?" value={underKpi} onChange={setUnderKpi} />
           {!underKpi && (
             <div>
@@ -588,6 +604,29 @@ export default function EodFormClient({ department }: { department: EodDepartmen
               style={inputStyle}
             />
           </div>
+          <YesNo
+            label="Did you check all Slack channels and confirm no clients are left on read?"
+            value={ccmSlackCleared}
+            onChange={v => {
+              setCcmSlackCleared(v);
+              if (v) setCcmSlackNotes("");
+            }}
+          />
+          {!ccmSlackCleared && (
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                Which clients / channels still need a reply?
+              </label>
+              <textarea
+                required
+                rows={2}
+                value={ccmSlackNotes}
+                onChange={e => setCcmSlackNotes(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm"
+                style={inputStyle}
+              />
+            </div>
+          )}
         </section>
       )}
 

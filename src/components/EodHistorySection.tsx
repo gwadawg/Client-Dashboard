@@ -101,11 +101,6 @@ export default function EodHistorySection({
                   </p>
                   <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
                     {Number.isFinite(rating) ? `Productivity ${rating}/10` : "—"}
-                    {row.responses?.done_for_day === true
-                      ? " · Done for day ✓"
-                      : row.responses?.done_for_day === false
-                        ? " · Not done"
-                        : ""}
                   </p>
                 </div>
                 <span className="text-xs shrink-0" style={{ color: "#64748b" }}>
