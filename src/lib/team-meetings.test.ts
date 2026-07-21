@@ -9,11 +9,26 @@ import {
 } from './team-meetings';
 
 describe('team-meetings', () => {
-  it('seeds five active series', () => {
-    assert.equal(TEAM_MEETING_SEED.length, 5);
+  it('seeds six series including Mon weekly review', () => {
+    assert.equal(TEAM_MEETING_SEED.length, 6);
+    assert.ok(TEAM_MEETING_SEED.some(t => t.slug === 'mon-setter-weekly-review'));
   });
 
-  it('daily training expands to Mon–Fri', () => {
+  it('daily training is Tue–Fri only', () => {
+    const seed = TEAM_MEETING_SEED.find(t => t.slug === 'daily-setter-training');
+    assert.ok(seed);
+    assert.deepEqual(weekdaysForTemplate(seed), [2, 3, 4, 5]);
+  });
+
+  it('schedules Mon weekly review only on Mondays', () => {
+    const seed = TEAM_MEETING_SEED.find(t => t.slug === 'mon-setter-weekly-review');
+    assert.ok(seed);
+    const slots = plannedSlotsForRange(seed, '2026-07-20', '2026-07-26', 'America/Sao_Paulo');
+    assert.equal(slots.length, 1);
+    assert.equal(slots[0].toISOString(), '2026-07-20T12:00:00.000Z'); // 09:00 BRT
+  });
+
+  it('daily training expands empty weekdays to Mon–Fri helper still works', () => {
     assert.deepEqual(weekdaysForTemplate({ weekdays: [] }), [1, 2, 3, 4, 5]);
   });
 

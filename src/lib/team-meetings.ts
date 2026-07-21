@@ -57,20 +57,77 @@ export const SHARED_DISPOSITION: DispositionFieldDef[] = [
   { key: 'skipped_reason', label: 'Skip reason', required: false, type: 'textarea' },
 ];
 
-/** Placeholder labels — replace when SOPs / cadences are authored. */
+/** Seed templates — agenda/checklist copy can be refined as SOPs land. */
 export const TEAM_MEETING_SEED: TeamMeetingSeed[] = [
+  {
+    slug: 'mon-setter-weekly-review',
+    title: 'Mon Setter Weekly Review',
+    theme: 'Last week + this week · account focus · dial plan · watch shifts',
+    call_type: 'team_review',
+    weekdays: [1],
+    default_time: '09:00',
+    duration_min: 30,
+    host_role: 'ccm',
+    attendee_roles: ['ccm', 'call_rep'],
+    agenda_md: [
+      'Monday floor catch-up (CCM + setters).',
+      '',
+      'In:',
+      '1. Last week — dials / bookings / show vs targets; what landed, what slipped.',
+      '2. This week — progress to date and the plan for the rest of the week.',
+      '3. Account focus — which logos need dial coverage / under-KPI attention.',
+      '4. Week schedule — which days each setter works which accounts / blocks.',
+      '5. Watch shift schedule — who owns watch for the week (days + slots).',
+      '',
+      'Out: deep stack rebuild, creative debates, Mon KPI leadership status (that is Laura’s meeting).',
+    ].join('\n'),
+    checklist: [
+      {
+        key: 'last_week_reviewed',
+        label: 'Last week numbers / outcomes reviewed with the team',
+        required: true,
+        section: 'review',
+      },
+      {
+        key: 'this_week_plan_set',
+        label: 'This week plan and progress catch-up completed',
+        required: true,
+        section: 'review',
+      },
+      {
+        key: 'account_focus_named',
+        label: 'Priority accounts for dial focus named',
+        required: true,
+        section: 'schedule',
+      },
+      {
+        key: 'week_day_plan_set',
+        label: 'Week scheduled — which days do what / which accounts',
+        required: true,
+        section: 'schedule',
+      },
+      {
+        key: 'watch_shift_scheduled',
+        label: 'Watch shift schedule set for the week',
+        required: true,
+        section: 'schedule',
+      },
+    ],
+    disposition: SHARED_DISPOSITION,
+  },
   {
     slug: 'daily-setter-training',
     title: 'Daily Setter Training',
     theme: 'Numbers → one focus → dial targets',
     call_type: 'training',
-    weekdays: [],
+    // Tue–Fri only; Monday is Mon Setter Weekly Review
+    weekdays: [2, 3, 4, 5],
     default_time: '09:00',
     duration_min: 20,
     host_role: 'ccm',
     attendee_roles: ['ccm', 'call_rep'],
     agenda_md:
-      'PLACEHOLDER — fill from CCM Daily OS.\n\nIn: numbers, one coaching focus, today dial targets.\nOut: deep stack rebuild, creative debates.',
+      'Tue–Fri floor training (CCM + setters).\n\nIn: numbers, one coaching focus, today dial targets / accounts.\nOut: deep stack rebuild, creative debates. Monday weekly review is a separate runbook.',
     checklist: [
       { key: 'numbers_reviewed', label: 'Numbers reviewed', required: true, section: 'run' },
       { key: 'one_coaching_focus', label: 'One coaching focus named', required: true, section: 'run' },
