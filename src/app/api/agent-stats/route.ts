@@ -13,6 +13,7 @@ import {
   calendarMonthOf,
   countShowLtConversationsByAgent,
 } from '@/lib/agent-show-lt-conversations';
+import { isCallCenterFloorPayType } from '@/lib/employee-positions';
 import { createTtlCache } from '@/lib/ttl-cache';
 
 const agentStatsCache = createTtlCache<unknown>(45_000);
@@ -61,7 +62,12 @@ export async function GET(req: Request) {
   const endDate = searchParams.get('endDate');
   const includeAllRoster = searchParams.get('includeAllRoster') === '1';
 
-  const cacheKey = [startDate ?? '', endDate ?? '', includeAllRoster ? '1' : '0'].join('|');
+  const cacheKey = [
+    startDate ?? '',
+    endDate ?? '',
+    includeAllRoster ? '1' : '0',
+    'floor-v1',
+  ].join('|');
   const cached = agentStatsCache.get(cacheKey);
   if (cached) {
     return NextResponse.json(cached, {
@@ -81,7 +87,7 @@ export async function GET(req: Request) {
     monthBookings,
     monthEvents,
   ] = await Promise.all([
-    ctx.service.from('agents').select('name, phone, active').order('name'),
+    ctx.service.from('agents').select('name, phone, active, pay_type').order('name'),
     fetchAgentEventsInRange(ctx.service, startDate, endDate),
     ctx.service.from('setter_availability').select('weekday, time_start, time_end, is_live'),
     fetchEnrichedBookingsInRange(ctx.service, startDate, endDate),
@@ -100,7 +106,9 @@ export async function GET(req: Request) {
   if (rosterError) return NextResponse.json({ error: rosterError.message }, { status: 500 });
   if (availabilityError) return NextResponse.json({ error: availabilityError.message }, { status: 500 });
 
-  const activeRoster = (roster ?? []).filter(a => a.active !== false);
+  const activeRoster = (roster ?? []).filter(
+    a => a.active !== false && isCallCenterFloorPayType(a.pay_type),
+  );
   const resolveAgent = buildRosterMatcher(activeRoster);
   const outcomeByAgent = summarizeOutcomesByAgent(enrichedBookings, resolveAgent);
 

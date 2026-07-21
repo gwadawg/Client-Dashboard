@@ -49,6 +49,12 @@ export function isSalariedPosition(position: EmployeePosition): position is Sala
   return (POSITION_GROUPS.salaried as readonly string[]).includes(position);
 }
 
+/** Call floor / Agents hub: call reps + call center manager (excludes media, CS, admin, etc.). */
+export function isCallCenterFloorPayType(payType: string | null | undefined): boolean {
+  if (!payType) return true; // legacy rows default to call_rep
+  return payType === 'call_rep' || payType === 'ccm';
+}
+
 export function positionAccent(position: EmployeePosition): string {
   switch (position) {
     case 'call_rep':
