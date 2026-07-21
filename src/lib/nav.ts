@@ -6,7 +6,7 @@ export type DataExplorerTab = "leads" | "dials" | "appointments" | "speed_to_lea
 export type AcquisitionTab = "appointments" | "credit_queue" | "sales_calls" | "pending_closes" | "log_close" | "call_examples";
 export type AcquisitionDataExplorerTab = "leads" | "appointments" | "offers" | "dials" | "closes" | "ads";
 export type AcquisitionKpiTab = "overview" | "setters" | "closers" | "costs";
-export type AgentsTab = "performance" | "goals" | "credit_queue" | "recordings" | "examples";
+export type AgentsTab = "performance" | "goals" | "credit_queue" | "recordings" | "examples" | "weekly_focus";
 export type ClientSuccessTab = "health" | "followups";
 
 export type HubView =
@@ -40,7 +40,6 @@ export type View =
   | "admin_users"
   | "admin_offers"
   | "admin_automations"
-  | "schedule"
   | "client_calls"
   | "acquisition_sales_reps"
   | "acquisition_marketing";
@@ -67,7 +66,8 @@ export type LegacyView =
   | "acquisition_leads"
   | "acquisition_appointments"
   | "acquisition_offers"
-  | "acquisition_ads";
+  | "acquisition_ads"
+  | "schedule";
 
 export type AnyView = View | LegacyView;
 
@@ -120,6 +120,7 @@ export const AGENTS_TABS: HubTabDef<AgentsTab>[] = [
   { key: "credit_queue", label: "Credit Queue" },
   { key: "recordings", label: "Recordings" },
   { key: "examples", label: "Examples" },
+  { key: "weekly_focus", label: "Weekly Focus" },
 ];
 
 export const CLIENT_SUCCESS_TABS: HubTabDef<ClientSuccessTab>[] = [
@@ -152,7 +153,7 @@ export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
     "acquisition_offers",
     "acquisition_ads",
   ],
-  agents: ["agent_stats", "agent_scorecards", "agent_credit_queue", "recordings", "goals"],
+  agents: ["agent_stats", "agent_scorecards", "agent_credit_queue", "recordings", "goals", "schedule"],
   client_health: ["client_health"],
 };
 
@@ -187,6 +188,7 @@ export const LEGACY_VIEW_REDIRECTS: Record<LegacyView, { view: View; tab: string
   acquisition_appointments: { view: "acquisition_data_explorer", tab: "appointments" },
   acquisition_offers: { view: "acquisition_data_explorer", tab: "offers" },
   acquisition_ads: { view: "acquisition_data_explorer", tab: "ads" },
+  schedule: { view: "agents", tab: "weekly_focus" },
 };
 
 export const HUB_VIEWS: HubView[] = [
@@ -252,7 +254,6 @@ export const NAV: NavItem[] = [
   { view: "agents",             label: "Call Center Hub",       group: "Team"         },
   { view: "resources",          label: "Resource Library",      group: "Team"         },
   { view: "call_library",       label: "Team Calls",            group: "Team"         },
-  { view: "schedule",           label: "Power Dialer Schedule", group: "Team"         },
   { view: "admin_agents",       label: "Team Roster",           group: "Admin"        },
   { view: "admin_clients",      label: "Client Roster",         group: "Admin"        },
   { view: "client_calls",       label: "Client Calls",          group: "Admin"        },

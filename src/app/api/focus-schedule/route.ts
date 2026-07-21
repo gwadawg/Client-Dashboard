@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import { validateFocusCreate } from '@/lib/focus-schedule';
+
+const SCHEDULE_PERMS = ['agents', 'schedule'] as const;
+
+const SELECT =
+  'id, client_id, agent_id, scheduled_date, time_start, time_end, status, notes, created_at, clients(name), agents(name)';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requireAnyPermission(ctx, ['agents', 'schedule']);
+  const denied = requireAnyPermission(ctx, [...SCHEDULE_PERMS]);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
@@ -16,11 +22,12 @@ export async function GET(req: Request) {
   const week_end = weekEnd.toISOString().split('T')[0];
 
   const { data, error } = await ctx.service
-    .from('watch_schedule')
-    .select('id, agent_id, scheduled_date, slot_hour, agents(name)')
+    .from('focus_schedule')
+    .select(SELECT)
     .gte('scheduled_date', week_start)
     .lte('scheduled_date', week_end)
-    .order('slot_hour');
+    .order('scheduled_date')
+    .order('time_start');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ rows: data });
@@ -29,23 +36,25 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requireAnyPermission(ctx, ['agents', 'schedule']);
+  const denied = requireAnyPermission(ctx, [...SCHEDULE_PERMS]);
   if (denied) return denied;
 
-  const { agent_id, scheduled_date, slot_hour } = await req.json();
-  if (!agent_id || !scheduled_date || slot_hour === undefined) {
-    return NextResponse.json({ error: 'agent_id, scheduled_date, slot_hour required' }, { status: 400 });
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
+
+  const parsed = validateFocusCreate(body);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   const { data, error } = await ctx.service
-    .from('watch_schedule')
-    .insert({ agent_id, scheduled_date, slot_hour })
-    .select('id, agent_id, scheduled_date, slot_hour, agents(name)')
+    .from('focus_schedule')
+    .insert(parsed.value)
+    .select(SELECT)
     .single();
 
-  if (error) {
-    if (error.code === '23505') return NextResponse.json({ row: null, duplicate: true });
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ row: data });
 }

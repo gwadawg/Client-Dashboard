@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, 'schedule');
+  const denied = requireAnyPermission(ctx, ['agents', 'schedule']);
   if (denied) return denied;
 
   const { id } = await params;

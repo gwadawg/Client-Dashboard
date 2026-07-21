@@ -1,7 +1,7 @@
 # Weekly Focus Redesign
 
 Date: 2026-07-21  
-Status: Approved  
+Status: Implemented  
 Hub: Call Center Hub (`agents`) → tab `weekly_focus`
 
 ## Problem

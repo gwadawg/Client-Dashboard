@@ -367,7 +367,7 @@ metric in `src/lib/speed-to-lead.ts` — not the stored `events.speed_to_lead_se
 
 | Feature | Behavior |
 |---------|----------|
-| **Setter schedule filter** | On by default. Leads must arrive inside a live row in `setter_availability` (Admin → Schedule → Setter Availability). Toggle off to include all precise-timestamp leads. |
+| **Setter schedule filter** | On by default. Leads must arrive inside a live row in `setter_availability` (Call Center Hub → Weekly Focus → Setter Availability). Toggle off to include all precise-timestamp leads. |
 | **Lead arrived after / before** | Optional `HH:MM` cutoffs in call-center timezone. Excludes overnight backlog or other stale leads without affecting the dial timestamp. API params: `lead_after`, `lead_before`. |
 | **Hour breakdown** | Dial Analytics shows median minutes by lead-arrival hour (0–23) in `CALL_CENTER_TIMEZONE`. |
 | **Raw Data tab** | One row per lead→first-dial pair with **Lead Arrived**, **First Dial**, **Response (min)**, and **Counted** (yes/no with exclusion reason on hover). |

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CALL_CENTER_TIMEZONE } from "@/lib/time";
+import { FOCUS_STATUSES, type FocusStatus } from "@/lib/focus-schedule";
 
 type Agent = { id: string; name: string; phone: string };
 type Client = { id: string; name: string; is_live?: boolean };
@@ -10,14 +11,10 @@ type AvailRow = {
   time_start: string; time_end: string; is_live: boolean;
   agents: { name: string };
 };
-type WindowRow = {
-  id: string; client_id: string; weekday: string;
-  time_slot_1: string | null; time_slot_2: string | null; is_live: boolean;
-  clients: { name: string };
-};
-type ScheduleRow = {
+type FocusRow = {
   id: string; client_id: string; agent_id: string | null;
-  scheduled_date: string; slot_time: string; status: string; notes: string | null;
+  scheduled_date: string; time_start: string; time_end: string;
+  status: FocusStatus; notes: string | null;
   clients: { name: string }; agents: { name: string } | null;
 };
 type WatchEntry = {
@@ -25,18 +22,16 @@ type WatchEntry = {
   agents: { name: string };
 };
 
-type Tab = "watch" | "pd" | "availability" | "windows";
+type Tab = "watch" | "focus" | "availability";
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 8); // 8–20
 
-const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  pending:    { label: "Pending",    color: "#94a3b8", bg: "rgba(148,163,184,0.1)" },
-  completed:  { label: "Completed",  color: "#22c55e", bg: "rgba(34,197,94,0.1)"  },
-  leads_left: { label: "Leads Left", color: "#3b82f6", bg: "rgba(59,130,246,0.1)" },
-  no_leads:   { label: "No Leads",   color: "#f59e0b", bg: "rgba(245,158,11,0.1)" },
-  no_setters: { label: "No Setters", color: "#ef4444", bg: "rgba(239,68,68,0.1)"  },
+const STATUS_META: Record<FocusStatus, { label: string; color: string; bg: string; border: string }> = {
+  scheduled: { label: "Scheduled", color: "#f59e0b", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.25)" },
+  done:      { label: "Done",      color: "#22c55e", bg: "rgba(34,197,94,0.12)",  border: "rgba(34,197,94,0.25)" },
+  skipped:   { label: "Skipped",   color: "#64748b", bg: "rgba(100,116,139,0.12)", border: "rgba(100,116,139,0.25)" },
 };
 
 function nextWeekday(current: string) {
@@ -68,10 +63,8 @@ function fmtHour(h: number) {
   return `${h % 12 || 12}:00 ${h >= 12 ? "PM" : "AM"}`;
 }
 
-function formatDate(iso: string) {
-  return new Date(iso + "T12:00:00Z").toLocaleDateString("en-US", {
-    weekday: "short", month: "short", day: "numeric", timeZone: "UTC",
-  });
+function fmtRange(start: string, end: string) {
+  return `${fmtTime(start)} – ${fmtTime(end)}`;
 }
 
 function Input({ value, onChange, type = "text", placeholder = "", className = "" }: {
@@ -102,12 +95,12 @@ function WeekNav({ weekStart, setWeekStart }: { weekStart: string; setWeekStart:
         <Input type="date" value={weekStart} onChange={setWeekStart} />
       </div>
       <div className="flex gap-2 mt-4">
-        <button onClick={() => setWeekStart(getMondayOfWeek(0))}
+        <button type="button" onClick={() => setWeekStart(getMondayOfWeek(0))}
           className="px-3 py-2 rounded-lg text-xs font-medium"
           style={{ background: "#0f2040", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.08)" }}>
           This Week
         </button>
-        <button onClick={() => setWeekStart(getMondayOfWeek(1))}
+        <button type="button" onClick={() => setWeekStart(getMondayOfWeek(1))}
           className="px-3 py-2 rounded-lg text-xs font-medium"
           style={{ background: "#0f2040", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.08)" }}>
           Next Week
@@ -119,16 +112,14 @@ function WeekNav({ weekStart, setWeekStart }: { weekStart: string; setWeekStart:
 
 // ─── Watch Schedule Tab ───────────────────────────────────────────────────────
 
-function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGenerated }: {
+function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
   agents: Agent[];
   availability: AvailRow[];
   weekStart: string;
   setWeekStart: (v: string) => void;
-  onGenerated: () => void;
 }) {
   const [entries, setEntries] = useState<WatchEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
 
@@ -170,17 +161,6 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
   async function handleRemove(id: string) {
     await fetch(`/api/watch-schedule/${id}`, { method: "DELETE" });
     setEntries(prev => prev.filter(e => e.id !== id));
-  }
-
-  async function handleGenerate() {
-    setGenerating(true);
-    await fetch("/api/pd-schedule", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ week_start: weekStart }),
-    });
-    setGenerating(false);
-    onGenerated();
   }
 
   return (
@@ -253,7 +233,7 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
                               onMouseEnter={() => setHoveredAgent(entry.agent_id)}
                               onMouseLeave={() => setHoveredAgent(null)}>
                               <span className="truncate text-xs" style={{ color: "#f59e0b", maxWidth: "72px" }}>{entry.agents?.name}</span>
-                              <button onClick={() => handleRemove(entry.id)}
+                              <button type="button" onClick={() => handleRemove(entry.id)}
                                 className="flex-shrink-0 leading-none opacity-40 hover:opacity-100 transition-opacity"
                                 style={{ color: "#f59e0b", fontSize: "12px" }}>×</button>
                             </div>
@@ -269,7 +249,6 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
         </div>
       )}
 
-      {/* Setter bench */}
       <div className="rounded-xl p-4 space-y-3" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
         <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>
           Setters — drag onto a slot to assign · hover to highlight availability
@@ -296,146 +275,330 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
           ))}
         </div>
       </div>
-
-      <div className="flex justify-end pt-1">
-        <button onClick={handleGenerate} disabled={generating}
-          className="px-6 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2"
-          style={{ background: generating ? "#1d4ed8" : "#f59e0b", color: "#fff", opacity: generating ? 0.7 : 1 }}>
-          {generating ? (
-            <>
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Generating…
-            </>
-          ) : "Generate PD Schedule →"}
-        </button>
-      </div>
     </div>
   );
 }
 
-// ─── PD Schedule Tab ──────────────────────────────────────────────────────────
+// ─── Focus Board Tab ──────────────────────────────────────────────────────────
 
-function PDScheduleTab({ agents, weekStart, setWeekStart }: {
+type FocusForm = {
+  client_id: string;
+  scheduled_date: string;
+  time_start: string;
+  time_end: string;
+  agent_id: string;
+  notes: string;
+  status: FocusStatus;
+};
+
+function emptyForm(defaultDate: string): FocusForm {
+  return {
+    client_id: "",
+    scheduled_date: defaultDate,
+    time_start: "09:00",
+    time_end: "11:00",
+    agent_id: "",
+    notes: "",
+    status: "scheduled",
+  };
+}
+
+function FocusTab({ agents, clients, weekStart, setWeekStart }: {
   agents: Agent[];
+  clients: Client[];
   weekStart: string;
   setWeekStart: (v: string) => void;
 }) {
-  const [rows, setRows] = useState<ScheduleRow[]>([]);
+  const [rows, setRows] = useState<FocusRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<FocusRow | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState<FocusForm>(() => emptyForm(weekStart));
+  const [saving, setSaving] = useState(false);
+
+  const weekDates = getWeekDates(weekStart);
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/pd-schedule?week_start=${weekStart}`)
-      .then(r => r.json())
-      .then(d => { setRows(d.rows ?? []); setLoading(false); });
+    setError(null);
+    fetch(`/api/focus-schedule?week_start=${weekStart}`)
+      .then(async r => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Failed to load");
+        setRows(d.rows ?? []);
+      })
+      .catch(e => setError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setLoading(false));
   }, [weekStart]);
 
-  async function updateStatus(id: string, status: string) {
-    const res = await fetch(`/api/pd-schedule/${id}`, {
+  function openAdd(date?: string) {
+    setEditing(null);
+    setForm(emptyForm(date ?? weekStart));
+    setAdding(true);
+    setError(null);
+  }
+
+  function openEdit(row: FocusRow) {
+    setAdding(false);
+    setEditing(row);
+    setForm({
+      client_id: row.client_id,
+      scheduled_date: row.scheduled_date,
+      time_start: row.time_start.slice(0, 5),
+      time_end: row.time_end.slice(0, 5),
+      agent_id: row.agent_id ?? "",
+      notes: row.notes ?? "",
+      status: row.status,
+    });
+    setError(null);
+  }
+
+  function closeForm() {
+    setAdding(false);
+    setEditing(null);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    const payload = {
+      client_id: form.client_id,
+      scheduled_date: form.scheduled_date,
+      time_start: form.time_start,
+      time_end: form.time_end,
+      agent_id: form.agent_id || null,
+      notes: form.notes.trim() || null,
+      status: form.status,
+    };
+
+    try {
+      if (editing) {
+        const res = await fetch(`/api/focus-schedule/${editing.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Update failed");
+        if (d.row) setRows(prev => prev.map(r => r.id === editing.id ? d.row : r));
+      } else {
+        const res = await fetch("/api/focus-schedule", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Create failed");
+        if (d.row) setRows(prev => [...prev, d.row]);
+      }
+      closeForm();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function updateField(id: string, patch: Record<string, unknown>) {
+    setError(null);
+    const res = await fetch(`/api/focus-schedule/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(patch),
     });
     const d = await res.json();
+    if (!res.ok) {
+      setError(d.error || "Update failed");
+      return;
+    }
     if (d.row) setRows(prev => prev.map(r => r.id === id ? d.row : r));
   }
 
-  async function updateAgent(id: string, agent_id: string) {
-    const res = await fetch(`/api/pd-schedule/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agent_id: agent_id || null }),
-    });
-    const d = await res.json();
-    if (d.row) setRows(prev => prev.map(r => r.id === id ? d.row : r));
+  async function handleDelete(id: string) {
+    setError(null);
+    const res = await fetch(`/api/focus-schedule/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setError(d.error || "Delete failed");
+      return;
+    }
+    setRows(prev => prev.filter(r => r.id !== id));
+    if (editing?.id === id) closeForm();
   }
 
-  const byDate: Record<string, ScheduleRow[]> = {};
+  const byDate: Record<string, FocusRow[]> = {};
+  for (const date of weekDates.map(d => d.date)) byDate[date] = [];
   for (const row of rows) {
     if (!byDate[row.scheduled_date]) byDate[row.scheduled_date] = [];
     byDate[row.scheduled_date].push(row);
   }
   for (const d of Object.keys(byDate)) {
-    byDate[d].sort((a, b) => a.slot_time.localeCompare(b.slot_time));
+    byDate[d].sort((a, b) => a.time_start.localeCompare(b.time_start));
   }
-  const dates = Object.keys(byDate).sort();
-  const completedCount = rows.filter(r => r.status === "completed").length;
+
+  const doneCount = rows.filter(r => r.status === "done").length;
+  const showForm = adding || editing;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-4">
         <WeekNav weekStart={weekStart} setWeekStart={setWeekStart} />
-        {rows.length > 0 && (
-          <div className="ml-auto mt-4 text-right">
-            <p className="text-xs" style={{ color: "#475569" }}>Completion</p>
-            <p className="text-sm font-semibold" style={{ color: "#f1f5f9" }}>{completedCount} / {rows.length}</p>
-          </div>
-        )}
+        <div className="ml-auto flex items-center gap-3 mt-4">
+          {rows.length > 0 && (
+            <p className="text-xs" style={{ color: "#64748b" }}>
+              <span className="font-semibold" style={{ color: "#e2e8f0" }}>{doneCount}</span> / {rows.length} done
+            </p>
+          )}
+          <button type="button" onClick={() => openAdd()}
+            className="px-4 py-2 rounded-lg text-sm font-semibold"
+            style={{ background: "#f59e0b", color: "#fff" }}>
+            + Add focus
+          </button>
+        </div>
       </div>
+
+      {error && (
+        <div className="rounded-lg px-4 py-2 text-sm" style={{ background: "rgba(239,68,68,0.1)", color: "#f87171" }}>
+          {error}
+        </div>
+      )}
+
+      {showForm && (
+        <div className="rounded-xl p-5 space-y-4" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <p className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>
+            {editing ? "Edit focus" : "Add focus"}
+          </p>
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs" style={{ color: "#475569" }}>Client</label>
+              <Sel value={form.client_id} onChange={v => setForm(f => ({ ...f, client_id: v }))}>
+                <option value="">Select client…</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Sel>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs" style={{ color: "#475569" }}>Date</label>
+              <Input type="date" value={form.scheduled_date} onChange={v => setForm(f => ({ ...f, scheduled_date: v }))} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs" style={{ color: "#475569" }}>Start</label>
+              <Input type="time" value={form.time_start} onChange={v => setForm(f => ({ ...f, time_start: v }))} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs" style={{ color: "#475569" }}>End</label>
+              <Input type="time" value={form.time_end} onChange={v => setForm(f => ({ ...f, time_end: v }))} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs" style={{ color: "#475569" }}>Assignee</label>
+              <Sel value={form.agent_id} onChange={v => setForm(f => ({ ...f, agent_id: v }))}>
+                <option value="">Unassigned</option>
+                {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </Sel>
+            </div>
+            {editing && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs" style={{ color: "#475569" }}>Status</label>
+                <Sel value={form.status} onChange={v => setForm(f => ({ ...f, status: v as FocusStatus }))}>
+                  {FOCUS_STATUSES.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                </Sel>
+              </div>
+            )}
+            <div className="flex flex-col gap-1 min-w-[200px] flex-1">
+              <label className="text-xs" style={{ color: "#475569" }}>Notes</label>
+              <Input value={form.notes} onChange={v => setForm(f => ({ ...f, notes: v }))} placeholder="Optional reason / offer context" />
+            </div>
+            <button type="button" onClick={handleSave} disabled={!form.client_id || saving}
+              className="px-4 py-2 rounded-lg text-sm font-semibold"
+              style={{ background: "#f59e0b", color: "#fff", opacity: (!form.client_id || saving) ? 0.5 : 1 }}>
+              {saving ? "Saving…" : editing ? "Save" : "Add"}
+            </button>
+            <button type="button" onClick={closeForm}
+              className="px-3 py-2 rounded-lg text-sm"
+              style={{ color: "#64748b" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="py-12 text-center text-sm" style={{ color: "#334155" }}>Loading…</div>
-      ) : dates.length === 0 ? (
-        <div className="rounded-xl px-5 py-12 text-center" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <p className="text-sm" style={{ color: "#334155" }}>
-            No PD schedule for this week. Build the Watch Schedule first, then click &ldquo;Generate PD Schedule&rdquo;.
-          </p>
-        </div>
       ) : (
-        <div className="space-y-5">
-          {dates.map(date => (
-            <div key={date} className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="px-4 py-3 flex items-center justify-between"
-                style={{ background: "#0a1628", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                <p className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>{formatDate(date)}</p>
-                <p className="text-xs" style={{ color: "#475569" }}>
-                  {byDate[date].filter(r => r.status === "completed").length} / {byDate[date].length} completed
-                </p>
-              </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ background: "#070e1c" }}>
-                    {["Time", "Client", "Setter", "Status"].map(h => (
-                      <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: "#334155" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {byDate[date].map((row, i) => (
-                    <tr key={row.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.03)" }}>
-                      <td className="px-4 py-3 font-mono text-xs" style={{ color: "#64748b" }}>{fmtTime(row.slot_time)}</td>
-                      <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{row.clients?.name ?? "—"}</td>
-                      <td className="px-4 py-3">
-                        <select value={row.agent_id ?? ""} onChange={e => updateAgent(row.id, e.target.value)}
-                          className="text-xs rounded-lg px-2 py-1 outline-none cursor-pointer"
-                          style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", color: row.agent_id ? "#e2e8f0" : "#475569" }}>
-                          <option value="">Unassigned</option>
-                          {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <select value={row.status} onChange={e => updateStatus(row.id, e.target.value)}
-                          className="text-xs rounded-lg px-2 py-1 outline-none cursor-pointer font-medium"
-                          style={{
-                            background: STATUS_META[row.status]?.bg ?? "rgba(148,163,184,0.1)",
-                            border: "1px solid rgba(255,255,255,0.08)",
-                            color: STATUS_META[row.status]?.color ?? "#94a3b8",
-                          }}>
-                          {Object.entries(STATUS_META).map(([k, v]) => (
-                            <option key={k} value={k}>{v.label}</option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
+        <div className="overflow-x-auto">
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(7, minmax(140px, 1fr))", minWidth: "980px" }}>
+            {weekDates.map(({ date, weekday }) => {
+              const dayRows = byDate[date] ?? [];
+              const d = new Date(date + "T12:00:00Z");
+              return (
+                <div key={date} className="rounded-xl flex flex-col min-h-[220px]"
+                  style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <button type="button" onClick={() => openAdd(date)}
+                    className="px-3 py-2.5 text-left border-b transition-colors"
+                    style={{ borderColor: "rgba(255,255,255,0.06)" }}
+                    title="Add focus on this day">
+                    <div className="text-xs font-semibold" style={{ color: "#e2e8f0" }}>{weekday.slice(0, 3)}</div>
+                    <div className="text-[11px]" style={{ color: "#475569" }}>{d.getUTCMonth() + 1}/{d.getUTCDate()}</div>
+                  </button>
+                  <div className="p-2 flex flex-col gap-2 flex-1">
+                    {dayRows.length === 0 ? (
+                      <button type="button" onClick={() => openAdd(date)}
+                        className="flex-1 rounded-lg border border-dashed text-[11px] px-2 py-4"
+                        style={{ borderColor: "rgba(255,255,255,0.08)", color: "#334155" }}>
+                        Empty
+                      </button>
+                    ) : dayRows.map(row => {
+                      const meta = STATUS_META[row.status] ?? STATUS_META.scheduled;
+                      return (
+                        <div key={row.id} className="rounded-lg p-2 space-y-1.5"
+                          style={{ background: meta.bg, border: `1px solid ${meta.border}` }}>
+                          <button type="button" onClick={() => openEdit(row)} className="w-full text-left space-y-0.5">
+                            <div className="text-xs font-semibold truncate" style={{ color: "#e2e8f0" }}>
+                              {row.clients?.name ?? "—"}
+                            </div>
+                            <div className="text-[10px]" style={{ color: "#94a3b8" }}>
+                              {fmtRange(row.time_start, row.time_end)}
+                            </div>
+                            <div className="text-[10px]" style={{ color: row.agent_id ? "#94a3b8" : "#475569" }}>
+                              {row.agents?.name ?? "Unassigned"}
+                            </div>
+                            {row.notes && (
+                              <div className="text-[10px] truncate" style={{ color: "#64748b" }}>{row.notes}</div>
+                            )}
+                          </button>
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={row.status}
+                              onChange={e => updateField(row.id, { status: e.target.value })}
+                              className="flex-1 text-[10px] rounded px-1 py-0.5 outline-none cursor-pointer font-medium"
+                              style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: meta.color }}
+                            >
+                              {FOCUS_STATUSES.map(s => (
+                                <option key={s} value={s}>{STATUS_META[s].label}</option>
+                              ))}
+                            </select>
+                            <button type="button" onClick={() => handleDelete(row.id)}
+                              className="text-[10px] px-1 opacity-50 hover:opacity-100"
+                              style={{ color: "#f87171" }}
+                              title="Delete">×</button>
+                          </div>
+                          <select
+                            value={row.agent_id ?? ""}
+                            onChange={e => updateField(row.id, { agent_id: e.target.value || null })}
+                            className="w-full text-[10px] rounded px-1 py-0.5 outline-none cursor-pointer"
+                            style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.08)", color: "#94a3b8" }}
+                          >
+                            <option value="">Unassigned</option>
+                            {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -520,7 +683,7 @@ function AvailabilityTab({ agents }: { agents: Agent[] }) {
             <label className="text-xs" style={{ color: "#475569" }}>Available Until</label>
             <Input type="time" value={timeEnd} onChange={setTimeEnd} />
           </div>
-          <button onClick={handleAdd} disabled={!agentId || saving}
+          <button type="button" onClick={handleAdd} disabled={!agentId || saving}
             className="px-4 py-2 rounded-lg text-sm font-semibold transition-opacity"
             style={{ background: "#f59e0b", color: "#fff", opacity: (!agentId || saving) ? 0.5 : 1 }}>
             {saving ? "Adding…" : "Add"}
@@ -548,7 +711,7 @@ function AvailabilityTab({ agents }: { agents: Agent[] }) {
                 <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{fmtTime(row.time_start)}</td>
                 <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{fmtTime(row.time_end)}</td>
                 <td className="px-4 py-3">
-                  <button onClick={() => toggleLive(row)}
+                  <button type="button" onClick={() => toggleLive(row)}
                     className="px-2 py-0.5 rounded-full text-xs font-medium"
                     style={row.is_live
                       ? { color: "#22c55e", background: "rgba(34,197,94,0.1)" }
@@ -557,133 +720,7 @@ function AvailabilityTab({ agents }: { agents: Agent[] }) {
                   </button>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => handleDelete(row.id)} className="text-xs transition-colors"
-                    style={{ color: "#334155" }}
-                    onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")}
-                    onMouseLeave={e => (e.currentTarget.style.color = "#334155")}>
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ─── Client Calling Windows Tab ───────────────────────────────────────────────
-
-function ClientWindowsTab({ clients }: { clients: Client[] }) {
-  const [rows, setRows] = useState<WindowRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [clientId, setClientId] = useState("");
-  const [weekday, setWeekday] = useState("Monday");
-  const [slot1, setSlot1] = useState("09:00");
-  const [slot2, setSlot2] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/client-windows")
-      .then(r => r.json())
-      .then(d => { setRows(d.rows ?? []); setLoading(false); });
-  }, []);
-
-  async function handleAdd() {
-    if (!clientId) return;
-    setSaving(true);
-    const res = await fetch("/api/client-windows", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id: clientId, weekday, time_slot_1: slot1 || null, time_slot_2: slot2 || null }),
-    });
-    const d = await res.json();
-    if (d.row) { setRows(prev => [...prev, d.row]); setWeekday(nextWeekday(weekday)); }
-    setSaving(false);
-  }
-
-  async function toggleLive(row: WindowRow) {
-    const res = await fetch(`/api/client-windows/${row.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_live: !row.is_live }),
-    });
-    const d = await res.json();
-    if (d.row) setRows(prev => prev.map(r => r.id === row.id ? d.row : r));
-  }
-
-  async function handleDelete(id: string) {
-    await fetch(`/api/client-windows/${id}`, { method: "DELETE" });
-    setRows(prev => prev.filter(r => r.id !== id));
-  }
-
-  if (loading) return <div className="py-8 text-center text-sm" style={{ color: "#334155" }}>Loading…</div>;
-
-  return (
-    <div className="space-y-6">
-      <div className="rounded-xl p-5 space-y-4" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
-        <p className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Add Calling Window</p>
-        <div className="flex flex-wrap gap-3 items-end">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Client</label>
-            <Sel value={clientId} onChange={setClientId}>
-              <option value="">Select client…</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Sel>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Day</label>
-            <Sel value={weekday} onChange={setWeekday}>
-              {WEEKDAYS.map(d => <option key={d} value={d}>{d}</option>)}
-            </Sel>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Session 1 Start</label>
-            <Input type="time" value={slot1} onChange={setSlot1} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Session 2 Start (optional)</label>
-            <Input type="time" value={slot2} onChange={setSlot2} />
-          </div>
-          <button onClick={handleAdd} disabled={!clientId || saving}
-            className="px-4 py-2 rounded-lg text-sm font-semibold transition-opacity"
-            style={{ background: "#f59e0b", color: "#fff", opacity: (!clientId || saving) ? 0.5 : 1 }}>
-            {saving ? "Adding…" : "Add"}
-          </button>
-        </div>
-      </div>
-
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: "#0a1628" }}>
-              {["Client", "Day", "Session 1", "Session 2", "Status", ""].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: "#334155" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No calling windows configured yet.</td></tr>
-            ) : rows.map((row, i) => (
-              <tr key={row.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{row.clients?.name ?? "—"}</td>
-                <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{row.weekday}</td>
-                <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{fmtTime(row.time_slot_1)}</td>
-                <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{fmtTime(row.time_slot_2)}</td>
-                <td className="px-4 py-3">
-                  <button onClick={() => toggleLive(row)}
-                    className="px-2 py-0.5 rounded-full text-xs font-medium"
-                    style={row.is_live
-                      ? { color: "#22c55e", background: "rgba(34,197,94,0.1)" }
-                      : { color: "#ef4444", background: "rgba(239,68,68,0.1)" }}>
-                    {row.is_live ? "Live" : "Off"}
-                  </button>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => handleDelete(row.id)} className="text-xs transition-colors"
+                  <button type="button" onClick={() => handleDelete(row.id)} className="text-xs transition-colors"
                     style={{ color: "#334155" }}
                     onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")}
                     onMouseLeave={e => (e.currentTarget.style.color = "#334155")}>
@@ -702,7 +739,7 @@ function ClientWindowsTab({ clients }: { clients: Client[] }) {
 // ─── Root Component ───────────────────────────────────────────────────────────
 
 export default function SetterSchedule({ clients }: { clients: Client[] }) {
-  const [tab, setTab] = useState<Tab>("watch");
+  const [tab, setTab] = useState<Tab>("focus");
   const [agents, setAgents] = useState<Agent[]>([]);
   const [availability, setAvailability] = useState<AvailRow[]>([]);
   const [weekStart, setWeekStart] = useState(getMondayOfWeek(1));
@@ -717,24 +754,23 @@ export default function SetterSchedule({ clients }: { clients: Client[] }) {
   }, []);
 
   const TABS: { key: Tab; label: string }[] = [
-    { key: "watch",        label: "Watch Schedule" },
-    { key: "pd",           label: "PD Schedule" },
+    { key: "focus",        label: "Focus" },
+    { key: "watch",        label: "Watch" },
     { key: "availability", label: "Setter Availability" },
-    { key: "windows",      label: "Client Windows" },
   ];
 
   return (
     <div className="space-y-6 max-w-6xl">
       <div>
-        <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Power Dialer Schedule</h2>
+        <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Weekly Focus</h2>
         <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-          Build the watch schedule, then generate PD assignments from it.
+          Schedule client priority blocks for the week, see who&apos;s on watch, and maintain setter availability.
         </p>
       </div>
 
       <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: "#0a1628" }}>
         {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+          <button key={t.key} type="button" onClick={() => setTab(t.key)}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
             style={tab === t.key
               ? { background: "#f59e0b", color: "#fff" }
@@ -744,24 +780,23 @@ export default function SetterSchedule({ clients }: { clients: Client[] }) {
         ))}
       </div>
 
+      {tab === "focus" && (
+        <FocusTab
+          agents={agents}
+          clients={clients}
+          weekStart={weekStart}
+          setWeekStart={setWeekStart}
+        />
+      )}
       {tab === "watch" && (
         <WatchScheduleTab
           agents={agents}
           availability={availability}
           weekStart={weekStart}
           setWeekStart={setWeekStart}
-          onGenerated={() => setTab("pd")}
-        />
-      )}
-      {tab === "pd" && (
-        <PDScheduleTab
-          agents={agents}
-          weekStart={weekStart}
-          setWeekStart={setWeekStart}
         />
       )}
       {tab === "availability" && <AvailabilityTab agents={agents} />}
-      {tab === "windows" && <ClientWindowsTab clients={clients} />}
     </div>
   );
 }

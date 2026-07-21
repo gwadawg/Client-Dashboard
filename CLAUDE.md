@@ -59,7 +59,7 @@ and run `/start` — Claude will build everything automatically.
     └── components/                  ← UI components
         ├── DashboardView.tsx        ← Main dashboard (nav + all views)
         ├── UserManager.tsx          ← Admin → Users tab
-        ├── SetterSchedule.tsx       ← Power dialer schedule
+        ├── SetterSchedule.tsx       ← Weekly Focus (Watch / Focus / Availability)
         └── ClientRoster.tsx         ← Lead source management
 ```
 

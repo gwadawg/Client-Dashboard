@@ -464,7 +464,7 @@ export default function CcmCommandDashboard({ onNavigate }: Props) {
           </ol>
 
           <div className="pt-3 border-t space-y-2" style={{ borderColor: "rgba(51,65,85,0.7)" }}>
-            <DeepLink label="Power Dialer Schedule" onClick={() => go("schedule")} />
+            <DeepLink label="Weekly Focus" onClick={() => go("agents", "weekly_focus")} />
             <DeepLink label="Credit Queue" onClick={() => go("agents", "credit_queue")} />
             <a
               href="/forms/eod/ccm"

@@ -651,7 +651,7 @@ create table if not exists setter_availability (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 8. Client Calling Windows (when each client/lead-source is dialled each week)
+-- 8. Client Calling Windows (deprecated — unused by Weekly Focus UI)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists client_calling_windows (
   id          uuid    primary key default gen_random_uuid(),
@@ -676,7 +676,7 @@ create table if not exists watch_schedule (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 10. PD Schedule (generated power dialer schedule from watch schedule)
+-- 10. PD Schedule (deprecated — superseded by focus_schedule; leave for history)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists pd_schedule (
   id             uuid    primary key default gen_random_uuid(),
@@ -688,6 +688,28 @@ create table if not exists pd_schedule (
   notes          text,
   created_at     timestamptz default now()
 );
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 10b. Focus Schedule (weekly timed client focus blocks)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists focus_schedule (
+  id             uuid primary key default gen_random_uuid(),
+  client_id      uuid not null references clients(id) on delete cascade,
+  agent_id       uuid references agents(id) on delete set null,
+  scheduled_date date not null,
+  time_start     text not null,  -- HH:MM 24-hour
+  time_end       text not null,  -- HH:MM 24-hour; must be after time_start
+  status         text not null default 'scheduled'
+                 check (status in ('scheduled', 'done', 'skipped')),
+  notes          text,
+  created_at     timestamptz not null default now()
+);
+
+create index if not exists focus_schedule_date_idx
+  on focus_schedule (scheduled_date);
+
+create index if not exists focus_schedule_client_date_idx
+  on focus_schedule (client_id, scheduled_date);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 11. Client Health Snapshots (frozen periodic verdicts — progress baselines)

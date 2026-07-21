@@ -5,6 +5,7 @@ import AgentCreditQueue from "../AgentCreditQueue";
 import RecordingBrowser from "../RecordingBrowser";
 import DialExamplesLibrary from "../DialExamplesLibrary";
 import GoalTracker from "../GoalTracker";
+import SetterSchedule from "../SetterSchedule";
 import ViewHub from "../nav/ViewHub";
 import { AGENTS_TABS, type AgentsTab } from "@/lib/nav";
 
@@ -61,6 +62,7 @@ export default function AgentsHub({
           endDate={endDate}
         />
       )}
+      {tab === "weekly_focus" && <SetterSchedule clients={clients} />}
     </ViewHub>
   );
 }
