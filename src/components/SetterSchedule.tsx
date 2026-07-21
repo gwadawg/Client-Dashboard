@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CALL_CENTER_TIMEZONE } from "@/lib/time";
 import { FOCUS_STATUSES, type FocusStatus } from "@/lib/focus-schedule";
 
@@ -121,7 +121,11 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
   const [entries, setEntries] = useState<WatchEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState<string | null>(null);
+  const [dragAgentId, setDragAgentId] = useState<string | null>(null);
+  const [paint, setPaint] = useState<{ date: string; startHour: number; endHour: number } | null>(null);
+  const paintRef = useRef(paint);
+  paintRef.current = paint;
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -147,15 +151,42 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
     );
   }
 
-  async function handleDrop(date: string, hour: number, agentId: string) {
-    if (entryMap[`${date}_${hour}`]?.some(e => e.agent_id === agentId)) return;
-    const res = await fetch("/api/watch-schedule", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agent_id: agentId, scheduled_date: date, slot_hour: hour }),
-    });
-    const d = await res.json();
-    if (d.row) setEntries(prev => [...prev, d.row]);
+  function paintCovers(date: string, hour: number) {
+    if (!paint || paint.date !== date) return false;
+    const lo = Math.min(paint.startHour, paint.endHour);
+    const hi = Math.max(paint.startHour, paint.endHour);
+    return hour >= lo && hour <= hi;
+  }
+
+  async function assignBlock(date: string, startHour: number, endHour: number, agentId: string) {
+    const lo = Math.min(startHour, endHour);
+    const hi = Math.max(startHour, endHour);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/watch-schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent_id: agentId,
+          scheduled_date: date,
+          slot_hour_start: lo,
+          slot_hour_end: hi,
+        }),
+      });
+      const d = await res.json();
+      const rows: WatchEntry[] = d.rows ?? (d.row ? [d.row] : []);
+      if (rows.length) {
+        setEntries(prev => {
+          const next = [...prev];
+          for (const row of rows) {
+            if (!next.some(e => e.id === row.id)) next.push(row);
+          }
+          return next;
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleRemove(id: string) {
@@ -163,9 +194,32 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
     setEntries(prev => prev.filter(e => e.id !== id));
   }
 
+  /** Remove contiguous hours for this agent on this day (the painted block). */
+  async function handleRemoveBlock(agentId: string, date: string, hour: number) {
+    const dayEntries = entries
+      .filter(e => e.agent_id === agentId && e.scheduled_date === date)
+      .sort((a, b) => a.slot_hour - b.slot_hour);
+    if (!dayEntries.length) return;
+
+    let lo = hour;
+    let hi = hour;
+    while (dayEntries.some(e => e.slot_hour === lo - 1)) lo -= 1;
+    while (dayEntries.some(e => e.slot_hour === hi + 1)) hi += 1;
+
+    const toRemove = dayEntries.filter(e => e.slot_hour >= lo && e.slot_hour <= hi);
+    await Promise.all(toRemove.map(e => fetch(`/api/watch-schedule/${e.id}`, { method: "DELETE" })));
+    const ids = new Set(toRemove.map(e => e.id));
+    setEntries(prev => prev.filter(e => !ids.has(e.id)));
+  }
+
   return (
     <div className="space-y-5">
       <WeekNav weekStart={weekStart} setWeekStart={setWeekStart} />
+
+      <p className="text-xs" style={{ color: "#64748b" }}>
+        Drag a setter onto a cell, then drag up or down before releasing to fill a multi-hour block.
+        {saving && <span style={{ color: "#f59e0b" }}> Saving…</span>}
+      </p>
 
       {loading ? (
         <div className="py-12 text-center text-sm" style={{ color: "#334155" }}>Loading…</div>
@@ -201,29 +255,47 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
                     const key = `${date}_${hour}`;
                     const cellEntries = entryMap[key] ?? [];
                     const highlighted = hoveredAgent ? isAvailable(hoveredAgent, weekday, hour) : false;
+                    const inPaint = paintCovers(date, hour);
                     return (
                       <td key={date}
                         style={{
                           borderLeft: "1px solid rgba(255,255,255,0.04)",
-                          background: dragOver === key
-                            ? "rgba(96,165,250,0.15)"
+                          background: inPaint
+                            ? "rgba(245,158,11,0.22)"
                             : highlighted
                             ? "rgba(245,158,11,0.10)"
                             : "transparent",
-                          transition: "background 0.1s",
+                          transition: "background 0.08s",
                           verticalAlign: "top",
                           padding: "4px",
                           minWidth: "110px",
                         }}
-                        onDragOver={e => { e.preventDefault(); setDragOver(key); }}
+                        onDragOver={e => {
+                          e.preventDefault();
+                          if (!dragAgentId) return;
+                          setPaint(prev => {
+                            if (!prev || prev.date !== date) {
+                              return { date, startHour: hour, endHour: hour };
+                            }
+                            return { ...prev, endHour: hour };
+                          });
+                        }}
                         onDragLeave={e => {
-                          if (!e.relatedTarget || !e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null);
+                          if (!e.relatedTarget || !e.currentTarget.contains(e.relatedTarget as Node)) {
+                            // keep paint until drop / drag end
+                          }
                         }}
                         onDrop={e => {
                           e.preventDefault();
-                          const agentId = e.dataTransfer.getData("agentId");
-                          if (agentId) handleDrop(date, hour, agentId);
-                          setDragOver(null);
+                          const agentId = e.dataTransfer.getData("agentId") || dragAgentId;
+                          const range = paintRef.current;
+                          if (agentId && range && range.date === date) {
+                            assignBlock(date, range.startHour, range.endHour, agentId);
+                          } else if (agentId) {
+                            assignBlock(date, hour, hour, agentId);
+                          }
+                          setPaint(null);
+                          setDragAgentId(null);
                         }}>
                         <div className="flex flex-col gap-0.5">
                           {cellEntries.map(entry => (
@@ -231,9 +303,14 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
                               className="flex items-center gap-1 rounded px-1.5 py-0.5"
                               style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.2)" }}
                               onMouseEnter={() => setHoveredAgent(entry.agent_id)}
-                              onMouseLeave={() => setHoveredAgent(null)}>
+                              onMouseLeave={() => setHoveredAgent(null)}
+                              title="Click × to remove this hour · Alt/Option+click × to remove the whole contiguous block">
                               <span className="truncate text-xs" style={{ color: "#f59e0b", maxWidth: "72px" }}>{entry.agents?.name}</span>
-                              <button type="button" onClick={() => handleRemove(entry.id)}
+                              <button type="button"
+                                onClick={ev => {
+                                  if (ev.altKey) handleRemoveBlock(entry.agent_id, entry.scheduled_date, entry.slot_hour);
+                                  else handleRemove(entry.id);
+                                }}
                                 className="flex-shrink-0 leading-none opacity-40 hover:opacity-100 transition-opacity"
                                 style={{ color: "#f59e0b", fontSize: "12px" }}>×</button>
                             </div>
@@ -251,7 +328,7 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
 
       <div className="rounded-xl p-4 space-y-3" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
         <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>
-          Setters — drag onto a slot to assign · hover to highlight availability
+          Setters — drag onto a slot, then drag vertically to fill a block · hover to highlight availability
         </p>
         <div className="flex flex-wrap gap-2">
           {agents.length === 0 ? (
@@ -259,8 +336,18 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
           ) : agents.map(agent => (
             <div key={agent.id}
               draggable
-              onDragStart={e => { e.dataTransfer.setData("agentId", agent.id); setHoveredAgent(agent.id); }}
-              onDragEnd={() => setHoveredAgent(null)}
+              onDragStart={e => {
+                e.dataTransfer.setData("agentId", agent.id);
+                e.dataTransfer.effectAllowed = "copy";
+                setDragAgentId(agent.id);
+                setHoveredAgent(agent.id);
+                setPaint(null);
+              }}
+              onDragEnd={() => {
+                setDragAgentId(null);
+                setHoveredAgent(null);
+                setPaint(null);
+              }}
               onMouseEnter={() => setHoveredAgent(agent.id)}
               onMouseLeave={() => setHoveredAgent(null)}
               className="px-3 py-1.5 rounded-full text-xs font-medium cursor-grab active:cursor-grabbing select-none"
