@@ -11,6 +11,7 @@ import {
   type TeamAverages,
 } from "@/lib/agent-performance-types";
 import { calendarMonthOf } from "@/lib/calendar-month";
+import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
 
 type Props = {
   preset: string;
@@ -65,12 +66,45 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
   const [error, setError] = useState("");
   const [mode, setMode] = useState<BoardMode>("monthly");
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
-  const [showDetails, setShowDetails] = useState(false);
 
   const days = useMemo(() => periodDays(startDate, endDate), [startDate, endDate]);
 
+  const kpiAgents = useMemo(
+    () =>
+      [...agents].sort(
+        (a, b) => b.appointments - a.appointments || a.agent_name.localeCompare(b.agent_name),
+      ),
+    [agents],
+  );
+
+  const teamTotals = useMemo(() => {
+    return agents.reduce(
+      (acc, a) => ({
+        dials: acc.dials + a.dials,
+        pickups: acc.pickups + a.pickups,
+        appointments: acc.appointments + a.appointments,
+        live_transfers: acc.live_transfers + a.live_transfers,
+        shows: acc.shows + a.shows,
+        no_shows: acc.no_shows + a.no_shows,
+        show_lt: acc.show_lt + (a.show_lt_conversations ?? 0),
+        today_dials: acc.today_dials + a.today.dials,
+        callbacks: acc.callbacks + a.callbacks,
+      }),
+      {
+        dials: 0,
+        pickups: 0,
+        appointments: 0,
+        live_transfers: 0,
+        shows: 0,
+        no_shows: 0,
+        show_lt: 0,
+        today_dials: 0,
+        callbacks: 0,
+      },
+    );
+  }, [agents]);
+
   useEffect(() => {
-    setLoading(true);
     setError("");
     const month = calendarMonthOf(endDate).month;
     setGoalMonth(month);
@@ -79,11 +113,41 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
     if (endDate) params.set("endDate", endDate);
     params.set("includeAllRoster", "1");
 
+    const statsKey = `agent-stats|${params.toString()}`;
+    const goalsKey = `goals|${month}`;
+    type StatsPayload = {
+      error?: string;
+      agents?: AgentPerformanceRow[];
+      team_averages?: TeamAverages;
+      goal_month?: string;
+    };
+    type GoalsPayload = { error?: string; goals?: AgentGoal[] };
+
+    const peekStats = peekCachedJson<StatsPayload>(statsKey);
+    const peekGoals = peekCachedJson<GoalsPayload>(goalsKey);
+    if (peekStats?.agents && peekGoals?.goals) {
+      setAgents(peekStats.agents);
+      setTeamAverages(peekStats.team_averages ?? EMPTY_TEAM_AVERAGES);
+      if (peekStats.goal_month) setGoalMonth(peekStats.goal_month);
+      setGoals(peekGoals.goals);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    const ac = new AbortController();
     Promise.all([
-      fetch(`/api/agent-stats?${params}`).then(r => r.json()),
-      fetch(`/api/goals?month=${encodeURIComponent(month)}`).then(r => r.json()),
+      cachedJsonFetch<StatsPayload>(statsKey, `/api/agent-stats?${params}`, {
+        signal: ac.signal,
+        preferCache: false,
+      }),
+      cachedJsonFetch<GoalsPayload>(goalsKey, `/api/goals?month=${encodeURIComponent(month)}`, {
+        signal: ac.signal,
+        preferCache: false,
+      }),
     ])
       .then(([statsData, goalsData]) => {
+        if (ac.signal.aborted) return;
         if (statsData.error) throw new Error(statsData.error);
         if (goalsData.error) throw new Error(goalsData.error);
         setAgents(statsData.agents ?? []);
@@ -93,9 +157,11 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
         setLoading(false);
       })
       .catch((err: Error) => {
+        if (ac.signal.aborted) return;
         setError(err.message || "Failed to load performance");
         setLoading(false);
       });
+    return () => ac.abort();
   }, [preset, startDate, endDate]);
 
   const boardRows = useMemo(() => {
@@ -211,26 +277,86 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
         </div>
       )}
 
-      <div>
-        <button
-          type="button"
-          onClick={() => setShowDetails(d => !d)}
-          className="text-sm font-medium"
-          style={{ color: "#64748b" }}
-        >
-          {showDetails ? "Hide" : "Show"} detailed scorecards & chart
-        </button>
-      </div>
+      {!loading && kpiAgents.length > 0 && (
+        <div className="space-y-8 pt-2">
+          <div
+            className="rounded-xl px-5 py-4"
+            style={{
+              background: "#0a1628",
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
+            <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
+                  Team KPI report
+                </h3>
+                <p className="text-xs mt-0.5" style={{ color: "#475569" }}>
+                  Period totals for the selected date range · click a scorecard to expand
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
+              {[
+                { label: "Today dials", value: teamTotals.today_dials },
+                { label: "Dials", value: teamTotals.dials },
+                { label: "Pickups", value: teamTotals.pickups },
+                { label: "Appts", value: teamTotals.appointments },
+                { label: "Live transfers", value: teamTotals.live_transfers },
+                { label: "Shows", value: teamTotals.shows },
+                { label: "No shows", value: teamTotals.no_shows },
+                { label: "Convos (show/LT)", value: teamTotals.show_lt },
+                { label: "Callbacks", value: teamTotals.callbacks },
+              ].map(stat => (
+                <div key={stat.label}>
+                  <p className="text-lg font-bold tabular-nums" style={{ color: "#e2e8f0" }}>
+                    {stat.value.toLocaleString()}
+                  </p>
+                  <p className="text-[11px]" style={{ color: "#64748b" }}>
+                    {stat.label}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div
+              className="mt-4 pt-3 flex flex-wrap gap-4 text-xs"
+              style={{ borderTop: "1px solid rgba(255,255,255,0.05)", color: "#64748b" }}
+            >
+              <span>
+                Avg pickup{" "}
+                <span className="font-semibold tabular-nums" style={{ color: "#94a3b8" }}>
+                  {teamAverages.pickup_rate}%
+                </span>
+              </span>
+              <span>
+                Avg show{" "}
+                <span className="font-semibold tabular-nums" style={{ color: "#94a3b8" }}>
+                  {teamAverages.show_rate}%
+                </span>
+              </span>
+              <span>
+                Per-rep avg dials{" "}
+                <span className="font-semibold tabular-nums" style={{ color: "#94a3b8" }}>
+                  {teamAverages.dials.toLocaleString()}
+                </span>
+              </span>
+              <span>
+                Per-rep avg appts{" "}
+                <span className="font-semibold tabular-nums" style={{ color: "#94a3b8" }}>
+                  {teamAverages.appointments.toLocaleString()}
+                </span>
+              </span>
+            </div>
+          </div>
 
-      {showDetails && !loading && agents.length > 0 && (
-        <div className="space-y-8">
-          <AgentComparisonChart agents={agents} />
+          <AgentComparisonChart agents={kpiAgents} />
+
           <div>
             <h3 className="text-base font-semibold mb-4" style={{ color: "#e2e8f0" }}>
-              Agent Scorecards
+              Agent scorecards
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {agents.map((a, i) => (
+              {kpiAgents.map((a, i) => (
                 <AgentScorecard
                   key={a.agent_name}
                   agent={a}
@@ -246,7 +372,13 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
               ))}
             </div>
           </div>
-          <AgentStatsTable agents={agents} />
+
+          <div>
+            <h3 className="text-base font-semibold mb-4" style={{ color: "#e2e8f0" }}>
+              Full KPI table
+            </h3>
+            <AgentStatsTable agents={kpiAgents} />
+          </div>
         </div>
       )}
     </div>

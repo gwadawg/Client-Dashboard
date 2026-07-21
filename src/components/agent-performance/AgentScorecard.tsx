@@ -118,6 +118,10 @@ export default function AgentScorecard({
     { label: "Appts", value: agent.appointments.toLocaleString() },
     { label: "Transfers", value: agent.live_transfers.toLocaleString() },
     { label: "Shows", value: agent.shows.toLocaleString() },
+    {
+      label: "Show/LT",
+      value: (agent.show_lt_conversations ?? 0).toLocaleString(),
+    },
     { label: "Show %", value: `${agent.show_rate}%`, colored: true, rate: agent.show_rate },
   ];
 
@@ -125,14 +129,26 @@ export default function AgentScorecard({
     { label: "Dials", value: agent.dials },
     { label: "Pickups", value: agent.pickups },
     { label: "Pickup %", value: `${agent.pickup_rate}%`, rate: agent.pickup_rate },
-    { label: "Convos", value: agent.conversations },
-    { label: "Convo %", value: `${agent.conversation_rate}%`, rate: agent.conversation_rate },
-    { label: "Appts", value: agent.appointments },
+    { label: "Talk time convos", value: agent.conversations },
+    { label: "Talk time %", value: `${agent.conversation_rate}%`, rate: agent.conversation_rate },
+    { label: "Appts booked", value: agent.appointments },
     { label: "Callbacks", value: agent.callbacks },
-    { label: "Live Transfers", value: agent.live_transfers },
+    { label: "Live transfers", value: agent.live_transfers },
     { label: "Shows", value: agent.shows },
-    { label: "No Shows", value: agent.no_shows },
+    { label: "No shows", value: agent.no_shows },
+    { label: "LO bailed", value: agent.lo_bailed },
+    { label: "Pending", value: agent.pending },
+    { label: "Cancelled", value: agent.cancelled },
     { label: "Show %", value: `${agent.show_rate}%`, rate: agent.show_rate },
+    { label: "Conversations (show/LT)", value: agent.show_lt_conversations ?? 0 },
+    {
+      label: "Speed to lead (min)",
+      value: agent.avg_speed_to_lead_min != null ? agent.avg_speed_to_lead_min : "—",
+    },
+    { label: "Today dials", value: agent.today.dials },
+    { label: "Today pickups", value: agent.today.pickups },
+    { label: "Today appts", value: agent.today.appointments },
+    { label: "Today LTs", value: agent.today.live_transfers },
   ];
 
   return (
@@ -220,7 +236,7 @@ export default function AgentScorecard({
           <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "#334155" }}>
             Period Totals
           </p>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2 text-center">
             {periodSummary.map(s => (
               <div key={s.label}>
                 <p
@@ -310,6 +326,7 @@ export default function AgentScorecard({
             </p>
             <div className="space-y-3">
               <VsTeamBar label="Dials" value={agent.dials} teamAvg={teamAverages.dials} />
+              <VsTeamBar label="Pickups" value={agent.pickups} teamAvg={teamAverages.pickups} />
               <VsTeamBar label="Appointments" value={agent.appointments} teamAvg={teamAverages.appointments} />
               <VsTeamBar label="Live Transfers" value={agent.live_transfers} teamAvg={teamAverages.live_transfers} />
               <VsTeamBar label="Shows" value={agent.shows} teamAvg={teamAverages.shows} />
