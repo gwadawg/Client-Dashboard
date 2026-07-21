@@ -105,12 +105,45 @@ type Props = {
 
 export default function LibraryDocEditor({ state, setState, saving, error, onClose, onSave }: Props) {
   const [slugManual, setSlugManual] = useState(!!state.editSlug);
+  const [formatting, setFormatting] = useState(false);
+  const [formatError, setFormatError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!slugManual && state.title && !state.editSlug) {
       setState((s) => ({ ...s, slug: slugFromTitle(s.title) }));
     }
   }, [state.title, slugManual, state.editSlug, setState]);
+
+  async function handleFormat() {
+    if (formatting || !state.body.trim()) return;
+    setFormatting(true);
+    setFormatError(null);
+    try {
+      const res = await fetch("/api/library/format", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: state.body }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Formatting failed");
+
+      setState((s) => ({
+        ...s,
+        body: typeof data.body === "string" ? data.body : s.body,
+        title: s.title.trim() ? s.title : (data.title ?? s.title),
+        artifact_type: data.artifact_type ?? s.artifact_type,
+        owner: data.owner ?? s.owner,
+        department: data.department ?? s.department,
+        review_cycle: data.review_cycle ?? s.review_cycle,
+        script_version: data.script_version ?? s.script_version,
+        tags: Array.isArray(data.tags) && data.tags.length ? data.tags.join(", ") : s.tags,
+      }));
+    } catch (err) {
+      setFormatError(err instanceof Error ? err.message : "Formatting failed");
+    } finally {
+      setFormatting(false);
+    }
+  }
 
   return (
     <div
@@ -261,16 +294,57 @@ export default function LibraryDocEditor({ state, setState, saving, error, onClo
               </Field>
             </div>
 
-            <Field label="Markdown body" hint="paste full doc with or without frontmatter">
+            <label className="block">
+              <span className="flex items-center justify-between gap-2 mb-1.5">
+                <span className="flex items-baseline gap-2">
+                  <span className="text-xs font-semibold" style={{ color: "#94a3b8" }}>
+                    Markdown body
+                  </span>
+                  <span className="text-[10px]" style={{ color: "#334155" }}>
+                    paste raw text, then clean it up
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleFormat}
+                  disabled={formatting || !state.body.trim()}
+                  title="Restructure pasted text into the library format. Wording is preserved."
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ background: "rgba(129,140,248,0.14)", color: "#a5b4fc", border: "1px solid rgba(129,140,248,0.28)" }}
+                >
+                  {formatting ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                        <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+                      </svg>
+                      Cleaning up…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16 2.4 6.6L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3Z" />
+                      </svg>
+                      Clean up &amp; structure
+                    </>
+                  )}
+                </button>
+              </span>
               <textarea
                 value={state.body}
                 onChange={(e) => setState((s) => ({ ...s, body: e.target.value }))}
-                placeholder={"## Purpose\n\nWhat this doc covers…\n\n> Dialogue lines render as script blocks."}
+                placeholder={"Paste raw text here (from a Google Doc, email, transcript…) then click Clean up & structure.\n\nOr write markdown directly:\n## Purpose\n\nWhat this doc covers…\n\n> Dialogue lines render as script blocks."}
                 rows={16}
                 className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none resize-y font-mono leading-relaxed"
                 style={inputStyle}
               />
-            </Field>
+            </label>
+
+            {formatError && (
+              <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#f87171", background: "rgba(248,113,113,0.08)" }}>
+                {formatError}
+              </p>
+            )}
 
             {error && (
               <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#f87171", background: "rgba(248,113,113,0.08)" }}>
