@@ -414,7 +414,14 @@ export function buildClientHealthSnapshot(
   spendRows: SpendRow[],
   benchmarks?: ClientKpiBenchmarks | null,
 ): ClientHealthSnapshot {
-  const metrics = calculateMetrics(events, spendRows);
+  return clientHealthSnapshotFromMetrics(calculateMetrics(events, spendRows), benchmarks);
+}
+
+/** Grade an already-aggregated MetricsResult (from SQL RPCs or calculateMetrics). */
+export function clientHealthSnapshotFromMetrics(
+  metrics: MetricsResult,
+  benchmarks?: ClientKpiBenchmarks | null,
+): ClientHealthSnapshot {
   const lead_to_qualified_pct =
     metrics.new_leads > 0 ? (metrics.qualified_leads / metrics.new_leads) * 100 : 0;
   const close_rate_pct =
@@ -484,7 +491,13 @@ export function buildHeClientHealthSnapshot(
   events: EventRow[],
   benchmarks?: ClientKpiBenchmarks | null,
 ): ClientHealthSnapshot {
-  const metrics = calculateMetrics(events, []);
+  return heClientHealthSnapshotFromMetrics(calculateMetrics(events, []), benchmarks);
+}
+
+export function heClientHealthSnapshotFromMetrics(
+  metrics: MetricsResult,
+  benchmarks?: ClientKpiBenchmarks | null,
+): ClientHealthSnapshot {
   const lead_to_qualified_pct =
     metrics.new_leads > 0 ? (metrics.qualified_leads / metrics.new_leads) * 100 : 0;
   const close_rate_pct =
@@ -1094,7 +1107,7 @@ export function freshLaunchWindow(
   return { start: launchDate, end, window_days: Math.min(window_days, FRESH_LAUNCH_DAYS) };
 }
 
-function computeFreshOverallTier(graded: KpiGrade[]): HealthTier {
+export function computeFreshOverallTier(graded: KpiGrade[]): HealthTier {
   if (graded.length === 0) return 'insufficient';
   if (graded.some(g => g.tier === 'critical')) return 'critical';
   return graded.reduce(
@@ -1183,7 +1196,7 @@ function gradeLeadingOnly(
     .filter((g): g is KpiGrade => !!g && g.tier !== 'insufficient');
 }
 
-function compareLeadingMomentum(
+export function compareLeadingMomentum(
   current: RecentLeading,
   prior: RecentLeading | null,
   isHe = false,
@@ -1350,6 +1363,100 @@ export function buildRecentLeading(
   };
   base.momentum = compareLeadingMomentum(base, prior ?? null, isHe);
   return base;
+}
+
+/** Build RecentLeading from pre-aggregated MetricsResult (SQL path). */
+export function recentLeadingFromMetrics(input: {
+  funnel: MetricsResult;
+  cost?: MetricsResult | null;
+  start: string;
+  end: string;
+  windowDays: number;
+  reportingType?: ReportingType;
+  benchmarks?: ClientKpiBenchmarks | null;
+  prior?: RecentLeading | null;
+  costWindow?: { start: string; end: string; window_days: number } | null;
+}): RecentLeading {
+  const reportingType = input.reportingType ?? 'RM';
+  const isHe = usesCallCenterKpiLayout(reportingType);
+  const funnelSnap = isHe
+    ? heClientHealthSnapshotFromMetrics(input.funnel, input.benchmarks)
+    : clientHealthSnapshotFromMetrics(input.funnel, input.benchmarks);
+
+  let cpl = funnelSnap.metrics.cpl;
+  let cpql = isHe ? 0 : funnelSnap.cpql;
+  let leading_grades: KpiGrade[];
+
+  if (isHe) {
+    leading_grades = gradeLeadingOnly(funnelSnap, LEADING_HE_KEYS, input.benchmarks);
+  } else if (input.cost) {
+    const costSnap = clientHealthSnapshotFromMetrics(input.cost, input.benchmarks);
+    cpl = costSnap.metrics.cpl;
+    cpql = costSnap.cpql;
+    leading_grades = [
+      ...gradeLeadingOnly(costSnap, LEADING_RM_COST_KEYS, input.benchmarks),
+      ...gradeLeadingOnly(funnelSnap, LEADING_RM_FUNNEL_KEYS, input.benchmarks),
+    ];
+  } else {
+    leading_grades = gradeLeadingOnly(funnelSnap, LEADING_RM_KEYS, input.benchmarks);
+  }
+
+  const m = funnelSnap.metrics;
+  const base: RecentLeading = {
+    window_days: input.windowDays,
+    start: input.start,
+    end: input.end,
+    leads: m.new_leads,
+    qualified_leads: m.qualified_leads,
+    dials: m.outbound_dials,
+    lead_to_qualified_pct: m.new_leads > 0 ? (m.qualified_leads / m.new_leads) * 100 : 0,
+    conversations: m.unique_conversations,
+    booking_rate: isHe ? m.lead_booking_rate : m.appt_booking_rate,
+    hand_raise_rate: isHe ? m.lead_hand_raise_rate : m.hand_raise_rate,
+    cpl,
+    cpql,
+    ...(input.costWindow
+      ? {
+          cost_window_days: input.costWindow.window_days,
+          cost_start: input.costWindow.start,
+          cost_end: input.costWindow.end,
+        }
+      : {}),
+    leading_grades,
+    momentum: 'insufficient',
+  };
+  base.momentum = compareLeadingMomentum(base, input.prior ?? null, isHe);
+  return base;
+}
+
+/** Build FreshLaunchSnapshot from pre-aggregated MetricsResult (SQL path). */
+export function freshLaunchFromMetrics(
+  metrics: MetricsResult,
+  launchDate: string,
+  reportingType: ReportingType = 'RM',
+  benchmarks?: ClientKpiBenchmarks | null,
+  today: string = utcToday(),
+): FreshLaunchSnapshot {
+  const isHe = usesCallCenterKpiLayout(reportingType);
+  const snap = isHe
+    ? heClientHealthSnapshotFromMetrics(metrics, benchmarks)
+    : clientHealthSnapshotFromMetrics(metrics, benchmarks);
+  const win = freshLaunchWindow(launchDate, today);
+  const keys = isHe ? FRESH_LAUNCH_HE_KEYS : FRESH_LAUNCH_RM_KEYS;
+  const grades = snap.grades.filter(g => keys.includes(g.key));
+  const graded = grades.filter(g => g.tier !== 'insufficient');
+  return {
+    launch_date: launchDate,
+    days_since_launch: daysSinceLaunch(launchDate, today),
+    window_days: win.window_days,
+    start: win.start,
+    end: win.end,
+    leads: metrics.new_leads,
+    qualified_leads: metrics.qualified_leads,
+    dials: metrics.outbound_dials,
+    grades,
+    worst_tier: computeFreshOverallTier(graded),
+  };
 }
 
 export function getPriorPeriod(start: string, end: string): { start: string; end: string } | null {

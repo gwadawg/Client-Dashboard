@@ -1,10 +1,14 @@
 /**
  * Shared loader for client-health rows — used by /api/client-health and /api/ops-overview.
- * Keeps tier / focus / constraint math in one place (buildClientHealthRow).
+ * Prefers per-client SQL KPI aggregates; falls back to shipping event rows if RPCs missing.
  */
 
 import {
   buildClientHealthRow,
+  clientHealthSnapshotFromMetrics,
+  heClientHealthSnapshotFromMetrics,
+  recentLeadingFromMetrics,
+  freshLaunchFromMetrics,
   getPriorPeriod,
   getRecentPriorPeriod,
   groupEventsByClient,
@@ -14,17 +18,29 @@ import {
   isFreshLaunchClient,
   freshLaunchWindow,
   filterEventsToRange,
+  compareHealthTrend,
+  computeFocus,
+  FRESH_LAUNCH_DAYS,
   type ClientEventWithDate,
   type ClientHealthRow,
+  type ClientHealthSnapshot,
   type ClientKpiBenchmarks,
   type CostWindowSlice,
+  type FreshLaunchSnapshot,
   type OpenActionSummary,
   type PendingIntervention,
+  type RecentLeading,
 } from '@/lib/client-health';
 import { OPEN_ACTION_STATUSES, summarizeOpenAction, type ActionLogRow } from '@/lib/client-health-interventions';
 import { normalizeReportingType, usesCallCenterKpiLayout } from '@/lib/kpi-layouts';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
-import type { EventRow, SpendRow } from '@/lib/metrics';
+import type { EventRow, MetricsResult, SpendRow } from '@/lib/metrics';
+import {
+  emptySqlKpiCounts,
+  metricsFromSqlCounts,
+  parseSqlKpiCountsByClient,
+  type SqlKpiCounts,
+} from '@/lib/metrics-from-sql';
 import type { createServiceClient } from '@/lib/supabase';
 
 const EVENT_SELECT =
@@ -82,6 +98,71 @@ async function fetchMetaSpendByClient(
   }));
 }
 
+function isoBound(start: string, end: string) {
+  return {
+    p_start: `${start}T00:00:00.000Z`,
+    p_end: `${end}T23:59:59.999Z`,
+  };
+}
+
+async function fetchCountsByClient(
+  service: ServiceClient,
+  clientIds: string[] | null,
+  start: string,
+  end: string,
+): Promise<Map<string, SqlKpiCounts> | null> {
+  const { p_start, p_end } = isoBound(start, end);
+  const { data, error } = await service.rpc('dashboard_kpi_counts_by_client', {
+    p_client_ids: clientIds,
+    p_start,
+    p_end,
+  });
+  if (error) {
+    if (/dashboard_kpi_counts_by_client|Could not find the function|schema cache/i.test(error.message)) {
+      return null;
+    }
+    throw new Error(error.message);
+  }
+  return parseSqlKpiCountsByClient(data);
+}
+
+async function fetchFreshLaunchCounts(
+  service: ServiceClient,
+  clientIds: string[] | null,
+  today: string,
+): Promise<Map<string, SqlKpiCounts> | null> {
+  const { data, error } = await service.rpc('fresh_launch_kpi_counts_by_client', {
+    p_client_ids: clientIds,
+    p_today: today,
+    p_fresh_days: FRESH_LAUNCH_DAYS,
+  });
+  if (error) {
+    if (/fresh_launch_kpi_counts_by_client|Could not find the function|schema cache/i.test(error.message)) {
+      return null;
+    }
+    throw new Error(error.message);
+  }
+  return parseSqlKpiCountsByClient(data);
+}
+
+function metricsForClient(
+  countsMap: Map<string, SqlKpiCounts>,
+  clientId: string,
+  spend: SpendRow[],
+): MetricsResult {
+  return metricsFromSqlCounts(countsMap.get(clientId) ?? emptySqlKpiCounts(), spend);
+}
+
+function snapshotFor(
+  isHe: boolean,
+  metrics: MetricsResult,
+  benchmarks: ClientKpiBenchmarks | null,
+): ClientHealthSnapshot {
+  return isHe
+    ? heClientHealthSnapshotFromMetrics(metrics, benchmarks)
+    : clientHealthSnapshotFromMetrics(metrics, benchmarks);
+}
+
 export type ClientHealthBundle = {
   period: { start: string; end: string };
   prior_period: { start: string; end: string } | null;
@@ -113,6 +194,96 @@ export type ClientHealthBundle = {
   pending_interventions: PendingIntervention[];
   clients: ClientHealthRow[];
 };
+
+function assembleBundle(
+  clients: Array<{
+    id: string;
+    name: string;
+    is_live: boolean | null;
+    reporting_type: string | null;
+    kpi_benchmarks: unknown;
+    launch_date: string | null;
+    lifecycle_status?: string | null;
+  }>,
+  rows: ClientHealthRow[],
+  actionRows: ActionRow[] | null,
+  start_date: string,
+  end_date: string,
+  verdictPrior: { start: string; end: string } | null,
+  matured: ReturnType<typeof maturedWindow>,
+  leading: ReturnType<typeof calendarLeadingWindow>,
+  leadingPrior: { start: string; end: string } | null,
+  today: string,
+): ClientHealthBundle {
+  const fresh_launch_count = rows.filter(r => r.is_fresh_launch).length;
+  const follow_up_due = rows.filter(r => r.open_action?.review_date).length;
+  const follow_up_overdue = rows.filter(r => r.open_action?.overdue).length;
+
+  const clientNameById = new Map(clients.map(c => [c.id, c.name]));
+  const clientTypeById = new Map(
+    clients.map(c => [c.id, normalizeReportingType(c.reporting_type)]),
+  );
+
+  const pending_interventions: PendingIntervention[] = (actionRows ?? [])
+    .map(a => {
+      const row = a as ActionRow;
+      const summary = summarizeOpenAction(row, today);
+      return {
+        id: row.id,
+        client_id: row.client_id,
+        client_name: clientNameById.get(row.client_id) ?? 'Unknown',
+        reporting_type: clientTypeById.get(row.client_id) ?? 'RM',
+        title: row.title,
+        status: row.status,
+        success_metric: row.success_metric,
+        change_date: row.change_date,
+        review_date: row.review_date,
+        baseline_value: row.baseline_value != null ? Number(row.baseline_value) : null,
+        outcome_value: row.outcome_value != null ? Number(row.outcome_value) : null,
+        overdue: summary.overdue,
+        review_due: !!row.review_date && row.review_date <= today,
+      };
+    })
+    .sort((a, b) => {
+      if (a.review_due !== b.review_due) return a.review_due ? -1 : 1;
+      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+      const ad = a.review_date ?? '9999-12-31';
+      const bd = b.review_date ?? '9999-12-31';
+      return ad.localeCompare(bd);
+    });
+
+  return {
+    period: { start: start_date, end: end_date },
+    prior_period: verdictPrior,
+    maturity: {
+      days: matured.maturity_days,
+      matured_through: matured.matured_through,
+      clamped: matured.clamped,
+      empty: matured.empty,
+      leading_window_days: leading.window_days,
+      leading_start: leading.start,
+      leading_end: leading.end,
+      leading_prior_start: leadingPrior?.start ?? null,
+      leading_prior_end: leadingPrior?.end ?? null,
+      recent_window_days: leading.window_days,
+      recent_start: leading.start,
+      recent_end: leading.end,
+      recent_prior_start: leadingPrior?.start ?? null,
+      recent_prior_end: leadingPrior?.end ?? null,
+    },
+    summary: {
+      act_now: rows.filter(r => r.focus.focus === 'act_now' && r.has_activity && !r.is_fresh_launch).length,
+      monitor: rows.filter(r => r.focus.focus === 'monitor' && r.has_activity && !r.is_fresh_launch).length,
+      recovering: rows.filter(r => r.focus.focus === 'recovering' && r.has_activity && !r.is_fresh_launch).length,
+      on_track: rows.filter(r => r.focus.focus === 'on_track' && r.has_activity && !r.is_fresh_launch).length,
+      follow_up_due,
+      follow_up_overdue,
+      fresh_launch_count,
+    },
+    pending_interventions,
+    clients: rows,
+  };
+}
 
 export async function loadClientHealthBundle(
   service: ServiceClient,
@@ -150,12 +321,6 @@ export async function loadClientHealthBundle(
     .sort()[0] as string;
   const rangeEnd = leading.end > end_date ? leading.end : end_date;
 
-  let eventsQuery = service.from('events').select(EVENT_SELECT);
-  if (liveClientIds) eventsQuery = eventsQuery.in('client_id', liveClientFilter(liveClientIds));
-  eventsQuery = eventsQuery.gte('occurred_at', `${rangeStart}T00:00:00.000Z`);
-  eventsQuery = eventsQuery.lte('occurred_at', `${rangeEnd}T23:59:59.999Z`);
-  eventsQuery = eventsQuery.limit(200000);
-
   const spendFilters = {
     start_date: rangeStart,
     end_date: rangeEnd,
@@ -172,18 +337,219 @@ export async function loadClientHealthBundle(
     actionsQuery = actionsQuery.in('client_id', liveClientFilter(liveClientIds));
   }
 
+  const rpcClientIds = liveClientIds ? liveClientFilter(liveClientIds) : null;
+
   const [
-    { data: events, error: eventsError },
+    verdictCounts,
+    priorCounts,
+    recentCounts,
+    recentPriorCounts,
+    freshCounts,
     { data: actionRows, error: actionsError },
     metaSpend,
   ] = await Promise.all([
-    eventsQuery,
+    fetchCountsByClient(service, rpcClientIds, start_date, end_date),
+    verdictPrior
+      ? fetchCountsByClient(service, rpcClientIds, verdictPrior.start, verdictPrior.end)
+      : Promise.resolve(new Map<string, SqlKpiCounts>()),
+    fetchCountsByClient(service, rpcClientIds, leading.start, leading.end),
+    leadingPrior
+      ? fetchCountsByClient(service, rpcClientIds, leadingPrior.start, leadingPrior.end)
+      : Promise.resolve(new Map<string, SqlKpiCounts>()),
+    fetchFreshLaunchCounts(service, rpcClientIds, today),
     actionsQuery,
     fetchMetaSpendByClient(service, spendFilters),
   ]);
 
-  if (eventsError) throw new Error(eventsError.message);
   if (actionsError) throw new Error(actionsError.message);
+
+  const sqlReady =
+    verdictCounts != null &&
+    priorCounts != null &&
+    recentCounts != null &&
+    recentPriorCounts != null &&
+    freshCounts != null;
+
+  if (sqlReady) {
+    const spendRows = [...metaSpend];
+    const spendByClientFn = (rows: SpendByClientRow[]) =>
+      groupSpendByClient(rows.map(({ client_id, amount, platform }) => ({ client_id, amount, platform })));
+
+    const currentSpendByClient = spendByClientFn(spendInRange(spendRows, start_date, end_date));
+    const priorSpendByClient = verdictPrior
+      ? spendByClientFn(spendInRange(spendRows, verdictPrior.start, verdictPrior.end))
+      : new Map<string, SpendRow[]>();
+    const recentSpendByClient = spendByClientFn(spendInRange(spendRows, leading.start, leading.end));
+    const recentPriorSpendByClient = leadingPrior
+      ? spendByClientFn(spendInRange(spendRows, leadingPrior.start, leadingPrior.end))
+      : new Map<string, SpendRow[]>();
+
+    const actionsByClient = new Map<string, ActionRow[]>();
+    for (const a of actionRows ?? []) {
+      const list = actionsByClient.get(a.client_id) ?? [];
+      list.push(a as ActionRow);
+      actionsByClient.set(a.client_id, list);
+    }
+
+    const rows: ClientHealthRow[] = (clients ?? []).map(c => {
+      const benchmarks = (c.kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
+      const reporting_type = normalizeReportingType(c.reporting_type);
+      const isHe = usesCallCenterKpiLayout(reporting_type);
+      const launch_date = (c.launch_date as string | null) ?? null;
+
+      const verdictMetrics = metricsForClient(verdictCounts, c.id, currentSpendByClient.get(c.id) ?? []);
+      const priorMetrics = verdictPrior
+        ? metricsForClient(priorCounts, c.id, priorSpendByClient.get(c.id) ?? [])
+        : null;
+      const recentMetrics = metricsForClient(
+        recentCounts,
+        c.id,
+        isHe ? [] : recentSpendByClient.get(c.id) ?? [],
+      );
+      const recentPriorMetrics =
+        leadingPrior != null
+          ? metricsForClient(
+              recentPriorCounts,
+              c.id,
+              isHe ? [] : recentPriorSpendByClient.get(c.id) ?? [],
+            )
+          : null;
+      // RM cost slice uses the same leading window (fresh cost = leading).
+      const costMetrics = isHe
+        ? null
+        : metricsForClient(recentCounts, c.id, recentSpendByClient.get(c.id) ?? []);
+      const costPriorMetrics =
+        isHe || !leadingPrior
+          ? null
+          : metricsForClient(recentPriorCounts, c.id, recentPriorSpendByClient.get(c.id) ?? []);
+
+      const current = snapshotFor(isHe, verdictMetrics, benchmarks);
+      const priorSnapshot =
+        priorMetrics != null ? snapshotFor(isHe, priorMetrics, benchmarks) : null;
+
+      const recentPriorLeading =
+        recentPriorMetrics != null && leadingPrior != null
+          ? recentLeadingFromMetrics({
+              funnel: recentPriorMetrics,
+              cost: costPriorMetrics,
+              start: leadingPrior.start,
+              end: leadingPrior.end,
+              windowDays: leading.window_days,
+              reportingType: reporting_type,
+              benchmarks,
+              prior: null,
+              costWindow: costPriorMetrics
+                ? { ...leadingPrior, window_days: leading.window_days }
+                : null,
+            })
+          : null;
+
+      const recentLeading = recentLeadingFromMetrics({
+        funnel: recentMetrics,
+        cost: costMetrics,
+        start: leading.start,
+        end: leading.end,
+        windowDays: leading.window_days,
+        reportingType: reporting_type,
+        benchmarks,
+        prior: recentPriorLeading,
+        costWindow: costMetrics ? leading : null,
+      });
+
+      const fresh: FreshLaunchSnapshot | null =
+        launch_date != null && isFreshLaunchClient(launch_date, today)
+          ? freshLaunchFromMetrics(
+              metricsForClient(
+                freshCounts,
+                c.id,
+                spendInRange(
+                  spendRows.filter(r => r.client_id === c.id),
+                  freshLaunchWindow(launch_date, today).start,
+                  freshLaunchWindow(launch_date, today).end,
+                ).map(({ amount, platform }) => ({ amount, platform })),
+              ),
+              launch_date,
+              reporting_type,
+              benchmarks,
+              today,
+            )
+          : null;
+
+      const { trend, trend_delta_score } = compareHealthTrend(current, priorSnapshot);
+      const focus = computeFocus(current, recentLeading, reporting_type);
+      const has_activity =
+        current.metrics.new_leads > 0 ||
+        current.metrics.booked_appointments > 0 ||
+        current.metrics.ad_spend > 0 ||
+        recentLeading.leads > 0 ||
+        recentLeading.dials > 0 ||
+        (fresh?.leads ?? 0) > 0 ||
+        (fresh?.dials ?? 0) > 0;
+
+      // Reuse buildClientHealthRow shape by calling it with empty events then overlaying
+      // would drop fields — assemble the row explicitly from existing helpers' outputs.
+      const emptyRow = buildClientHealthRow({
+        client_id: c.id,
+        client_name: c.name,
+        is_live: c.is_live !== false,
+        reporting_type,
+        benchmarks,
+        verdictEvents: [],
+        priorEvents: [],
+        recentEvents: [],
+        recentPriorEvents: [],
+        verdictSpend: currentSpendByClient.get(c.id) ?? [],
+        priorSpend: priorSpendByClient.get(c.id) ?? [],
+        recentSpend: recentSpendByClient.get(c.id) ?? [],
+        recentPriorSpend: recentPriorSpendByClient.get(c.id) ?? [],
+        start_date,
+        end_date,
+        verdictPrior,
+        open_action: pickOpenAction(actionsByClient.get(c.id) ?? [], today),
+        launch_date,
+        freshLaunchEvents: [],
+        freshLaunchSpend: [],
+        today,
+      });
+
+      return {
+        ...emptyRow,
+        current,
+        prior: priorSnapshot,
+        recent: recentLeading,
+        recent_prior: recentPriorLeading,
+        trend,
+        trend_delta_score,
+        focus,
+        has_activity,
+        is_fresh_launch: fresh != null,
+        fresh,
+      };
+    });
+
+    return assembleBundle(
+      clients ?? [],
+      rows,
+      (actionRows ?? []) as ActionRow[],
+      start_date,
+      end_date,
+      verdictPrior,
+      matured,
+      leading,
+      leadingPrior,
+      today,
+    );
+  }
+
+  // ── Fallback: original event-row pull ─────────────────────────────────────
+  let eventsQuery = service.from('events').select(EVENT_SELECT);
+  if (liveClientIds) eventsQuery = eventsQuery.in('client_id', liveClientFilter(liveClientIds));
+  eventsQuery = eventsQuery.gte('occurred_at', `${rangeStart}T00:00:00.000Z`);
+  eventsQuery = eventsQuery.lte('occurred_at', `${rangeEnd}T23:59:59.999Z`);
+  eventsQuery = eventsQuery.limit(200000);
+
+  const { data: events, error: eventsError } = await eventsQuery;
+  if (eventsError) throw new Error(eventsError.message);
 
   const allEvents = (events ?? []) as ClientEventWithDate[];
   const inRange = (e: ClientEventWithDate, s: string, en: string) =>
@@ -308,74 +674,18 @@ export async function loadClientHealthBundle(
     });
   });
 
-  const fresh_launch_count = rows.filter(r => r.is_fresh_launch).length;
-  const follow_up_due = rows.filter(r => r.open_action?.review_date).length;
-  const follow_up_overdue = rows.filter(r => r.open_action?.overdue).length;
-
-  const clientNameById = new Map((clients ?? []).map(c => [c.id, c.name]));
-  const clientTypeById = new Map(
-    (clients ?? []).map(c => [c.id, normalizeReportingType(c.reporting_type)]),
+  return assembleBundle(
+    clients ?? [],
+    rows,
+    (actionRows ?? []) as ActionRow[],
+    start_date,
+    end_date,
+    verdictPrior,
+    matured,
+    leading,
+    leadingPrior,
+    today,
   );
-
-  const pending_interventions: PendingIntervention[] = (actionRows ?? [])
-    .map(a => {
-      const row = a as ActionRow;
-      const summary = summarizeOpenAction(row, today);
-      return {
-        id: row.id,
-        client_id: row.client_id,
-        client_name: clientNameById.get(row.client_id) ?? 'Unknown',
-        reporting_type: clientTypeById.get(row.client_id) ?? 'RM',
-        title: row.title,
-        status: row.status,
-        success_metric: row.success_metric,
-        change_date: row.change_date,
-        review_date: row.review_date,
-        baseline_value: row.baseline_value != null ? Number(row.baseline_value) : null,
-        outcome_value: row.outcome_value != null ? Number(row.outcome_value) : null,
-        overdue: summary.overdue,
-        review_due: !!row.review_date && row.review_date <= today,
-      };
-    })
-    .sort((a, b) => {
-      if (a.review_due !== b.review_due) return a.review_due ? -1 : 1;
-      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
-      const ad = a.review_date ?? '9999-12-31';
-      const bd = b.review_date ?? '9999-12-31';
-      return ad.localeCompare(bd);
-    });
-
-  return {
-    period: { start: start_date, end: end_date },
-    prior_period: verdictPrior,
-    maturity: {
-      days: matured.maturity_days,
-      matured_through: matured.matured_through,
-      clamped: matured.clamped,
-      empty: matured.empty,
-      leading_window_days: leading.window_days,
-      leading_start: leading.start,
-      leading_end: leading.end,
-      leading_prior_start: leadingPrior?.start ?? null,
-      leading_prior_end: leadingPrior?.end ?? null,
-      recent_window_days: leading.window_days,
-      recent_start: leading.start,
-      recent_end: leading.end,
-      recent_prior_start: leadingPrior?.start ?? null,
-      recent_prior_end: leadingPrior?.end ?? null,
-    },
-    summary: {
-      act_now: rows.filter(r => r.focus.focus === 'act_now' && r.has_activity && !r.is_fresh_launch).length,
-      monitor: rows.filter(r => r.focus.focus === 'monitor' && r.has_activity && !r.is_fresh_launch).length,
-      recovering: rows.filter(r => r.focus.focus === 'recovering' && r.has_activity && !r.is_fresh_launch).length,
-      on_track: rows.filter(r => r.focus.focus === 'on_track' && r.has_activity && !r.is_fresh_launch).length,
-      follow_up_due,
-      follow_up_overdue,
-      fresh_launch_count,
-    },
-    pending_interventions,
-    clients: rows,
-  };
 }
 
 /** Same matured 30d window Client Success uses by default (ends MATURITY_DAYS before today). */

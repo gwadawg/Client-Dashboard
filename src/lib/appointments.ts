@@ -1,4 +1,5 @@
 import type { createServiceClient } from './supabase';
+import { needsAgentCredit } from './credit-queue-eligibility';
 import { liveClientFilter } from './db-helpers';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
@@ -139,6 +140,106 @@ export function matchOutcome(booking: BookingKey, index: OutcomeIndex): OutcomeR
   return undefined;
 }
 
+export type BookingAgentSource = {
+  id: string;
+  agent_name: string | null;
+  external_id?: string | null;
+  ghl_contact_id?: string | null;
+  scheduled_at?: string | null;
+};
+
+/** True when a credited booking agent should be copied onto an outcome row. */
+export function shouldSyncOutcomeAgent(
+  bookingAgent: string | null | undefined,
+  outcomeAgent: string | null | undefined,
+): boolean {
+  const booked = textField(bookingAgent);
+  if (!booked || needsAgentCredit(booked)) return false;
+  return needsAgentCredit(outcomeAgent);
+}
+
+async function findLinkedOutcomes(
+  service: ServiceClient,
+  booking: BookingAgentSource,
+): Promise<Array<{ id: string; agent_name: string | null }>> {
+  const outcomes: Array<{ id: string; agent_name: string | null }> = [];
+  const seen = new Set<string>();
+
+  const addRows = (rows: Array<{ id: string; agent_name: string | null }> | null) => {
+    for (const row of rows ?? []) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      outcomes.push(row);
+    }
+  };
+
+  {
+    const { data, error } = await service
+      .from('events')
+      .select('id, agent_name')
+      .in('event_type', [...OUTCOME_EVENT_TYPES])
+      .filter('raw->>appointment_event_id', 'eq', booking.id);
+    if (error) throw new Error(error.message);
+    addRows(data);
+  }
+
+  if (booking.external_id) {
+    const { data, error } = await service
+      .from('events')
+      .select('id, agent_name')
+      .in('event_type', [...OUTCOME_EVENT_TYPES])
+      .eq('external_id', booking.external_id);
+    if (error) throw new Error(error.message);
+    addRows(data);
+  }
+
+  if (booking.ghl_contact_id && booking.scheduled_at) {
+    const { data, error } = await service
+      .from('events')
+      .select('id, agent_name')
+      .in('event_type', [...OUTCOME_EVENT_TYPES])
+      .eq('ghl_contact_id', booking.ghl_contact_id)
+      .eq('scheduled_at', booking.scheduled_at);
+    if (error) throw new Error(error.message);
+    addRows(data);
+  }
+
+  return outcomes;
+}
+
+/** Copy a credited booking agent onto linked show/no-show/outcome rows that are still null. */
+export async function propagateBookingAgentToOutcomes(
+  service: ServiceClient,
+  booking: BookingAgentSource,
+  opts?: { dryRun?: boolean },
+): Promise<{ updated: number; outcome_ids: string[] }> {
+  const agentName = textField(booking.agent_name);
+  if (!agentName || needsAgentCredit(agentName)) {
+    return { updated: 0, outcome_ids: [] };
+  }
+
+  const outcomes = await findLinkedOutcomes(service, booking);
+  const outcome_ids: string[] = [];
+
+  for (const outcome of outcomes) {
+    if (!shouldSyncOutcomeAgent(agentName, outcome.agent_name)) continue;
+    if (opts?.dryRun) {
+      outcome_ids.push(outcome.id);
+      continue;
+    }
+    const { data, error } = await service
+      .from('events')
+      .update({ agent_name: agentName })
+      .eq('id', outcome.id)
+      .select('id')
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data) outcome_ids.push(data.id);
+  }
+
+  return { updated: outcome_ids.length, outcome_ids };
+}
+
 function findBookedByExternalId(service: ServiceClient, external_id: string) {
   return service
     .from('events')
@@ -257,12 +358,12 @@ export async function setAppointmentOutcome(
   //    than duplicate. Try precise id keys first (appointment id / booking event
   //    id); fall back to lead + appointment time, since most historical outcomes
   //    are only linked that way and we must not create a second outcome row.
-  let existingOutcome: { id: string; event_type: string } | null = null;
+  let existingOutcome: { id: string; event_type: string; agent_name: string | null } | null = null;
 
   {
     let q = service
       .from('events')
-      .select('id, event_type')
+      .select('id, event_type, agent_name')
       .in('event_type', [...OUTCOME_EVENT_TYPES])
       .order('occurred_at', { ascending: false })
       .limit(1);
@@ -277,7 +378,7 @@ export async function setAppointmentOutcome(
   if (!existingOutcome && bookedRow.ghl_contact_id && bookedRow.scheduled_at) {
     const { data, error } = await service
       .from('events')
-      .select('id, event_type')
+      .select('id, event_type, agent_name')
       .in('event_type', [...OUTCOME_EVENT_TYPES])
       .eq('ghl_contact_id', bookedRow.ghl_contact_id)
       .eq('scheduled_at', bookedRow.scheduled_at)
@@ -318,12 +419,21 @@ export async function setAppointmentOutcome(
   // 3b) Existing outcome: no-op when unchanged, otherwise correct it in place.
   if (existingOutcome) {
     if (existingOutcome.event_type === event_type) {
+      const agentSynced = shouldSyncOutcomeAgent(bookedRow.agent_name, existingOutcome.agent_name);
+      if (agentSynced) {
+        const { error: syncError } = await service
+          .from('events')
+          .update({ agent_name: bookedRow.agent_name })
+          .eq('id', existingOutcome.id);
+        if (syncError) return { ok: false, status: 500, body: { error: syncError.message } };
+      }
       return {
         ok: true,
         status: 200,
         body: {
           success: true,
-          updated: false,
+          updated: agentSynced,
+          agent_synced: agentSynced,
           matched_by: matchedBy,
           outcome_id: existingOutcome.id,
           status: event_type,
@@ -331,11 +441,15 @@ export async function setAppointmentOutcome(
         },
       };
     }
+    const updates: { event_type: OutcomeEventType; agent_name?: string | null } = { event_type };
+    if (shouldSyncOutcomeAgent(bookedRow.agent_name, existingOutcome.agent_name)) {
+      updates.agent_name = bookedRow.agent_name;
+    }
     const { data, error } = await service
       .from('events')
-      .update({ event_type })
+      .update(updates)
       .eq('id', existingOutcome.id)
-      .select('id, event_type')
+      .select('id, event_type, agent_name')
       .single();
     if (error) return { ok: false, status: 500, body: { error: error.message } };
 
@@ -346,6 +460,7 @@ export async function setAppointmentOutcome(
         success: true,
         updated: true,
         corrected: true,
+        agent_synced: 'agent_name' in updates,
         matched_by: matchedBy,
         outcome_id: data.id,
         previous_event_type: existingOutcome.event_type,
@@ -428,6 +543,28 @@ export async function countOverdueUndispositioned(
   service: ServiceClient,
   opts: { clientId?: string | null; liveClientIds?: string[] | null },
 ): Promise<number> {
+  const clientIds = opts.clientId
+    ? [opts.clientId]
+    : opts.liveClientIds
+      ? liveClientFilter(opts.liveClientIds)
+      : null;
+
+  const { data: rpcCount, error: rpcError } = await service.rpc('count_overdue_undispositioned', {
+    p_client_ids: clientIds,
+    p_as_of: new Date().toISOString(),
+  });
+
+  if (!rpcError && (typeof rpcCount === 'number' || typeof rpcCount === 'string')) {
+    return Number(rpcCount) || 0;
+  }
+  if (
+    rpcError &&
+    !/count_overdue_undispositioned|Could not find the function|schema cache/i.test(rpcError.message)
+  ) {
+    throw new Error(rpcError.message);
+  }
+
+  // Fallback when RPC is not deployed yet.
   const nowIso = new Date().toISOString();
 
   const scopeClient = <T extends {
@@ -439,7 +576,6 @@ export async function countOverdueUndispositioned(
     return q;
   };
 
-  // Bookings whose scheduled time is already in the past.
   const bookings = await fetchAllRows<BookingKey>((from, to) => {
     let q = service
       .from('events')
@@ -452,8 +588,6 @@ export async function countOverdueUndispositioned(
   });
   if (bookings.length === 0) return 0;
 
-  // Every outcome in the same client scope (no date bound — an outcome resolves
-  // its booking whenever it was recorded).
   const outcomes = await fetchAllRows<OutcomeRecord>((from, to) => {
     let q = service
       .from('events')

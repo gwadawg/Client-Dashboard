@@ -64,6 +64,35 @@ function n(value: unknown): number {
   return Number.isFinite(x) ? x : 0;
 }
 
+export function emptySqlKpiCounts(): SqlKpiCounts {
+  return {
+    new_leads: 0,
+    qualified_leads: 0,
+    hot_leads: 0,
+    out_of_state_leads: 0,
+    booked_appointments: 0,
+    appointment_cancelled: 0,
+    shows: 0,
+    no_shows: 0,
+    lo_bailed: 0,
+    loan_processing: 0,
+    outbound_dials: 0,
+    pickups: 0,
+    conversations: 0,
+    callbacks: 0,
+    live_transfers: 0,
+    claimed: 0,
+    proposals_sent: 0,
+    closed: 0,
+    unique_booked_appointments: 0,
+    unique_hand_raises: 0,
+    unique_conversations: 0,
+    proposals_made: 0,
+    submissions_made: 0,
+    funded_loans: 0,
+  };
+}
+
 export function parseSqlKpiCounts(raw: unknown): SqlKpiCounts | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
@@ -93,6 +122,21 @@ export function parseSqlKpiCounts(raw: unknown): SqlKpiCounts | null {
     submissions_made: n(o.submissions_made),
     funded_loans: n(o.funded_loans),
   };
+}
+
+/** Parse rows from dashboard_kpi_counts_by_client into a client_id → counts map. */
+export function parseSqlKpiCountsByClient(raw: unknown): Map<string, SqlKpiCounts> {
+  const map = new Map<string, SqlKpiCounts>();
+  if (!Array.isArray(raw)) return map;
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const o = row as Record<string, unknown>;
+    const id = String(o.client_id ?? '');
+    if (!id) continue;
+    const counts = parseSqlKpiCounts(o);
+    if (counts) map.set(id, counts);
+  }
+  return map;
 }
 
 export function metricsFromSqlCounts(
