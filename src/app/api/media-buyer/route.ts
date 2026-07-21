@@ -12,6 +12,7 @@ import {
   type AdLibraryMeta,
   type AdMetaRow,
 } from '@/lib/ad-performance';
+import { createTtlCache } from '@/lib/ttl-cache';
 
 // Funnel events we attribute to an ad (plus 'lead' which carries the ad name).
 const FUNNEL_EVENT_TYPES = ['lead', 'appointment_booked', 'show', 'no_show', 'loan_funded'];
@@ -22,6 +23,8 @@ const META_SELECT = 'client_id, ad_name, insight_date, spend, impressions, click
 
 const LIBRARY_SELECT =
   'id, ad_name, status, platform, ad_format, product, summary, visual_notes, drive_url, thumbnail_url';
+
+const mediaBuyerCache = createTtlCache<unknown>(45_000);
 
 function stripClientIds<T extends { client_ids?: string[] }>(row: T): Omit<T, 'client_ids'> {
   const { client_ids: _omit, ...rest } = row;
@@ -40,6 +43,20 @@ export async function GET(req: Request) {
   const end_date = searchParams.get('end_date');
   const adParam = searchParams.get('ad');
   const libraryIdParam = searchParams.get('library_id');
+
+  const cacheKey = [
+    client_id ?? '',
+    start_date ?? '',
+    end_date ?? '',
+    adParam ?? '',
+    libraryIdParam ?? '',
+  ].join('|');
+  const cached = mediaBuyerCache.get(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached, {
+      headers: { 'Cache-Control': 'private, max-age=20' },
+    });
+  }
 
   let liveClientIds: string[] | null = null;
   if (!client_id) liveClientIds = await getLiveClientIds(ctx.service);
@@ -94,6 +111,13 @@ export async function GET(req: Request) {
   const aliasRows = (aliases ?? []) as AdLibraryAliasRow[];
   const resolver = new AdLibraryResolver(libraryRows, aliasRows);
 
+  const respond = (payload: unknown) => {
+    mediaBuyerCache.set(cacheKey, payload);
+    return NextResponse.json(payload, {
+      headers: { 'Cache-Control': 'private, max-age=20' },
+    });
+  };
+
   const attachClientNames = async (
     drilldown: ReturnType<typeof buildAdDrilldown>,
   ) => {
@@ -122,12 +146,12 @@ export async function GET(req: Request) {
     }
     const variantNames = resolver.variantNamesFor(lib.id, lib.ad_name);
     const drilldown = buildMultiAdDrilldown(lib.ad_name, variantNames, metaRows, eventRows, lib.id);
-    return NextResponse.json(await attachClientNames(drilldown));
+    return respond(await attachClientNames(drilldown));
   }
 
   if (adParam) {
     const drilldown = buildAdDrilldown(adParam, metaRows, eventRows);
-    return NextResponse.json(await attachClientNames(drilldown));
+    return respond(await attachClientNames(drilldown));
   }
 
   const perName = aggregateAdPerformance(metaRows, eventRows);
@@ -151,5 +175,5 @@ export async function GET(req: Request) {
     return stripped;
   });
 
-  return NextResponse.json({ ads });
+  return respond({ ads });
 }

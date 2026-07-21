@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { FRESH_LAUNCH_DAYS, FOCUS_STYLES, type ClientFocus, type HealthTier } from "@/lib/client-health";
+import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
 
 type OpsCounts = {
   active: number;
@@ -194,12 +195,21 @@ export default function OpsOverview() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const cacheKey = "ops-overview";
+    const peek = peekCachedJson<OpsPayload>(cacheKey);
+    if (peek && !peek.error) {
+      setData(peek);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
-      const res = await fetch("/api/ops-overview");
-      const json = (await res.json()) as OpsPayload;
-      if (!res.ok) {
+      const json = await cachedJsonFetch<OpsPayload>(cacheKey, "/api/ops-overview", {
+        preferCache: false,
+        staleTime: 45_000,
+      });
+      if (json.error) {
         setError(json.error ?? "Failed to load ops overview");
         setData(null);
       } else {

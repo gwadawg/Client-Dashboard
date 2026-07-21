@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { getLiveClientIds } from '@/lib/db-helpers';
 import { countOverdueUndispositioned } from '@/lib/appointments';
+import { createTtlCache } from '@/lib/ttl-cache';
+
+const overdueCache = createTtlCache<{ count: number }>(60_000);
 
 // Count of past-due, un-dispositioned appointments for the dashboard. Scoped by
 // client (or live set) but intentionally NOT by date — it always reflects the
@@ -16,6 +19,14 @@ export async function GET(req: Request) {
   const client_id = searchParams.get('client_id');
   const live_only = searchParams.get('live_only') === 'true';
 
+  const cacheKey = [client_id ?? '', live_only ? '1' : '0'].join('|');
+  const cached = overdueCache.get(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached, {
+      headers: { 'Cache-Control': 'private, max-age=30' },
+    });
+  }
+
   let liveClientIds: string[] | null = null;
   if (live_only && !client_id) {
     liveClientIds = await getLiveClientIds(ctx.service);
@@ -26,7 +37,11 @@ export async function GET(req: Request) {
       clientId: client_id,
       liveClientIds,
     });
-    return NextResponse.json({ count });
+    const payload = { count };
+    overdueCache.set(cacheKey, payload);
+    return NextResponse.json(payload, {
+      headers: { 'Cache-Control': 'private, max-age=30' },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to count overdue appointments';
     return NextResponse.json({ error: message }, { status: 500 });

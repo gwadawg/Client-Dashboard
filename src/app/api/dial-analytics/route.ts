@@ -3,9 +3,12 @@ import { getAuthContext, isAuthError, requirePermission } from "@/lib/api-auth";
 import { getLiveClientIds, liveClientFilter } from "@/lib/db-helpers";
 import { computeDialAnalytics } from "@/lib/dial-analytics";
 import { parseSpeedToLeadParams } from "@/lib/speed-to-lead";
+import { createTtlCache } from "@/lib/ttl-cache";
 
 const EVENT_SELECT =
   "agent_name, client_id, event_type, is_pickup, is_conversation, is_qualified, speed_to_lead_seconds, occurred_at, occurred_at_has_time, lead_created_at, dial_source, ghl_contact_id, lead_phone, lead_name, phone_number_used";
+
+const dialAnalyticsCache = createTtlCache<unknown>(45_000);
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -19,6 +22,21 @@ export async function GET(req: Request) {
   const startDate = searchParams.get("startDate");
   const endDate = searchParams.get("endDate");
   const speedToLeadOptions = parseSpeedToLeadParams(searchParams);
+
+  const cacheKey = [
+    client_id ?? "",
+    live_only ? "1" : "0",
+    startDate ?? "",
+    endDate ?? "",
+    searchParams.get("stl_mode") ?? "",
+    searchParams.get("stl_cap") ?? "",
+  ].join("|");
+  const cached = dialAnalyticsCache.get(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached, {
+      headers: { "Cache-Control": "private, max-age=20" },
+    });
+  }
 
   let liveClientIds: string[] | null = null;
   if (live_only && !client_id) {
@@ -60,5 +78,8 @@ export async function GET(req: Request) {
     undefined,
     speedToLeadOptions,
   );
-  return NextResponse.json(result);
+  dialAnalyticsCache.set(cacheKey, result);
+  return NextResponse.json(result, {
+    headers: { "Cache-Control": "private, max-age=20" },
+  });
 }

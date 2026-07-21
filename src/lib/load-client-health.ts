@@ -233,19 +233,23 @@ export async function loadClientHealthBundle(
     actionsByClient.set(a.client_id, list);
   }
 
+  const allEventsByClient = groupEventsByClient(allEvents);
+
   const rows = (clients ?? []).map(c => {
     const benchmarks = (c.kpi_benchmarks ?? null) as ClientKpiBenchmarks | null;
     const reporting_type = normalizeReportingType(c.reporting_type);
     const isHe = usesCallCenterKpiLayout(reporting_type);
     const launch_date = (c.launch_date as string | null) ?? null;
-    const clientEvents = allEvents.filter(e => e.client_id === c.id);
+    const clientEvents = allEventsByClient.get(c.id) ?? [];
     const freshWin =
       launch_date && isFreshLaunchClient(launch_date, today)
         ? freshLaunchWindow(launch_date, today)
         : null;
     const freshLaunchEvents = freshWin
-      ? filterEventsToRange(clientEvents, freshWin.start, freshWin.end).map(
-          ({ client_id: _cid, ...row }) => row,
+      ? filterEventsToRange(
+          clientEvents as Array<EventRow & { occurred_at: string }>,
+          freshWin.start,
+          freshWin.end,
         )
       : [];
     const freshLaunchSpend = freshWin

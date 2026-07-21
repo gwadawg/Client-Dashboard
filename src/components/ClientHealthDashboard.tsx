@@ -40,6 +40,7 @@ import ClientHealthDetail from "./ClientHealthDetail";
 import PendingInterventionsPanel from "./PendingInterventionsPanel";
 import { churnFormHref } from "@/lib/internal-forms";
 import { usesCallCenterKpiLayout } from "@/lib/kpi-layouts";
+import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
 
 // The grading view owns its own date range, deliberately decoupled from the global
 // explore filter. A health verdict must use a consistent, defined period so a
@@ -273,32 +274,65 @@ export default function ClientHealthDashboard(_props: Props) {
 
   useEffect(() => {
     if (!startDate || !endDate) return;
-    setLoading(true);
     const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
     if (liveOnly) params.set("live_only", "true");
-    fetch(`/api/client-health?${params}`)
-      .then(r => r.json())
+    const cacheKey = `client-health|${params.toString()}`;
+
+    type Bundle = {
+      clients?: typeof rows;
+      maturity?: typeof maturity;
+      summary?: {
+        act_now?: number;
+        monitor?: number;
+        recovering?: number;
+        on_track?: number;
+        follow_up_overdue?: number;
+      };
+      pending_interventions?: typeof pendingInterventions;
+      prior_period?: { start: string; end: string };
+    };
+
+    const apply = (d: Bundle) => {
+      setRows(d.clients ?? []);
+      setMaturity(d.maturity ?? null);
+      if (d.summary) {
+        setSummaryStats({
+          act_now: d.summary.act_now ?? 0,
+          monitor: d.summary.monitor ?? 0,
+          recovering: d.summary.recovering ?? 0,
+          on_track: d.summary.on_track ?? 0,
+          follow_up_overdue: d.summary.follow_up_overdue ?? 0,
+        });
+      }
+      setPendingInterventions(d.pending_interventions ?? []);
+      if (d.prior_period) {
+        setPriorLabel(`${d.prior_period.start} → ${d.prior_period.end}`);
+      } else {
+        setPriorLabel("");
+      }
+    };
+
+    const peek = peekCachedJson<Bundle>(cacheKey);
+    if (peek?.clients) {
+      apply(peek);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    const ac = new AbortController();
+    cachedJsonFetch<Bundle>(cacheKey, `/api/client-health?${params}`, {
+      signal: ac.signal,
+      preferCache: false,
+    })
       .then(d => {
-        setRows(d.clients ?? []);
-        setMaturity(d.maturity ?? null);
-        if (d.summary) {
-          setSummaryStats({
-            act_now: d.summary.act_now ?? 0,
-            monitor: d.summary.monitor ?? 0,
-            recovering: d.summary.recovering ?? 0,
-            on_track: d.summary.on_track ?? 0,
-            follow_up_overdue: d.summary.follow_up_overdue ?? 0,
-          });
-        }
-        setPendingInterventions(d.pending_interventions ?? []);
-        if (d.prior_period) {
-          setPriorLabel(`${d.prior_period.start} → ${d.prior_period.end}`);
-        } else {
-          setPriorLabel("");
-        }
-        setLoading(false);
+        if (!ac.signal.aborted) apply(d);
       })
-      .catch(() => setLoading(false));
+      .catch(() => undefined)
+      .finally(() => {
+        if (!ac.signal.aborted) setLoading(false);
+      });
+    return () => ac.abort();
   }, [startDate, endDate, liveOnly]);
 
   const isCallCenterSegment = clientSegment === "CALL_CENTER";

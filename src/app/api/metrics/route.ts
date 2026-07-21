@@ -1,13 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
-import { calculateMetrics } from '@/lib/metrics';
-import { fetchCombinedSpendForMetrics } from '@/lib/spend';
 import {
-  getClientIdsByReportingType,
-  getLiveClientIds,
-  intersectClientFilters,
-  liveClientFilter,
-} from '@/lib/db-helpers';
+  loadMetricsBundle,
+  metricsCacheHeaders,
+} from '@/lib/load-metrics-bundle';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -22,48 +18,26 @@ export async function GET(req: Request) {
   const reporting_type = searchParams.get('reporting_type');
   const start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
+  const include_trends = searchParams.get('include_trends') === '1';
+  const granularity = searchParams.get('granularity');
 
-  let scopedClientIds: string[] | null = null;
-  if (live_only && !client_id) {
-    scopedClientIds = await getLiveClientIds(ctx.service);
-  }
-  if (reporting_type && !client_id) {
-    const offerIds = await getClientIdsByReportingType(ctx.service, reporting_type);
-    scopedClientIds = intersectClientFilters(scopedClientIds, offerIds);
-  }
-
-  let eventsQuery = ctx.service
-    .from('events')
-    .select('client_id, event_type, ghl_contact_id, lead_phone, lead_email, lead_name, phone_number_used, agent_name, occurred_at, occurred_at_has_time, lead_created_at, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state');
-
-  if (client_id) eventsQuery = eventsQuery.eq('client_id', client_id);
-  else if (scopedClientIds) eventsQuery = eventsQuery.in('client_id', liveClientFilter(scopedClientIds));
-  if (start_date) eventsQuery = eventsQuery.gte('occurred_at', `${start_date}T00:00:00.000Z`);
-  if (end_date)   eventsQuery = eventsQuery.lte('occurred_at', `${end_date}T23:59:59.999Z`);
-  eventsQuery = eventsQuery.limit(100000);
-
-  const [{ data: events, error: eventsError }, spendRows, { data: availability, error: availabilityError }] =
-    await Promise.all([
-      eventsQuery,
-      fetchCombinedSpendForMetrics(ctx.service, {
-        client_id,
-        client_ids: scopedClientIds,
-        start_date,
-        end_date,
-      }).then(
-        (rows) => ({ data: rows, error: null }),
-        (error: Error) => ({ data: null, error }),
-      ),
-      ctx.service.from('setter_availability').select('weekday, time_start, time_end, is_live'),
-    ]);
-
-  if (eventsError || spendRows.error || availabilityError)
-    return NextResponse.json(
-      { error: eventsError?.message ?? spendRows.error?.message ?? availabilityError?.message },
-      { status: 500 },
-    );
-
-  return NextResponse.json(
-    calculateMetrics(events ?? [], spendRows.data ?? [], availability ?? []),
+  const { data, error } = await loadMetricsBundle(
+    ctx.service,
+    { client_id, live_only, reporting_type, start_date, end_date },
+    { includeTrends: include_trends, granularity },
   );
+
+  if (error || !data) {
+    return NextResponse.json({ error: error ?? 'Metrics load failed' }, { status: 500 });
+  }
+
+  // Backward-compatible flat metrics payload; optional nested trends for dashboard.
+  if (include_trends) {
+    return NextResponse.json(
+      { ...data.metrics, trends: data.trends },
+      { headers: metricsCacheHeaders() },
+    );
+  }
+
+  return NextResponse.json(data.metrics, { headers: metricsCacheHeaders() });
 }

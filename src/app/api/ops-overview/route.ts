@@ -13,6 +13,9 @@ import { getDateRange, ymdLocal } from '@/lib/date-presets';
 import { isKickoffIncomplete } from '@/lib/kickoff';
 import { defaultHealthGradingRange, loadClientHealthBundle } from '@/lib/load-client-health';
 import { listUpcomingCsAppointments } from '@/lib/cs-appointments';
+import { createTtlCache } from '@/lib/ttl-cache';
+
+const opsOverviewCache = createTtlCache<unknown>(45_000);
 
 const ONBOARDING_STATUSES = new Set(['new_account', 'onboarding']);
 
@@ -73,6 +76,14 @@ export async function GET() {
   const todayLocal = ymdLocal(new Date());
   const healthRange = defaultHealthGradingRange();
   const weekRange = getDateRange('last_7');
+
+  const cacheKey = [todayLocal, healthRange.start, healthRange.end, weekRange.start, weekRange.end].join('|');
+  const cached = opsOverviewCache.get(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached, {
+      headers: { 'Cache-Control': 'private, max-age=20' },
+    });
+  }
 
   try {
     const [
@@ -332,7 +343,7 @@ export async function GET() {
     }));
     const cs_unmapped_count = cs_upcoming.filter(a => !a.client_id).length;
 
-    return NextResponse.json({
+    const payload = {
       generated_at: new Date().toISOString(),
       today: todayLocal,
       health_period: health.period,
@@ -367,6 +378,10 @@ export async function GET() {
         cs_upcoming:
           'Scheduled CS onboarding / launch / check-in appointments in the next 14 days (GHL CS calendars)',
       },
+    };
+    opsOverviewCache.set(cacheKey, payload);
+    return NextResponse.json(payload, {
+      headers: { 'Cache-Control': 'private, max-age=20' },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

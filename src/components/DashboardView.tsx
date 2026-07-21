@@ -41,6 +41,7 @@ import {
 import { hasPermission, canViewClientRevenue, canAccessAutomations, type AllowedPermissions } from "@/lib/permissions";
 import DateRangeFilter from "./DateRangeFilter";
 import { type DatePreset, getDateRange } from "@/lib/date-presets";
+import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
 
 function TabLoading({ label = "Loading…" }: { label?: string }) {
   return (
@@ -507,85 +508,141 @@ export default function DashboardView({
     else if (offerScope) params.set("reporting_type", offerScope);
   };
 
+  const applyTrendsPayload = (d: {
+    error?: unknown;
+    granularity?: string;
+    kpiSeries?: KpiTimelineBucket[];
+    series?: CostTrendPoint[];
+  } | null) => {
+    if (!d || d.error) {
+      setTrendsError(
+        d && typeof d.error === "string" ? d.error : "Failed to load trends",
+      );
+      setTrends(null);
+      setSparkMap(null);
+      return;
+    }
+    const kpiSeries = (d.kpiSeries ?? []) as KpiTimelineBucket[];
+    setTrendsError("");
+    setTrends({
+      granularity: d.granularity === "week" ? "week" : "day",
+      kpiSeries,
+      series: (d.series ?? []) as CostTrendPoint[],
+    });
+    setSparkMap(buildSparkMap(kpiSeries));
+  };
+
+  // Single round-trip for KPIs + trends on the dashboard (one events pull server-side).
+  // KPI simulator still hits metrics only. Client cache keeps tab revisits warm.
   useEffect(() => {
     if (view !== "dashboard" && view !== "kpi_simulator") return;
-    const { start, end } = preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
-    queueMicrotask(() => setMetricsLoading(true));
+
+    const { start, end } =
+      preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
+    const wantTrends = view === "dashboard" && Boolean(start && end);
     const params = new URLSearchParams();
     appendDashboardMetricsParams(params);
     if (start) params.set("start_date", start);
     if (end) params.set("end_date", end);
-    fetch(`/api/metrics?${params}`)
-      .then(r => r.json())
-      .then(d => { setMetrics(d); setMetricsLoading(false); })
-      .catch(() => setMetricsLoading(false));
+    if (wantTrends) params.set("include_trends", "1");
+
+    const cacheKey = `metrics|${params.toString()}`;
+    const url = `/api/metrics?${params}`;
+    type Bundle = MetricsResult & {
+      trends?: TrendsPayload | null;
+      error?: string;
+    };
+
+    const paint = (d: Bundle) => {
+      if (d.error) {
+        setTrendsError(d.error);
+        return;
+      }
+      const { trends: bundledTrends, error: _ignored, ...rest } = d;
+      setMetrics(rest as MetricsResult);
+      if (wantTrends) {
+        applyTrendsPayload(bundledTrends ?? null);
+      }
+    };
+
+    const peek = peekCachedJson<Bundle>(cacheKey);
+    if (peek && !peek.error) {
+      paint(peek);
+      setMetricsLoading(false);
+      setTrendsLoading(false);
+    } else {
+      setMetricsLoading(true);
+      if (wantTrends) {
+        setTrendsLoading(true);
+        setTrendsError("");
+      }
+    }
+
+    if (!wantTrends) {
+      setSparkMap(null);
+      setTrends(null);
+      setTrendsError("");
+      setTrendsLoading(false);
+    }
+
+    const ac = new AbortController();
+    cachedJsonFetch<Bundle>(cacheKey, url, { signal: ac.signal, preferCache: false })
+      .then(d => {
+        if (ac.signal.aborted) return;
+        paint(d);
+      })
+      .catch(() => {
+        if (ac.signal.aborted) return;
+        if (wantTrends) {
+          setTrendsError("Failed to load trends");
+          setTrends(null);
+          setSparkMap(null);
+        }
+      })
+      .finally(() => {
+        if (ac.signal.aborted) return;
+        setMetricsLoading(false);
+        setTrendsLoading(false);
+      });
+
+    return () => ac.abort();
   }, [view, selectedClientId, offerScope, preset, customStart, customEnd]);
 
   // Previous-period comparison: fetch the equal-length window immediately before
   // the current range so each KPI card can show a vs-prev delta.
   useEffect(() => {
-    if (view !== "dashboard" || !compare) { setPrevMetrics(null); return; }
-    const { start, end } = preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
+    if (view !== "dashboard" || !compare) {
+      setPrevMetrics(null);
+      return;
+    }
+    const { start, end } =
+      preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
     const prev = previousRange(start, end);
-    if (!prev) { setPrevMetrics(null); return; }
+    if (!prev) {
+      setPrevMetrics(null);
+      return;
+    }
     const params = new URLSearchParams();
     appendDashboardMetricsParams(params);
     params.set("start_date", prev.start);
     params.set("end_date", prev.end);
-    fetch(`/api/metrics?${params}`)
-      .then(r => r.json())
-      .then(d => setPrevMetrics(d))
-      .catch(() => setPrevMetrics(null));
-  }, [view, compare, selectedClientId, offerScope, preset, customStart, customEnd]);
+    const cacheKey = `metrics|${params.toString()}`;
+    const peek = peekCachedJson<MetricsResult>(cacheKey);
+    if (peek && !("error" in peek && peek.error)) setPrevMetrics(peek);
 
-  // Trends once for sparklines + rate/cost charts. Skipped for unbounded ranges.
-  useEffect(() => {
-    if (view !== "dashboard") {
-      setSparkMap(null);
-      setTrends(null);
-      setTrendsError("");
-      setTrendsLoading(false);
-      return;
-    }
-    const { start, end } = preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
-    if (!start || !end) {
-      setSparkMap(null);
-      setTrends(null);
-      setTrendsError("");
-      setTrendsLoading(false);
-      return;
-    }
-    queueMicrotask(() => {
-      setTrendsLoading(true);
-      setTrendsError("");
-    });
-    const params = new URLSearchParams({ start_date: start, end_date: end });
-    appendDashboardMetricsParams(params);
-    fetch(`/api/metrics/trends?${params}`)
-      .then(r => r.json())
+    const ac = new AbortController();
+    cachedJsonFetch<MetricsResult>(cacheKey, `/api/metrics?${params}`, {
+      signal: ac.signal,
+      preferCache: false,
+    })
       .then(d => {
-        if (d.error) {
-          setTrendsError(typeof d.error === "string" ? d.error : "Failed to load trends");
-          setTrends(null);
-          setSparkMap(null);
-        } else {
-          const kpiSeries = (d.kpiSeries ?? []) as KpiTimelineBucket[];
-          setTrends({
-            granularity: d.granularity === "week" ? "week" : "day",
-            kpiSeries,
-            series: (d.series ?? []) as CostTrendPoint[],
-          });
-          setSparkMap(buildSparkMap(kpiSeries));
-        }
-        setTrendsLoading(false);
+        if (!ac.signal.aborted) setPrevMetrics(d);
       })
       .catch(() => {
-        setTrendsError("Failed to load trends");
-        setTrends(null);
-        setSparkMap(null);
-        setTrendsLoading(false);
+        if (!ac.signal.aborted) setPrevMetrics(null);
       });
-  }, [view, selectedClientId, offerScope, preset, customStart, customEnd]);
+    return () => ac.abort();
+  }, [view, compare, selectedClientId, offerScope, preset, customStart, customEnd]);
 
   // Past-due, un-dispositioned appointment backlog. Deliberately keyed only on
   // the client selection (not the date preset) so it stays a running total.
@@ -594,11 +651,24 @@ export default function DashboardView({
     const params = new URLSearchParams();
     if (selectedClientId === "__live__") params.set("live_only", "true");
     else if (selectedClientId) params.set("client_id", selectedClientId);
-    setOverduePending(null);
-    fetch(`/api/metrics/overdue-appointments?${params}`)
-      .then(r => r.json())
-      .then(d => setOverduePending(typeof d.count === "number" ? d.count : null))
-      .catch(() => setOverduePending(null));
+    const cacheKey = `overdue|${params.toString()}`;
+    const peek = peekCachedJson<{ count?: number }>(cacheKey);
+    if (peek && typeof peek.count === "number") setOverduePending(peek.count);
+    else setOverduePending(null);
+
+    const ac = new AbortController();
+    cachedJsonFetch<{ count?: number }>(cacheKey, `/api/metrics/overdue-appointments?${params}`, {
+      signal: ac.signal,
+      preferCache: false,
+      staleTime: 60_000,
+    })
+      .then(d => {
+        if (!ac.signal.aborted) setOverduePending(typeof d.count === "number" ? d.count : null);
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setOverduePending(null);
+      });
+    return () => ac.abort();
   }, [view, selectedClientId]);
 
   async function handleSignOut() {

@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import { DEFAULT_DISPLAY_TIMEZONE, getZonedHourDay, normalizeTimeZone } from '@/lib/time';
+import { createTtlCache } from '@/lib/ttl-cache';
 
 // Heat map data is gated by the Heat Maps hub permission (legacy per-type keys still honored).
+
+const heatmapCache = createTtlCache<unknown>(45_000);
 
 /** Resolve the IANA zone to bucket an event in: its own lead zone → contact's zone → default. */
 function resolveZone(
@@ -39,8 +42,23 @@ export async function GET(req: Request) {
   const denied = requirePermission(ctx, 'heatmaps');
   if (denied) return denied;
 
+  const cacheKey = [type, client_id ?? '', live_only ? '1' : '0', start_date ?? '', end_date ?? ''].join('|');
+  const cached = heatmapCache.get(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached, {
+      headers: { 'Cache-Control': 'private, max-age=20' },
+    });
+  }
+
   // Capture after narrowing so nested closures (buildContactZones) keep the typed client.
   const service = ctx.service;
+
+  const respond = (payload: unknown) => {
+    heatmapCache.set(cacheKey, payload);
+    return NextResponse.json(payload, {
+      headers: { 'Cache-Control': 'private, max-age=20' },
+    });
+  };
 
   let liveClientIds: string[] | null = null;
   if (live_only && !client_id) {
@@ -66,6 +84,9 @@ export async function GET(req: Request) {
         .not('lead_timezone', 'is', null)
         .not('ghl_contact_id', 'is', null),
     );
+    // Bound to the same window as dials/shows so we don't scan all historical leads.
+    if (start_date) q = q.gte('occurred_at', `${start_date}T00:00:00.000Z`);
+    if (end_date) q = q.lte('occurred_at', `${end_date}T23:59:59.999Z`);
     q = q.limit(100000);
     const { data } = await q;
     const map = new Map<string, string>();
@@ -93,7 +114,7 @@ export async function GET(req: Request) {
       const hd = getZonedHourDay(e.occurred_at, zone);
       if (hd) grid[hd.hour][hd.day]++;
     }
-    return NextResponse.json({ grid });
+    return respond({ grid });
   }
 
   if (type === 'pickup_rate') {
@@ -120,7 +141,7 @@ export async function GET(req: Request) {
     const grid = dials.map((row, h) =>
       row.map((t, d) => t > 0 ? Math.round((pickups[h][d] / t) * 100) : -1)
     );
-    return NextResponse.json({ grid });
+    return respond({ grid });
   }
 
   if (type === 'show_rate') {
@@ -147,7 +168,7 @@ export async function GET(req: Request) {
     const grid = total.map((row, h) =>
       row.map((t, d) => t > 0 ? Math.round((shows[h][d] / t) * 100) : -1)
     );
-    return NextResponse.json({ grid });
+    return respond({ grid });
   }
 
   return NextResponse.json({ error: 'Invalid type' }, { status: 400 });

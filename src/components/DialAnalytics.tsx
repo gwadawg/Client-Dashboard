@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import KpiCard from "./kpi/KpiCard";
 import HeatMap from "./HeatMap";
+import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
 import type {
   DialAnalyticsAgentRow,
   DialAnalyticsClientRow,
@@ -617,7 +618,6 @@ export default function DialAnalytics({ startDate, endDate, clientId, liveOnly }
 
   useEffect(() => {
     if (!startDate || !endDate) return;
-    setLoading(true);
     const params = new URLSearchParams({ startDate, endDate });
     if (clientId) params.set("client_id", clientId);
     else if (liveOnly) params.set("live_only", "true");
@@ -625,13 +625,29 @@ export default function DialAnalytics({ startDate, endDate, clientId, liveOnly }
     if (leadAfter) params.set("lead_after", leadAfter);
     if (leadBefore) params.set("lead_before", leadBefore);
 
-    fetch(`/api/dial-analytics?${params}`)
-      .then(r => r.json())
+    const cacheKey = `dial-analytics|${params.toString()}`;
+    type Payload = { summary?: unknown } | null;
+    const peek = peekCachedJson<Payload>(cacheKey);
+    if (peek?.summary) {
+      setData(peek as NonNullable<typeof data>);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    const ac = new AbortController();
+    cachedJsonFetch<Payload>(cacheKey, `/api/dial-analytics?${params}`, {
+      signal: ac.signal,
+      preferCache: false,
+    })
       .then(d => {
-        setData(d?.summary ? d : null);
-        setLoading(false);
+        if (!ac.signal.aborted) setData(d?.summary ? (d as NonNullable<typeof data>) : null);
       })
-      .catch(() => setLoading(false));
+      .catch(() => undefined)
+      .finally(() => {
+        if (!ac.signal.aborted) setLoading(false);
+      });
+    return () => ac.abort();
   }, [startDate, endDate, clientId, liveOnly, useSetterSchedule, leadAfter, leadBefore]);
 
   const trendChart = useMemo(() => {

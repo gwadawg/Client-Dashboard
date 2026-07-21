@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
 
 type Props = {
   type: "show_rate" | "pickup_rate" | "new_leads";
@@ -81,17 +82,34 @@ export default function HeatMap({ type, startDate, endDate, clientId, liveOnly }
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
     const params = new URLSearchParams({ type });
     if (startDate) params.set("start_date", startDate);
     if (endDate)   params.set("end_date", endDate);
     if (liveOnly)  params.set("live_only", "true");
     else if (clientId) params.set("client_id", clientId);
 
-    fetch(`/api/heatmap?${params}`)
-      .then(r => r.json())
-      .then(d => { setGrid(d.grid ?? null); setLoading(false); })
-      .catch(() => setLoading(false));
+    const cacheKey = `heatmap|${params.toString()}`;
+    const peek = peekCachedJson<{ grid?: number[][] }>(cacheKey);
+    if (peek?.grid) {
+      setGrid(peek.grid);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    const ac = new AbortController();
+    cachedJsonFetch<{ grid?: number[][] }>(cacheKey, `/api/heatmap?${params}`, {
+      signal: ac.signal,
+      preferCache: false,
+    })
+      .then(d => {
+        if (!ac.signal.aborted) setGrid(d.grid ?? null);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!ac.signal.aborted) setLoading(false);
+      });
+    return () => ac.abort();
   }, [type, startDate, endDate, clientId, liveOnly]);
 
   const TYPE_LABELS: Record<string, string> = {
