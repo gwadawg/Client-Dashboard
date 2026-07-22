@@ -239,3 +239,28 @@ export function getZonedHourDay(
   if (!parts) return null;
   return { hour: Math.floor(parts.minutesOfDay / 60), day: parts.weekday };
 }
+
+/**
+ * Format an instant as YYYY-MM-DD in `timeZone` (en-CA → ISO-like date).
+ * Use this instead of `toISOString().split('T')[0]` for floor/ops "today" buckets —
+ * UTC calendar day drifts from America/Sao_Paulo after 21:00 local.
+ */
+export function ymdInTimeZone(
+  date: Date,
+  timeZone: string = CALL_CENTER_TIMEZONE,
+): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+/** Local Y-M-D in CALL_CENTER_TIMEZONE for "now". */
+export function todayYmdInCallCenterTz(
+  now: Date = new Date(),
+  timeZone: string = CALL_CENTER_TIMEZONE,
+): string {
+  return ymdInTimeZone(now, timeZone);
+}
