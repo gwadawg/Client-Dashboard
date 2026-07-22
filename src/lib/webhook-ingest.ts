@@ -11,12 +11,13 @@ import {
   INGEST_SOURCE_TIMEZONE,
 } from '@/lib/time';
 import { onEventTouchpointHooks } from '@/lib/cs-touchpoint-rules';
+import { supersedePriorPendingBookings } from '@/lib/appointments';
 
 export const VALID_EVENT_TYPES = [
   'dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked',
   'live_transfer', 'proposal_sent', 'loan_processing', 'closed', 'out_of_state_lead',
   'proposal_made', 'submission_made', 'loan_funded',
-  'appointment_cancelled', 'lo_bailed', 'lo_audit', 'claimed',
+  'appointment_cancelled', 'appointment_rescheduled', 'lo_bailed', 'lo_audit', 'claimed',
 ] as const;
 
 const QUOTE_ONLY_VALUE = /^["'`\s]+$/;
@@ -103,6 +104,7 @@ export type IngestWebhookResult =
       event_id?: string;
       duplicate?: boolean;
       skipped?: boolean;
+      superseded_ids?: string[];
       normalized_event_type: string;
       source_event_type: string;
     }
@@ -308,48 +310,104 @@ export async function ingestWebhookEvent(
     normalizedEventType === 'appointment_booked' || normalizedEventType === 'callback_booked';
   const is_ai_booked = isCreditableBooking ? isAiBookedFromPayload(payload) : null;
 
+  const scheduled_at = normalizeTimestamp(payload.scheduled_at, clientTz).iso;
+  const ghl_contact_id = jsonStringField(payload.ghl_contact_id);
+  const lead_name = jsonStringField(payload.lead_name);
+  const lead_phone = jsonStringField(payload.lead_phone);
+  const lead_email = jsonStringField(payload.lead_email);
+  const calendar_name = jsonStringField(payload.calendar_name);
+  const stage_booked = jsonStringField(payload.stage_booked);
+  const previous_external_id = jsonStringField(
+    payload.previous_external_id ?? payload.previous_appointment_id ?? payload.prior_external_id,
+  );
+
+  const eventRow = {
+    client_id,
+    event_type: normalizedEventType,
+    occurred_at: occurredAtIso,
+    occurred_at_has_time: occurredHasTime,
+    lead_created_at,
+    lead_timezone: leadTz,
+    duration_seconds,
+    is_pickup,
+    is_conversation,
+    is_qualified: isLead ? parseYnFlag(payload.is_qualified ?? payload.qualified) : null,
+    is_hot: isLead ? parseYnFlag(payload.is_hot ?? payload.hot) : null,
+    is_out_of_state: isLead ? parseYnFlag(payload.is_out_of_state ?? payload.out_of_state) : null,
+    speed_to_lead_seconds,
+    ghl_contact_id,
+    scheduled_at,
+    external_id,
+    calendar_name,
+    calendar_id,
+    lead_name,
+    lead_phone,
+    lead_email,
+    agent_name: agentName,
+    direction: jsonStringField(payload.direction),
+    call_status: jsonStringField(payload.call_status),
+    recording_url: resolveRecordingUrl(payload),
+    call_summary: jsonStringField(payload.call_summary),
+    phone_number_used: jsonStringField(payload.phone_number_used),
+    dial_source,
+    stage_booked,
+    ad_name,
+    adset_name,
+    campaign_name,
+    utm_source,
+    utm_campaign,
+    utm_content,
+    lead_source: isLead ? lead_source : null,
+    is_ai_booked,
+    raw: payload,
+  };
+
+  // Same GHL appointment id → update scheduled time / metadata in place (reschedule
+  // that keeps appointment.id). Matches acquisition/CS upsert behavior.
+  if (normalizedEventType === 'appointment_booked' && external_id && client_id) {
+    const { data: existing, error: findErr } = await service
+      .from('events')
+      .select('id')
+      .eq('client_id', client_id)
+      .eq('event_type', 'appointment_booked')
+      .eq('external_id', external_id)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (findErr) return { error: findErr.message, status: 500 };
+
+    if (existing?.id) {
+      const { error: updErr } = await service
+        .from('events')
+        .update({
+          scheduled_at,
+          calendar_name,
+          calendar_id,
+          lead_name,
+          lead_phone,
+          lead_email,
+          agent_name: agentName,
+          stage_booked,
+          ghl_contact_id,
+          is_ai_booked,
+          raw: payload,
+        })
+        .eq('id', existing.id);
+      if (updErr) return { error: updErr.message, status: 500 };
+
+      return {
+        ok: true,
+        updated: true,
+        event_id: existing.id,
+        normalized_event_type: normalizedEventType,
+        source_event_type: eventType,
+      };
+    }
+  }
+
   const { data: inserted, error } = await service
     .from('events')
-    .insert({
-      client_id,
-      event_type: normalizedEventType,
-      occurred_at: occurredAtIso,
-      occurred_at_has_time: occurredHasTime,
-      lead_created_at,
-      lead_timezone: leadTz,
-      duration_seconds,
-      is_pickup,
-      is_conversation,
-      is_qualified: isLead ? parseYnFlag(payload.is_qualified ?? payload.qualified) : null,
-      is_hot: isLead ? parseYnFlag(payload.is_hot ?? payload.hot) : null,
-      is_out_of_state: isLead ? parseYnFlag(payload.is_out_of_state ?? payload.out_of_state) : null,
-      speed_to_lead_seconds,
-      ghl_contact_id: jsonStringField(payload.ghl_contact_id),
-      scheduled_at: normalizeTimestamp(payload.scheduled_at, clientTz).iso,
-      external_id,
-      calendar_name: jsonStringField(payload.calendar_name),
-      calendar_id,
-      lead_name: jsonStringField(payload.lead_name),
-      lead_phone: jsonStringField(payload.lead_phone),
-      lead_email: jsonStringField(payload.lead_email),
-      agent_name: agentName,
-      direction: jsonStringField(payload.direction),
-      call_status: jsonStringField(payload.call_status),
-      recording_url: resolveRecordingUrl(payload),
-      call_summary: jsonStringField(payload.call_summary),
-      phone_number_used: jsonStringField(payload.phone_number_used),
-      dial_source,
-      stage_booked: jsonStringField(payload.stage_booked),
-      ad_name,
-      adset_name,
-      campaign_name,
-      utm_source,
-      utm_campaign,
-      utm_content,
-      lead_source: isLead ? lead_source : null,
-      is_ai_booked,
-      raw: payload,
-    })
+    .insert(eventRow)
     .select('id')
     .single();
 
@@ -364,6 +422,24 @@ export async function ingestWebhookEvent(
       };
     }
     return { error: error.message, status: 500 };
+  }
+
+  let superseded_ids: string[] | undefined;
+  if (normalizedEventType === 'appointment_booked' && inserted?.id && client_id) {
+    try {
+      const superseded = await supersedePriorPendingBookings(service, {
+        clientId: client_id,
+        ghlContactId: ghl_contact_id,
+        newEventId: inserted.id,
+        newExternalId: external_id,
+        newCalendarId: calendar_id,
+        newOccurredAt: occurredAtIso,
+        previousExternalId: previous_external_id,
+      });
+      superseded_ids = superseded.superseded_ids;
+    } catch (err) {
+      console.error('[appointments] supersede prior bookings failed', err);
+    }
   }
 
   if (inserted?.id && client_id) {
@@ -382,6 +458,7 @@ export async function ingestWebhookEvent(
   return {
     ok: true,
     event_id: inserted?.id,
+    superseded_ids,
     normalized_event_type: normalizedEventType,
     source_event_type: eventType,
   };

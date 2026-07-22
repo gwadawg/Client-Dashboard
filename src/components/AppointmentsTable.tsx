@@ -10,7 +10,13 @@ type Props = {
   endDate: string;
 };
 
-type AppointmentStatus = "pending" | "show" | "no_show" | "appointment_cancelled" | "lo_bailed";
+type AppointmentStatus =
+  | "pending"
+  | "show"
+  | "no_show"
+  | "appointment_cancelled"
+  | "appointment_rescheduled"
+  | "lo_bailed";
 
 type AppointmentRow = {
   id: string;
@@ -34,17 +40,19 @@ const STATUS_OPTIONS: { value: AppointmentStatus; label: string }[] = [
   { value: "show", label: "Show" },
   { value: "no_show", label: "No Show" },
   { value: "appointment_cancelled", label: "Cancelled" },
+  { value: "appointment_rescheduled", label: "Rescheduled" },
   { value: "lo_bailed", label: "LO Bailed" },
 ];
 
 // Each status gets a distinct colour; pending is amber so un-dispositioned
 // appointments visually jump out of the list.
 const STATUS_STYLES: Record<AppointmentStatus, { bg: string; border: string; color: string }> = {
-  pending:               { bg: "rgba(245,158,11,0.14)",  border: "rgba(245,158,11,0.55)", color: "#fbbf24" },
-  show:                  { bg: "rgba(34,197,94,0.14)",   border: "rgba(34,197,94,0.5)",   color: "#4ade80" },
-  no_show:               { bg: "rgba(239,68,68,0.14)",   border: "rgba(239,68,68,0.5)",   color: "#f87171" },
-  appointment_cancelled: { bg: "rgba(148,163,184,0.14)", border: "rgba(148,163,184,0.4)", color: "#cbd5e1" },
-  lo_bailed:             { bg: "rgba(168,85,247,0.14)",  border: "rgba(168,85,247,0.5)",  color: "#c084fc" },
+  pending:                 { bg: "rgba(245,158,11,0.14)",  border: "rgba(245,158,11,0.55)", color: "#fbbf24" },
+  show:                    { bg: "rgba(34,197,94,0.14)",   border: "rgba(34,197,94,0.5)",   color: "#4ade80" },
+  no_show:                 { bg: "rgba(239,68,68,0.14)",   border: "rgba(239,68,68,0.5)",   color: "#f87171" },
+  appointment_cancelled:   { bg: "rgba(148,163,184,0.14)", border: "rgba(148,163,184,0.4)", color: "#cbd5e1" },
+  appointment_rescheduled: { bg: "rgba(56,189,248,0.14)",  border: "rgba(56,189,248,0.45)", color: "#38bdf8" },
+  lo_bailed:               { bg: "rgba(168,85,247,0.14)",  border: "rgba(168,85,247,0.5)",  color: "#c084fc" },
 };
 
 function formatDateTime(value: string | null): string {
@@ -214,10 +222,16 @@ export default function AppointmentsTable({ clients: allClients, startDate, endD
               const url = ghlContactUrl(row);
               const style = STATUS_STYLES[row.status] ?? STATUS_STYLES.pending;
               const isPending = row.status === "pending";
+              const isRescheduled = row.status === "appointment_rescheduled";
               return (
                 <tr key={row.id} style={{
                   borderTop: "1px solid rgba(255,255,255,0.03)",
-                  background: isPending ? "rgba(245,158,11,0.05)" : i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent",
+                  background: isPending
+                    ? "rgba(245,158,11,0.05)"
+                    : isRescheduled
+                      ? "rgba(56,189,248,0.04)"
+                      : i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent",
+                  opacity: isRescheduled ? 0.72 : 1,
                 }}>
                   <td className="px-4 py-2.5 whitespace-nowrap text-sm" style={{ color: "#94a3b8" }}>{row.clients?.name ?? "—"}</td>
                   <td className="px-4 py-2.5 whitespace-nowrap text-sm" style={{ color: "#94a3b8" }}>{formatDateTime(row.occurred_at)}</td>

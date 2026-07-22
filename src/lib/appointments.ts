@@ -5,12 +5,21 @@ import { liveClientFilter } from './db-helpers';
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
 // Outcome event types recorded for an appointment after it is booked.
-export const OUTCOME_EVENT_TYPES = ['show', 'no_show', 'appointment_cancelled', 'lo_bailed'] as const;
+export const OUTCOME_EVENT_TYPES = [
+  'show',
+  'no_show',
+  'appointment_cancelled',
+  'lo_bailed',
+  'appointment_rescheduled',
+] as const;
 export type OutcomeEventType = (typeof OUTCOME_EVENT_TYPES)[number];
 
 // Statuses the disposition API accepts. `pending` means "no outcome" — any
 // existing outcome row is removed so the appointment counts as un-dispositioned.
 export type AppointmentStatus = OutcomeEventType | 'pending';
+
+/** How far back a pending prior booking is eligible for auto-reschedule supersession. */
+export const RESCHEDULE_SUPERSEDE_LOOKBACK_MS = 120 * 24 * 60 * 60 * 1000;
 
 const BOOKED_SELECT =
   'id, client_id, occurred_at, scheduled_at, calendar_name, calendar_id, lead_name, lead_phone, lead_email, agent_name, ghl_contact_id, stage_booked, external_id';
@@ -45,6 +54,11 @@ export function normalizeAppointmentStatus(status: unknown): AppointmentStatus |
     case 'bailed':
     case 'lo_bailed':
       return 'lo_bailed';
+    case 'rescheduled':
+    case 'reschedule':
+    case 'appointment_rescheduled':
+    case 'superseded':
+      return 'appointment_rescheduled';
     default:
       return null;
   }
@@ -55,7 +69,57 @@ export type SetOutcomeInput = {
   external_id?: string | null;
   ghl_contact_id?: string | null;
   status: AppointmentStatus;
+  /** Extra fields merged into the outcome row's `raw` jsonb. */
+  meta?: Record<string, unknown>;
 };
+
+export type PriorBookingCandidate = {
+  id: string;
+  external_id: string | null;
+  calendar_id: string | null;
+  occurred_at: string | null;
+  ghl_contact_id?: string | null;
+  scheduled_at?: string | null;
+};
+
+/**
+ * Whether a prior pending booking should be marked rescheduled when a newer
+ * booking arrives for the same lead (typically a GHL cancel+rebook with a new
+ * appointment id). Same `external_id` is an in-place update, not supersession.
+ */
+export function shouldAutoSupersedePrior(opts: {
+  prior: PriorBookingCandidate;
+  nextExternalId: string | null;
+  nextCalendarId: string | null;
+  nextOccurredAt: string | null;
+  priorHasOutcome: boolean;
+}): boolean {
+  if (opts.priorHasOutcome) return false;
+  if (
+    opts.prior.external_id &&
+    opts.nextExternalId &&
+    opts.prior.external_id === opts.nextExternalId
+  ) {
+    return false;
+  }
+  // Different calendars → different appointment intents (e.g. AI vs call center).
+  if (
+    opts.prior.calendar_id &&
+    opts.nextCalendarId &&
+    opts.prior.calendar_id !== opts.nextCalendarId
+  ) {
+    return false;
+  }
+  if (opts.prior.occurred_at && opts.nextOccurredAt) {
+    const priorMs = new Date(opts.prior.occurred_at).getTime();
+    const nextMs = new Date(opts.nextOccurredAt).getTime();
+    if (Number.isFinite(priorMs) && Number.isFinite(nextMs)) {
+      if (priorMs > nextMs) return false;
+      if (nextMs - priorMs > RESCHEDULE_SUPERSEDE_LOOKBACK_MS) return false;
+    }
+  }
+  return true;
+}
 
 export type SetOutcomeResult =
   | { ok: true; status: number; body: Record<string, unknown> }
@@ -255,10 +319,10 @@ function findBookedByExternalId(service: ServiceClient, external_id: string) {
 //
 // Design: the original `appointment_booked` row is the source of truth for the
 // appointment and is NEVER modified (except to backfill a missing external_id) —
-// it stays counted in "Appointments Booked" (the show-rate denominator). The
-// outcome is recorded as a SEPARATE event row (show / no_show /
-// appointment_cancelled / lo_bailed), which is how the rest of the dashboard
-// already counts these.
+// it stays counted in absolute "Appointments Booked". The outcome is recorded
+// as a SEPARATE event row (show / no_show / appointment_cancelled / lo_bailed /
+// appointment_rescheduled), which is how the rest of the dashboard already
+// counts these. Rescheduled slots are excluded from "appts to take place".
 //
 // Matching: prefer the booking's own event id (precise, used by the in-app UI),
 // then `external_id` (GHL appointment id), then the most recent booked
@@ -494,6 +558,7 @@ export async function setAppointmentOutcome(
         matched_by: matchedBy,
         appointment_event_id: bookedRow.id,
         recorded_at: new Date().toISOString(),
+        ...(input.meta ?? {}),
       },
     })
     .select('id, event_type')
@@ -533,9 +598,108 @@ async function fetchAllRows<R>(
   return rows;
 }
 
+/**
+ * When a new booking lands for a contact, mark prior pending bookings on the
+ * same client (+ same calendar when known) as `appointment_rescheduled`.
+ * Also honors an explicit `previous_external_id` from Make/GHL.
+ */
+export async function supersedePriorPendingBookings(
+  service: ServiceClient,
+  opts: {
+    clientId: string;
+    ghlContactId: string | null;
+    newEventId: string;
+    newExternalId: string | null;
+    newCalendarId: string | null;
+    newOccurredAt: string | null;
+    previousExternalId?: string | null;
+  },
+): Promise<{ superseded_ids: string[] }> {
+  const superseded_ids: string[] = [];
+  const ghlContactId = textField(opts.ghlContactId);
+  const previousExternalId = textField(opts.previousExternalId);
+
+  const candidates: PriorBookingCandidate[] = [];
+  const seen = new Set<string>();
+
+  const addCandidate = (row: PriorBookingCandidate | null | undefined) => {
+    if (!row?.id || row.id === opts.newEventId || seen.has(row.id)) return;
+    seen.add(row.id);
+    candidates.push(row);
+  };
+
+  if (previousExternalId) {
+    const { data, error } = await service
+      .from('events')
+      .select('id, external_id, calendar_id, occurred_at, ghl_contact_id, scheduled_at')
+      .eq('client_id', opts.clientId)
+      .eq('event_type', 'appointment_booked')
+      .eq('external_id', previousExternalId)
+      .order('occurred_at', { ascending: false })
+      .limit(5);
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) addCandidate(row as PriorBookingCandidate);
+  }
+
+  if (ghlContactId) {
+    const { data, error } = await service
+      .from('events')
+      .select('id, external_id, calendar_id, occurred_at, ghl_contact_id, scheduled_at')
+      .eq('client_id', opts.clientId)
+      .eq('event_type', 'appointment_booked')
+      .eq('ghl_contact_id', ghlContactId)
+      .order('occurred_at', { ascending: false })
+      .limit(20);
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) addCandidate(row as PriorBookingCandidate);
+  }
+
+  if (candidates.length === 0) return { superseded_ids };
+
+  const outcomes = await fetchAllRows<OutcomeRecord>((from, to) =>
+    service
+      .from('events')
+      .select('id, event_type, external_id, raw, ghl_contact_id, scheduled_at')
+      .eq('client_id', opts.clientId)
+      .in('event_type', [...OUTCOME_EVENT_TYPES])
+      .range(from, to),
+  );
+  const index = buildOutcomeIndex(outcomes);
+
+  for (const prior of candidates) {
+    const hasOutcome = Boolean(matchOutcome(prior as BookingKey, index));
+    const eligible =
+      previousExternalId && prior.external_id === previousExternalId
+        ? !hasOutcome
+        : shouldAutoSupersedePrior({
+            prior,
+            nextExternalId: opts.newExternalId,
+            nextCalendarId: opts.newCalendarId,
+            nextOccurredAt: opts.newOccurredAt,
+            priorHasOutcome: hasOutcome,
+          });
+    if (!eligible) continue;
+
+    const result = await setAppointmentOutcome(service, {
+      appointment_event_id: prior.id,
+      status: 'appointment_rescheduled',
+      meta: {
+        source: 'reschedule-ingest',
+        superseded_by_event_id: opts.newEventId,
+        superseded_by_external_id: opts.newExternalId,
+        previous_external_id: previousExternalId,
+      },
+    });
+    if (result.ok) superseded_ids.push(prior.id);
+  }
+
+  return { superseded_ids };
+}
+
 // Count appointments whose scheduled date has already passed but still have no
-// outcome (show / no_show / appointment_cancelled / lo_bailed). These are the
-// "past due, not dispositioned" appointments that silently drag down show rate.
+// outcome (show / no_show / appointment_cancelled / lo_bailed / rescheduled).
+// These are the "past due, not dispositioned" appointments that silently drag
+// down show rate.
 //
 // Deliberately NOT time-window scoped: it always reflects the full backlog,
 // independent of any dashboard date filter. Scoped only by client (or live set).

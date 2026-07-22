@@ -93,6 +93,7 @@ const EVENT_LABELS: Record<string, string> = {
   dial: "Dial",
   appointment_booked: "Appt Booked",
   appointment_cancelled: "Cancelled",
+  appointment_rescheduled: "Rescheduled",
   show: "Show",
   no_show: "No Show (lead)",
   lo_bailed: "LO bailed",
@@ -307,6 +308,7 @@ function CountPill({ label, value, accent }: { label: string; value: number; acc
 const TIMELINE_APPT_TYPES = new Set([
   "appointment_booked",
   "appointment_cancelled",
+  "appointment_rescheduled",
   "show",
   "no_show",
   "lo_bailed",

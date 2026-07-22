@@ -214,6 +214,7 @@ export async function GET(req: Request) {
         lo_bailed: outcomes.lo_bailed,
         pending: outcomes.pending,
         cancelled: outcomes.cancelled,
+        rescheduled: outcomes.rescheduled,
         show_rate: grossShowRate(outcomes),
         avg_speed_to_lead_min: avg_speed,
         today: todayStats,

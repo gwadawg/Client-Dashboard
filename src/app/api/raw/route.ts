@@ -65,8 +65,8 @@ export async function GET(req: Request) {
 
   // Appointments are grouped one-row-per-booking: each booked appointment is
   // returned once with its current disposition (status) derived from the linked
-  // outcome event (show / no_show / appointment_cancelled / lo_bailed), or
-  // "pending" when none exists yet.
+  // outcome event (show / no_show / appointment_cancelled / appointment_rescheduled /
+  // lo_bailed), or "pending" when none exists yet.
   if (type === 'appointments') {
     return getGroupedAppointments(ctx, {
       client_id,
@@ -257,7 +257,7 @@ async function getGroupedAppointments(ctx: AuthCtx, p: GroupedParams) {
 // Manual disposition: set an appointment's status from the dashboard.
 // Gated by the same "appointments" tab permission used to read this data.
 // Body: { appointment_event_id: string, status: "pending" | "show" | "no_show"
-//         | "cancelled" | "lo_bailed" }
+//         | "cancelled" | "rescheduled" | "lo_bailed" }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function PATCH(req: Request) {
   const ctx = await getAuthContext();
@@ -281,7 +281,10 @@ export async function PATCH(req: Request) {
   const status = normalizeAppointmentStatus(payload.status);
   if (!status) {
     return NextResponse.json(
-      { error: 'status must be "pending", "show", "no_show", "cancelled", or "lo_bailed"' },
+      {
+        error:
+          'status must be "pending", "show", "no_show", "cancelled", "rescheduled", or "lo_bailed"',
+      },
       { status: 400 },
     );
   }

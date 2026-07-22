@@ -17,6 +17,7 @@ export default function ShowQualityBar({ metrics }: Props) {
     { key: "no_shows", label: "No-showed", value: metrics.no_shows, color: "#f87171", hint: "Lead missed" },
     { key: "lo_bailed", label: "LO bailed", value: metrics.lo_bailed, color: "#fbbf24", hint: "Loan officer missed (not the lead)" },
     { key: "cancelled", label: "Cancelled", value: metrics.appointment_cancelled, color: "#94a3b8", hint: "Appointment cancelled" },
+    { key: "rescheduled", label: "Rescheduled", value: metrics.appointment_rescheduled, color: "#38bdf8", hint: "Superseded by a later booking for the same lead" },
     { key: "pending", label: "Pending", value: metrics.appts_to_take_place, color: "#475569", hint: "Still scheduled / awaiting outcome" },
   ];
 
@@ -50,7 +51,7 @@ export default function ShowQualityBar({ metrics }: Props) {
               ) : null,
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
             {segments.map(s => (
               <div key={s.key} className="flex items-start gap-2" title={s.hint}>
                 <span className="mt-1 w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: s.color }} />

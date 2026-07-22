@@ -46,12 +46,13 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 
 - **Booking rate:** Unique leads with at least one `appointment_booked` in the window ÷ Qualified leads. A lead who books three times still counts once. Use the same date window for both sides and filter by the same client. Absolute **Appointments Booked** remains an event count (rebooks included).
 - **Hand-raise rate:** Unique leads with any of `appointment_booked`, `live_transfer`, or `claimed` ÷ Qualified leads. A lead who books and is later tagged claimed counts once.
-- **Show rate (of booked):** `Shows ÷ (Shows + No Shows + LO bailed)`. Only appointments that actually took place count — anything still **pending** (no outcome yet) or **cancelled** is excluded from the denominator, so the rate isn't dragged down by appointments that never happened. LO bails still count against it (the slot was wasted).
+- **Show rate (of booked):** `Shows ÷ (Shows + No Shows + LO bailed)`. Only appointments that actually took place count — anything still **pending** (no outcome yet), **cancelled**, or **rescheduled** is excluded from the denominator, so the rate isn't dragged down by appointments that never happened. LO bails still count against it (the slot was wasted).
 - **Net show rate (true attendance):** `Shows ÷ (Shows + No Shows)`. Use this to judge lead quality / setter performance: it excludes cancellations, LO bails, and pending appointments, so it isn't dragged down by outcomes the lead is not responsible for. Display it alongside the gross show rate.
 - **LO bail rate:** `LO bailed ÷ Appointments Booked`. Surfaces partner loan-officer no-shows (Showed? = X) as their own KPI rather than burying them in the show rate.
 - **Conversation rate:** Unique leads with any of `show`, `claimed`, or `live_transfer` ÷ Qualified leads. A lead who shows and was also live-transferred counts once. Same unique-conversation figure is the Cost per Conversation denominator.
-- **Cancel rate:** `Cancellations ÷ (Appointments Booked + Cancellations)`. Use the same GHL **appointment ID** (`external_id`) on book and cancel. Prefer `/api/webhooks/appointment-status` with `status: "cancelled"` so the original booking row is updated (see `ccm-appt-cancelled.blueprint.json`).
-- **Appts to take place:** `Booked − Shows − No Shows − Cancellations − LO bailed` (pending / unresolved slots).
+- **Cancel rate:** `Cancellations ÷ (Appointments Booked + Cancellations)`. Use the same GHL **appointment ID** (`external_id`) on book and cancel. Prefer `/api/webhooks/appointment-status` with `status: "cancelled"` so the original booking row is updated (see `ccm-appt-cancelled.blueprint.json`). Reschedules are **not** cancellations — they use `appointment_rescheduled`.
+- **Reschedules:** When a lead rebooks, ingest upserts by the same GHL `external_id` (time change) or inserts a new booking and auto-marks prior **pending** bookings for that contact as `appointment_rescheduled` (new GHL id / cancel+rebook). Optional Make field: `previous_external_id`. Absolute booked still counts each book event; **Appts to take place** subtracts rescheduled so superseded slots leave the pending backlog.
+- **Appts to take place:** `Booked − Shows − No Shows − Cancellations − Rescheduled − LO bailed` (pending / unresolved slots).
 - **Conversion funnel rollup:** Reaching a later stage implies every earlier stage. A lead with only `loan_funded` still counts toward Submissions and Proposals; a lead with only `submission_made` still counts toward Proposals. Implied stages are derived at read time (in `src/lib/metrics.ts`) — we do **not** insert synthetic proposal/submission rows, and each lead is counted once per stage.
 - **Qualified / Hot:** Manually tagged in GHL or the setter team — there is no automatic qualification rule.
 - **Total conversations:** Do not count failed or zero-duration calls. Use **completed** status and **duration > 120 seconds** (2 minutes), matching the Daily Summary definition. `claimed` events also count because they represent the client manually speaking with or messaging a lead outside the setter workflow.
@@ -73,7 +74,7 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **Speed to Lead** | **Median** minutes from lead to first dial, counting only leads that arrive inside a live setter-availability window | `MEDIAN(first_dial.occurred_at − lead.occurred_at)` per contact, excluding leads with no precise timestamp and leads that arrive off-hours |
 | **Callback Requests** | Callback appointments booked | `COUNT(callback_booked)` |
 | **Callback Rate** | Callbacks per lead | `Callbacks ÷ Total Leads × 100` |
-| **Appts To Take Place** | Still scheduled (pending outcomes) | `Appointments Booked − Shows − No Shows − Cancellations − LO bailed` |
+| **Appts To Take Place** | Still scheduled (pending outcomes) | `Appointments Booked − Shows − No Shows − Cancellations − Rescheduled − LO bailed` |
 | **Dials Per Lead** | Dial effort per lead | `Outbound Dials ÷ Total Leads` |
 | **Ad Spend** | Meta (Facebook) | `SUM(meta_ad_insights.spend)` via `daily_meta_spend` view |
 | **Meta spend** | Facebook / Meta only | `SUM(meta_ad_insights.spend)` (daily rollup via `daily_meta_spend` view) |
@@ -132,7 +133,7 @@ HE accounts have **no ad-cost grading** (CPL / CPQL / CPConv are omitted). **Out
 |-----------|------------------|---------|
 | **Leads** | `lead` | `POST /api/webhooks` |
 | **Appointments** | `appointment_booked` | `POST /api/webhooks` |
-| **Appointments** (outcome) | `show`, `no_show`, `lo_bailed`, `appointment_cancelled` | `POST /api/webhooks` or `POST /api/webhooks/appointment-status` |
+| **Appointments** (outcome) | `show`, `no_show`, `lo_bailed`, `appointment_cancelled`, `appointment_rescheduled` | `POST /api/webhooks` or `POST /api/webhooks/appointment-status` |
 | **Conversations** | `dial` | `POST /api/webhooks` |
 | **Claimed** (client-handled) | `claimed` | `POST /api/webhooks` |
 | **LO audit** | `lo_audit` | Internal cadence tracking — **not** a client KPI |
@@ -199,7 +200,7 @@ HE accounts have **no ad-cost grading** (CPL / CPQL / CPConv are omitted). **Out
 
 **Credit queue:** **Live transfers** plus appointments/callbacks on **`Call Center Booking Calendar`** always appear. **`AI Booking Calendar`** bookings also appear for historical rep credit (null/empty agent or already credited to a real name). Rows with agent `#N/A` on the AI calendar are Conversation AI and stay out of the queue. `#N/A` on the Call Center calendar counts as uncredited. Run `node scripts/backfill-legacy-calendar-agent-credit.mjs --apply` once to auto-credit bookings from the last roster dial before the appointment.
 
-**Lifecycle:** Send the **same** `external_id` (GHL appointment id) on `appointment_booked` and when calling **`POST /api/webhooks/appointment-status`** (show / no_show / cancelled). For separate outcome **inserts** (`show`, `no_show`, `lo_bailed`, `appointment_cancelled` via main webhook), include **`external_id`** on each row so joins and exports stay aligned. Include **`calendar_id`** on booking (and on any follow-up inserts if you want it denormalized).
+**Lifecycle:** Send the **same** `external_id` (GHL appointment id) on `appointment_booked` and when calling **`POST /api/webhooks/appointment-status`** (show / no_show / cancelled / rescheduled). Same-id time changes upsert the booking row in place. A new book for the same contact auto-marks prior pending bookings as `appointment_rescheduled` (optional Make field: `previous_external_id`). For separate outcome **inserts** (`show`, `no_show`, `lo_bailed`, `appointment_cancelled`, `appointment_rescheduled` via main webhook), include **`external_id`** on each row so joins and exports stay aligned. Include **`calendar_id`** on booking (and on any follow-up inserts if you want it denormalized).
 
 ### Call (`event_type: dial`)
 

@@ -14,6 +14,7 @@ export type AppointmentDisposition =
   | 'show'
   | 'no_show'
   | 'appointment_cancelled'
+  | 'appointment_rescheduled'
   | 'lo_bailed';
 
 export type AgentBookingRow = BookingKey & {
@@ -41,6 +42,7 @@ export type AgentAppointmentOutcomeCounts = {
   no_shows: number;
   lo_bailed: number;
   cancelled: number;
+  rescheduled: number;
   pending: number;
 };
 
@@ -66,6 +68,7 @@ export function emptyOutcomeCounts(): AgentAppointmentOutcomeCounts {
     no_shows: 0,
     lo_bailed: 0,
     cancelled: 0,
+    rescheduled: 0,
     pending: 0,
   };
 }
@@ -87,6 +90,9 @@ export function incrementOutcomeCount(
       break;
     case 'appointment_cancelled':
       counts.cancelled++;
+      break;
+    case 'appointment_rescheduled':
+      counts.rescheduled++;
       break;
     default:
       counts.pending++;

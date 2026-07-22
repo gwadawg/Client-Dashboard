@@ -94,6 +94,7 @@ export async function GET(req: Request) {
       no_shows: summary.no_shows,
       pending: summary.pending,
       cancelled: summary.cancelled,
+      rescheduled: summary.rescheduled,
       lo_bailed: summary.lo_bailed,
       live_transfers: 0,
     },

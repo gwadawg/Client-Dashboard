@@ -107,6 +107,8 @@ export type MetricsResult = {
    */
   lead_hand_raise_rate: number;
   appointment_cancelled: number;
+  /** Prior booking superseded by a later rebook (same lead / new GHL appointment id). */
+  appointment_rescheduled: number;
   cancel_rate: number;
   /** Partner LO did not attend scheduled appointment with lead (“bailed”). */
   lo_bailed: number;
@@ -211,6 +213,7 @@ export function calculateMetrics(
 
   const booked = events.filter(e => e.event_type === 'appointment_booked').length;
   const cancelled = events.filter(e => e.event_type === 'appointment_cancelled').length;
+  const rescheduled = events.filter(e => e.event_type === 'appointment_rescheduled').length;
   const shows = events.filter(e => e.event_type === 'show').length;
   const no_shows = events.filter(e => e.event_type === 'no_show').length;
   const lo_bailed = events.filter(e => e.event_type === 'lo_bailed').length;
@@ -287,7 +290,7 @@ export function calculateMetrics(
     unique_booked_appointments: unique_booked_leads,
     appt_booking_rate: qualified_leads > 0 ? (unique_booked_leads / qualified_leads) * 100 : 0,
     lead_booking_rate: leads > 0 ? (unique_booked_leads / leads) * 100 : 0,
-    appts_to_take_place: Math.max(0, booked - shows - no_shows - cancelled - lo_bailed),
+    appts_to_take_place: Math.max(0, booked - shows - no_shows - cancelled - lo_bailed - rescheduled),
     shows,
     no_shows,
     show_pct: dispositioned_appointments > 0 ? (shows / dispositioned_appointments) * 100 : 0,
@@ -299,6 +302,7 @@ export function calculateMetrics(
     hand_raise_rate: qualified_leads > 0 ? (unique_hand_raise_leads / qualified_leads) * 100 : 0,
     lead_hand_raise_rate: leads > 0 ? (unique_hand_raise_leads / leads) * 100 : 0,
     appointment_cancelled: cancelled,
+    appointment_rescheduled: rescheduled,
     cancel_rate: scheduled_total > 0 ? (cancelled / scheduled_total) * 100 : 0,
     lo_bailed,
     loan_processing,

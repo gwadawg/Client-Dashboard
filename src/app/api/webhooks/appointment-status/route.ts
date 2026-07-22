@@ -3,12 +3,12 @@ import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { normalizeAppointmentStatus, setAppointmentOutcome } from '@/lib/appointments';
 
-// Called by Make when an appointment shows, no-shows, is cancelled, or the LO
-// bails. The shared logic lives in `@/lib/appointments` so the in-app manual
-// dispositioning route behaves identically.
+// Called by Make when an appointment shows, no-shows, is cancelled, rescheduled,
+// or the LO bails. The shared logic lives in `@/lib/appointments` so the in-app
+// manual dispositioning route behaves identically.
 //
 // Body: { external_id?: string, ghl_contact_id?: string,
-//         status: "show" | "no_show" | "cancelled" | "lo_bailed" }
+//         status: "show" | "no_show" | "cancelled" | "rescheduled" | "lo_bailed" }
 export async function POST(req: Request) {
   try {
     if (!validateWebhookSecret(req)) {
@@ -23,7 +23,10 @@ export async function POST(req: Request) {
     // The webhook never reverts to pending — it only records real outcomes.
     if (!status || status === 'pending') {
       return NextResponse.json(
-        { error: 'status must be "show", "no_show", "cancelled", or "lo_bailed"' },
+        {
+          error:
+            'status must be "show", "no_show", "cancelled", "rescheduled", or "lo_bailed"',
+        },
         { status: 400 },
       );
     }

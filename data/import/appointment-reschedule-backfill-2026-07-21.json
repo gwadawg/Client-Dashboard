@@ -1,0 +1,31 @@
+{
+  "ran_at": "2026-07-21",
+  "source": "reschedule-backfill-2026-07-21",
+  "summary": {
+    "dispositioned": 46,
+    "clients_touched": 10,
+    "same_external_id": 10,
+    "same_contact_calendar": 36,
+    "remaining_same_id_groups": 0,
+    "remaining_same_cal_groups": 0
+  },
+  "rules": [
+    "Keep newest pending booking per group (occurred_at, then scheduled_at, then id).",
+    "Tier A: same client + same GHL external_id with multiple pending appointment_booked rows.",
+    "Tier B: same client + same ghl_contact_id + same calendar (id or name) with multiple pending rows, excluding Tier A.",
+    "Did not supersede across different calendars (e.g. AI vs Call Center).",
+    "Did not touch bookings that already had show / no_show / cancelled / lo_bailed / rescheduled."
+  ],
+  "by_client": [
+    { "client_name": "Andy Zhao", "dispositioned": 30, "same_ghl_id": 0, "same_contact_cal": 30 },
+    { "client_name": "Community First National Bank", "dispositioned": 4, "same_ghl_id": 2, "same_contact_cal": 2 },
+    { "client_name": "John Fagan's Office", "dispositioned": 3, "same_ghl_id": 2, "same_contact_cal": 1 },
+    { "client_name": "Ken Walker", "dispositioned": 2, "same_ghl_id": 2, "same_contact_cal": 0 },
+    { "client_name": "Mike Lena's Office", "dispositioned": 2, "same_ghl_id": 1, "same_contact_cal": 1 },
+    { "client_name": "Ali Sahrai's Office", "dispositioned": 1, "same_ghl_id": 1, "same_contact_cal": 0 },
+    { "client_name": "EasyWay Mortgage", "dispositioned": 1, "same_ghl_id": 0, "same_contact_cal": 1 },
+    { "client_name": "Glenn's Office", "dispositioned": 1, "same_ghl_id": 0, "same_contact_cal": 1 },
+    { "client_name": "JP Dauber's Office", "dispositioned": 1, "same_ghl_id": 1, "same_contact_cal": 0 },
+    { "client_name": "Shane Thompson", "dispositioned": 1, "same_ghl_id": 1, "same_contact_cal": 0 }
+  ]
+}

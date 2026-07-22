@@ -23,6 +23,7 @@ export type SqlKpiCounts = {
   out_of_state_leads: number;
   booked_appointments: number;
   appointment_cancelled: number;
+  appointment_rescheduled: number;
   shows: number;
   no_shows: number;
   lo_bailed: number;
@@ -72,6 +73,7 @@ export function emptySqlKpiCounts(): SqlKpiCounts {
     out_of_state_leads: 0,
     booked_appointments: 0,
     appointment_cancelled: 0,
+    appointment_rescheduled: 0,
     shows: 0,
     no_shows: 0,
     lo_bailed: 0,
@@ -103,6 +105,7 @@ export function parseSqlKpiCounts(raw: unknown): SqlKpiCounts | null {
     out_of_state_leads: n(o.out_of_state_leads),
     booked_appointments: n(o.booked_appointments),
     appointment_cancelled: n(o.appointment_cancelled),
+    appointment_rescheduled: n(o.appointment_rescheduled),
     shows: n(o.shows),
     no_shows: n(o.no_shows),
     lo_bailed: n(o.lo_bailed),
@@ -164,6 +167,7 @@ export function metricsFromSqlCounts(
   const hot_leads = counts.hot_leads;
   const booked = counts.booked_appointments;
   const cancelled = counts.appointment_cancelled;
+  const rescheduled = counts.appointment_rescheduled;
   const shows = counts.shows;
   const no_shows = counts.no_shows;
   const lo_bailed = counts.lo_bailed;
@@ -197,7 +201,7 @@ export function metricsFromSqlCounts(
     unique_booked_appointments: unique_booked_leads,
     appt_booking_rate: qualified_leads > 0 ? (unique_booked_leads / qualified_leads) * 100 : 0,
     lead_booking_rate: leads > 0 ? (unique_booked_leads / leads) * 100 : 0,
-    appts_to_take_place: Math.max(0, booked - shows - no_shows - cancelled - lo_bailed),
+    appts_to_take_place: Math.max(0, booked - shows - no_shows - cancelled - lo_bailed - rescheduled),
     shows,
     no_shows,
     show_pct: dispositioned_appointments > 0 ? (shows / dispositioned_appointments) * 100 : 0,
@@ -211,6 +215,7 @@ export function metricsFromSqlCounts(
       qualified_leads > 0 ? (unique_hand_raise_leads / qualified_leads) * 100 : 0,
     lead_hand_raise_rate: leads > 0 ? (unique_hand_raise_leads / leads) * 100 : 0,
     appointment_cancelled: cancelled,
+    appointment_rescheduled: rescheduled,
     cancel_rate: scheduled_total > 0 ? (cancelled / scheduled_total) * 100 : 0,
     lo_bailed,
     loan_processing: counts.loan_processing,

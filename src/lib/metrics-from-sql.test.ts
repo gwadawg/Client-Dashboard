@@ -42,6 +42,7 @@ function countsFromEvents(events: EventRow[]): SqlKpiCounts {
     out_of_state_leads: m.out_of_state_leads,
     booked_appointments: m.booked_appointments,
     appointment_cancelled: m.appointment_cancelled,
+    appointment_rescheduled: m.appointment_rescheduled,
     shows: m.shows,
     no_shows: m.no_shows,
     lo_bailed: m.lo_bailed,
