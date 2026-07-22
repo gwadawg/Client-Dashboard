@@ -1705,13 +1705,6 @@ create index if not exists cs_touchpoints_client_completed_idx
 
 create index if not exists cs_touchpoints_status_due_idx
   on cs_touchpoints (status, due_at);
-  where status in ('open', 'snoozed');
-
-create index if not exists cs_touchpoints_client_completed_idx
-  on cs_touchpoints (client_id, completed_at desc nulls last);
-
-create index if not exists cs_touchpoints_status_due_idx
-  on cs_touchpoints (status, due_at);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Team meeting runbooks (templates + instances)
@@ -1771,3 +1764,76 @@ create table if not exists team_meeting_instances (
 );
 
 create index if not exists team_meeting_instances_scheduled_at_idx
+  on team_meeting_instances (scheduled_at);
+
+create index if not exists team_meeting_instances_status_idx
+  on team_meeting_instances (status);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Meeting commitments (Mon/Thu KPI + Ops Needs Founder)
+-- Spec: Wm-os docs/superpowers/specs/2026-07-22-kpi-meeting-commitments-design.md
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists meeting_commitments (
+  id                      uuid primary key default gen_random_uuid(),
+  client_id               uuid not null references clients(id) on delete cascade,
+  severity                text not null,
+  why                     text not null default '',
+  constraint_type         text not null,
+  constraint_label        text not null default '',
+  plan                    text not null default '',
+  owner_role              text not null,
+  due_date                date not null,
+  needs_founder           boolean not null default false,
+  founder_ask             text,
+  status                  text not null default 'proposed',
+  success_signal          text not null default '',
+  origin_meeting_id       uuid references team_meeting_instances(id) on delete set null,
+  approved_in_meeting_id  uuid references team_meeting_instances(id) on delete set null,
+  last_touched_meeting_id uuid references team_meeting_instances(id) on delete set null,
+  clickup_url             text,
+  founder_note            text,
+  check_note              text,
+  created_by              uuid references auth.users(id) on delete set null,
+  created_at              timestamptz not null default now(),
+  updated_at              timestamptz not null default now(),
+  constraint meeting_commitments_severity_check check (
+    severity in ('911', 'below')
+  ),
+  constraint meeting_commitments_constraint_type_check check (
+    constraint_type in ('system', 'quality', 'data')
+  ),
+  constraint meeting_commitments_owner_role_check check (
+    owner_role in ('client_success', 'media_buyer', 'ccm', 'ops', 'founder')
+  ),
+  constraint meeting_commitments_status_check check (
+    status in (
+      'proposed',
+      'approved',
+      'rejected',
+      'needs_clarification',
+      'in_progress',
+      'landed',
+      'blocked',
+      'missed',
+      'cancelled'
+    )
+  )
+);
+
+create index if not exists meeting_commitments_status_needs_founder_idx
+  on meeting_commitments (status, needs_founder);
+
+create index if not exists meeting_commitments_client_created_idx
+  on meeting_commitments (client_id, created_at desc);
+
+create index if not exists meeting_commitments_origin_meeting_idx
+  on meeting_commitments (origin_meeting_id);
+
+create index if not exists meeting_commitments_due_date_idx
+  on meeting_commitments (due_date);
+
+create index if not exists meeting_commitments_approved_meeting_idx
+  on meeting_commitments (approved_in_meeting_id);
+
+create index if not exists meeting_commitments_last_touched_meeting_idx
+  on meeting_commitments (last_touched_meeting_id);

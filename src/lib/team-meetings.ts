@@ -6,7 +6,11 @@
  * fill later from Wm-os SOPs without changing keys.
  */
 
-import { CALL_CENTER_TIMEZONE, zonedWallTimeToUtc } from './time';
+import {
+  CALL_CENTER_TIMEZONE,
+  todayYmdInCallCenterTz,
+  zonedWallTimeToUtc,
+} from './time';
 import type { TeamCallTypeCode } from './team-calls';
 
 export type TeamMeetingHostRole = 'ccm' | 'client_success' | 'ceo' | 'shared';
@@ -153,11 +157,10 @@ export const TEAM_MEETING_SEED: TeamMeetingSeed[] = [
       'In:',
       '1. Rules (60s) — one primary constraint per red; owners speak only on their reds; no creative debates.',
       '2. R/Y/G scan — Act now + Below KPI from the app.',
-      '3. Per red — confirm north-star miss → system vs quality fork → action plan + one-sentence Why.',
+      '3. Per red — confirm north-star miss → system vs quality fork → capture in Commitments panel.',
       '4. OB glance — launches this week only.',
       '',
-      'Note line (paste into summary / follow_ups):',
-      '[Client] · [911|Below] · Why: … · Constraint: … · Plan: [role] will … by [date] · Success: …',
+      'Commitments panel: one row per red (Why + constraint + plan + owner + due). Toggle Needs Founder when Ops must approve.',
       '',
       'Out: creative debates, Founder status theater, deep coaching, full diagnostic workshop.',
       '',
@@ -168,7 +171,7 @@ export const TEAM_MEETING_SEED: TeamMeetingSeed[] = [
       { key: 'reds_have_owners', label: 'Reds have role owners', required: true, section: 'run' },
       {
         key: 'commitments_named',
-        label: 'Commitments named + due (with Why line in notes)',
+        label: 'Commitments logged in panel (Why + plan + due)',
         required: true,
         section: 'run',
       },
@@ -187,8 +190,19 @@ export const TEAM_MEETING_SEED: TeamMeetingSeed[] = [
     duration_min: 60,
     host_role: 'ceo',
     attendee_roles: ['ceo', 'client_success', 'media_buyer'],
-    agenda_md:
-      'PLACEHOLDER — fill from Q3 restructure.\n\nIn: OB board, system gaps CEO owns, week priorities.\nOut: ad creative debates, dial coaching.',
+    agenda_md: [
+      'Monday Ops Planning — Launch + Systems (CEO hosts).',
+      '',
+      'In:',
+      '1. Needs Founder — approve / reject / clarify KPI commitments flagged for Founder (GHL, DATA_HOLD, 911 asks).',
+      '2. OB board — launches and gate risk this week.',
+      '3. System gaps — CEO-owned infra / tooling blockers.',
+      '4. Week priorities — named outcomes for the leadership seats.',
+      '',
+      'Out: ad creative debates, dial coaching, full KPI status theater (that is Mon/Thu KPI).',
+      '',
+      'Empty Needs Founder queue = success.',
+    ].join('\n'),
     checklist: [
       { key: 'ob_board_walked', label: 'OB board walked', required: true, section: 'run' },
       { key: 'system_gaps_listed', label: 'System gaps listed', required: true, section: 'run' },
@@ -210,9 +224,9 @@ export const TEAM_MEETING_SEED: TeamMeetingSeed[] = [
       'Thursday KPI — Commitment Check (Client Success hosts).',
       '',
       'In:',
-      '1. Open commitments only — no full book re-scan.',
+      '1. Open commitments panel only — no full book re-scan.',
       '2. Each item: landed / blocked / missed.',
-      '3. Still red → re-commit (update Why/Plan) or escalate to Fri Q&A intake.',
+      '3. Still red → re-commit (edit plan / due) or escalate to Fri Q&A intake.',
       '4. Remind Thu EOD questions for Fri Exec Q&A (decisions only).',
       '',
       'Out: re-scanning the whole book, creative debates, inventing status for Founder.',
@@ -465,23 +479,8 @@ export function parseChecklist(raw: unknown): ChecklistItemDef[] {
   return out;
 }
 
-/** Local Y-M-D in CALL_CENTER_TIMEZONE for "now". */
-export function todayYmdInCallCenterTz(
-  now: Date = new Date(),
-  timeZone: string = CALL_CENTER_TIMEZONE,
-): string {
-  const dtf = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  // en-CA → YYYY-MM-DD
-  return dtf.format(now);
-}
-
 export function addDaysToYmd(ymd: string, days: number): string {
   return addDaysYmd(ymd, days);
 }
 
-export { CALL_CENTER_TIMEZONE };
+export { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz };

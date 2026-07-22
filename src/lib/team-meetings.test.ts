@@ -42,12 +42,16 @@ describe('team-meetings', () => {
     assert.equal(slots[0].toISOString(), '2026-07-20T13:00:00.000Z');
   });
 
-  it('fills Mon/Thu KPI agendas and attaches library SOP slugs', () => {
+  it('fills Mon/Thu KPI agendas and Ops Needs Founder; attaches library SOP slugs', () => {
     const mon = TEAM_MEETING_SEED.find(t => t.slug === 'mon-kpi-week-plan');
     const thu = TEAM_MEETING_SEED.find(t => t.slug === 'thu-kpi-commitment-check');
-    assert.ok(mon && thu);
+    const ops = TEAM_MEETING_SEED.find(t => t.slug === 'mon-ops-planning');
+    assert.ok(mon && thu && ops);
     assert.equal(mon.agenda_md.includes('PLACEHOLDER'), false);
     assert.equal(thu.agenda_md.includes('PLACEHOLDER'), false);
+    assert.equal(ops.agenda_md.includes('PLACEHOLDER'), false);
+    assert.ok(ops.agenda_md.includes('Needs Founder'));
+    assert.ok(mon.agenda_md.includes('Commitments panel'));
     assert.deepEqual(librarySlugsForTemplate('mon-kpi-week-plan'), [
       'kpi-review-meeting-sop',
       'under-kpi-diagnosis-ladder',

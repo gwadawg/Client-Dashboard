@@ -7,6 +7,8 @@ import {
   librarySlugsForTemplate,
   type TeamMeetingInstanceView,
 } from "@/lib/team-meetings";
+import { commitmentModeForTemplateSlug } from "@/lib/meeting-commitments";
+import MeetingCommitmentsPanel from "@/components/MeetingCommitmentsPanel";
 
 const fieldStyle = {
   background: "#0f2040",
@@ -261,9 +263,11 @@ function TeamMeetingRunbook({
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [commitmentCount, setCommitmentCount] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const locked = row.status === "completed" || row.status === "cancelled" || row.status === "skipped";
+  const commitmentMode = commitmentModeForTemplateSlug(row.template.slug);
 
   const persistProgress = useCallback(
     (nextChecklist: Record<string, boolean>, nextResponses: Record<string, string>) => {
@@ -314,6 +318,17 @@ function TeamMeetingRunbook({
     setMessage(null);
     setError(null);
     try {
+      if (
+        action === "complete" &&
+        commitmentMode === "edit" &&
+        commitmentCount === 0 &&
+        !window.confirm(
+          "No commitments logged yet. Complete anyway? (Use an observe row with Why if you’re watching.)",
+        )
+      ) {
+        setSubmitting(false);
+        return;
+      }
       const res = await fetch(`/api/team-meetings/${row.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -415,6 +430,15 @@ function TeamMeetingRunbook({
             {row.template.agenda_md || "—"}
           </pre>
         </section>
+
+        {commitmentMode && (
+          <MeetingCommitmentsPanel
+            mode={commitmentMode}
+            meetingId={row.id}
+            locked={locked}
+            onCountChange={setCommitmentCount}
+          />
+        )}
 
         <section className="space-y-3">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400">

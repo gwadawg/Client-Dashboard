@@ -8,9 +8,10 @@ last_updated: 2026-07-22T00:00:00.000Z
 review_cycle: monthly
 artifact_type: sop
 related_docs:
-  - slug: kpi-review-meeting-sop
-    label: KPI Review Meeting SOP
-    relation: prerequisite
+  - docs/operations/people/kpi-review-meeting-sop.md
+  - docs/kpis/client-diagnostic-playbook-runnable.md
+  - docs/kpis/client-performance-diagnostic-rulebook.md
+  - docs/client-fulfillment/client-success/constraint-troubleshooting-sop.md
 department: operations
 ---
 

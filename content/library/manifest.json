@@ -2177,7 +2177,7 @@
       "owner": "operations",
       "status": "draft",
       "artifact_type": "sop",
-      "last_updated": "2026-07-21T00:00:00.000Z",
+      "last_updated": "2026-07-22T00:00:00.000Z",
       "review_cycle": "monthly",
       "script_version": null,
       "path": "operations/people/kpi-review-meeting-sop.md",
@@ -2231,11 +2231,6 @@
           "level": 3,
           "title": "In room",
           "id": "in-room"
-        },
-        {
-          "level": 3,
-          "title": "Note / action-plan line format",
-          "id": "note-action-plan-line-format"
         },
         {
           "level": 3,
