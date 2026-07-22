@@ -112,6 +112,64 @@ function WeekNav({ weekStart, setWeekStart }: { weekStart: string; setWeekStart:
 
 // ─── Watch Schedule Tab ───────────────────────────────────────────────────────
 
+const WATCH_ROW_H = 40; // px per hour — Google Calendar–style blocks
+
+type WatchBlock = {
+  agentId: string;
+  name: string;
+  date: string;
+  startHour: number;
+  endHour: number; // inclusive
+  entryIds: string[];
+};
+
+function buildWatchBlocks(entries: WatchEntry[], date: string): WatchBlock[] {
+  const day = entries
+    .filter(e => e.scheduled_date === date)
+    .sort((a, b) => a.slot_hour - b.slot_hour || a.agent_id.localeCompare(b.agent_id));
+
+  const byAgent = new Map<string, WatchEntry[]>();
+  for (const e of day) {
+    const list = byAgent.get(e.agent_id) ?? [];
+    list.push(e);
+    byAgent.set(e.agent_id, list);
+  }
+
+  const blocks: WatchBlock[] = [];
+  for (const [, list] of byAgent) {
+    let run: WatchEntry[] = [];
+    const flush = () => {
+      if (!run.length) return;
+      blocks.push({
+        agentId: run[0].agent_id,
+        name: run[0].agents?.name ?? "—",
+        date,
+        startHour: run[0].slot_hour,
+        endHour: run[run.length - 1].slot_hour,
+        entryIds: run.map(r => r.id),
+      });
+      run = [];
+    };
+    for (const e of list) {
+      if (!run.length || e.slot_hour === run[run.length - 1].slot_hour + 1) {
+        run.push(e);
+      } else {
+        flush();
+        run = [e];
+      }
+    }
+    flush();
+  }
+  return blocks;
+}
+
+function hourFromY(clientY: number, columnTop: number): number {
+  const y = clientY - columnTop;
+  const idx = Math.floor(y / WATCH_ROW_H);
+  const clamped = Math.max(0, Math.min(HOURS.length - 1, idx));
+  return HOURS[clamped];
+}
+
 function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
   agents: Agent[];
   availability: AvailRow[];
@@ -122,10 +180,28 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
   const [loading, setLoading] = useState(false);
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
   const [dragAgentId, setDragAgentId] = useState<string | null>(null);
-  const [paint, setPaint] = useState<{ date: string; startHour: number; endHour: number } | null>(null);
-  const paintRef = useRef(paint);
-  paintRef.current = paint;
+  const [dropHover, setDropHover] = useState<{ date: string; hour: number } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [resizePreview, setResizePreview] = useState<{
+    blockKey: string;
+    startHour: number;
+    endHour: number;
+  } | null>(null);
+
+  const resizeRef = useRef<{
+    blockKey: string;
+    date: string;
+    agentId: string;
+    edge: "top" | "bottom";
+    fixedHour: number;
+    entryIds: string[];
+    originalStart: number;
+    originalEnd: number;
+    columnTop: number;
+  } | null>(null);
+  const resizeLiveRef = useRef<{ startHour: number; endHour: number } | null>(null);
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
 
   useEffect(() => {
     setLoading(true);
@@ -136,13 +212,6 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
 
   const weekDates = getWeekDates(weekStart);
 
-  const entryMap: Record<string, WatchEntry[]> = {};
-  for (const e of entries) {
-    const key = `${e.scheduled_date}_${e.slot_hour}`;
-    if (!entryMap[key]) entryMap[key] = [];
-    entryMap[key].push(e);
-  }
-
   function isAvailable(agentId: string, weekday: string, hour: number) {
     const hhmm = `${String(hour).padStart(2, "0")}:00:00`;
     return availability.some(a =>
@@ -151,73 +220,159 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
     );
   }
 
-  function paintCovers(date: string, hour: number) {
-    if (!paint || paint.date !== date) return false;
-    const lo = Math.min(paint.startHour, paint.endHour);
-    const hi = Math.max(paint.startHour, paint.endHour);
-    return hour >= lo && hour <= hi;
+  async function upsertBlockHours(date: string, startHour: number, endHour: number, agentId: string) {
+    const lo = Math.min(startHour, endHour);
+    const hi = Math.max(startHour, endHour);
+    const res = await fetch("/api/watch-schedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agent_id: agentId,
+        scheduled_date: date,
+        slot_hour_start: lo,
+        slot_hour_end: hi,
+      }),
+    });
+    const d = await res.json();
+    const rows: WatchEntry[] = d.rows ?? (d.row ? [d.row] : []);
+    if (rows.length) {
+      setEntries(prev => {
+        const next = [...prev];
+        for (const row of rows) {
+          if (!next.some(e => e.id === row.id)) next.push(row);
+        }
+        return next;
+      });
+    }
   }
 
   async function assignBlock(date: string, startHour: number, endHour: number, agentId: string) {
-    const lo = Math.min(startHour, endHour);
-    const hi = Math.max(startHour, endHour);
     setSaving(true);
     try {
-      const res = await fetch("/api/watch-schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agent_id: agentId,
-          scheduled_date: date,
-          slot_hour_start: lo,
-          slot_hour_end: hi,
-        }),
-      });
-      const d = await res.json();
-      const rows: WatchEntry[] = d.rows ?? (d.row ? [d.row] : []);
-      if (rows.length) {
-        setEntries(prev => {
-          const next = [...prev];
-          for (const row of rows) {
-            if (!next.some(e => e.id === row.id)) next.push(row);
-          }
-          return next;
-        });
-      }
+      await upsertBlockHours(date, startHour, endHour, agentId);
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleRemove(id: string) {
-    await fetch(`/api/watch-schedule/${id}`, { method: "DELETE" });
-    setEntries(prev => prev.filter(e => e.id !== id));
-  }
-
-  /** Remove contiguous hours for this agent on this day (the painted block). */
-  async function handleRemoveBlock(agentId: string, date: string, hour: number) {
-    const dayEntries = entries
-      .filter(e => e.agent_id === agentId && e.scheduled_date === date)
-      .sort((a, b) => a.slot_hour - b.slot_hour);
-    if (!dayEntries.length) return;
-
-    let lo = hour;
-    let hi = hour;
-    while (dayEntries.some(e => e.slot_hour === lo - 1)) lo -= 1;
-    while (dayEntries.some(e => e.slot_hour === hi + 1)) hi += 1;
-
-    const toRemove = dayEntries.filter(e => e.slot_hour >= lo && e.slot_hour <= hi);
-    await Promise.all(toRemove.map(e => fetch(`/api/watch-schedule/${e.id}`, { method: "DELETE" })));
-    const ids = new Set(toRemove.map(e => e.id));
+  async function removeHours(entryIds: string[]) {
+    if (!entryIds.length) return;
+    await Promise.all(entryIds.map(id => fetch(`/api/watch-schedule/${id}`, { method: "DELETE" })));
+    const ids = new Set(entryIds);
     setEntries(prev => prev.filter(e => !ids.has(e.id)));
   }
+
+  async function commitResize(
+    date: string,
+    agentId: string,
+    newStart: number,
+    newEnd: number,
+    originalStart: number,
+    originalEnd: number,
+  ) {
+    const lo = Math.min(newStart, newEnd);
+    const hi = Math.max(newStart, newEnd);
+    if (lo === originalStart && hi === originalEnd) return;
+
+    setSaving(true);
+    try {
+      await upsertBlockHours(date, lo, hi, agentId);
+
+      const toRemove = entriesRef.current
+        .filter(e =>
+          e.agent_id === agentId &&
+          e.scheduled_date === date &&
+          e.slot_hour >= originalStart &&
+          e.slot_hour <= originalEnd &&
+          (e.slot_hour < lo || e.slot_hour > hi),
+        )
+        .map(e => e.id);
+      if (toRemove.length) await removeHours(toRemove);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      const r = resizeRef.current;
+      if (!r) return;
+      const hour = hourFromY(e.clientY, r.columnTop);
+      let startHour: number;
+      let endHour: number;
+      if (r.edge === "bottom") {
+        startHour = r.fixedHour;
+        endHour = Math.max(r.fixedHour, hour);
+      } else {
+        endHour = r.fixedHour;
+        startHour = Math.min(r.fixedHour, hour);
+      }
+      resizeLiveRef.current = { startHour, endHour };
+      setResizePreview({ blockKey: r.blockKey, startHour, endHour });
+    }
+
+    async function onUp() {
+      const r = resizeRef.current;
+      const live = resizeLiveRef.current;
+      resizeRef.current = null;
+      resizeLiveRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setResizePreview(null);
+      if (!r || !live) return;
+      await commitResize(
+        r.date,
+        r.agentId,
+        live.startHour,
+        live.endHour,
+        r.originalStart,
+        r.originalEnd,
+      );
+    }
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  function startResize(
+    e: React.MouseEvent,
+    block: WatchBlock,
+    edge: "top" | "bottom",
+    columnEl: HTMLElement,
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    const blockKey = `${block.date}:${block.agentId}:${block.entryIds[0]}`;
+    const top = columnEl.getBoundingClientRect().top;
+    resizeRef.current = {
+      blockKey,
+      date: block.date,
+      agentId: block.agentId,
+      edge,
+      fixedHour: edge === "bottom" ? block.startHour : block.endHour,
+      entryIds: block.entryIds,
+      originalStart: block.startHour,
+      originalEnd: block.endHour,
+      columnTop: top,
+    };
+    resizeLiveRef.current = { startHour: block.startHour, endHour: block.endHour };
+    setResizePreview({ blockKey, startHour: block.startHour, endHour: block.endHour });
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+  }
+
+  const gridH = HOURS.length * WATCH_ROW_H;
 
   return (
     <div className="space-y-5">
       <WeekNav weekStart={weekStart} setWeekStart={setWeekStart} />
 
       <p className="text-xs" style={{ color: "#64748b" }}>
-        Drag a setter onto a cell, then drag up or down before releasing to fill a multi-hour block.
+        Drop a setter on an hour to place a block, then drag the bottom (or top) edge to stretch it like a calendar event.
         {saving && <span style={{ color: "#f59e0b" }}> Saving…</span>}
       </p>
 
@@ -225,110 +380,79 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
         <div className="py-12 text-center text-sm" style={{ color: "#334155" }}>Loading…</div>
       ) : (
         <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-          <table className="text-xs border-collapse" style={{ minWidth: "860px", width: "100%" }}>
-            <thead>
-              <tr style={{ background: "#0a1628" }}>
-                <th className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: "#334155", borderBottom: "1px solid rgba(255,255,255,0.06)", borderRight: "1px solid rgba(255,255,255,0.04)", width: "80px" }}>
-                  Time
-                </th>
-                {weekDates.map(({ date, weekday }) => {
-                  const d = new Date(date + "T12:00:00Z");
-                  return (
-                    <th key={date} className="px-2 py-3 text-center"
-                      style={{ color: "#94a3b8", borderBottom: "1px solid rgba(255,255,255,0.06)", borderLeft: "1px solid rgba(255,255,255,0.04)" }}>
-                      <div className="font-semibold">{weekday.slice(0, 3)}</div>
-                      <div className="font-normal" style={{ color: "#475569" }}>{d.getUTCMonth() + 1}/{d.getUTCDate()}</div>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {HOURS.map((hour, hi) => (
-                <tr key={hour} style={{ background: hi % 2 === 0 ? "#080f1e" : "#060d1a" }}>
-                  <td className="px-3 py-2 font-mono whitespace-nowrap"
-                    style={{ color: "#475569", borderRight: "1px solid rgba(255,255,255,0.04)", verticalAlign: "top", paddingTop: "10px" }}>
+          <div style={{ minWidth: "860px" }}>
+            <div className="flex" style={{ background: "#0a1628", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="shrink-0 px-3 py-3 text-xs font-semibold uppercase tracking-wider"
+                style={{ width: 80, color: "#334155" }}>
+                Time
+              </div>
+              {weekDates.map(({ date, weekday }) => {
+                const d = new Date(date + "T12:00:00Z");
+                return (
+                  <div key={date} className="flex-1 px-2 py-3 text-center text-xs"
+                    style={{ color: "#94a3b8", borderLeft: "1px solid rgba(255,255,255,0.04)", minWidth: 110 }}>
+                    <div className="font-semibold">{weekday.slice(0, 3)}</div>
+                    <div style={{ color: "#475569" }}>{d.getUTCMonth() + 1}/{d.getUTCDate()}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex">
+              <div className="shrink-0 relative" style={{ width: 80 }}>
+                {HOURS.map((hour, hi) => (
+                  <div key={hour} className="px-3 font-mono text-xs flex items-start pt-1"
+                    style={{
+                      height: WATCH_ROW_H,
+                      color: "#475569",
+                      background: hi % 2 === 0 ? "#080f1e" : "#060d1a",
+                      borderRight: "1px solid rgba(255,255,255,0.04)",
+                    }}>
                     {fmtHour(hour)}
-                  </td>
-                  {weekDates.map(({ date, weekday }) => {
-                    const key = `${date}_${hour}`;
-                    const cellEntries = entryMap[key] ?? [];
-                    const highlighted = hoveredAgent ? isAvailable(hoveredAgent, weekday, hour) : false;
-                    const inPaint = paintCovers(date, hour);
-                    return (
-                      <td key={date}
-                        style={{
-                          borderLeft: "1px solid rgba(255,255,255,0.04)",
-                          background: inPaint
-                            ? "rgba(245,158,11,0.22)"
-                            : highlighted
-                            ? "rgba(245,158,11,0.10)"
-                            : "transparent",
-                          transition: "background 0.08s",
-                          verticalAlign: "top",
-                          padding: "4px",
-                          minWidth: "110px",
-                        }}
-                        onDragOver={e => {
-                          e.preventDefault();
-                          if (!dragAgentId) return;
-                          setPaint(prev => {
-                            if (!prev || prev.date !== date) {
-                              return { date, startHour: hour, endHour: hour };
-                            }
-                            return { ...prev, endHour: hour };
-                          });
-                        }}
-                        onDragLeave={e => {
-                          if (!e.relatedTarget || !e.currentTarget.contains(e.relatedTarget as Node)) {
-                            // keep paint until drop / drag end
-                          }
-                        }}
-                        onDrop={e => {
-                          e.preventDefault();
-                          const agentId = e.dataTransfer.getData("agentId") || dragAgentId;
-                          const range = paintRef.current;
-                          if (agentId && range && range.date === date) {
-                            assignBlock(date, range.startHour, range.endHour, agentId);
-                          } else if (agentId) {
-                            assignBlock(date, hour, hour, agentId);
-                          }
-                          setPaint(null);
-                          setDragAgentId(null);
-                        }}>
-                        <div className="flex flex-col gap-0.5">
-                          {cellEntries.map(entry => (
-                            <div key={entry.id}
-                              className="flex items-center gap-1 rounded px-1.5 py-0.5"
-                              style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.2)" }}
-                              onMouseEnter={() => setHoveredAgent(entry.agent_id)}
-                              onMouseLeave={() => setHoveredAgent(null)}
-                              title="Click × to remove this hour · Alt/Option+click × to remove the whole contiguous block">
-                              <span className="truncate text-xs" style={{ color: "#f59e0b", maxWidth: "72px" }}>{entry.agents?.name}</span>
-                              <button type="button"
-                                onClick={ev => {
-                                  if (ev.altKey) handleRemoveBlock(entry.agent_id, entry.scheduled_date, entry.slot_hour);
-                                  else handleRemove(entry.id);
-                                }}
-                                className="flex-shrink-0 leading-none opacity-40 hover:opacity-100 transition-opacity"
-                                style={{ color: "#f59e0b", fontSize: "12px" }}>×</button>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                ))}
+              </div>
+
+              {weekDates.map(({ date, weekday }) => {
+                const blocks = buildWatchBlocks(entries, date).map(b => {
+                  const key = `${b.date}:${b.agentId}:${b.entryIds[0]}`;
+                  if (resizePreview && resizePreview.blockKey === key) {
+                    return { ...b, startHour: resizePreview.startHour, endHour: resizePreview.endHour };
+                  }
+                  return b;
+                });
+
+                return (
+                  <WatchDayColumn
+                    key={date}
+                    date={date}
+                    weekday={weekday}
+                    blocks={blocks}
+                    gridH={gridH}
+                    hoveredAgent={hoveredAgent}
+                    dragAgentId={dragAgentId}
+                    dropHover={dropHover}
+                    isAvailable={isAvailable}
+                    onDropHover={setDropHover}
+                    onDrop={(hour, agentId) => {
+                      void assignBlock(date, hour, hour, agentId);
+                      setDropHover(null);
+                      setDragAgentId(null);
+                    }}
+                    onRemoveBlock={block => { void removeHours(block.entryIds); }}
+                    onStartResize={startResize}
+                    onHoverAgent={setHoveredAgent}
+                  />
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
       <div className="rounded-xl p-4 space-y-3" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
         <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>
-          Setters — drag onto a slot, then drag vertically to fill a block · hover to highlight availability
+          Setters — drop onto an hour · drag block edges to cover the shift · hover to highlight availability
         </p>
         <div className="flex flex-wrap gap-2">
           {agents.length === 0 ? (
@@ -341,12 +465,11 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
                 e.dataTransfer.effectAllowed = "copy";
                 setDragAgentId(agent.id);
                 setHoveredAgent(agent.id);
-                setPaint(null);
               }}
               onDragEnd={() => {
                 setDragAgentId(null);
                 setHoveredAgent(null);
-                setPaint(null);
+                setDropHover(null);
               }}
               onMouseEnter={() => setHoveredAgent(agent.id)}
               onMouseLeave={() => setHoveredAgent(null)}
@@ -362,6 +485,159 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart }: {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function WatchDayColumn({
+  date,
+  weekday,
+  blocks,
+  gridH,
+  hoveredAgent,
+  dragAgentId,
+  dropHover,
+  isAvailable,
+  onDropHover,
+  onDrop,
+  onRemoveBlock,
+  onStartResize,
+  onHoverAgent,
+}: {
+  date: string;
+  weekday: string;
+  blocks: WatchBlock[];
+  gridH: number;
+  hoveredAgent: string | null;
+  dragAgentId: string | null;
+  dropHover: { date: string; hour: number } | null;
+  isAvailable: (agentId: string, weekday: string, hour: number) => boolean;
+  onDropHover: (v: { date: string; hour: number } | null) => void;
+  onDrop: (hour: number, agentId: string) => void;
+  onRemoveBlock: (block: WatchBlock) => void;
+  onStartResize: (e: React.MouseEvent, block: WatchBlock, edge: "top" | "bottom", columnEl: HTMLElement) => void;
+  onHoverAgent: (id: string | null) => void;
+}) {
+  const colRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div
+      ref={colRef}
+      className="flex-1 relative"
+      style={{ minWidth: 110, height: gridH, borderLeft: "1px solid rgba(255,255,255,0.04)" }}
+      onDragOver={e => {
+        e.preventDefault();
+        if (!colRef.current || !dragAgentId) return;
+        const hour = hourFromY(e.clientY, colRef.current.getBoundingClientRect().top);
+        onDropHover({ date, hour });
+      }}
+      onDragLeave={e => {
+        if (!e.relatedTarget || !e.currentTarget.contains(e.relatedTarget as Node)) {
+          onDropHover(null);
+        }
+      }}
+      onDrop={e => {
+        e.preventDefault();
+        if (!colRef.current) return;
+        const agentId = e.dataTransfer.getData("agentId") || dragAgentId;
+        if (!agentId) return;
+        const hour = hourFromY(e.clientY, colRef.current.getBoundingClientRect().top);
+        onDrop(hour, agentId);
+      }}
+    >
+      {HOURS.map((hour, hi) => {
+        const highlight =
+          (hoveredAgent && isAvailable(hoveredAgent, weekday, hour)) ||
+          (dropHover?.date === date && dropHover.hour === hour);
+        return (
+          <div
+            key={hour}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: hi * WATCH_ROW_H,
+              height: WATCH_ROW_H,
+              background: highlight
+                ? "rgba(245,158,11,0.12)"
+                : hi % 2 === 0
+                ? "#080f1e"
+                : "#060d1a",
+              borderBottom: "1px solid rgba(255,255,255,0.03)",
+              pointerEvents: "none",
+            }}
+          />
+        );
+      })}
+
+      {blocks.map((block, i) => {
+        const top = (block.startHour - HOURS[0]) * WATCH_ROW_H + 2;
+        const height = (block.endHour - block.startHour + 1) * WATCH_ROW_H - 4;
+        const overlapping = blocks.filter(b =>
+          b !== block && !(b.endHour < block.startHour || b.startHour > block.endHour),
+        );
+        const stackIndex = overlapping.filter(b => blocks.indexOf(b) < i).length;
+        const stackCount = overlapping.length + 1;
+        const widthPct = 100 / Math.min(stackCount, 3);
+        const leftPct = (stackIndex % 3) * widthPct;
+
+        return (
+          <div
+            key={`${block.agentId}-${block.startHour}-${block.entryIds[0]}`}
+            className="absolute rounded-md overflow-hidden flex flex-col"
+            style={{
+              top,
+              height: Math.max(height, WATCH_ROW_H - 4),
+              left: `calc(${leftPct}% + 3px)`,
+              width: `calc(${widthPct}% - 6px)`,
+              background: "rgba(245,158,11,0.18)",
+              border: "1px solid rgba(245,158,11,0.35)",
+              zIndex: 2,
+            }}
+            onMouseEnter={() => onHoverAgent(block.agentId)}
+            onMouseLeave={() => onHoverAgent(null)}
+          >
+            <div
+              className="shrink-0 cursor-ns-resize flex items-center justify-center"
+              style={{ height: 6 }}
+              onMouseDown={e => colRef.current && onStartResize(e, block, "top", colRef.current)}
+              title="Drag to change start"
+            >
+              <div style={{ width: 20, height: 2, borderRadius: 1, background: "rgba(245,158,11,0.5)" }} />
+            </div>
+
+            <div className="flex-1 flex items-start gap-1 px-1.5 min-h-0">
+              <span className="truncate text-xs font-medium flex-1" style={{ color: "#f59e0b" }}>
+                {block.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemoveBlock(block)}
+                className="shrink-0 leading-none opacity-50 hover:opacity-100"
+                style={{ color: "#f59e0b", fontSize: 12 }}
+                title="Remove entire block"
+              >
+                ×
+              </button>
+            </div>
+
+            {block.endHour > block.startHour && (
+              <div className="px-1.5 pb-0.5 text-[10px]" style={{ color: "rgba(245,158,11,0.7)" }}>
+                {fmtHour(block.startHour)} – {fmtHour(block.endHour + 1)}
+              </div>
+            )}
+
+            <div
+              className="shrink-0 cursor-ns-resize flex items-center justify-center"
+              style={{ height: 8 }}
+              onMouseDown={e => colRef.current && onStartResize(e, block, "bottom", colRef.current)}
+              title="Drag to extend or shorten"
+            >
+              <div style={{ width: 28, height: 3, borderRadius: 2, background: "rgba(245,158,11,0.65)" }} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
