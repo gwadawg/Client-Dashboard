@@ -3,6 +3,7 @@ import type {
   LibraryArtifactType,
   LibraryDepartment,
   LibraryOwner,
+  RelatedDoc,
 } from "../library-manifest";
 
 /**
@@ -20,6 +21,13 @@ export type FormattedLibraryDoc = {
   review_cycle: string | null;
   script_version: string | null;
   tags: string[];
+  related_docs: RelatedDoc[];
+};
+
+export type LibraryDocCatalogEntry = {
+  slug: string;
+  title: string;
+  artifact_type?: string;
 };
 
 const ARTIFACT_TYPES: LibraryArtifactType[] = [
@@ -29,6 +37,7 @@ const OWNERS: LibraryOwner[] = ["setter", "closer", "sales-leadership", "operati
 const DEPARTMENTS: LibraryDepartment[] = ["sales", "call-center", "media-buying", "client-success", "operations"];
 
 const MAX_INPUT_CHARS = 30000;
+const MAX_CATALOG = 80;
 
 const SYSTEM_PROMPT = `You format raw text into clean documents for the Mr. Waiz Resource Library. The library renders GitHub-flavored Markdown with a few extra conventions.
 
@@ -36,37 +45,54 @@ const SYSTEM_PROMPT = `You format raw text into clean documents for the Mr. Waiz
 
 The single most important rule: preserve the author's wording verbatim. You are a formatter, not an editor.
 
-- DO: add structure — headings, lists, callouts, dialogue blocks, tables, spacing.
+- DO: add structure — headings, lists, callouts, dialogue blocks, tables, spacing, and cross-links.
 - DO: fix formatting artifacts introduced by copy/paste (stray line breaks mid-sentence, doubled spaces, smart quotes, bullet characters like "•" or "*" turned into proper "-" list items).
 - DO NOT: change, paraphrase, summarize, shorten, expand, "improve", or correct the grammar/spelling of the actual sentences. Keep every word the author wrote.
 - DO NOT: invent new content, sections, examples, or facts that are not present in the source text.
 - If a section's intent is ambiguous, keep the text as a plain paragraph rather than guessing.
 
+## CHAPTER / SECTION STRUCTURE (CRITICAL)
+
+The left sidebar ("Sections" / "Stages") is built from \`##\` H2 headings. A flat wall of text with no H2s will have an empty chapter nav.
+
+- Always break the body into multiple \`##\` chapters when the source has distinct topics, steps, or phases.
+- Prefer 3–10 H2 sections for a typical SOP/script. Avoid a single giant H2.
+- For call scripts or numbered step flows, name them \`## Stage 1: …\`, \`## Stage 2: …\` (these become sticky stage nav).
+- For SOPs / playbooks / FAQs, use clear chapter titles drawn from the source (e.g. Purpose, When to use, Procedure, Escalation, Related). Do not invent chapter titles that aren't supported by the source — but DO promote existing section labels into H2s.
+- Use \`###\` for sub-steps inside a chapter.
+- Start with \`## Purpose\` ONLY IF the source has an intro/summary sentence you can use verbatim.
+
 ## MARKDOWN CONVENTIONS
 
-Apply these when the source clearly calls for them:
+- \`> line\` — a blockquote renders as a copyable script/dialogue line. Use for word-for-word talk tracks.
+- \`📋 text\` — blue operator/instruction callout ("do this").
+- \`🔴 text\` — red critical-action callout (warnings / must-dos).
+- \`[NAME]\`, \`[LO NAME]\`, \`[CLIENT]\` — placeholder chips. Only convert placeholders the author already indicated.
+- \`- [ ] item\` — interactive checklist tasks.
+- Standard Markdown tables for tabular/routing data.
 
-- \`## Purpose\` — start the body with a short H2 "Purpose" section ONLY IF the source contains an intro/summary sentence you can use verbatim. Do not fabricate one.
-- \`## Heading\` / \`### Subheading\` — turn section titles into H2/H4. If the doc has a sequence of stages/steps, name them \`## Stage 1: ...\`, \`## Stage 2: ...\` (these become sticky nav anchors).
-- \`> line\` — a blockquote renders as a copyable script/dialogue line. Use this for things the rep is meant to SAY (word-for-word talk tracks, phone lines).
-- \`📋 text\` — a paragraph starting with 📋 renders as a blue operator/instruction callout. Use for "do this" operator notes.
-- \`🔴 text\` — a paragraph starting with 🔴 renders as a red critical-action callout. Use for warnings / must-dos.
-- \`[NAME]\`, \`[LO NAME]\`, \`[CLIENT]\` — wrap fill-in-the-blank placeholders in square brackets so they render as chips. Only convert placeholders the author already indicated (e.g. blanks, "name here", ALL-CAPS tokens).
-- \`- [ ] item\` — checklist tasks become interactive checkboxes.
-- Standard Markdown tables for any tabular/routing data.
+## CROSS-LINKS TO OTHER LIBRARY DOCS
+
+When the source mentions another playbook/SOP by name (or clearly refers to one in the catalog below), turn that mention into a markdown link:
+
+\`[Exact Title](/library/slug)\`
+
+Rules:
+- ONLY link to slugs from the provided catalog. Never invent slugs.
+- Keep the author's surrounding sentence wording; only wrap the doc name as a link.
+- Also list those docs in \`related_docs\` so they appear in the Related sidebar.
+- If the source doesn't mention other docs, leave related_docs empty — do not invent links.
 
 ## METADATA (suggested, author will confirm)
 
-Infer these from the content. When unsure, choose the most conservative option and leave optional fields empty.
-
-- title: a concise document title. If the source has an obvious title line, use it verbatim.
-- description: one sentence describing what the doc covers, taken/condensed from the author's own words (no new claims).
-- artifact_type: one of script | sop | checklist | reference | framework | doctrine | prompt | hub | document.
-- owner: one of setter | closer | sales-leadership | operations — the role that executes this doc.
-- department: one of sales | call-center | media-buying | client-success | operations, or null if unclear.
-- review_cycle: e.g. "weekly" | "monthly" | "quarterly" only if the source states one, else null.
-- script_version: only for scripts that state a version, else null.
-- tags: 2-5 short lowercase keyword tags.
+- title: concise document title (verbatim from source if present).
+- description: one sentence from the author's own words.
+- artifact_type: script | sop | checklist | reference | framework | doctrine | prompt | hub | document.
+- owner: setter | closer | sales-leadership | operations.
+- department: sales | call-center | media-buying | client-success | operations, or null.
+- review_cycle / script_version: only if stated in source, else empty.
+- tags: 2–5 short lowercase keywords.
+- related_docs: array of { slug, label, relation } for catalog docs you linked. relation is usually "reference".
 
 Return your result by calling the emit_document tool exactly once.`;
 
@@ -78,13 +104,30 @@ const EMIT_TOOL: Anthropic.Tool = {
     properties: {
       title: { type: "string", description: "Concise document title." },
       description: { type: "string", description: "One-sentence summary from the author's own words." },
-      body: { type: "string", description: "The full restructured Markdown body. Wording preserved verbatim; formatting only." },
+      body: {
+        type: "string",
+        description:
+          "The full restructured Markdown body with multiple ## chapters. Wording preserved verbatim; formatting only.",
+      },
       artifact_type: { type: "string", enum: ARTIFACT_TYPES },
       owner: { type: "string", enum: OWNERS },
       department: { type: "string", enum: [...DEPARTMENTS, "unknown"] },
       review_cycle: { type: "string", description: "weekly | monthly | quarterly, or empty if not stated." },
       script_version: { type: "string", description: "Version string for scripts, or empty." },
       tags: { type: "array", items: { type: "string" }, description: "2-5 short lowercase keywords." },
+      related_docs: {
+        type: "array",
+        description: "Library docs linked from the body (must match catalog slugs).",
+        items: {
+          type: "object",
+          properties: {
+            slug: { type: "string" },
+            label: { type: "string" },
+            relation: { type: "string" },
+          },
+          required: ["slug", "label"],
+        },
+      },
     },
     required: ["title", "body", "artifact_type", "owner"],
   },
@@ -116,11 +159,44 @@ function coerceTags(value: unknown): string[] {
   return out;
 }
 
+function coerceRelatedDocs(value: unknown, catalog: LibraryDocCatalogEntry[]): RelatedDoc[] {
+  const bySlug = new Map(catalog.map((d) => [d.slug, d]));
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: RelatedDoc[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const r = raw as Record<string, unknown>;
+    const slug = typeof r.slug === "string" ? r.slug.trim().toLowerCase() : "";
+    if (!slug || seen.has(slug) || !bySlug.has(slug)) continue;
+    const catalogHit = bySlug.get(slug)!;
+    const label =
+      (typeof r.label === "string" && r.label.trim()) || catalogHit.title || slug;
+    const relation = typeof r.relation === "string" && r.relation.trim() ? r.relation.trim() : "reference";
+    seen.add(slug);
+    out.push({ slug, label, relation });
+  }
+  return out;
+}
+
+function formatCatalogBlock(catalog: LibraryDocCatalogEntry[]): string {
+  if (!catalog.length) {
+    return "(No other library docs available yet — skip cross-links.)";
+  }
+  return catalog
+    .slice(0, MAX_CATALOG)
+    .map((d) => `- ${d.title} → /library/${d.slug}${d.artifact_type ? ` (${d.artifact_type})` : ""}`)
+    .join("\n");
+}
+
 /**
  * Send raw pasted text to Claude and get back clean, library-standard markdown
  * plus suggested metadata. Formatting only — the author's wording is preserved.
  */
-export async function formatLibraryDoc(rawText: string): Promise<FormattedLibraryDoc> {
+export async function formatLibraryDoc(
+  rawText: string,
+  catalog: LibraryDocCatalogEntry[] = [],
+): Promise<FormattedLibraryDoc> {
   const text = rawText.trim();
   if (!text) throw new Error("No text provided to format.");
   if (text.length > MAX_INPUT_CHARS) {
@@ -134,6 +210,7 @@ export async function formatLibraryDoc(rawText: string): Promise<FormattedLibrar
 
   const client = new Anthropic({ apiKey });
   const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
+  const catalogBlock = formatCatalogBlock(catalog);
 
   const response = await client.messages.create({
     model,
@@ -144,7 +221,19 @@ export async function formatLibraryDoc(rawText: string): Promise<FormattedLibrar
     messages: [
       {
         role: "user",
-        content: `Format the following raw text into a clean library document. Remember: preserve the wording verbatim, only add structure.\n\n<raw_text>\n${text}\n</raw_text>`,
+        content: `Format the following raw text into a clean library document.
+
+Remember:
+1. Preserve wording verbatim — structure only.
+2. Use multiple ## chapter headings so the Sections sidebar populates.
+3. Link to catalog docs when the source mentions them: [Title](/library/slug).
+
+## Library catalog (only link these)
+${catalogBlock}
+
+<raw_text>
+${text}
+</raw_text>`,
       },
     ],
   });
@@ -177,5 +266,6 @@ export async function formatLibraryDoc(rawText: string): Promise<FormattedLibrar
     review_cycle: coerceOptional(out.review_cycle),
     script_version: coerceOptional(out.script_version),
     tags: coerceTags(out.tags),
+    related_docs: coerceRelatedDocs(out.related_docs, catalog),
   };
 }

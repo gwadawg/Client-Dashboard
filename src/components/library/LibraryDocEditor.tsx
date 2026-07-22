@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { slugFromTitle } from "@/lib/library-processor";
 import {
   DEPARTMENT_ORDER,
@@ -9,6 +9,7 @@ import {
   type LibraryDepartment,
   type LibraryOwner,
   type LibraryStatus,
+  type RelatedDoc,
 } from "@/lib/library-manifest";
 import type { LibraryDocumentRow } from "@/lib/library-processor";
 
@@ -38,6 +39,12 @@ const STATUSES: { value: LibraryStatus; label: string }[] = [
   { value: "draft", label: "Draft" },
 ];
 
+export type LibraryDocOption = {
+  slug: string;
+  title: string;
+  artifact_type?: string;
+};
+
 export type LibraryEditorState = {
   editSlug: string | null;
   title: string;
@@ -52,6 +59,7 @@ export type LibraryEditorState = {
   script_version: string;
   tags: string;
   featured: boolean;
+  related_docs: RelatedDoc[];
 };
 
 export const EMPTY_LIBRARY_EDITOR: LibraryEditorState = {
@@ -68,6 +76,7 @@ export const EMPTY_LIBRARY_EDITOR: LibraryEditorState = {
   script_version: "",
   tags: "",
   featured: false,
+  related_docs: [],
 };
 
 export function libraryRowToEditor(row: LibraryDocumentRow): LibraryEditorState {
@@ -85,6 +94,7 @@ export function libraryRowToEditor(row: LibraryDocumentRow): LibraryEditorState 
     script_version: row.script_version ?? "",
     tags: (row.tags ?? []).join(", "),
     featured: row.featured,
+    related_docs: row.related_docs ?? [],
   };
 }
 
@@ -101,18 +111,147 @@ type Props = {
   error: string | null;
   onClose: () => void;
   onSave: () => void;
+  /** Other library docs available for @-mentions and Related tagging. */
+  libraryDocs?: LibraryDocOption[];
 };
 
-export default function LibraryDocEditor({ state, setState, saving, error, onClose, onSave }: Props) {
+type MentionState = {
+  start: number;
+  query: string;
+} | null;
+
+function mergeRelated(existing: RelatedDoc[], next: RelatedDoc, excludeSlug?: string | null): RelatedDoc[] {
+  if (excludeSlug && next.slug === excludeSlug) return existing;
+  if (existing.some((r) => r.slug === next.slug)) return existing;
+  return [...existing, next];
+}
+
+export default function LibraryDocEditor({
+  state,
+  setState,
+  saving,
+  error,
+  onClose,
+  onSave,
+  libraryDocs = [],
+}: Props) {
   const [slugManual, setSlugManual] = useState(!!state.editSlug);
   const [formatting, setFormatting] = useState(false);
   const [formatError, setFormatError] = useState<string | null>(null);
+  const [mention, setMention] = useState<MentionState>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [relatedQuery, setRelatedQuery] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const linkableDocs = useMemo(
+    () => libraryDocs.filter((d) => d.slug !== state.editSlug && d.slug !== state.slug),
+    [libraryDocs, state.editSlug, state.slug],
+  );
+
+  const mentionMatches = useMemo(() => {
+    if (!mention) return [];
+    const q = mention.query.toLowerCase();
+    return linkableDocs
+      .filter(
+        (d) =>
+          !q ||
+          d.title.toLowerCase().includes(q) ||
+          d.slug.toLowerCase().includes(q),
+      )
+      .slice(0, 8);
+  }, [mention, linkableDocs]);
+
+  const relatedPickerMatches = useMemo(() => {
+    const q = relatedQuery.trim().toLowerCase();
+    const taken = new Set(state.related_docs.map((r) => r.slug));
+    return linkableDocs
+      .filter((d) => !taken.has(d.slug))
+      .filter(
+        (d) =>
+          !q ||
+          d.title.toLowerCase().includes(q) ||
+          d.slug.toLowerCase().includes(q),
+      )
+      .slice(0, 6);
+  }, [relatedQuery, linkableDocs, state.related_docs]);
 
   useEffect(() => {
     if (!slugManual && state.title && !state.editSlug) {
       setState((s) => ({ ...s, slug: slugFromTitle(s.title) }));
     }
   }, [state.title, slugManual, state.editSlug, setState]);
+
+  useEffect(() => {
+    setMentionIndex(0);
+  }, [mention?.query]);
+
+  function detectMention(value: string, cursor: number) {
+    const before = value.slice(0, cursor);
+    const at = before.lastIndexOf("@");
+    if (at < 0) {
+      setMention(null);
+      return;
+    }
+    const charBefore = at > 0 ? before[at - 1] : " ";
+    if (charBefore && !/\s|[({\[]/.test(charBefore)) {
+      setMention(null);
+      return;
+    }
+    const query = before.slice(at + 1);
+    if (/\s/.test(query) || query.length > 40) {
+      setMention(null);
+      return;
+    }
+    setMention({ start: at, query });
+  }
+
+  function insertDocLink(doc: LibraryDocOption) {
+    const el = textareaRef.current;
+    const cursor = el?.selectionStart ?? state.body.length;
+    const start = mention?.start ?? cursor;
+    const before = state.body.slice(0, start);
+    const after = state.body.slice(cursor);
+    const link = `[${doc.title}](/library/${doc.slug})`;
+    const nextBody = `${before}${link}${after}`;
+    const nextCursor = before.length + link.length;
+
+    setState((s) => ({
+      ...s,
+      body: nextBody,
+      related_docs: mergeRelated(
+        s.related_docs,
+        { slug: doc.slug, label: doc.title, relation: "reference" },
+        s.editSlug ?? s.slug,
+      ),
+    }));
+    setMention(null);
+
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
+
+  function addRelated(doc: LibraryDocOption) {
+    setState((s) => ({
+      ...s,
+      related_docs: mergeRelated(
+        s.related_docs,
+        { slug: doc.slug, label: doc.title, relation: "reference" },
+        s.editSlug ?? s.slug,
+      ),
+    }));
+    setRelatedQuery("");
+  }
+
+  function removeRelated(slug: string) {
+    setState((s) => ({
+      ...s,
+      related_docs: s.related_docs.filter((r) => r.slug !== slug),
+    }));
+  }
 
   async function handleFormat() {
     if (formatting || !state.body.trim()) return;
@@ -122,22 +261,41 @@ export default function LibraryDocEditor({ state, setState, saving, error, onClo
       const res = await fetch("/api/library/format", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: state.body }),
+        body: JSON.stringify({
+          text: state.body,
+          exclude_slug: state.editSlug || state.slug || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Formatting failed");
 
-      setState((s) => ({
-        ...s,
-        body: typeof data.body === "string" ? data.body : s.body,
-        title: s.title.trim() ? s.title : (data.title ?? s.title),
-        artifact_type: data.artifact_type ?? s.artifact_type,
-        owner: data.owner ?? s.owner,
-        department: data.department ?? s.department,
-        review_cycle: data.review_cycle ?? s.review_cycle,
-        script_version: data.script_version ?? s.script_version,
-        tags: Array.isArray(data.tags) && data.tags.length ? data.tags.join(", ") : s.tags,
-      }));
+      setState((s) => {
+        const suggestedRelated: RelatedDoc[] = Array.isArray(data.related_docs)
+          ? data.related_docs.filter(
+              (r: RelatedDoc) =>
+                r &&
+                typeof r.slug === "string" &&
+                typeof r.label === "string" &&
+                r.slug !== (s.editSlug ?? s.slug),
+            )
+          : [];
+        let related = s.related_docs;
+        for (const r of suggestedRelated) {
+          related = mergeRelated(related, r, s.editSlug ?? s.slug);
+        }
+        return {
+          ...s,
+          body: typeof data.body === "string" ? data.body : s.body,
+          title: s.title.trim() ? s.title : (data.title ?? s.title),
+          artifact_type: data.artifact_type ?? s.artifact_type,
+          owner: data.owner ?? s.owner,
+          department: data.department ?? s.department,
+          review_cycle: data.review_cycle ?? s.review_cycle,
+          script_version: data.script_version ?? s.script_version,
+          tags: Array.isArray(data.tags) && data.tags.length ? data.tags.join(", ") : s.tags,
+          related_docs: related,
+        };
+      });
     } catch (err) {
       setFormatError(err instanceof Error ? err.message : "Formatting failed");
     } finally {
@@ -294,23 +452,90 @@ export default function LibraryDocEditor({ state, setState, saving, error, onClo
               </Field>
             </div>
 
-            <label className="block">
+            <div>
+              <Field label="Related docs" hint="sidebar links — or type @ in the body">
+                <div className="flex flex-wrap gap-1.5 mb-2 min-h-[1.5rem]">
+                  {state.related_docs.length === 0 && (
+                    <span className="text-[11px]" style={{ color: "#475569" }}>
+                      None yet — search below or @mention in the body
+                    </span>
+                  )}
+                  {state.related_docs.map((r) => (
+                    <button
+                      key={r.slug}
+                      type="button"
+                      onClick={() => removeRelated(r.slug)}
+                      title="Remove related doc"
+                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
+                      style={{
+                        background: "rgba(56,189,248,0.12)",
+                        color: "#7dd3fc",
+                        border: "1px solid rgba(56,189,248,0.28)",
+                      }}
+                    >
+                      {r.label}
+                      <span style={{ color: "#64748b" }}>×</span>
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={relatedQuery}
+                  onChange={(e) => setRelatedQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && relatedPickerMatches[0]) {
+                      e.preventDefault();
+                      addRelated(relatedPickerMatches[0]);
+                    }
+                  }}
+                  placeholder="Search library to tag…"
+                  className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                />
+                {relatedQuery.trim() && relatedPickerMatches.length > 0 && (
+                  <div
+                    className="mt-1.5 rounded-xl overflow-hidden"
+                    style={{ border: "1px solid rgba(255,255,255,0.10)", background: "#0f2040" }}
+                  >
+                    {relatedPickerMatches.map((d) => (
+                      <button
+                        key={d.slug}
+                        type="button"
+                        onClick={() => addRelated(d)}
+                        className="w-full text-left px-3.5 py-2.5 text-sm hover:bg-white/[0.04]"
+                        style={{ color: "#e2e8f0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                      >
+                        <span className="font-medium">{d.title}</span>
+                        <span className="ml-2 text-[11px] font-mono" style={{ color: "#64748b" }}>
+                          /{d.slug}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Field>
+            </div>
+
+            <label className="block relative">
               <span className="flex items-center justify-between gap-2 mb-1.5">
                 <span className="flex items-baseline gap-2">
                   <span className="text-xs font-semibold" style={{ color: "#94a3b8" }}>
                     Markdown body
                   </span>
                   <span className="text-[10px]" style={{ color: "#334155" }}>
-                    paste raw text, then clean it up
+                    paste raw text · @ to link docs · then clean up
                   </span>
                 </span>
                 <button
                   type="button"
                   onClick={handleFormat}
                   disabled={formatting || !state.body.trim()}
-                  title="Restructure pasted text into the library format. Wording is preserved."
+                  title="Restructure pasted text into library chapters and links. Wording is preserved."
                   className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{ background: "rgba(129,140,248,0.14)", color: "#a5b4fc", border: "1px solid rgba(129,140,248,0.28)" }}
+                  style={{
+                    background: "rgba(129,140,248,0.14)",
+                    color: "#a5b4fc",
+                    border: "1px solid rgba(129,140,248,0.28)",
+                  }}
                 >
                   {formatting ? (
                     <>
@@ -323,21 +548,99 @@ export default function LibraryDocEditor({ state, setState, saving, error, onClo
                   ) : (
                     <>
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16 2.4 6.6L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3Z" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16 2.4 6.6L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3Z"
+                        />
                       </svg>
-                      Clean up &amp; structure
+                      Clean up & structure
                     </>
                   )}
                 </button>
               </span>
               <textarea
+                ref={textareaRef}
                 value={state.body}
-                onChange={(e) => setState((s) => ({ ...s, body: e.target.value }))}
-                placeholder={"Paste raw text here (from a Google Doc, email, transcript…) then click Clean up & structure.\n\nOr write markdown directly:\n## Purpose\n\nWhat this doc covers…\n\n> Dialogue lines render as script blocks."}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const cursor = e.target.selectionStart ?? value.length;
+                  setState((s) => ({ ...s, body: value }));
+                  detectMention(value, cursor);
+                }}
+                onClick={(e) => {
+                  const el = e.currentTarget;
+                  detectMention(el.value, el.selectionStart ?? 0);
+                }}
+                onKeyUp={(e) => {
+                  const el = e.currentTarget;
+                  if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+                    detectMention(el.value, el.selectionStart ?? 0);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (!mention || !mentionMatches.length) return;
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setMentionIndex((i) => (i + 1) % mentionMatches.length);
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setMentionIndex((i) => (i - 1 + mentionMatches.length) % mentionMatches.length);
+                  } else if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    insertDocLink(mentionMatches[mentionIndex] ?? mentionMatches[0]);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setMention(null);
+                  }
+                }}
+                placeholder={
+                  "Paste raw text, then Clean up & structure.\n\nType @ to link another playbook (e.g. @Watchshift).\n\nOr write markdown:\n## Purpose\n\nWhat this doc covers…\n\n> Dialogue lines render as script blocks."
+                }
                 rows={16}
                 className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none resize-y font-mono leading-relaxed"
                 style={inputStyle}
               />
+
+              {mention && mentionMatches.length > 0 && (
+                <div
+                  className="absolute left-0 right-0 z-10 mt-1 rounded-xl overflow-hidden shadow-xl"
+                  style={{
+                    top: "100%",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "#0f2040",
+                    boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
+                  }}
+                >
+                  <p
+                    className="px-3.5 py-2 text-[10px] font-bold uppercase tracking-widest"
+                    style={{ color: "#64748b", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+                  >
+                    Link library doc
+                  </p>
+                  {mentionMatches.map((d, i) => (
+                    <button
+                      key={d.slug}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        insertDocLink(d);
+                      }}
+                      className="w-full text-left px-3.5 py-2.5 text-sm"
+                      style={{
+                        color: "#e2e8f0",
+                        background: i === mentionIndex ? "rgba(129,140,248,0.16)" : "transparent",
+                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                      }}
+                    >
+                      <span className="font-medium">{d.title}</span>
+                      <span className="ml-2 text-[11px] font-mono" style={{ color: "#64748b" }}>
+                        /{d.slug}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </label>
 
             {formatError && (

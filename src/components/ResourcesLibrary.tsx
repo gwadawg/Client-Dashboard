@@ -396,6 +396,7 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
       script_version: playbookEditor.script_version.trim() || null,
       tags: playbookEditor.tags,
       featured: playbookEditor.featured,
+      related_docs: playbookEditor.related_docs,
     };
     try {
       const url = playbookEditor.editSlug
@@ -665,6 +666,11 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
           error={playbookEditorError}
           onClose={() => setPlaybookEditorOpen(false)}
           onSave={handleSavePlaybook}
+          libraryDocs={playbookItems.map((d) => ({
+            slug: d.doc.slug,
+            title: d.title,
+            artifact_type: d.artifact_type,
+          }))}
         />
       )}
 

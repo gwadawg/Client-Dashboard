@@ -99,7 +99,7 @@ export default function ScriptStageNav({
     <div className="space-y-4">
       <div className="space-y-1">
         <p className="text-[10px] font-bold uppercase tracking-widest px-1" style={{ color: "#475569" }}>
-          Stages
+          {stageNav.some((h) => /^stage\s+\d/i.test(h.title)) ? "Stages" : "Sections"}
         </p>
         {stageNav.length ? (
           stageNav.map((h) => (
@@ -116,7 +116,7 @@ export default function ScriptStageNav({
           ))
         ) : (
           <p className="text-xs px-1" style={{ color: "#64748b" }}>
-            No stage sections
+            No sections yet
           </p>
         )}
       </div>
@@ -134,7 +134,7 @@ export default function ScriptStageNav({
         style={{ background: "#f59e0b", color: "#1a1206" }}
         onClick={() => setMobileOpen(true)}
       >
-        Stages
+        Sections
       </button>
 
       {/* Mobile sheet */}

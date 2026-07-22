@@ -116,10 +116,11 @@ export function extractHeadings(body: string): LibraryHeading[] {
 }
 
 export function extractStageHeadings(headings: LibraryHeading[]): LibraryHeading[] {
+  // Script-style stage nav (intro call and similar)
   const h2 = headings.filter(
     (h) =>
       h.level === 2 &&
-      (/^stage\s+1/i.test(h.title) ||
+      (/^stage\s+\d/i.test(h.title) ||
         /stages\s+2/i.test(h.title) ||
         /call checklist/i.test(h.title) ||
         /north star/i.test(h.title) ||
@@ -127,7 +128,11 @@ export function extractStageHeadings(headings: LibraryHeading[]): LibraryHeading
         /^icp tracks/i.test(h.title)),
   );
   const h3Stages = headings.filter((h) => h.level === 3 && /^stage\s+[2-7]/i.test(h.title));
-  return [...h2, ...h3Stages];
+  const scriptNav = [...h2, ...h3Stages];
+  if (scriptNav.length) return scriptNav;
+
+  // General docs: every H2 becomes a chapter in the sticky left nav
+  return headings.filter((h) => h.level === 2);
 }
 
 function findHeadingId(headings: LibraryHeading[], pattern: RegExp): string | null {
@@ -196,6 +201,37 @@ export function rewriteLibraryLinks(body: string, slugMap: Map<string, string>):
   });
 }
 
+/** Pull `[label](/library/slug)` links from body into related_docs (deduped). */
+export function extractRelatedFromBody(body: string): RelatedDoc[] {
+  const re = /\[([^\]]+)\]\(\/library\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:#[^)]*)?\)/gi;
+  const seen = new Set<string>();
+  const out: RelatedDoc[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const label = m[1].trim();
+    const slug = m[2].toLowerCase();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    out.push({ slug, label, relation: "reference" });
+  }
+  return out;
+}
+
+function mergeRelatedDocs(primary: RelatedDoc[], secondary: RelatedDoc[]): RelatedDoc[] {
+  const seen = new Set<string>();
+  const out: RelatedDoc[] = [];
+  for (const r of [...primary, ...secondary]) {
+    if (!r?.slug || seen.has(r.slug)) continue;
+    seen.add(r.slug);
+    out.push({
+      slug: r.slug,
+      label: r.label || r.slug,
+      relation: r.relation,
+    });
+  }
+  return out;
+}
+
 export function processLibraryDoc(
   input: LibraryDocInput,
   slugMap?: Map<string, string>,
@@ -203,6 +239,10 @@ export function processLibraryDoc(
   const rewritten = slugMap ? rewriteLibraryLinks(input.body, slugMap) : input.body;
   const headings = extractHeadings(rewritten);
   const description = input.description?.trim() || extractDescription(rewritten);
+  const related_docs = mergeRelatedDocs(
+    input.related_docs ?? [],
+    extractRelatedFromBody(rewritten),
+  ).filter((r) => r.slug !== input.slug);
 
   return {
     ...input,
@@ -212,7 +252,7 @@ export function processLibraryDoc(
     stage_nav: extractStageHeadings(headings),
     opening_pills: extractOpeningPills(headings),
     icp_pills: extractIcpPills(headings),
-    related_docs: input.related_docs ?? [],
+    related_docs,
     tags: input.tags ?? [],
     domain: input.domain ?? "acquisition",
     status: input.status ?? "draft",
