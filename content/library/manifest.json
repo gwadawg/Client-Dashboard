@@ -2797,12 +2797,12 @@
     {
       "slug": "under-kpi-diagnosis-ladder",
       "title": "Under-KPI Diagnosis Ladder",
-      "description": "A short field guide for the role that owns a red account: confirm whether the miss is **system/data broken** or **quality execution**, then pick **one** lever. The app already grades accounts — this i",
+      "description": "Before the team fully trusts Mr. Waiz’s red / constraint on a client, prove the **data is dispositioned and complete**, then decide whether the miss is **system/data broken** or **quality execution**,",
       "domain": "operations",
       "owner": "operations",
       "status": "draft",
       "artifact_type": "sop",
-      "last_updated": "2026-07-21T00:00:00.000Z",
+      "last_updated": "2026-07-22T00:00:00.000Z",
       "review_cycle": "monthly",
       "script_version": null,
       "path": "operations/people/under-kpi-diagnosis-ladder.md",
@@ -2839,18 +2839,63 @@
         },
         {
           "level": 2,
-          "title": "Ladder (execute in order)",
-          "id": "ladder-execute-in-order"
+          "title": "Gate A — Prove the data (do this before trusting Mr. Waiz)",
+          "id": "gate-a-prove-the-data-do-this-before-trusting-mr-waiz"
+        },
+        {
+          "level": 3,
+          "title": "Shared stop conditions (anyone can call DATA_HOLD)",
+          "id": "shared-stop-conditions-anyone-can-call-data_hold"
+        },
+        {
+          "level": 3,
+          "title": "Role-split spot-check",
+          "id": "role-split-spot-check"
+        },
+        {
+          "level": 4,
+          "title": "Media Buyer — spend + lead ingest",
+          "id": "media-buyer-spend-lead-ingest"
+        },
+        {
+          "level": 4,
+          "title": "Call Center Manager — appointments + booking credit",
+          "id": "call-center-manager-appointments-booking-credit"
+        },
+        {
+          "level": 4,
+          "title": "Client Success — book call + north star",
+          "id": "client-success-book-call-north-star"
+        },
+        {
+          "level": 3,
+          "title": "Disposition standard (appointments and all)",
+          "id": "disposition-standard-appointments-and-all"
         },
         {
           "level": 2,
-          "title": "System vs quality",
-          "id": "system-vs-quality"
+          "title": "Gate B — Challenge Mr. Waiz’s constraint (only if Gate A passed)",
+          "id": "gate-b-challenge-mr-waizs-constraint-only-if-gate-a-passed"
         },
         {
           "level": 2,
-          "title": "Basic data-accuracy checklist",
-          "id": "basic-data-accuracy-checklist"
+          "title": "Gate C — System vs quality + one plan",
+          "id": "gate-c-system-vs-quality-one-plan"
+        },
+        {
+          "level": 3,
+          "title": "One-plan rule",
+          "id": "one-plan-rule"
+        },
+        {
+          "level": 3,
+          "title": "Escalation",
+          "id": "escalation"
+        },
+        {
+          "level": 2,
+          "title": "Ladder summary (order)",
+          "id": "ladder-summary-order"
         },
         {
           "level": 2,
@@ -2861,11 +2906,6 @@
           "level": 2,
           "title": "Quality bar",
           "id": "quality-bar"
-        },
-        {
-          "level": 2,
-          "title": "Escalation",
-          "id": "escalation"
         },
         {
           "level": 2,

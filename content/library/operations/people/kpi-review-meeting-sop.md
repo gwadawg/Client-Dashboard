@@ -77,6 +77,7 @@ North star: RM/DSCR = **CPConv**; HE = **hand-raise and/or show**. Do not chase 
 3. **Per red (2–3 min max):**
    - Confirm north-star miss.
    - Fork: **system/data** vs **quality** (thin only — deep work uses the ladder async).
+   - If dispositions look incomplete in-room, name **DATA_HOLD** and assign Call Center Manager / Client Success to finish Gate A before quality levers.
    - Capture **one** constraint label + **one** action plan + **one-sentence explanation**.
 4. **OB glance** — launches this week only (gate risk), then close.
 
@@ -134,7 +135,13 @@ Even if the plan is “observe 48h,” write the Why line.
 
 ## Between Mon and Thu (async)
 
-Owning role runs the [Under-KPI Diagnosis Ladder](/library/under-kpi-diagnosis-ladder) on their reds. Update the note line on Thursday if the diagnosis changed.
+Owning roles run the [Under-KPI Diagnosis Ladder](/library/under-kpi-diagnosis-ladder):
+
+1. **Gate A** — prove data (appointments fully dispositioned + role-split spot-checks) before trusting Mr. Waiz  
+2. **Gate B** — challenge the app’s constraint against the first broken layer  
+3. **Gate C** — system vs quality + one plan  
+
+Update the note line on Thursday if the diagnosis changed.
 
 ## Quality bar
 
