@@ -47,6 +47,8 @@ export type TeamMeetingSeed = {
   agenda_md: string;
   checklist: ChecklistItemDef[];
   disposition: DispositionFieldDef[];
+  /** Resource Library slugs opened from the runbook UI (not stored on template row). */
+  library_slugs?: string[];
 };
 
 export const SHARED_DISPOSITION: DispositionFieldDef[] = [
@@ -145,15 +147,35 @@ export const TEAM_MEETING_SEED: TeamMeetingSeed[] = [
     duration_min: 25,
     host_role: 'client_success',
     attendee_roles: ['client_success', 'media_buyer', 'ccm'],
-    agenda_md:
-      'PLACEHOLDER — fill from Q3 restructure.\n\nIn: RYG scan, reds with owners + due dates, OB glance.\nOut: creative debates, CEO status theater.',
+    agenda_md: [
+      'Monday KPI — Week Plan (Client Success hosts).',
+      '',
+      'In:',
+      '1. Rules (60s) — one primary constraint per red; owners speak only on their reds; no creative debates.',
+      '2. R/Y/G scan — Act now + Below KPI from the app.',
+      '3. Per red — confirm north-star miss → system vs quality fork → action plan + one-sentence Why.',
+      '4. OB glance — launches this week only.',
+      '',
+      'Note line (paste into summary / follow_ups):',
+      '[Client] · [911|Below] · Why: … · Constraint: … · Plan: [role] will … by [date] · Success: …',
+      '',
+      'Out: creative debates, Founder status theater, deep coaching, full diagnostic workshop.',
+      '',
+      'SOP: /library/kpi-review-meeting-sop · Ladder: /library/under-kpi-diagnosis-ladder',
+    ].join('\n'),
     checklist: [
       { key: 'ryg_scan_done', label: 'R/Y/G scan done', required: true, section: 'run' },
-      { key: 'reds_have_owners', label: 'Reds have owners', required: true, section: 'run' },
-      { key: 'commitments_named', label: 'Commitments named + due', required: true, section: 'run' },
+      { key: 'reds_have_owners', label: 'Reds have role owners', required: true, section: 'run' },
+      {
+        key: 'commitments_named',
+        label: 'Commitments named + due (with Why line in notes)',
+        required: true,
+        section: 'run',
+      },
       { key: 'ob_glance', label: 'OB glance for launches this week', required: true, section: 'run' },
     ],
     disposition: SHARED_DISPOSITION,
+    library_slugs: ['kpi-review-meeting-sop', 'under-kpi-diagnosis-ladder'],
   },
   {
     slug: 'mon-ops-planning',
@@ -184,14 +206,26 @@ export const TEAM_MEETING_SEED: TeamMeetingSeed[] = [
     duration_min: 25,
     host_role: 'client_success',
     attendee_roles: ['client_success', 'media_buyer', 'ccm'],
-    agenda_md:
-      'PLACEHOLDER — fill from Q3 restructure.\n\nIn: open commitments only, re-commit reds, Fri Q&A remind.\nOut: full book re-scan.',
+    agenda_md: [
+      'Thursday KPI — Commitment Check (Client Success hosts).',
+      '',
+      'In:',
+      '1. Open commitments only — no full book re-scan.',
+      '2. Each item: landed / blocked / missed.',
+      '3. Still red → re-commit (update Why/Plan) or escalate to Fri Q&A intake.',
+      '4. Remind Thu EOD questions for Fri Exec Q&A (decisions only).',
+      '',
+      'Out: re-scanning the whole book, creative debates, inventing status for Founder.',
+      '',
+      'SOP: /library/kpi-review-meeting-sop · Ladder: /library/under-kpi-diagnosis-ladder',
+    ].join('\n'),
     checklist: [
       { key: 'commitments_checked', label: 'Open commitments checked', required: true, section: 'run' },
       { key: 'still_red_recommitted', label: 'Still-red items re-committed', required: true, section: 'run' },
       { key: 'fri_qa_reminded', label: 'Fri Q&A intake reminded', required: true, section: 'run' },
     ],
     disposition: SHARED_DISPOSITION,
+    library_slugs: ['kpi-review-meeting-sop', 'under-kpi-diagnosis-ladder'],
   },
   {
     slug: 'fri-exec-qa',
@@ -354,6 +388,16 @@ export function templateRowFromSeed(seed: TeamMeetingSeed) {
     updated_at: new Date().toISOString(),
   };
 }
+
+/** Library SOP links for a template slug (from seed; not stored on DB row). */
+export function librarySlugsForTemplate(slug: string): string[] {
+  return TEAM_MEETING_SEED.find(s => s.slug === slug)?.library_slugs ?? [];
+}
+
+export const LIBRARY_SOP_LINK_LABELS: Record<string, string> = {
+  'kpi-review-meeting-sop': 'Open meeting SOP',
+  'under-kpi-diagnosis-ladder': 'Diagnosis ladder',
+};
 
 export type TeamMeetingTemplateRow = {
   id: string;

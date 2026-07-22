@@ -4,6 +4,7 @@
  * Usage:
  *   node scripts/import-library-doc.mjs <source-path>
  *   node scripts/import-library-doc.mjs --bundle setter-playbooks
+ *   node scripts/import-library-doc.mjs --bundle call-center-dscr
  *   node scripts/import-library-doc.mjs --bundle setter-playbooks --dry-run
  */
 
@@ -15,22 +16,52 @@ import matter from "gray-matter";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
 const LIBRARY_ROOT = path.join(REPO_ROOT, "content", "library");
-const WM_OS_SALES = "/Users/gwadawg/Documents/GitHub/Wm-os/docs/acquisition/sales";
+const WM_OS_ROOT = path.resolve(REPO_ROOT, "..", "Wm-os");
+const WM_OS_SALES = path.join(WM_OS_ROOT, "docs/acquisition/sales");
+const WM_OS_DSCR = path.join(WM_OS_ROOT, "docs/client-fulfillment/dscr-dna");
+const WM_OS_PEOPLE = path.join(WM_OS_ROOT, "docs/operations/people");
 
 const SETTER_PLAYBOOKS_BUNDLE = [
-  { rel: "script-intro-call-basic.md", slug: "intro-call-script" },
-  { rel: "intro-call-qualification-framework.md", slug: "intro-qualification-framework" },
-  { rel: "script-factory/flip-the-frame-company-description.md", slug: "flip-the-frame" },
-  { rel: "script-factory/intro-icp-tracks.md", slug: "intro-icp-tracks" },
-  { rel: "disqualifying-financial-qualification.md", slug: "financial-qualification" },
-  { rel: "sop-watchshift.md", slug: "watchshift" },
-  { rel: "no-shows-maximizing-show-rates-setter-levers.md", slug: "show-rate-levers" },
-  { rel: "objection-handling-hub.md", slug: "objection-handling-hub" },
-  { rel: "setter-daily-checklist.md", slug: "setter-daily-checklist" },
+  { rel: "script-intro-call-basic.md", slug: "intro-call-script", sourceRoot: WM_OS_SALES },
+  { rel: "intro-call-qualification-framework.md", slug: "intro-qualification-framework", sourceRoot: WM_OS_SALES },
+  { rel: "script-factory/flip-the-frame-company-description.md", slug: "flip-the-frame", sourceRoot: WM_OS_SALES },
+  { rel: "script-factory/intro-icp-tracks.md", slug: "intro-icp-tracks", sourceRoot: WM_OS_SALES },
+  { rel: "disqualifying-financial-qualification.md", slug: "financial-qualification", sourceRoot: WM_OS_SALES },
+  { rel: "sop-watchshift.md", slug: "watchshift", sourceRoot: WM_OS_SALES },
+  { rel: "no-shows-maximizing-show-rates-setter-levers.md", slug: "show-rate-levers", sourceRoot: WM_OS_SALES },
+  { rel: "objection-handling-hub.md", slug: "objection-handling-hub", sourceRoot: WM_OS_SALES },
+  { rel: "setter-daily-checklist.md", slug: "setter-daily-checklist", sourceRoot: WM_OS_SALES },
 ];
 
-const BUNDLE_DEPARTMENTS = {
-  "setter-playbooks": "sales",
+const CALL_CENTER_DSCR_BUNDLE = [
+  { rel: "dscr-team-product-faq.md", slug: "dscr-team-product-faq", sourceRoot: WM_OS_DSCR },
+  { rel: "dscr-setter-appointment-script.md", slug: "dscr-setter-appointment-script", sourceRoot: WM_OS_DSCR },
+];
+
+const TEAM_MEETINGS_KPI_BUNDLE = [
+  { rel: "kpi-review-meeting-sop.md", slug: "kpi-review-meeting-sop", sourceRoot: WM_OS_PEOPLE },
+  { rel: "under-kpi-diagnosis-ladder.md", slug: "under-kpi-diagnosis-ladder", sourceRoot: WM_OS_PEOPLE },
+];
+
+const BUNDLE_CONFIG = {
+  "setter-playbooks": {
+    entries: SETTER_PLAYBOOKS_BUNDLE,
+    department: "sales",
+    outputSubdir: "acquisition/sales",
+    featuredSlug: "intro-call-script",
+  },
+  "call-center-dscr": {
+    entries: CALL_CENTER_DSCR_BUNDLE,
+    department: "call-center",
+    outputSubdir: "client-fulfillment/call-center",
+    featuredSlug: null,
+  },
+  "team-meetings-kpi": {
+    entries: TEAM_MEETINGS_KPI_BUNDLE,
+    department: "operations",
+    outputSubdir: "operations/people",
+    featuredSlug: "kpi-review-meeting-sop",
+  },
 };
 
 const RELATED_DOCS_OVERRIDES = {
@@ -43,6 +74,20 @@ const RELATED_DOCS_OVERRIDES = {
     { slug: "show-rate-levers", label: "Show Rate Levers", relation: "reference" },
     { slug: "objection-handling-hub", label: "Objection Handling", relation: "reference" },
     { slug: "setter-daily-checklist", label: "Daily Checklist", relation: "reference" },
+  ],
+  "dscr-setter-appointment-script": [
+    { slug: "dscr-team-product-faq", label: "DSCR Team Product FAQ", relation: "prerequisite" },
+    { slug: "intro-call-script", label: "RM Intro Script (acquisition)", relation: "reference" },
+  ],
+  "dscr-team-product-faq": [
+    { slug: "dscr-setter-appointment-script", label: "DSCR Appointment Script", relation: "next-step" },
+    { slug: "intro-qualification-framework", label: "FUN Qualification (RM acquisition)", relation: "reference" },
+  ],
+  "kpi-review-meeting-sop": [
+    { slug: "under-kpi-diagnosis-ladder", label: "Under-KPI Diagnosis Ladder", relation: "next-step" },
+  ],
+  "under-kpi-diagnosis-ladder": [
+    { slug: "kpi-review-meeting-sop", label: "KPI Review Meeting SOP", relation: "prerequisite" },
   ],
 };
 
@@ -73,11 +118,12 @@ function resolveMdPath(fromFile, linkPath) {
 
 function buildPathToSlugMap(entries) {
   const map = new Map();
-  for (const { rel, slug } of entries) {
+  for (const { rel, slug, sourceRoot } of entries) {
     const normalized = rel.replace(/\\/g, "/");
+    const abs = path.join(sourceRoot, normalized).replace(/\\/g, "/");
     map.set(normalized, slug);
     map.set(path.basename(normalized), slug);
-    // script-factory paths
+    map.set(abs, slug);
     if (normalized.includes("/")) {
       map.set(path.basename(normalized, ".md") + ".md", slug);
     }
@@ -85,12 +131,13 @@ function buildPathToSlugMap(entries) {
   return map;
 }
 
-function rewriteLinks(body, fromRel, pathToSlug) {
+function rewriteLinks(body, fromRel, pathToSlug, sourceRoot) {
+  const fromAbs = path.join(sourceRoot, fromRel).replace(/\\/g, "/");
   return body.replace(/\[([^\]]*)\]\(([^)]+)\)/g, (match, text, href) => {
     const [filePart, anchor = ""] = href.split("#");
     if (!filePart.endsWith(".md")) return match;
 
-    const resolved = resolveMdPath(fromRel, filePart);
+    const resolved = resolveMdPath(fromAbs, filePart);
     if (!resolved) return match;
 
     const basename = path.basename(resolved);
@@ -133,7 +180,9 @@ function extractStageHeadings(headings) {
         /call checklist/i.test(h.title) ||
         /north star/i.test(h.title) ||
         /setter boundaries/i.test(h.title) ||
-        /^icp tracks/i.test(h.title)),
+        /^icp tracks/i.test(h.title) ||
+        /^core operating frames/i.test(h.title) ||
+        /^quality bar/i.test(h.title)),
   );
   const h3Stages = headings.filter((h) => h.level === 3 && /^stage\s+[2-7]/i.test(h.title));
   return [...h2, ...h3Stages];
@@ -174,20 +223,32 @@ function extractIcpPills(headings) {
     .slice(0, 3);
 }
 
-function importDoc(sourcePath, relPath, slug, pathToSlug, dryRun, bundleName, department) {
+function normalizeOwner(raw) {
+  const valid = new Set(["setter", "closer", "sales-leadership", "operations"]);
+  if (raw && valid.has(raw)) return raw;
+  // Wm-os role owners that map to library "operations"
+  if (raw === "client-success" || raw === "ceo" || raw === "ccm" || raw === "media-buyer") {
+    return "operations";
+  }
+  return "setter";
+}
+
+function importDoc(sourcePath, relPath, slug, pathToSlug, dryRun, bundleName, department, outputSubdir, featuredSlug, sourceRoot) {
   const raw = fs.readFileSync(sourcePath, "utf8");
   const { data: frontmatter, content: body } = matter(raw);
 
   const finalSlug = frontmatter.slug ?? slug;
-  const rewritten = rewriteLinks(body, relPath, pathToSlug);
+  const rewritten = rewriteLinks(body, relPath, pathToSlug, sourceRoot);
 
-  const outDir = path.join(LIBRARY_ROOT, "acquisition", "sales");
+  const outDir = path.join(LIBRARY_ROOT, outputSubdir);
   const outPath = path.join(outDir, `${finalSlug}.md`);
 
   const updatedFrontmatter = {
     ...frontmatter,
     slug: finalSlug,
     title: frontmatter.title ?? finalSlug,
+    department: frontmatter.department ?? department,
+    owner: normalizeOwner(frontmatter.owner),
   };
 
   const output = matter.stringify(rewritten, updatedFrontmatter);
@@ -203,13 +264,13 @@ function importDoc(sourcePath, relPath, slug, pathToSlug, dryRun, bundleName, de
     title: updatedFrontmatter.title,
     description: extractDescription(rewritten),
     domain: updatedFrontmatter.domain ?? "acquisition",
-    owner: updatedFrontmatter.owner ?? "setter",
+    owner: updatedFrontmatter.owner,
     status: updatedFrontmatter.status ?? "draft",
     artifact_type: updatedFrontmatter.artifact_type ?? "document",
     last_updated: updatedFrontmatter.last_updated ?? null,
     review_cycle: updatedFrontmatter.review_cycle ?? null,
     script_version: updatedFrontmatter.script_version ?? null,
-    path: `acquisition/sales/${finalSlug}.md`,
+    path: `${outputSubdir}/${finalSlug}.md`,
     headings,
     stage_nav: extractStageHeadings(headings),
     opening_pills: extractOpeningPills(headings),
@@ -218,9 +279,9 @@ function importDoc(sourcePath, relPath, slug, pathToSlug, dryRun, bundleName, de
       RELATED_DOCS_OVERRIDES[finalSlug] ??
       frontmatter.related_docs ??
       [],
-    featured: finalSlug === "intro-call-script",
-    bundle: bundleName ?? "setter-playbooks",
-    department: frontmatter.department ?? department ?? "sales",
+    featured: featuredSlug ? finalSlug === featuredSlug : false,
+    bundle: bundleName,
+    department: updatedFrontmatter.department ?? department,
   };
 }
 
@@ -246,18 +307,34 @@ function mergeManifest(existing, imported, bundleName) {
 }
 
 function importBundle(bundleName, dryRun) {
-  const entries = SETTER_PLAYBOOKS_BUNDLE;
+  const config = BUNDLE_CONFIG[bundleName];
+  if (!config) {
+    console.error(`Unknown bundle: ${bundleName}`);
+    process.exit(1);
+  }
+
+  const { entries, department, outputSubdir, featuredSlug } = config;
   const pathToSlug = buildPathToSlugMap(entries);
-  const department = BUNDLE_DEPARTMENTS[bundleName] ?? "sales";
   const imported = [];
 
-  for (const { rel, slug } of entries) {
-    const sourcePath = path.join(WM_OS_SALES, rel);
+  for (const { rel, slug, sourceRoot } of entries) {
+    const sourcePath = path.join(sourceRoot, rel);
     if (!fs.existsSync(sourcePath)) {
       console.error(`Missing source: ${sourcePath}`);
       process.exit(1);
     }
-    const doc = importDoc(sourcePath, rel, slug, pathToSlug, dryRun, bundleName, department);
+    const doc = importDoc(
+      sourcePath,
+      rel,
+      slug,
+      pathToSlug,
+      dryRun,
+      bundleName,
+      department,
+      outputSubdir,
+      featuredSlug,
+      sourceRoot,
+    );
     imported.push(doc);
     console.log(`${dryRun ? "[dry-run] " : ""}Imported: ${doc.slug} ← ${rel}`);
   }
@@ -287,7 +364,19 @@ function importSingle(sourcePath, dryRun) {
   const rel = path.basename(resolved);
   const slug = deriveSlug(rel);
   const pathToSlug = new Map([[rel, slug]]);
-  const doc = importDoc(resolved, rel, slug, pathToSlug, dryRun, "custom", undefined);
+  const sourceRoot = path.dirname(resolved);
+  const doc = importDoc(
+    resolved,
+    rel,
+    slug,
+    pathToSlug,
+    dryRun,
+    "custom",
+    "sales",
+    "acquisition/sales",
+    null,
+    sourceRoot,
+  );
   const existing = loadExistingManifest();
   const manifest = mergeManifest(existing, [doc], "custom");
   if (!dryRun) {
@@ -307,13 +396,15 @@ const bundleIdx = args.indexOf("--bundle");
 const bundleName = bundleIdx >= 0 ? args[bundleIdx + 1] : null;
 const fileArg = args.find((a) => !a.startsWith("--") && a !== bundleName);
 
-if (bundleName === "setter-playbooks") {
-  importBundle("setter-playbooks", dryRun);
+if (bundleName && BUNDLE_CONFIG[bundleName]) {
+  importBundle(bundleName, dryRun);
 } else if (fileArg) {
   importSingle(fileArg, dryRun);
 } else {
   console.log(`Usage:
   node scripts/import-library-doc.mjs --bundle setter-playbooks [--dry-run]
+  node scripts/import-library-doc.mjs --bundle call-center-dscr [--dry-run]
+  node scripts/import-library-doc.mjs --bundle team-meetings-kpi [--dry-run]
   node scripts/import-library-doc.mjs <path-to-doc.md> [--dry-run]`);
   process.exit(1);
 }

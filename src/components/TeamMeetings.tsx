@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CALL_CENTER_TIMEZONE, type TeamMeetingInstanceView } from "@/lib/team-meetings";
+import {
+  CALL_CENTER_TIMEZONE,
+  LIBRARY_SOP_LINK_LABELS,
+  librarySlugsForTemplate,
+  type TeamMeetingInstanceView,
+} from "@/lib/team-meetings";
 
 const fieldStyle = {
   background: "#0f2040",
@@ -116,7 +121,7 @@ export default function TeamMeetings({ from, to }: Props) {
         <div>
           <h2 className="text-lg font-semibold text-slate-100">Team Meetings</h2>
           <p className="text-sm text-slate-400">
-            Q3 runbooks · times in São Paulo · checklist copy is placeholder until SOPs land
+            Q3 runbooks · times in São Paulo · open linked SOPs from Mon/Thu KPI
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
@@ -354,6 +359,26 @@ function TeamMeetingRunbook({
       </div>
 
       <div className="px-4 py-4 space-y-5">
+        {(() => {
+          const slugs = librarySlugsForTemplate(row.template.slug);
+          if (slugs.length === 0) return null;
+          return (
+            <div className="flex flex-wrap gap-3 text-xs">
+              {slugs.map(slug => (
+                <a
+                  key={slug}
+                  href={`/library/${slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sky-400 hover:text-sky-300 underline underline-offset-2"
+                >
+                  {LIBRARY_SOP_LINK_LABELS[slug] ?? slug}
+                </a>
+              ))}
+            </div>
+          );
+        })()}
+
         <section>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
             Live checklist

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-06-17",
+  "updated_at": "2026-07-22",
   "docs": [
     {
       "slug": "financial-qualification",
@@ -598,6 +598,363 @@
       "featured": false,
       "bundle": "setter-playbooks",
       "department": "sales"
+    },
+    {
+      "slug": "dscr-setter-appointment-script",
+      "title": "DSCR Setter / Appointment-Setting Call Script",
+      "description": "Get a refi-ready investor **live-transferred to the LO** or **booked + confirmed** on the LO's calendar, with clean notes — without making them re-tell their story. Position **[LO NAME] as the DSCR sp",
+      "domain": "client-fulfillment",
+      "owner": "setter",
+      "status": "active",
+      "artifact_type": "script",
+      "last_updated": "2026-06-29T00:00:00.000Z",
+      "review_cycle": "monthly",
+      "script_version": null,
+      "path": "client-fulfillment/call-center/dscr-setter-appointment-script.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "When To Use",
+          "id": "when-to-use"
+        },
+        {
+          "level": 2,
+          "title": "The one job of this call",
+          "id": "the-one-job-of-this-call"
+        },
+        {
+          "level": 2,
+          "title": "Core operating frames (read before every shift)",
+          "id": "core-operating-frames-read-before-every-shift"
+        },
+        {
+          "level": 3,
+          "title": "LO positioning bank (weave in naturally — pick what fits)",
+          "id": "lo-positioning-bank-weave-in-naturally-pick-what-fits"
+        },
+        {
+          "level": 2,
+          "title": "STAGE 1 — CONNECTION (first 15 seconds)",
+          "id": "stage-1-connection-first-15-seconds"
+        },
+        {
+          "level": 3,
+          "title": "Greet",
+          "id": "greet"
+        },
+        {
+          "level": 3,
+          "title": "Pivot back to business (optional — keep it short for investors)",
+          "id": "pivot-back-to-business-optional-keep-it-short-for-investors"
+        },
+        {
+          "level": 2,
+          "title": "STAGE 2 — FRAME (the non-negotiable)",
+          "id": "stage-2-frame-the-non-negotiable"
+        },
+        {
+          "level": 3,
+          "title": "Set the assistant frame",
+          "id": "set-the-assistant-frame"
+        },
+        {
+          "level": 3,
+          "title": "If they ask \"Who is this with?\" / \"What company?\"",
+          "id": "if-they-ask-who-is-this-with-what-company"
+        },
+        {
+          "level": 2,
+          "title": "STAGE 3 — QUICK QUALIFICATION (notes for the LO — NOT underwriting)",
+          "id": "stage-3-quick-qualification-notes-for-the-lo-not-underwriting"
+        },
+        {
+          "level": 3,
+          "title": "Open (they may already answer in Stage 2)",
+          "id": "open-they-may-already-answer-in-stage-2"
+        },
+        {
+          "level": 3,
+          "title": "Form callback + dig one level deeper",
+          "id": "form-callback-dig-one-level-deeper"
+        },
+        {
+          "level": 3,
+          "title": "Follow-up questions (ask only what's missing — max 3–5 total)",
+          "id": "follow-up-questions-ask-only-whats-missing-max-35-total"
+        },
+        {
+          "level": 3,
+          "title": "Hard disqualifiers (acknowledge, note, escalate — don't promise)",
+          "id": "hard-disqualifiers-acknowledge-note-escalate-dont-promise"
+        },
+        {
+          "level": 2,
+          "title": "STAGE 4 — TRANSITION TO TRANSFER OR BOOK",
+          "id": "stage-4-transition-to-transfer-or-book"
+        },
+        {
+          "level": 3,
+          "title": "Specialization pitch + live transfer (the money line)",
+          "id": "specialization-pitch-live-transfer-the-money-line"
+        },
+        {
+          "level": 3,
+          "title": "Try the live transfer first (always)",
+          "id": "try-the-live-transfer-first-always"
+        },
+        {
+          "level": 3,
+          "title": "If transfer is not possible — book",
+          "id": "if-transfer-is-not-possible-book"
+        },
+        {
+          "level": 3,
+          "title": "Pull the appointment closer (every day out drops show rate)",
+          "id": "pull-the-appointment-closer-every-day-out-drops-show-rate"
+        },
+        {
+          "level": 3,
+          "title": "Book the invite NOW",
+          "id": "book-the-invite-now"
+        },
+        {
+          "level": 2,
+          "title": "STAGE 5 — WRAP-UP",
+          "id": "stage-5-wrap-up"
+        },
+        {
+          "level": 2,
+          "title": "CALL VARIANT A — Laura-booked (AI) appointment confirmation",
+          "id": "call-variant-a-laura-booked-ai-appointment-confirmation"
+        },
+        {
+          "level": 2,
+          "title": "CALL VARIANT B — Callback after \"not a good time\"",
+          "id": "call-variant-b-callback-after-not-a-good-time"
+        },
+        {
+          "level": 2,
+          "title": "OBJECTION HANDLING (front-desk version — keep the call alive, hand off)",
+          "id": "objection-handling-front-desk-version-keep-the-call-alive-hand-off"
+        },
+        {
+          "level": 2,
+          "title": "QUALITY BAR",
+          "id": "quality-bar"
+        },
+        {
+          "level": 2,
+          "title": "METRICS",
+          "id": "metrics"
+        },
+        {
+          "level": 2,
+          "title": "Related Docs",
+          "id": "related-docs"
+        }
+      ],
+      "stage_nav": [
+        {
+          "level": 2,
+          "title": "Core operating frames (read before every shift)",
+          "id": "core-operating-frames-read-before-every-shift"
+        },
+        {
+          "level": 2,
+          "title": "STAGE 1 — CONNECTION (first 15 seconds)",
+          "id": "stage-1-connection-first-15-seconds"
+        },
+        {
+          "level": 2,
+          "title": "QUALITY BAR",
+          "id": "quality-bar"
+        }
+      ],
+      "opening_pills": [],
+      "icp_pills": [],
+      "related_docs": [
+        {
+          "slug": "dscr-team-product-faq",
+          "label": "DSCR Team Product FAQ",
+          "relation": "prerequisite"
+        },
+        {
+          "slug": "intro-call-script",
+          "label": "RM Intro Script (acquisition)",
+          "relation": "reference"
+        }
+      ],
+      "featured": false,
+      "bundle": "call-center-dscr",
+      "department": "call-center"
+    },
+    {
+      "slug": "dscr-team-product-faq",
+      "title": "DSCR Team Product FAQ — Internal Training",
+      "description": "Give every internal Waiz team member a single, scannable primer on the DSCR refinance product: who the borrower is, what the product is, how it differs from other financing, vocabulary for calls, and ",
+      "domain": "client-fulfillment",
+      "owner": "setter",
+      "status": "active",
+      "artifact_type": "reference",
+      "last_updated": "2026-06-29T00:00:00.000Z",
+      "review_cycle": "monthly",
+      "script_version": null,
+      "path": "client-fulfillment/call-center/dscr-team-product-faq.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "How to use by role",
+          "id": "how-to-use-by-role"
+        },
+        {
+          "level": 2,
+          "title": "1. Who you're talking to (ICP snapshot)",
+          "id": "1-who-youre-talking-to-icp-snapshot"
+        },
+        {
+          "level": 3,
+          "title": "Five personas (recognize the caller type)",
+          "id": "five-personas-recognize-the-caller-type"
+        },
+        {
+          "level": 3,
+          "title": "Phrases you'll hear on calls",
+          "id": "phrases-youll-hear-on-calls"
+        },
+        {
+          "level": 2,
+          "title": "2. What DSCR is (layman's terms)",
+          "id": "2-what-dscr-is-laymans-terms"
+        },
+        {
+          "level": 2,
+          "title": "3. Why DSCR vs other products (qualification comparables)",
+          "id": "3-why-dscr-vs-other-products-qualification-comparables"
+        },
+        {
+          "level": 3,
+          "title": "When investors choose DSCR",
+          "id": "when-investors-choose-dscr"
+        },
+        {
+          "level": 2,
+          "title": "4. Vocabulary glossary (call-ready)",
+          "id": "4-vocabulary-glossary-call-ready"
+        },
+        {
+          "level": 2,
+          "title": "5. DSCR vs Reverse Mortgage (orientation for Waiz team)",
+          "id": "5-dscr-vs-reverse-mortgage-orientation-for-waiz-team"
+        },
+        {
+          "level": 2,
+          "title": "6. Top objections + rebuttals (team-safe)",
+          "id": "6-top-objections-rebuttals-team-safe"
+        },
+        {
+          "level": 3,
+          "title": "1. \"The rate's higher than conventional.\"",
+          "id": "1-the-rates-higher-than-conventional"
+        },
+        {
+          "level": 3,
+          "title": "2. \"Will it close before my balloon is due?\"",
+          "id": "2-will-it-close-before-my-balloon-is-due"
+        },
+        {
+          "level": 3,
+          "title": "3. \"Do I have to show income / tax returns?\"",
+          "id": "3-do-i-have-to-show-income-tax-returns"
+        },
+        {
+          "level": 3,
+          "title": "4. \"Does my property even qualify?\"",
+          "id": "4-does-my-property-even-qualify"
+        },
+        {
+          "level": 3,
+          "title": "5. \"Can I refinance in my LLC?\"",
+          "id": "5-can-i-refinance-in-my-llc"
+        },
+        {
+          "level": 3,
+          "title": "6. \"Conventional won't refinance me / I hit my property cap.\"",
+          "id": "6-conventional-wont-refinance-me-i-hit-my-property-cap"
+        },
+        {
+          "level": 3,
+          "title": "7. \"How much equity do I need to leave in?\"",
+          "id": "7-how-much-equity-do-i-need-to-leave-in"
+        },
+        {
+          "level": 3,
+          "title": "8. \"I'm a foreign national.\"",
+          "id": "8-im-a-foreign-national"
+        },
+        {
+          "level": 3,
+          "title": "9. \"Interest-only sounds risky.\"",
+          "id": "9-interest-only-sounds-risky"
+        },
+        {
+          "level": 3,
+          "title": "10. \"How are you different from my bank?\"",
+          "id": "10-how-are-you-different-from-my-bank"
+        },
+        {
+          "level": 3,
+          "title": "Universal guardrails (every objection)",
+          "id": "universal-guardrails-every-objection"
+        },
+        {
+          "level": 2,
+          "title": "7. Where to go deeper",
+          "id": "7-where-to-go-deeper"
+        },
+        {
+          "level": 2,
+          "title": "Related",
+          "id": "related"
+        }
+      ],
+      "stage_nav": [],
+      "opening_pills": [],
+      "icp_pills": [],
+      "related_docs": [
+        {
+          "slug": "dscr-setter-appointment-script",
+          "label": "DSCR Appointment Script",
+          "relation": "next-step"
+        },
+        {
+          "slug": "intro-qualification-framework",
+          "label": "FUN Qualification (RM acquisition)",
+          "relation": "reference"
+        }
+      ],
+      "featured": false,
+      "bundle": "call-center-dscr",
+      "department": "call-center"
     },
     {
       "slug": "flip-the-frame",
@@ -1813,6 +2170,150 @@
       "department": "sales"
     },
     {
+      "slug": "kpi-review-meeting-sop",
+      "title": "KPI Review Meeting SOP",
+      "description": "Run Monday Week Plan and Thursday Commitment Check so every under-KPI account leaves with an **action plan** and a short **explanation of what went wrong** — without turning the meeting into a diagnos",
+      "domain": "operations",
+      "owner": "operations",
+      "status": "draft",
+      "artifact_type": "sop",
+      "last_updated": "2026-07-21T00:00:00.000Z",
+      "review_cycle": "monthly",
+      "script_version": null,
+      "path": "operations/people/kpi-review-meeting-sop.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "Trigger",
+          "id": "trigger"
+        },
+        {
+          "level": 2,
+          "title": "Inputs",
+          "id": "inputs"
+        },
+        {
+          "level": 2,
+          "title": "Outputs",
+          "id": "outputs"
+        },
+        {
+          "level": 2,
+          "title": "Tools",
+          "id": "tools"
+        },
+        {
+          "level": 2,
+          "title": "Role ownership (positions only)",
+          "id": "role-ownership-positions-only"
+        },
+        {
+          "level": 2,
+          "title": "Section A — Monday Week Plan (~25 min)",
+          "id": "section-a-monday-week-plan-25-min"
+        },
+        {
+          "level": 3,
+          "title": "Pre-work (Client Success, before the call)",
+          "id": "pre-work-client-success-before-the-call"
+        },
+        {
+          "level": 3,
+          "title": "In room",
+          "id": "in-room"
+        },
+        {
+          "level": 3,
+          "title": "Note / action-plan line format",
+          "id": "note-action-plan-line-format"
+        },
+        {
+          "level": 3,
+          "title": "Form checklist keys (do not rename)",
+          "id": "form-checklist-keys-do-not-rename"
+        },
+        {
+          "level": 3,
+          "title": "In / Out",
+          "id": "in-out"
+        },
+        {
+          "level": 2,
+          "title": "Section B — Thursday Commitment Check (~25 min)",
+          "id": "section-b-thursday-commitment-check-25-min"
+        },
+        {
+          "level": 3,
+          "title": "In room",
+          "id": "in-room"
+        },
+        {
+          "level": 3,
+          "title": "Form checklist keys (do not rename)",
+          "id": "form-checklist-keys-do-not-rename"
+        },
+        {
+          "level": 3,
+          "title": "In / Out",
+          "id": "in-out"
+        },
+        {
+          "level": 2,
+          "title": "Between Mon and Thu (async)",
+          "id": "between-mon-and-thu-async"
+        },
+        {
+          "level": 2,
+          "title": "Quality bar",
+          "id": "quality-bar"
+        },
+        {
+          "level": 2,
+          "title": "Escalation",
+          "id": "escalation"
+        },
+        {
+          "level": 2,
+          "title": "Metrics",
+          "id": "metrics"
+        },
+        {
+          "level": 2,
+          "title": "Related Docs",
+          "id": "related-docs"
+        }
+      ],
+      "stage_nav": [
+        {
+          "level": 2,
+          "title": "Quality bar",
+          "id": "quality-bar"
+        }
+      ],
+      "opening_pills": [],
+      "icp_pills": [],
+      "related_docs": [
+        {
+          "slug": "under-kpi-diagnosis-ladder",
+          "label": "Under-KPI Diagnosis Ladder",
+          "relation": "next-step"
+        }
+      ],
+      "featured": true,
+      "bundle": "team-meetings-kpi",
+      "department": "operations"
+    },
+    {
       "slug": "show-rate-levers",
       "title": "No Shows And Maximizing Show Rates",
       "description": "Setter levers to reduce no-shows and increase demo attendance.",
@@ -2294,6 +2795,105 @@
       "department": "sales"
     },
     {
+      "slug": "under-kpi-diagnosis-ladder",
+      "title": "Under-KPI Diagnosis Ladder",
+      "description": "A short field guide for the role that owns a red account: confirm whether the miss is **system/data broken** or **quality execution**, then pick **one** lever. The app already grades accounts — this i",
+      "domain": "operations",
+      "owner": "operations",
+      "status": "draft",
+      "artifact_type": "sop",
+      "last_updated": "2026-07-21T00:00:00.000Z",
+      "review_cycle": "monthly",
+      "script_version": null,
+      "path": "operations/people/under-kpi-diagnosis-ladder.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "Trigger",
+          "id": "trigger"
+        },
+        {
+          "level": 2,
+          "title": "Inputs",
+          "id": "inputs"
+        },
+        {
+          "level": 2,
+          "title": "Outputs",
+          "id": "outputs"
+        },
+        {
+          "level": 2,
+          "title": "Solve cadence",
+          "id": "solve-cadence"
+        },
+        {
+          "level": 2,
+          "title": "Ladder (execute in order)",
+          "id": "ladder-execute-in-order"
+        },
+        {
+          "level": 2,
+          "title": "System vs quality",
+          "id": "system-vs-quality"
+        },
+        {
+          "level": 2,
+          "title": "Basic data-accuracy checklist",
+          "id": "basic-data-accuracy-checklist"
+        },
+        {
+          "level": 2,
+          "title": "Numbers source of truth",
+          "id": "numbers-source-of-truth"
+        },
+        {
+          "level": 2,
+          "title": "Quality bar",
+          "id": "quality-bar"
+        },
+        {
+          "level": 2,
+          "title": "Escalation",
+          "id": "escalation"
+        },
+        {
+          "level": 2,
+          "title": "Related Docs",
+          "id": "related-docs"
+        }
+      ],
+      "stage_nav": [
+        {
+          "level": 2,
+          "title": "Quality bar",
+          "id": "quality-bar"
+        }
+      ],
+      "opening_pills": [],
+      "icp_pills": [],
+      "related_docs": [
+        {
+          "slug": "kpi-review-meeting-sop",
+          "label": "KPI Review Meeting SOP",
+          "relation": "prerequisite"
+        }
+      ],
+      "featured": false,
+      "bundle": "team-meetings-kpi",
+      "department": "operations"
+    },
+    {
       "slug": "watchshift",
       "title": "Watchshift SOP",
       "description": "Define how the setter handles **live watchshift** and **watchshift alerts** — speed-to-lead, Slack/GHL notifications, and consistent handoff back to the channel.",
@@ -2432,6 +3032,14 @@
       "show-rate-levers",
       "objection-handling-hub",
       "setter-daily-checklist"
+    ],
+    "call-center-dscr": [
+      "dscr-team-product-faq",
+      "dscr-setter-appointment-script"
+    ],
+    "team-meetings-kpi": [
+      "kpi-review-meeting-sop",
+      "under-kpi-diagnosis-ladder"
     ]
   }
 }

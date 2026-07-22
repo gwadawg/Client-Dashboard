@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   TEAM_MEETING_SEED,
+  librarySlugsForTemplate,
   plannedSlotsForRange,
   todayYmdInCallCenterTz,
   validateCompletePayload,
@@ -39,6 +40,30 @@ describe('team-meetings', () => {
     assert.equal(slots.length, 1);
     // 10:00 BRT (UTC-3 in July) → 13:00 UTC
     assert.equal(slots[0].toISOString(), '2026-07-20T13:00:00.000Z');
+  });
+
+  it('fills Mon/Thu KPI agendas and attaches library SOP slugs', () => {
+    const mon = TEAM_MEETING_SEED.find(t => t.slug === 'mon-kpi-week-plan');
+    const thu = TEAM_MEETING_SEED.find(t => t.slug === 'thu-kpi-commitment-check');
+    assert.ok(mon && thu);
+    assert.equal(mon.agenda_md.includes('PLACEHOLDER'), false);
+    assert.equal(thu.agenda_md.includes('PLACEHOLDER'), false);
+    assert.deepEqual(librarySlugsForTemplate('mon-kpi-week-plan'), [
+      'kpi-review-meeting-sop',
+      'under-kpi-diagnosis-ladder',
+    ]);
+    assert.deepEqual(librarySlugsForTemplate('thu-kpi-commitment-check'), [
+      'kpi-review-meeting-sop',
+      'under-kpi-diagnosis-ladder',
+    ]);
+    assert.deepEqual(
+      mon.checklist.map(c => c.key),
+      ['ryg_scan_done', 'reds_have_owners', 'commitments_named', 'ob_glance'],
+    );
+    assert.deepEqual(
+      thu.checklist.map(c => c.key),
+      ['commitments_checked', 'still_red_recommitted', 'fri_qa_reminded'],
+    );
   });
 
   it('schedules fri exec qa at 16:00 Sao Paulo', () => {
