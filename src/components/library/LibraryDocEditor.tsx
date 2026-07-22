@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { slugFromTitle } from "@/lib/library-processor";
 import {
   DEPARTMENT_ORDER,
+  artifactMeta,
   departmentMeta,
   type LibraryArtifactType,
   type LibraryDepartment,
@@ -116,14 +117,27 @@ type Props = {
 };
 
 type MentionState = {
+  /** Index in the body where the link should be inserted. */
   start: number;
-  query: string;
-} | null;
+};
 
 function mergeRelated(existing: RelatedDoc[], next: RelatedDoc, excludeSlug?: string | null): RelatedDoc[] {
   if (excludeSlug && next.slug === excludeSlug) return existing;
   if (existing.some((r) => r.slug === next.slug)) return existing;
   return [...existing, next];
+}
+
+function scoreDocMatch(doc: LibraryDocOption, q: string): number {
+  if (!q) return 0;
+  const title = doc.title.toLowerCase();
+  const slug = doc.slug.toLowerCase();
+  if (title === q || slug === q) return 100;
+  if (title.startsWith(q) || slug.startsWith(q)) return 80;
+  if (title.includes(q) || slug.includes(q)) return 50;
+  // Multi-word: every token must appear somewhere
+  const tokens = q.split(/\s+/).filter(Boolean);
+  if (tokens.length > 1 && tokens.every((t) => title.includes(t) || slug.includes(t))) return 40;
+  return -1;
 }
 
 export default function LibraryDocEditor({
@@ -138,10 +152,13 @@ export default function LibraryDocEditor({
   const [slugManual, setSlugManual] = useState(!!state.editSlug);
   const [formatting, setFormatting] = useState(false);
   const [formatError, setFormatError] = useState<string | null>(null);
-  const [mention, setMention] = useState<MentionState>(null);
+  const [mention, setMention] = useState<MentionState | null>(null);
+  const [mentionSearch, setMentionSearch] = useState("");
   const [mentionIndex, setMentionIndex] = useState(0);
   const [relatedQuery, setRelatedQuery] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mentionSearchRef = useRef<HTMLInputElement>(null);
+  const mentionListRef = useRef<HTMLDivElement>(null);
 
   const linkableDocs = useMemo(
     () => libraryDocs.filter((d) => d.slug !== state.editSlug && d.slug !== state.slug),
@@ -150,16 +167,13 @@ export default function LibraryDocEditor({
 
   const mentionMatches = useMemo(() => {
     if (!mention) return [];
-    const q = mention.query.toLowerCase();
-    return linkableDocs
-      .filter(
-        (d) =>
-          !q ||
-          d.title.toLowerCase().includes(q) ||
-          d.slug.toLowerCase().includes(q),
-      )
-      .slice(0, 8);
-  }, [mention, linkableDocs]);
+    const q = mentionSearch.trim().toLowerCase();
+    const ranked = linkableDocs
+      .map((d) => ({ doc: d, score: scoreDocMatch(d, q) }))
+      .filter((r) => (q ? r.score >= 0 : true))
+      .sort((a, b) => b.score - a.score || a.doc.title.localeCompare(b.doc.title));
+    return ranked.slice(0, 12).map((r) => r.doc);
+  }, [mention, mentionSearch, linkableDocs]);
 
   const relatedPickerMatches = useMemo(() => {
     const q = relatedQuery.trim().toLowerCase();
@@ -183,48 +197,69 @@ export default function LibraryDocEditor({
 
   useEffect(() => {
     setMentionIndex(0);
-  }, [mention?.query]);
+  }, [mentionSearch, mention]);
 
-  function detectMention(value: string, cursor: number) {
-    const before = value.slice(0, cursor);
-    const at = before.lastIndexOf("@");
-    if (at < 0) {
-      setMention(null);
-      return;
-    }
-    const charBefore = at > 0 ? before[at - 1] : " ";
-    if (charBefore && !/\s|[({\[]/.test(charBefore)) {
-      setMention(null);
-      return;
-    }
-    const query = before.slice(at + 1);
-    if (/\s/.test(query) || query.length > 40) {
-      setMention(null);
-      return;
-    }
-    setMention({ start: at, query });
+  useEffect(() => {
+    if (!mention) return;
+    const id = requestAnimationFrame(() => {
+      mentionSearchRef.current?.focus();
+      mentionSearchRef.current?.select();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [mention]);
+
+  useEffect(() => {
+    if (!mention || !mentionListRef.current) return;
+    const el = mentionListRef.current.querySelector<HTMLElement>(`[data-mention-idx="${mentionIndex}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [mentionIndex, mention, mentionMatches.length]);
+
+  function openMentionPicker(value: string, at: number, cursor: number) {
+    const typed = value.slice(at + 1, cursor);
+    // Pull `@query` out of the body into the search field (Cursor-style).
+    const nextBody = value.slice(0, at) + value.slice(cursor);
+    setState((s) => ({ ...s, body: nextBody }));
+    setMention({ start: at });
+    setMentionSearch(typed);
+    setMentionIndex(0);
+  }
+
+  function closeMentionPicker() {
+    const start = mention?.start ?? 0;
+    setMention(null);
+    setMentionSearch("");
+    setMentionIndex(0);
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(start, start);
+    });
   }
 
   function insertDocLink(doc: LibraryDocOption) {
-    const el = textareaRef.current;
-    const cursor = el?.selectionStart ?? state.body.length;
-    const start = mention?.start ?? cursor;
-    const before = state.body.slice(0, start);
-    const after = state.body.slice(cursor);
-    const link = `[${doc.title}](/library/${doc.slug})`;
-    const nextBody = `${before}${link}${after}`;
-    const nextCursor = before.length + link.length;
+    if (!mention) return;
+    const start = mention.start;
+    let nextCursor = start;
 
-    setState((s) => ({
-      ...s,
-      body: nextBody,
-      related_docs: mergeRelated(
-        s.related_docs,
-        { slug: doc.slug, label: doc.title, relation: "reference" },
-        s.editSlug ?? s.slug,
-      ),
-    }));
+    setState((s) => {
+      const before = s.body.slice(0, start);
+      const after = s.body.slice(start);
+      const link = `[${doc.title}](/library/${doc.slug})`;
+      nextCursor = before.length + link.length;
+      return {
+        ...s,
+        body: `${before}${link}${after}`,
+        related_docs: mergeRelated(
+          s.related_docs,
+          { slug: doc.slug, label: doc.title, relation: "reference" },
+          s.editSlug ?? s.slug,
+        ),
+      };
+    });
     setMention(null);
+    setMentionSearch("");
+    setMentionIndex(0);
 
     requestAnimationFrame(() => {
       const ta = textareaRef.current;
@@ -522,7 +557,7 @@ export default function LibraryDocEditor({
                     Markdown body
                   </span>
                   <span className="text-[10px]" style={{ color: "#334155" }}>
-                    paste raw text · @ to link docs · then clean up
+                    paste raw text · @ to search docs · then clean up
                   </span>
                 </span>
                 <button
@@ -565,83 +600,160 @@ export default function LibraryDocEditor({
                 onChange={(e) => {
                   const value = e.target.value;
                   const cursor = e.target.selectionStart ?? value.length;
-                  setState((s) => ({ ...s, body: value }));
-                  detectMention(value, cursor);
-                }}
-                onClick={(e) => {
-                  const el = e.currentTarget;
-                  detectMention(el.value, el.selectionStart ?? 0);
-                }}
-                onKeyUp={(e) => {
-                  const el = e.currentTarget;
-                  if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
-                    detectMention(el.value, el.selectionStart ?? 0);
+                  const before = value.slice(0, cursor);
+                  if (before.endsWith("@") && !mention) {
+                    const at = before.length - 1;
+                    const charBefore = at > 0 ? before[at - 1] : " ";
+                    if (!charBefore || /\s|[({\[]/.test(charBefore)) {
+                      openMentionPicker(value, at, cursor);
+                      return;
+                    }
                   }
+                  setState((s) => ({ ...s, body: value }));
                 }}
                 onKeyDown={(e) => {
-                  if (!mention || !mentionMatches.length) return;
-                  if (e.key === "ArrowDown") {
+                  if (mention && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Escape")) {
                     e.preventDefault();
-                    setMentionIndex((i) => (i + 1) % mentionMatches.length);
-                  } else if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setMentionIndex((i) => (i - 1 + mentionMatches.length) % mentionMatches.length);
-                  } else if (e.key === "Enter" || e.key === "Tab") {
-                    e.preventDefault();
-                    insertDocLink(mentionMatches[mentionIndex] ?? mentionMatches[0]);
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    setMention(null);
                   }
                 }}
                 placeholder={
-                  "Paste raw text, then Clean up & structure.\n\nType @ to link another playbook (e.g. @Watchshift).\n\nOr write markdown:\n## Purpose\n\nWhat this doc covers…\n\n> Dialogue lines render as script blocks."
+                  "Paste raw text, then Clean up & structure.\n\nType @ to search and link another playbook.\n\nOr write markdown:\n## Purpose\n\nWhat this doc covers…\n\n> Dialogue lines render as script blocks."
                 }
                 rows={16}
                 className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none resize-y font-mono leading-relaxed"
                 style={inputStyle}
               />
+            </label>
 
-              {mention && mentionMatches.length > 0 && (
+            {mention && (
+              <div
+                className="fixed inset-0 z-[60] flex items-start justify-center pt-[18vh] px-4"
+                style={{ background: "rgba(3,7,15,0.45)" }}
+                onMouseDown={(e) => {
+                  if (e.target === e.currentTarget) closeMentionPicker();
+                }}
+              >
                 <div
-                  className="absolute left-0 right-0 z-10 mt-1 rounded-xl overflow-hidden shadow-xl"
+                  className="w-full max-w-lg rounded-2xl overflow-hidden"
                   style={{
-                    top: "100%",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "#0f2040",
-                    boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "#0b1628",
+                    boxShadow: "0 28px 70px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)",
+                    animation: `lib-mention-rise 160ms ${EASE} both`,
                   }}
+                  role="listbox"
+                  aria-label="Link library document"
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <p
-                    className="px-3.5 py-2 text-[10px] font-bold uppercase tracking-widest"
-                    style={{ color: "#64748b", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+                  <div
+                    className="flex items-center gap-2.5 px-3.5 py-3"
+                    style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
                   >
-                    Link library doc
-                  </p>
-                  {mentionMatches.map((d, i) => (
-                    <button
-                      key={d.slug}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        insertDocLink(d);
+                    <span className="text-sm font-semibold" style={{ color: "#818cf8" }}>
+                      @
+                    </span>
+                    <input
+                      ref={mentionSearchRef}
+                      value={mentionSearch}
+                      onChange={(e) => setMentionSearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          if (!mentionMatches.length) return;
+                          setMentionIndex((i) => (i + 1) % mentionMatches.length);
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          if (!mentionMatches.length) return;
+                          setMentionIndex((i) => (i - 1 + mentionMatches.length) % mentionMatches.length);
+                        } else if (e.key === "Enter" || e.key === "Tab") {
+                          e.preventDefault();
+                          if (mentionMatches[mentionIndex]) insertDocLink(mentionMatches[mentionIndex]);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          closeMentionPicker();
+                        }
                       }}
-                      className="w-full text-left px-3.5 py-2.5 text-sm"
+                      placeholder="Search playbooks and SOPs…"
+                      className="flex-1 bg-transparent text-sm outline-none"
+                      style={{ color: "#f1f5f9" }}
+                    />
+                    <kbd
+                      className="hidden sm:inline rounded px-1.5 py-0.5 text-[10px] font-medium"
                       style={{
-                        color: "#e2e8f0",
-                        background: i === mentionIndex ? "rgba(129,140,248,0.16)" : "transparent",
-                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                        color: "#64748b",
+                        background: "rgba(255,255,255,0.05)",
+                        border: "1px solid rgba(255,255,255,0.08)",
                       }}
                     >
-                      <span className="font-medium">{d.title}</span>
-                      <span className="ml-2 text-[11px] font-mono" style={{ color: "#64748b" }}>
-                        /{d.slug}
-                      </span>
-                    </button>
-                  ))}
+                      esc
+                    </kbd>
+                  </div>
+
+                  <div ref={mentionListRef} className="max-h-72 overflow-y-auto py-1">
+                    {mentionMatches.length === 0 ? (
+                      <p className="px-4 py-8 text-center text-sm" style={{ color: "#64748b" }}>
+                        {linkableDocs.length === 0
+                          ? "No other library docs to link yet."
+                          : `No docs match “${mentionSearch.trim()}”`}
+                      </p>
+                    ) : (
+                      mentionMatches.map((d, i) => {
+                        const art = artifactMeta((d.artifact_type as LibraryArtifactType) || "document");
+                        const active = i === mentionIndex;
+                        return (
+                          <button
+                            key={d.slug}
+                            type="button"
+                            data-mention-idx={i}
+                            role="option"
+                            aria-selected={active}
+                            onMouseEnter={() => setMentionIndex(i)}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              insertDocLink(d);
+                            }}
+                            className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left"
+                            style={{
+                              background: active ? "rgba(129,140,248,0.16)" : "transparent",
+                            }}
+                          >
+                            <span
+                              className="flex-shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                              style={{ background: art.tint, color: art.color }}
+                            >
+                              {art.label}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-medium truncate" style={{ color: "#f1f5f9" }}>
+                                {d.title}
+                              </span>
+                              <span className="block text-[11px] font-mono truncate" style={{ color: "#64748b" }}>
+                                /library/{d.slug}
+                              </span>
+                            </span>
+                            {active && (
+                              <span className="flex-shrink-0 text-[10px] font-medium" style={{ color: "#94a3b8" }}>
+                                ↵
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div
+                    className="flex items-center justify-between gap-2 px-3.5 py-2 text-[10px]"
+                    style={{ borderTop: "1px solid rgba(255,255,255,0.06)", color: "#475569" }}
+                  >
+                    <span>↑↓ navigate · ↵ link · esc close</span>
+                    <span>
+                      {mentionMatches.length} of {linkableDocs.length}
+                    </span>
+                  </div>
                 </div>
-              )}
-            </label>
+              </div>
+            )}
 
             {formatError && (
               <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#f87171", background: "rgba(248,113,113,0.08)" }}>
@@ -681,6 +793,10 @@ export default function LibraryDocEditor({
         @keyframes lib-editor-rise {
           from { opacity: 0; transform: translateY(14px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes lib-mention-rise {
+          from { opacity: 0; transform: translateY(6px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
       `}</style>
     </div>
