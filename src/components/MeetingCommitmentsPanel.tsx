@@ -57,11 +57,25 @@ function defaultDueThursday(): string {
   return addDaysToYmd(monday, 3);
 }
 
-const emptyForm = () => ({
+type CommitmentForm = {
+  client_id: string;
+  severity: "911" | "below";
+  why: string;
+  constraint_type: "system" | "quality" | "data";
+  constraint_label: string;
+  plan: string;
+  owner_role: string;
+  due_date: string;
+  needs_founder: boolean;
+  founder_ask: string;
+  success_signal: string;
+};
+
+const emptyForm = (): CommitmentForm => ({
   client_id: "",
-  severity: "below" as const,
+  severity: "below",
   why: "",
-  constraint_type: "quality" as const,
+  constraint_type: "quality",
   constraint_label: "",
   plan: "",
   owner_role: "client_success",
@@ -83,7 +97,7 @@ export default function MeetingCommitmentsPanel({
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [showFullWeek, setShowFullWeek] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState<CommitmentForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [noteById, setNoteById] = useState<Record<string, string>>({});
   const [clickupById, setClickupById] = useState<Record<string, string>>({});
