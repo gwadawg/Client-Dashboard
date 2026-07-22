@@ -153,8 +153,10 @@ Or restore specific file from last commit. Manifest and markdown are versioned i
 | Bundle | Command | Docs |
 |--------|---------|------|
 | Setter playbooks | `--bundle setter-playbooks` | Intro script + 8 companions |
+| Call Center — DSCR | `--bundle call-center-dscr` | Team FAQ + appointment script |
+| Team meetings — KPI | `--bundle team-meetings-kpi` | KPI Review Meeting SOP + Under-KPI ladder |
 
-To add a new bundle, extend `SETTER_PLAYBOOKS_BUNDLE` (or add a new array) in `scripts/import-library-doc.mjs`.
+To add a new bundle, extend `BUNDLE_CONFIG` in `scripts/import-library-doc.mjs`.
 
 ---
 
