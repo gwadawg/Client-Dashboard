@@ -64,7 +64,8 @@ full week picture: watch shifts **and** dialer assignments together.
 
 ### Evolve: `focus_schedule` → `dialer_schedule`
 
-Prefer renaming the table in the same migration (rows wiped first).
+Rename in the same migration after wiping rows (clean break;
+Approach 1 still reuses Focus board/validation patterns in code).
 
 | Column | Notes |
 |--------|-------|
