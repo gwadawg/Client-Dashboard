@@ -244,7 +244,7 @@ export default function ClientHealthDetail({
                   ) : null}
                 </p>
                 <p className="text-[11px] mt-1" style={{ color: "#38bdf8" }}>
-                  Baseline ends ~7d before today (matured cohorts). Leading KPIs use the calendar-last {data.maturity?.leading_window_days ?? data.maturity?.recent_window_days ?? 7} days through today.
+                  Baseline ends ~{data.maturity?.days ?? 3}d before today (matured cohorts). Leading KPIs use the calendar-last {data.maturity?.leading_window_days ?? data.maturity?.recent_window_days ?? 5} days through today.
                 </p>
               </div>
               <div className="flex flex-col items-end gap-2">
@@ -350,6 +350,9 @@ export default function ClientHealthDetail({
                 </div>
               ))}
             </div>
+            <p className="text-[10px] mt-2" style={{ color: "#334155" }}>
+              Cards above = baseline ({data.period.start} → {data.period.end}), not the leading strip.
+            </p>
           </div>
 
           <PeriodComparison
@@ -377,6 +380,9 @@ export default function ClientHealthDetail({
                 Biggest fallout: {data.guidance.headline}
               </h3>
             </div>
+            <p className="text-[10px] mb-2" style={{ color: "#475569" }}>
+              Based on baseline {data.period.start} → {data.period.end}
+            </p>
             <p className="text-sm leading-relaxed" style={{ color: "#94a3b8" }}>
               {data.guidance.whatsWrong}
             </p>
@@ -438,7 +444,7 @@ export default function ClientHealthDetail({
 
           {/* Layer scorecard */}
           <div className="rounded-xl p-5" style={cardStyle}>
-            <h3 className="text-base font-semibold mb-3" style={{ color: "#e2e8f0" }}>
+            <h3 className="text-base font-semibold mb-1" style={{ color: "#e2e8f0" }}>
               Layer scorecard
               {lens !== "overview" && (
                 <span className="ml-2 text-xs font-normal" style={{ color: "#64748b" }}>
@@ -446,6 +452,12 @@ export default function ClientHealthDetail({
                 </span>
               )}
             </h3>
+            <p className="text-[10px] mb-3" style={{ color: "#475569" }}>
+              Graded on baseline {data.period.start} → {data.period.end}
+              {data.prior_period
+                ? ` · compared vs prior ${data.prior_period.start} → ${data.prior_period.end}`
+                : ""}
+            </p>
             <div className="space-y-3">
               {layerGroups.map(group => {
                 const isPrimary =
@@ -584,7 +596,7 @@ export default function ClientHealthDetail({
           />
 
           {/* Timeline & drop-off detection */}
-          <ClientTimelineChart clientId={data.client_id} endDate={data.period.end} />
+          <ClientTimelineChart clientId={data.client_id} />
 
           {/* Change log & progress */}
           <ClientActionLog

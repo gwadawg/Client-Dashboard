@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { AiActionItem, AiDiagnosis } from "@/lib/ai-diagnose";
+import { LEADING_WINDOW_DAYS } from "@/lib/client-health";
 
 type Props = {
   clientId: string;
+  /** Matured baseline end — same review date as the diagnosis baseline, not calendar today. */
   endDate: string;
   defaultLayer: string;
   onSavedAction: () => void;
@@ -15,11 +17,30 @@ const cardStyle = {
   border: "1px solid rgba(255,255,255,0.06)",
 } as React.CSSProperties;
 
+function shiftDays(anchor: string, daysBack: number): string {
+  const d = new Date(`${anchor}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() - daysBack);
+  return d.toISOString().split("T")[0];
+}
+
+function rangeLabel(end: string, days: number): string {
+  return `${shiftDays(end, days - 1)} → ${end}`;
+}
+
 export default function ClientAiDiagnosis({ clientId, endDate, defaultLayer, onSavedAction }: Props) {
   const [diagnosis, setDiagnosis] = useState<AiDiagnosis | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedIdx, setSavedIdx] = useState<Set<number>>(new Set());
+
+  const windows = useMemo(
+    () => ({
+      w7: rangeLabel(endDate, 7),
+      w14: rangeLabel(endDate, 14),
+      w30: rangeLabel(endDate, 30),
+    }),
+    [endDate],
+  );
 
   const run = async () => {
     setLoading(true);
@@ -70,7 +91,11 @@ export default function ClientAiDiagnosis({ clientId, endDate, defaultLayer, onS
             AI diagnosis
           </h3>
           <p className="text-xs mt-0.5" style={{ color: "#475569" }}>
-            Runs the CPConv playbook over W7/W14/W30 and returns a verdict + owner-tagged action plan.
+            CPConv playbook on matured windows ending {endDate} (baseline end — not calendar today / Leading{" "}
+            {LEADING_WINDOW_DAYS}d).
+          </p>
+          <p className="text-[10px] mt-1 tabular-nums" style={{ color: "#64748b" }}>
+            W7 {windows.w7} · W14 {windows.w14} · W30 {windows.w30}
           </p>
         </div>
         <button
@@ -104,7 +129,7 @@ export default function ClientAiDiagnosis({ clientId, endDate, defaultLayer, onS
             </span>
             {diagnosis.cpconv_w14 != null && (
               <span className="text-xs" style={{ color: "#64748b" }}>
-                CPConv ${Math.round(diagnosis.cpconv_w14)}
+                CPConv ${Math.round(diagnosis.cpconv_w14)} (W14)
               </span>
             )}
           </div>
@@ -130,7 +155,7 @@ export default function ClientAiDiagnosis({ clientId, endDate, defaultLayer, onS
               <table className="w-full text-xs">
                 <thead>
                   <tr style={{ color: "#475569" }}>
-                    {["Metric", "W14", "Tier", "Owner"].map(h => (
+                    {["Metric", `W14 (${windows.w14})`, "Tier", "Owner"].map(h => (
                       <th key={h} className="text-left py-1.5 pr-3 font-bold uppercase tracking-wide">
                         {h}
                       </th>

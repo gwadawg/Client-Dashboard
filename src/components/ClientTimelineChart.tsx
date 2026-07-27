@@ -16,7 +16,8 @@ import { weekStartKey } from "@/lib/metrics";
 
 type Props = {
   clientId: string;
-  endDate: string;
+  /** @deprecated Timeline always runs through calendar today so drop-offs stay current. */
+  endDate?: string;
 };
 
 type MetricKey = "cpconv" | "cpql" | "cpl" | "net_show_rate" | "booking_rate" | "lead_to_qual";
@@ -41,20 +42,26 @@ function fmt(unit: "money" | "pct", v: number | null): string {
   return unit === "money" ? `$${Math.round(v)}` : `${v.toFixed(1)}%`;
 }
 
+function utcToday(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
 function shiftDate(anchor: string, days: number): string {
   const d = new Date(`${anchor}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().split("T")[0];
 }
 
-export default function ClientTimelineChart({ clientId, endDate }: Props) {
+export default function ClientTimelineChart({ clientId }: Props) {
   const [timeline, setTimeline] = useState<KpiTimelineBucket[]>([]);
   const [actionMarks, setActionMarks] = useState<{ date: string; title: string }[]>([]);
   const [metric, setMetric] = useState<MetricKey>("cpconv");
   const [weeks, setWeeks] = useState(12);
   const [loading, setLoading] = useState(true);
 
-  const anchor = endDate || new Date().toISOString().split("T")[0];
+  // Through calendar today — not the matured verdict end — so the series includes
+  // the latest full weeks (verdict maturity would clip the last week to a single day).
+  const anchor = utcToday();
   const start = useMemo(() => shiftDate(anchor, weeks * 7), [anchor, weeks]);
 
   useEffect(() => {
@@ -110,7 +117,7 @@ export default function ClientTimelineChart({ clientId, endDate }: Props) {
             Timeline & drop-off detection
           </h3>
           <p className="text-xs mt-0.5" style={{ color: "#475569" }}>
-            Week-by-week trend. Vertical lines mark logged changes so you can see what moved the metric.
+            Week-by-week through today. Vertical lines mark logged changes so you can see what moved the metric.
           </p>
         </div>
         <div className="flex items-center gap-2">

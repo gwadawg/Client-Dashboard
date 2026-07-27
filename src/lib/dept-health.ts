@@ -57,7 +57,7 @@ function gradeOf(row: ClientHealthRow, key: KpiKey): HealthTier {
   return row.current.grades.find(g => g.key === key)?.tier ?? 'insufficient';
 }
 
-/** Prefer leading 7d grade when available; else baseline. */
+/** Prefer leading grade when available; else baseline. */
 function leadingOrBaseline(row: ClientHealthRow, key: KpiKey): HealthTier {
   const lead = leadingGradeFor(row.recent, key);
   return lead !== 'insufficient' ? lead : gradeOf(row, key);
@@ -65,7 +65,7 @@ function leadingOrBaseline(row: ClientHealthRow, key: KpiKey): HealthTier {
 
 /**
  * Media Buyer owns lead cost + qual quality — CPL, CPQL, lead→qualified.
- * Prefer leading 7d when graded. Never CPConv.
+ * Prefer leading when graded. Never CPConv.
  */
 export function mediaBuyerStatus(row: ClientHealthRow): HealthTier {
   const graded = (['cpl', 'cpql', 'lead_to_qualified'] as const)

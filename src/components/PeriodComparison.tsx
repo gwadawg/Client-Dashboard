@@ -274,7 +274,7 @@ export default function PeriodComparison({
 
       {tab === "verdict" && prior && (
         <p className="text-[10px] mt-3" style={{ color: "#334155" }}>
-          Graded KPIs:{" "}
+          Verdict compares matured baseline periods ({priorVerdictLabel} vs {verdictLabel}). Graded KPIs:{" "}
           {current.grades
             .filter(g => g.tier !== "insufficient")
             .map(g => `${KPI_META[g.key as KpiKey]?.short ?? g.key} ${TIER_LABEL[g.tier]}`)

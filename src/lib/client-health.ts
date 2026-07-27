@@ -198,7 +198,7 @@ export type RecentLeading = {
   cpql: number;
   /**
    * RM only — CPL/CPQL are graded on this fresh window (ends today) so ad-cost
-   * spikes surface before the 7-day maturity lag on CPConv.
+   * spikes surface before the maturity lag on CPConv.
    */
   cost_window_days?: number;
   cost_start?: string;
@@ -841,7 +841,7 @@ export function buildConstraintGuidance(
         fixSteps: [
           {
             owner: 'Client success',
-            action: 'Log weekly and monitor the last-7-day trend for early slides.',
+            action: `Log weekly and monitor the last-${LEADING_WINDOW_DAYS}-day trend for early slides.`,
           },
         ],
         doNotDo: [
@@ -1018,19 +1018,17 @@ export function computePriorityScore(row: ClientHealthRow): number {
 }
 
 /**
- * Maturity cutoff (days). Lag analysis on live data showed 98.4% of appointments
- * occur within 7 days of booking, and outcome events are dated at the appointment
- * date. So lag-sensitive KPIs (CPConv, close rate, show rate) only become
- * trustworthy once a cohort is ~7 days old. The verdict window excludes the most
- * recent MATURITY_DAYS so spend and its resulting conversations/closes are aligned.
+ * Maturity cutoff (days). Most bookings land within ~2 days of the lead inquiry;
+ * a 3-day buffer covers that lag plus light outcome settling so CPConv / show /
+ * close stay trustworthy. The verdict window excludes the most recent MATURITY_DAYS.
  */
-export const MATURITY_DAYS = 7;
+export const MATURITY_DAYS = 3;
 
 /**
  * Calendar-last N days through today for the leading early-warning instrument
  * (CPL, CPQL, qual %, hand-raise / booking). Independent of the matured verdict.
  */
-export const LEADING_WINDOW_DAYS = 7;
+export const LEADING_WINDOW_DAYS = 5;
 
 /** @deprecated Use LEADING_WINDOW_DAYS */
 export const RECENT_WINDOW_DAYS = LEADING_WINDOW_DAYS;
@@ -1532,7 +1530,7 @@ export type BuildHealthRowInput = {
   priorSpend: SpendRow[];
   recentSpend: SpendRow[];
   recentPriorSpend: SpendRow[];
-  /** RM only — fresh calendar-last-7d slice for CPL/CPQL leading grades. */
+  /** RM only — fresh calendar leading slice for CPL/CPQL leading grades. */
   freshCost?: CostWindowSlice | null;
   freshCostPrior?: CostWindowSlice | null;
   start_date: string;

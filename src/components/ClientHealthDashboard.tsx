@@ -77,9 +77,9 @@ type SortKey =
 type GradeWindow = "30d" | "60d" | "90d";
 const GRADE_WINDOW_DAYS: Record<GradeWindow, number> = { "30d": 30, "60d": 60, "90d": 90 };
 const GRADE_WINDOW_LABELS: Record<GradeWindow, string> = {
-  "30d": "Window: Last 30 days",
-  "60d": "Window: Last 60 days",
-  "90d": "Window: Last 90 days",
+  "30d": "Baseline: 30d matured",
+  "60d": "Baseline: 60d matured",
+  "90d": "Baseline: 90d matured",
 };
 
 function ymdUTC(d: Date): string {
@@ -541,19 +541,74 @@ export default function ClientHealthDashboard(_props: Props) {
 
   const deptMeta = DEPT_TABS.find(t => t.key === effectiveLens) ?? DEPT_TABS[0];
 
+  const baselineTag = gradeWindow; // "30d" | "60d" | "90d" — matches selected matured window
+  const leadingTag = `${LEADING_WINDOW_DAYS}d`;
+
   const tableHeaders = useMemo(() => {
     if (effectiveLens === "media_buyer") {
-      return ["Client", "Media status", "7d CPL", "7d CPQL", "30d CPL", "30d CPQL", "Leads", "Qual %", "Follow-up", ""];
+      return [
+        "Client",
+        "Media status",
+        `${leadingTag} CPL`,
+        `${leadingTag} CPQL`,
+        `${baselineTag} CPL`,
+        `${baselineTag} CPQL`,
+        "Leads",
+        "Qual %",
+        "Follow-up",
+        "",
+      ];
     }
     if (effectiveLens === "ccm") {
       return isCallCenterSegment
-        ? ["Client", "CCM status", "Hand-raise", "Show", "7d hand-raise", "Leads", "Dials", "Follow-up", ""]
-        : ["Client", "CCM status", "Hand-raise", "Show", "Conv %", "7d hand-raise", "Follow-up", ""];
+        ? [
+            "Client",
+            "CCM status",
+            `${baselineTag} hand-raise`,
+            `${baselineTag} show`,
+            `${leadingTag} hand-raise`,
+            "Leads",
+            "Dials",
+            "Follow-up",
+            "",
+          ]
+        : [
+            "Client",
+            "CCM status",
+            `${baselineTag} hand-raise`,
+            `${baselineTag} show`,
+            "Conv %",
+            `${leadingTag} hand-raise`,
+            "Follow-up",
+            "",
+          ];
     }
     return isCallCenterSegment
-      ? ["Client", "Focus", "30d status", "7d hand-raise", "Follow-up", "Leads", "Dials", "30d hand-raise", "30d show", ""]
-      : ["Client", "Focus", "30d CPConv", "7d CPL", "7d CPQL", "7d qual", "7d hand-raise", "30d show", "Follow-up", ""];
-  }, [effectiveLens, isCallCenterSegment]);
+      ? [
+          "Client",
+          "Focus",
+          `${baselineTag} status`,
+          `${leadingTag} hand-raise`,
+          "Follow-up",
+          "Leads",
+          "Dials",
+          `${baselineTag} hand-raise`,
+          `${baselineTag} show`,
+          "",
+        ]
+      : [
+          "Client",
+          "Focus",
+          `${baselineTag} CPConv`,
+          `${leadingTag} CPL`,
+          `${leadingTag} CPQL`,
+          `${leadingTag} qual`,
+          `${leadingTag} hand-raise`,
+          `${baselineTag} show`,
+          "Follow-up",
+          "",
+        ];
+  }, [effectiveLens, isCallCenterSegment, baselineTag, leadingTag]);
 
   if (detail) {
     return (
@@ -665,7 +720,7 @@ export default function ClientHealthDashboard(_props: Props) {
         {effectiveLens === "media_buyer" ? (
           <>
             <span style={{ color: "#38bdf8", fontWeight: 600 }}>Media Buyer lens.</span>{" "}
-            Status = worst of CPL / CPQL / lead→qualified (leading 7d preferred). Account CPConv lives on Overview — not your scorecard.
+            Status = worst of CPL / CPQL / lead→qualified (leading {LEADING_WINDOW_DAYS}d preferred). Account CPConv lives on Overview — not your scorecard.
           </>
         ) : effectiveLens === "ccm" ? (
           <>
@@ -723,7 +778,7 @@ export default function ClientHealthDashboard(_props: Props) {
           style={{ ...selectStyle, background: "#f59e0b", color: "#fff", border: "none", fontWeight: 600 }}
           value={gradeWindow}
           onChange={e => setGradeWindow(e.target.value as GradeWindow)}
-          title="Standardized grading window — independent of the global date filter. Compared to the prior equal period."
+          title={`Matured baseline window (ends ~${MATURITY_DAYS} days before today). Compared to the prior equal-length period. Independent of Leading ${LEADING_WINDOW_DAYS}d.`}
         >
           {(Object.keys(GRADE_WINDOW_LABELS) as GradeWindow[]).map(w => (
             <option key={w} value={w} style={{ background: "#0f2040", color: "#e2e8f0" }}>
@@ -1336,11 +1391,11 @@ export default function ClientHealthDashboard(_props: Props) {
           </>
         ) : isCallCenterSegment ? (
           <>
-            HE baseline: 30d matured unique hand-raise + show. Leading {LEADING_WINDOW_DAYS}d hand-raise in table. Act now = north-star 911 only; leading reds = Monitor / Leading watch.
+            HE baseline: {gradeWindow} matured unique hand-raise + show. Leading {LEADING_WINDOW_DAYS}d hand-raise in table. Act now = north-star 911 only; leading reds = Monitor / Leading watch.
           </>
         ) : (
           <>
-            RM baseline: 30d matured CPConv north star. Leading {LEADING_WINDOW_DAYS}d CPL/CPQL/qual/hand-raise in table.
+            RM baseline: {gradeWindow} matured CPConv north star. Leading {LEADING_WINDOW_DAYS}d CPL/CPQL/qual/hand-raise in table.
             Act now = CPConv 911 only; leading cost/funnel reds = Monitor / Leading watch. Conversion benchmark = unique hand-raise (not booking-only).
           </>
         )}
