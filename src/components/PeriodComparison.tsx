@@ -169,6 +169,17 @@ export default function PeriodComparison({
         ? leadingRows(recent, recentPrior, isHe)
         : [];
 
+  // Leading tab must label columns with the calendar leading windows — not the
+  // verdict period dates — or the table looks like the same ranges with different numbers.
+  const priorColLabel =
+    tab === "leading" && recentPrior
+      ? `${recentPrior.start} → ${recentPrior.end}`
+      : priorVerdictLabel;
+  const currentColLabel =
+    tab === "leading" && recent
+      ? `${recent.start} → ${recent.end}`
+      : verdictLabel;
+
   return (
     <div className="rounded-xl p-5" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -178,7 +189,7 @@ export default function PeriodComparison({
         <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: "#050c18" }}>
           {(
             [
-              { key: "verdict" as const, label: isHe ? "Verdict window" : "Verdict window" },
+              { key: "verdict" as const, label: "Verdict window" },
               { key: "leading" as const, label: `Leading ${recent?.window_days ?? 14}d` },
             ] as const
           ).map(t => (
@@ -212,10 +223,10 @@ export default function PeriodComparison({
                   Metric
                 </th>
                 <th className="text-right py-2 px-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: "#475569" }}>
-                  {priorVerdictLabel}
+                  {priorColLabel}
                 </th>
                 <th className="text-right py-2 px-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: "#475569" }}>
-                  {verdictLabel}
+                  {currentColLabel}
                 </th>
                 <th className="text-right py-2 pl-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: "#475569" }}>
                   Change
@@ -251,11 +262,13 @@ export default function PeriodComparison({
         </div>
       )}
 
-      {tab === "leading" && recent?.cost_window_days ? (
+      {tab === "leading" && recent ? (
         <p className="text-[10px] mt-3" style={{ color: "#334155" }}>
-          Funnel metrics use the matured leading window ({recent.start} → {recent.end}). CPL and CPQL use the
-          calendar-last {recent.cost_window_days} days through today ({recent.cost_start} → {recent.cost_end}) so ad-cost
-          spikes surface before CPConv matures.
+          Leading compares calendar windows through today (not the verdict periods above). Funnel metrics:
+          {recent.start} → {recent.end}
+          {recent.cost_window_days
+            ? `. CPL and CPQL use the last ${recent.cost_window_days}d (${recent.cost_start} → ${recent.cost_end}) so ad-cost spikes surface before CPConv matures.`
+            : "."}
         </p>
       ) : null}
 
