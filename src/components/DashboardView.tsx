@@ -16,6 +16,7 @@ import {
   DEFAULT_REPORTING_TYPE,
   formatKpiValue,
   normalizeReportingType,
+  usesRmKpiLayout,
   type ReportingType,
 } from "@/lib/kpi-layouts";
 import { REPORTING_TYPES } from "@/lib/reporting-types";
@@ -1063,7 +1064,7 @@ export default function DashboardView({
                   />
                 </KpiSection>
 
-                {dashboardReportingType === "RM" && (
+                {usesRmKpiLayout(dashboardReportingType) && (
                   <KpiSection title="Cost Trends" showDivider>
                     <CostTrendCharts
                       series={trends?.series ?? []}
