@@ -192,7 +192,7 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
     title: "Appointments",
     gridClassName: DEFAULT_GRID,
     footnote:
-      "Both show rates ignore appointments that never took place — anything still pending or cancelled is excluded. Net Show Rate counts only lead attendance (Shows vs No Shows); Show Rate (of booked) also counts LO bails against you.",
+      "Billable Conversations = unique leads with a live transfer or show (claimed is not billable). Both show rates ignore appointments that never took place — anything still pending or cancelled is excluded. Net Show Rate counts only lead attendance (Shows vs No Shows); Show Rate (of booked) also counts LO bails against you.",
     cards: [
       { label: "Total Leads", metric: "new_leads", format: "int", hint: "Every new lead/contact ingested in this date range." },
       {
@@ -202,6 +202,19 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
         format: "int",
         valueCaption: "unique / total",
         hint: "Unique leads who booked / total appointment_booked events (rebooks & reschedules included in total). Cancel rate uses the total.",
+      },
+      {
+        label: "Billable Conversations",
+        metric: "billable_conversations",
+        format: "int",
+        accent: true,
+        hint: "Unique leads with a live transfer or show. One lead once — what we charge for. Claimed never counts.",
+      },
+      {
+        label: "Live Transfers",
+        metric: "live_transfers",
+        format: "int",
+        hint: "Calls transferred live straight to the client / agent.",
       },
       {
         label: "Hand Raise Rate",
@@ -271,6 +284,14 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
       { label: "Conversations (2m+)", metric: "conversations", format: "int", hint: "Completed calls longer than 2 minutes." },
       { label: "Conversation Rate", metric: "conversation_pct", format: "pct", hint: "Conversations ÷ Pickups." },
       { label: "Claimed", metric: "claimed", format: "int", hint: "Leads the client handled outside our booking flow." },
+      {
+        label: "Claimed After Booked",
+        metric: "claimed_after_booked",
+        format: "int",
+        accent: true,
+        lowerIsBetter: true,
+        hint: "Unique leads whose earliest claim in this range is after their earliest booking — watch for post-book claims.",
+      },
       { label: "Total Conversations", metric: "total_conversations", format: "int", hint: "Conversations (2m+) plus Claimed." },
     ],
   },

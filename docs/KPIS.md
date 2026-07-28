@@ -100,7 +100,9 @@ The **Funnel Simulator** tab (`?view=kpi_simulator`) is a forward-looking calcul
 
 Rate cards carry an info tooltip with their formula. Show Quality groups all appointment rates together so the true (net) show rate reads at a glance separate from the client-report rate.
 
-HE clients keep a minimal dashboard (leads, appointments + calling stats). **Booking Rate** on the HE overview uses **Total Leads** as the denominator (`Unique booked leads ÷ Total Leads`), not qualified leads. Other operational metrics (dials, show rate, etc.) remain in other nav views.
+HE / Call Center clients keep a minimal dashboard (leads, appointments + calling stats). **Booking Rate** on the HE overview uses **Total Leads** as the denominator (`Unique booked leads ÷ Total Leads`), not qualified leads. Other operational metrics (dials, show rate, etc.) remain in other nav views.
+
+**Call Center billable (not RM Unique Conversations):** **Billable Conversations** = unique leads with `live_transfer` ∪ `show` in the selected range — claimed never counts toward what we charge. **Claimed After Booked** = unique leads whose earliest `claimed` in range is strictly after their earliest `appointment_booked` in range (summary watch card; dated drill-down is a follow-up). RM **Unique Conversations** remains `show ∪ claimed ∪ live_transfer` and is unchanged.
 
 ### Client Success tab (RM vs HE)
 

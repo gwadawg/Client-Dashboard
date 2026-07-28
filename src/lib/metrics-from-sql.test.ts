@@ -58,6 +58,8 @@ function countsFromEvents(events: EventRow[]): SqlKpiCounts {
     unique_booked_appointments: m.unique_booked_appointments,
     unique_hand_raises: m.unique_hand_raises,
     unique_conversations: m.unique_conversations,
+    billable_conversations: m.billable_conversations,
+    claimed_after_booked: m.claimed_after_booked,
     proposals_made: m.proposals_made,
     submissions_made: m.submissions_made,
     funded_loans: m.funded_loans,
@@ -92,6 +94,8 @@ describe('metricsFromSqlCounts', () => {
     assert.equal(fromSql.unique_hand_raises, fromJs.unique_hand_raises);
     assert.equal(fromSql.hand_raise_rate, fromJs.hand_raise_rate);
     assert.equal(fromSql.unique_conversations, fromJs.unique_conversations);
+    assert.equal(fromSql.billable_conversations, fromJs.billable_conversations);
+    assert.equal(fromSql.claimed_after_booked, fromJs.claimed_after_booked);
     assert.equal(fromSql.conversation_rate, fromJs.conversation_rate);
     assert.equal(fromSql.cpl, fromJs.cpl);
     assert.equal(fromSql.ad_spend, fromJs.ad_spend);

@@ -39,6 +39,8 @@ export type SqlKpiCounts = {
   unique_booked_appointments: number;
   unique_hand_raises: number;
   unique_conversations: number;
+  billable_conversations: number;
+  claimed_after_booked: number;
   proposals_made: number;
   submissions_made: number;
   funded_loans: number;
@@ -89,6 +91,8 @@ export function emptySqlKpiCounts(): SqlKpiCounts {
     unique_booked_appointments: 0,
     unique_hand_raises: 0,
     unique_conversations: 0,
+    billable_conversations: 0,
+    claimed_after_booked: 0,
     proposals_made: 0,
     submissions_made: 0,
     funded_loans: 0,
@@ -121,6 +125,8 @@ export function parseSqlKpiCounts(raw: unknown): SqlKpiCounts | null {
     unique_booked_appointments: n(o.unique_booked_appointments),
     unique_hand_raises: n(o.unique_hand_raises),
     unique_conversations: n(o.unique_conversations),
+    billable_conversations: n(o.billable_conversations),
+    claimed_after_booked: n(o.claimed_after_booked),
     proposals_made: n(o.proposals_made),
     submissions_made: n(o.submissions_made),
     funded_loans: n(o.funded_loans),
@@ -180,6 +186,8 @@ export function metricsFromSqlCounts(
   const unique_booked_leads = counts.unique_booked_appointments;
   const unique_hand_raise_leads = counts.unique_hand_raises;
   const unique_conversation_leads = counts.unique_conversations;
+  const billable_conversations = counts.billable_conversations;
+  const claimed_after_booked = counts.claimed_after_booked;
   const proposals_made = counts.proposals_made;
   const submissions_made = counts.submissions_made;
   const funded_loans = counts.funded_loans;
@@ -208,6 +216,8 @@ export function metricsFromSqlCounts(
     net_show_pct: shows + no_shows > 0 ? (shows / (shows + no_shows)) * 100 : 0,
     lo_bail_rate: booked > 0 ? (lo_bailed / booked) * 100 : 0,
     unique_conversations: unique_conversation_leads,
+    billable_conversations,
+    claimed_after_booked,
     conversation_rate:
       qualified_leads > 0 ? (unique_conversation_leads / qualified_leads) * 100 : 0,
     unique_hand_raises: unique_hand_raise_leads,

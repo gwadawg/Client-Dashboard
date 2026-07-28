@@ -158,3 +158,47 @@ describe('unique-lead rates (booking, hand-raise, conversation)', () => {
     assert.equal(week[0].client_conversations, 1);
   });
 });
+
+describe('billable conversations + claimed after booked', () => {
+  it('counts unique LT ∪ show once and excludes claimed from billable', () => {
+    const events: EventRow[] = [
+      lead({ ghl_contact_id: 'A' }),
+      lead({ ghl_contact_id: 'B' }),
+      lead({ ghl_contact_id: 'C' }),
+      evt('live_transfer', 'A'),
+      evt('show', 'A'), // same lead — still one billable
+      evt('show', 'B'),
+      evt('claimed', 'C'), // not billable
+    ];
+    const m = calculateMetrics(events, []);
+    assert.equal(m.billable_conversations, 2);
+    assert.equal(m.unique_conversations, 3); // A, B, C (claimed still in unique_conversations)
+    assert.equal(m.claimed_after_booked, 0);
+  });
+
+  it('flags claim after earliest book; ignores claim-before and claim-only', () => {
+    const events: EventRow[] = [
+      lead({ ghl_contact_id: 'A' }),
+      lead({ ghl_contact_id: 'B' }),
+      lead({ ghl_contact_id: 'C' }),
+      evt('appointment_booked', 'A', '2026-06-10T10:00:00.000Z'),
+      evt('claimed', 'A', '2026-06-11T10:00:00.000Z'), // after → flag
+      evt('claimed', 'B', '2026-06-10T09:00:00.000Z'),
+      evt('appointment_booked', 'B', '2026-06-10T12:00:00.000Z'), // claim before → no
+      evt('claimed', 'C', '2026-06-12T10:00:00.000Z'), // no book → no
+    ];
+    const m = calculateMetrics(events, []);
+    assert.equal(m.claimed, 3);
+    assert.equal(m.claimed_after_booked, 1);
+  });
+
+  it('does not flag equal book and claim timestamps', () => {
+    const events: EventRow[] = [
+      lead({ ghl_contact_id: 'A' }),
+      evt('appointment_booked', 'A', '2026-06-10T12:00:00.000Z'),
+      evt('claimed', 'A', '2026-06-10T12:00:00.000Z'),
+    ];
+    const m = calculateMetrics(events, []);
+    assert.equal(m.claimed_after_booked, 0);
+  });
+});

@@ -88,6 +88,16 @@ export type MetricsResult = {
    * (show ∪ claimed ∪ live transfer). One lead counted once.
    */
   unique_conversations: number;
+  /**
+   * Call Center billable: unique leads with live_transfer ∪ show.
+   * Claimed never counts (client-handled, not charged).
+   */
+  billable_conversations: number;
+  /**
+   * Unique leads whose earliest claim in-range is strictly after
+   * their earliest appointment_booked in-range (claim-watch / sabotage).
+   */
+  claimed_after_booked: number;
   /** Unique conversations ÷ qualified leads. */
   conversation_rate: number;
   /**
@@ -197,6 +207,28 @@ function uniqueLeadCountForEvents(events: EventRow[], eventTypes: Set<string>): 
   return leadKeys.size;
 }
 
+/** Earliest book vs earliest claim per lead; count when claim is strictly after book. */
+export function countClaimedAfterBooked(events: EventRow[]): number {
+  const earliestBook = new Map<string, string>();
+  const earliestClaim = new Map<string, string>();
+  for (const event of events) {
+    if (event.event_type !== 'appointment_booked' && event.event_type !== 'claimed') continue;
+    const at = event.occurred_at;
+    if (!at) continue;
+    const key = leadIdentityKey(event);
+    if (!key) continue;
+    const bucket = event.event_type === 'appointment_booked' ? earliestBook : earliestClaim;
+    const prev = bucket.get(key);
+    if (!prev || at < prev) bucket.set(key, at);
+  }
+  let count = 0;
+  for (const [key, claimAt] of earliestClaim) {
+    const bookAt = earliestBook.get(key);
+    if (bookAt && claimAt > bookAt) count++;
+  }
+  return count;
+}
+
 export function calculateMetrics(
   events: EventRow[],
   spendRows: SpendRow[],
@@ -279,6 +311,12 @@ export function calculateMetrics(
     events,
     new Set(['show', 'claimed', 'live_transfer']),
   );
+  // Call Center billable: live transfer ∪ show — claimed excluded.
+  const billable_conversations = uniqueLeadCountForEvents(
+    events,
+    new Set(['show', 'live_transfer']),
+  );
+  const claimed_after_booked = countClaimedAfterBooked(events);
 
   return {
     new_leads: leads,
@@ -297,6 +335,8 @@ export function calculateMetrics(
     net_show_pct: shows + no_shows > 0 ? (shows / (shows + no_shows)) * 100 : 0,
     lo_bail_rate: booked > 0 ? (lo_bailed / booked) * 100 : 0,
     unique_conversations: unique_conversation_leads,
+    billable_conversations,
+    claimed_after_booked,
     conversation_rate: qualified_leads > 0 ? (unique_conversation_leads / qualified_leads) * 100 : 0,
     unique_hand_raises: unique_hand_raise_leads,
     hand_raise_rate: qualified_leads > 0 ? (unique_hand_raise_leads / qualified_leads) * 100 : 0,
