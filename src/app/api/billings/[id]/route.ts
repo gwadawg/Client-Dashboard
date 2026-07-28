@@ -22,6 +22,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params;
   const body = await req.json();
+  const isExtension = body.is_extension === true;
 
   const { data: current, error: loadErr } = await ctx.service
     .from('client_billings')
@@ -36,7 +37,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (k in body) updates[k] = body[k];
   }
 
-  const touchesBreakdown = ['base_amount', 'performance_amount', 'late_fee', 'discount'].some(k => k in body) || 'amount' in body;
+  if (isExtension) {
+    updates.is_extension = true;
+    updates.base_amount = 0;
+    updates.performance_amount = 0;
+    updates.late_fee = 0;
+    updates.discount = 0;
+    updates.amount = 0;
+    updates.amount_paid = 0;
+    updates.processing_fee = 0;
+    updates.passthrough_amount = 0;
+    updates.status = 'paid';
+    if (!('paid_on' in body) && !current.paid_on) {
+      updates.paid_on = new Date().toISOString().slice(0, 10);
+    }
+  }
+
+  const touchesBreakdown =
+    !isExtension &&
+    (['base_amount', 'performance_amount', 'late_fee', 'discount'].some(k => k in body) || 'amount' in body);
   const base = 'base_amount' in body ? Number(body.base_amount)
     : Number(current.base_amount ?? current.amount) || 0;
   const performance = 'performance_amount' in body ? Number(body.performance_amount)
@@ -45,7 +64,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     : Number(current.late_fee) || 0;
   const discount = 'discount' in body ? Number(body.discount)
     : Number(current.discount) || 0;
-  let amount = Number(current.amount) || 0;
+  let amount = isExtension ? 0 : Number(current.amount) || 0;
   if (touchesBreakdown) {
     amount = base + performance + lateFee - discount;
     updates.base_amount = base;
@@ -55,9 +74,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     updates.amount = amount;
   }
 
-  const wantsPaid = body.status === 'paid' || body.markPaid === true;
-  let amountPaid = Number(current.amount_paid) || 0;
-  if (wantsPaid) {
+  const wantsPaid = isExtension || body.status === 'paid' || body.markPaid === true;
+  let amountPaid = isExtension ? 0 : Number(current.amount_paid) || 0;
+  if (isExtension) {
+    amountPaid = 0;
+  } else if (wantsPaid) {
     amountPaid = amount;
     updates.amount_paid = amountPaid;
   } else if ('amount_paid' in body) {
@@ -65,19 +86,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     updates.amount_paid = amountPaid;
   }
 
-  if (body.status) {
-    updates.status = body.status;
-  } else if (wantsPaid) {
-    updates.status = 'paid';
-  } else if ('amount_paid' in body || touchesBreakdown) {
-    if (amount > 0 && amountPaid >= amount) updates.status = 'paid';
-    else if (amountPaid > 0) updates.status = 'partial';
-    else updates.status = 'pending';
+  if (!isExtension) {
+    if (body.status) {
+      updates.status = body.status;
+    } else if (wantsPaid) {
+      updates.status = 'paid';
+    } else if ('amount_paid' in body || touchesBreakdown) {
+      if (amount > 0 && amountPaid >= amount) updates.status = 'paid';
+      else if (amountPaid > 0) updates.status = 'partial';
+      else updates.status = 'pending';
+    }
   }
 
   if ('paid_on' in body) {
     updates.paid_on = body.paid_on;
-  } else if (updates.status === 'paid' && !current.paid_on) {
+  } else if (updates.status === 'paid' && !current.paid_on && !updates.paid_on) {
     updates.paid_on = new Date().toISOString().slice(0, 10);
   }
 
@@ -86,6 +109,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     nextStatus === 'paid' ||
     amountPaid > 0 ||
     (Number(current.amount_paid) || 0) > 0;
+  const nextIsExtension = isExtension || Boolean(current.is_extension);
 
   const touchesRevenue = [
     'revenue_type',
@@ -99,7 +123,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     'stripe_payment_intent_id',
   ].some((k) => k in body);
 
-  if (touchesRevenue || wantsPaid || ('amount_paid' in body && amountPaid > 0)) {
+  if (touchesRevenue || wantsPaid || isExtension || ('amount_paid' in body && amountPaid > 0)) {
     const { data: client, error: clientErr } = await ctx.service
       .from('clients')
       .select('id, billing_type, source, contract_term_months')
@@ -136,6 +160,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       willBePaid,
       excludeBillingId: id,
       current: currentRevenue,
+      isExtension: nextIsExtension,
     });
     if (revenue.error) return NextResponse.json({ error: revenue.error }, { status: 400 });
     if (willBePaid && revenue.revenue_type !== 'passthrough' && !revenue.revenue_segment) {
@@ -148,8 +173,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     updates.revenue_type = revenue.revenue_type;
     updates.revenue_segment = revenue.revenue_segment;
     updates.term_months = revenue.term_months;
-    updates.processing_fee = revenue.processing_fee;
-    updates.passthrough_amount = revenue.passthrough_amount;
+    if (!isExtension) {
+      updates.processing_fee = revenue.processing_fee;
+      updates.passthrough_amount = revenue.passthrough_amount;
+    }
     updates.lead_source = revenue.lead_source;
     updates.method = revenue.method;
     updates.stripe_invoice_id = revenue.stripe_invoice_id;

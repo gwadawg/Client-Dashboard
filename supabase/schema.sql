@@ -1023,6 +1023,7 @@ create table if not exists client_billings (
   stripe_invoice_id  text,                             -- Stripe invoice id (in_...)
   stripe_payment_intent_id text,                       -- Stripe payment intent id (pi_...)
   is_first_payment   boolean not null default false,   -- client's first paid revenue billing
+  is_extension       boolean not null default false,   -- free-month retention comp ($0 paid cycle)
   created_by         uuid    references auth.users(id) on delete set null,
   created_at         timestamptz default now()
 );
@@ -1043,6 +1044,7 @@ alter table client_billings add column if not exists passthrough_amount numeric 
 alter table client_billings add column if not exists stripe_invoice_id  text;
 alter table client_billings add column if not exists stripe_payment_intent_id text;
 alter table client_billings add column if not exists is_first_payment   boolean not null default false;
+alter table client_billings add column if not exists is_extension       boolean not null default false;
 update client_billings set base_amount = amount   where base_amount is null;
 update client_billings set due_date    = billed_on where due_date is null;
 

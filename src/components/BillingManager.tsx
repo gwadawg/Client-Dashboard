@@ -57,6 +57,7 @@ function breakdownLabel(b: Billing): string | null {
   if (b.revenue_type) parts.push(revenueTypeLabel(b.revenue_type));
   const seg = revenueSegmentLabel(b.revenue_segment);
   if (seg) parts.push(seg);
+  if (b.is_extension) parts.push("extension");
   if (b.is_first_payment) parts.push("first payment");
   if (b.term_months) parts.push(`${b.term_months} mo`);
   const perf = Number(b.performance_amount) || 0;
@@ -1227,6 +1228,16 @@ function RecordedEditor({
                 Mark fully paid
               </button>
             </div>
+            <div className="flex flex-col gap-1 justify-end">
+              <button
+                onClick={() => onPatch(billing.id, { is_extension: true, ...paymentExtras() })}
+                disabled={isBusy || Boolean(billing.is_extension)}
+                className="text-xs font-semibold px-3 py-1.5 rounded"
+                style={{ color: "#a78bfa", background: "rgba(167,139,250,0.12)", opacity: (isBusy || billing.is_extension) ? 0.5 : 1 }}
+              >
+                Mark as extension
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1335,6 +1346,14 @@ function RecordedEditor({
           style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: isBusy ? 0.5 : 1 }}
         >
           Mark fully paid
+        </button>
+        <button
+          onClick={() => onPatch(billing.id, { is_extension: true, ...paymentExtras() })}
+          disabled={isBusy || Boolean(billing.is_extension)}
+          className="text-xs font-semibold px-3 py-1.5 rounded"
+          style={{ color: "#a78bfa", background: "rgba(167,139,250,0.12)", opacity: (isBusy || billing.is_extension) ? 0.5 : 1 }}
+        >
+          Mark as extension
         </button>
         <button
           onClick={() => onPatch(billing.id, { status: "failed" })}

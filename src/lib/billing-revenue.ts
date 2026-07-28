@@ -22,7 +22,7 @@ export type BillingEventType =
   | 'status_changed';
 
 export const BILLING_LEDGER_FIELDS =
-  'id, client_id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, passthrough_amount, stripe_invoice_id, stripe_payment_intent_id, is_first_payment, voided_at, created_at';
+  'id, client_id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, passthrough_amount, stripe_invoice_id, stripe_payment_intent_id, is_first_payment, is_extension, voided_at, created_at';
 
 const REVENUE_TYPE_SET = new Set<string>(REVENUE_TYPES);
 const REVENUE_SEGMENT_SET = new Set<string>(REVENUE_SEGMENTS);
@@ -49,6 +49,7 @@ export type PriorBillingProbe = {
   revenue_type?: string | null;
   amount_paid?: number | null;
   is_first_payment?: boolean | null;
+  is_extension?: boolean | null;
 };
 
 /** True when the client already has a paid non-passthrough revenue billing. */
@@ -59,6 +60,7 @@ export function clientHasPriorPaidRevenue(
   return billings.some((b) => {
     if (excludeBillingId && (b as { id?: string }).id === excludeBillingId) return false;
     if (b.status === 'voided') return false;
+    if (b.is_extension) return false;
     if (b.revenue_type === 'passthrough') return false;
     return (Number(b.amount_paid) || 0) > 0 || b.status === 'paid';
   });
@@ -124,8 +126,10 @@ export function resolveRevenueDefaults(args: {
   excludeBillingId?: string | null;
   /** When patching, fall back to current row values. */
   current?: Partial<ResolvedRevenue> | null;
+  /** Free-month extension — never counts as first payment. */
+  isExtension?: boolean;
 }): ResolvedRevenue {
-  const { client, existingBillings, input, willBePaid, excludeBillingId, current } = args;
+  const { client, existingBillings, input, willBePaid, excludeBillingId, current, isExtension } = args;
 
   let revenue_type: RevenueType | null = null;
   if (isRevenueType(input.revenue_type)) revenue_type = input.revenue_type;
@@ -133,7 +137,8 @@ export function resolveRevenueDefaults(args: {
   else revenue_type = revenueTypeFromBillingType(client.billing_type);
 
   const hasPrior = clientHasPriorPaidRevenue(existingBillings, excludeBillingId);
-  const is_first_payment = willBePaid && !hasPrior && revenue_type !== 'passthrough';
+  const is_first_payment =
+    willBePaid && !hasPrior && !isExtension && revenue_type !== 'passthrough';
 
   let revenue_segment: RevenueSegment | null = null;
   if (isRevenueSegment(input.revenue_segment)) revenue_segment = input.revenue_segment;
@@ -231,7 +236,7 @@ export async function loadClientBillingProbes(
 ): Promise<(PriorBillingProbe & { id: string })[]> {
   const { data, error } = await service
     .from('client_billings')
-    .select('id, status, revenue_type, amount_paid, is_first_payment')
+    .select('id, status, revenue_type, amount_paid, is_first_payment, is_extension')
     .eq('client_id', clientId)
     .neq('status', 'voided');
   if (error) throw new Error(error.message);

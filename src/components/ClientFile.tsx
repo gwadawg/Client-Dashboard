@@ -78,6 +78,7 @@ type FileBilling = {
   stripe_invoice_id?: string | null;
   stripe_payment_intent_id?: string | null;
   is_first_payment?: boolean | null;
+  is_extension?: boolean | null;
   created_at: string;
 };
 
@@ -1493,6 +1494,9 @@ export default function ClientFile({
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <span style={{ color: "#e2e8f0" }}>{typeLabel}</span>
                               {seg && <span className="ml-1.5 text-xs" style={{ color: "#475569" }}>· {seg}</span>}
+                              {b.is_extension && (
+                                <span className="ml-1.5 text-xs font-semibold" style={{ color: "#a78bfa" }}>extension</span>
+                              )}
                               {b.is_first_payment && (
                                 <span className="ml-1.5 text-xs font-semibold" style={{ color: "#f59e0b" }}>first</span>
                               )}

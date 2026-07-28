@@ -25,6 +25,7 @@ export type Billing = {
   stripe_invoice_id?: string | null;
   stripe_payment_intent_id?: string | null;
   is_first_payment?: boolean | null;
+  is_extension?: boolean | null;
   created_at: string;
 };
 

@@ -141,24 +141,30 @@ export async function POST(req: Request) {
 
   const body = await req.json();
   const { client_id, billed_on } = body;
+  const isExtension = body.is_extension === true;
 
   if (!client_id) return NextResponse.json({ error: 'client_id is required' }, { status: 400 });
   if (!billed_on) return NextResponse.json({ error: 'billed_on is required' }, { status: 400 });
 
-  const base = Number(body.base_amount ?? body.amount);
-  if (Number.isNaN(base))
+  let base = Number(body.base_amount ?? body.amount);
+  if (isExtension) {
+    base = 0;
+  } else if (Number.isNaN(base)) {
     return NextResponse.json({ error: 'base_amount (or amount) is required' }, { status: 400 });
-  const performance = Number(body.performance_amount) || 0;
-  const lateFee = Number(body.late_fee) || 0;
-  const discount = Number(body.discount) || 0;
-  const amount = base + performance + lateFee - discount;
+  }
+  const performance = isExtension ? 0 : Number(body.performance_amount) || 0;
+  const lateFee = isExtension ? 0 : Number(body.late_fee) || 0;
+  const discount = isExtension ? 0 : Number(body.discount) || 0;
+  const amount = isExtension ? 0 : base + performance + lateFee - discount;
 
   const EXPLICIT_STATUSES = new Set(['scheduled', 'paid', 'failed', 'refunded', 'voided']);
-  const wantsPaid = body.status === 'paid' || body.markPaid === true;
-  const isScheduled = body.status === 'scheduled';
-  const amountPaid = (wantsPaid && !isScheduled) ? amount : (isScheduled ? 0 : Number(body.amount_paid) || 0);
-  let status: string = body.status ?? 'pending';
-  if (!body.status || !EXPLICIT_STATUSES.has(body.status)) {
+  const wantsPaid = isExtension || body.status === 'paid' || body.markPaid === true;
+  const isScheduled = !isExtension && body.status === 'scheduled';
+  const amountPaid = isExtension
+    ? 0
+    : (wantsPaid && !isScheduled) ? amount : (isScheduled ? 0 : Number(body.amount_paid) || 0);
+  let status: string = isExtension ? 'paid' : (body.status ?? 'pending');
+  if (!isExtension && (!body.status || !EXPLICIT_STATUSES.has(body.status))) {
     if (amount > 0 && amountPaid >= amount) status = 'paid';
     else if (amountPaid > 0) status = 'partial';
     else status = 'pending';
@@ -186,6 +192,7 @@ export async function POST(req: Request) {
     existingBillings: probes,
     input: body,
     willBePaid,
+    isExtension,
   });
   if (revenue.error) return NextResponse.json({ error: revenue.error }, { status: 400 });
   if (!revenue.revenue_type) {
@@ -205,7 +212,7 @@ export async function POST(req: Request) {
     client_id,
     billed_on,
     due_date: dueDate,
-    base_amount: base,
+    base_amount: isExtension ? 0 : base,
     performance_amount: performance,
     late_fee: lateFee,
     discount,
@@ -216,14 +223,15 @@ export async function POST(req: Request) {
     revenue_type: revenue.revenue_type,
     revenue_segment: revenue.revenue_segment,
     term_months: revenue.term_months,
-    processing_fee: revenue.processing_fee,
-    passthrough_amount: revenue.passthrough_amount,
+    processing_fee: isExtension ? 0 : revenue.processing_fee,
+    passthrough_amount: isExtension ? 0 : revenue.passthrough_amount,
     lead_source: revenue.lead_source,
     is_first_payment: revenue.is_first_payment,
+    is_extension: isExtension,
   };
   if (revenue.method) insert.method = revenue.method;
-  if (revenue.stripe_invoice_id) insert.stripe_invoice_id = revenue.stripe_invoice_id;
-  if (revenue.stripe_payment_intent_id) insert.stripe_payment_intent_id = revenue.stripe_payment_intent_id;
+  if (!isExtension && revenue.stripe_invoice_id) insert.stripe_invoice_id = revenue.stripe_invoice_id;
+  if (!isExtension && revenue.stripe_payment_intent_id) insert.stripe_payment_intent_id = revenue.stripe_payment_intent_id;
   if (status === 'paid' && !body.paid_on) insert.paid_on = billed_on;
   for (const k of ['period_start', 'period_end', 'paid_on', 'invoice_ref', 'note'] as const) {
     if (k in body && body[k] !== '') insert[k] = body[k];
