@@ -418,6 +418,8 @@ function CycleEditor({
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onBill: (id: string, markPaid: boolean) => void;
 }) {
+  const [periodStart, setPeriodStart] = useState(cycle.period_start);
+  const [periodEnd, setPeriodEnd] = useState(cycle.period_end);
   const [shows, setShows] = useState(String(cycle.show_count));
   const [bailed, setBailed] = useState(String(cycle.bailed_count));
   const [base, setBase] = useState(String(cycle.base_amount));
@@ -426,16 +428,46 @@ function CycleEditor({
   const [discount, setDiscount] = useState(String(cycle.discount));
   const isBusy = busy === cycle.id;
 
+  // Keep local fields in sync when the parent reloads the cycle after save.
+  useEffect(() => {
+    setPeriodStart(cycle.period_start);
+    setPeriodEnd(cycle.period_end);
+    setShows(String(cycle.show_count));
+    setBailed(String(cycle.bailed_count));
+    setBase(String(cycle.base_amount));
+    setShowRate(String(cycle.pay_per_show));
+    setBailRate(String(cycle.pay_per_bailed));
+    setDiscount(String(cycle.discount));
+  }, [
+    cycle.id,
+    cycle.period_start,
+    cycle.period_end,
+    cycle.show_count,
+    cycle.bailed_count,
+    cycle.base_amount,
+    cycle.pay_per_show,
+    cycle.pay_per_bailed,
+    cycle.discount,
+    cycle.updated_at,
+  ]);
+
   const perf = computePerformanceAmount(
     { show_count: Number(shows) || 0, bailed_count: Number(bailed) || 0 },
     { pay_per_show: Number(showRate) || 0, pay_per_bailed: Number(bailRate) || 0 },
   );
   const total = computeCycleTotal(Number(base) || 0, perf, Number(discount) || 0);
   const status = cycle.effective_status ?? cycle.status;
+  const periodInvalid = !periodStart || !periodEnd || periodStart > periodEnd;
+  const shareToken = cycle.client?.share_token ?? null;
+  const reportHref = shareToken
+    ? `/report/${shareToken}?start_date=${encodeURIComponent(periodStart)}&end_date=${encodeURIComponent(periodEnd)}`
+    : null;
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <LabeledInput label="Period start"><input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
+        <LabeledInput label="Period end"><input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="Shows"><input type="number" value={shows} onChange={e => setShows(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="Bailed"><input type="number" value={bailed} onChange={e => setBailed(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="Base retainer"><input type="number" value={base} onChange={e => setBase(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
@@ -444,12 +476,18 @@ function CycleEditor({
         <LabeledInput label="$/bailed"><input type="number" value={bailRate} onChange={e => setBailRate(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
       </div>
 
+      {periodInvalid && (
+        <p className="text-xs" style={{ color: "#f87171" }}>Period end must be on or after period start.</p>
+      )}
+
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm" style={{ color: "#cbd5e1" }}>
           Performance: <strong>{money(perf)}</strong> · Total: <strong style={{ color: "#e2e8f0" }}>{money(total)}</strong>
         </span>
         <button
           onClick={() => onPatch(cycle.id, {
+            period_start: periodStart,
+            period_end: periodEnd,
             show_count: Number(shows) || 0,
             bailed_count: Number(bailed) || 0,
             base_amount: Number(base) || 0,
@@ -457,18 +495,35 @@ function CycleEditor({
             pay_per_bailed: Number(bailRate) || 0,
             discount: Number(discount) || 0,
           })}
-          disabled={isBusy}
+          disabled={isBusy || periodInvalid}
           className="text-xs font-semibold px-3 py-1.5 rounded"
-          style={{ color: "#e2e8f0", background: "rgba(255,255,255,0.06)", opacity: isBusy ? 0.5 : 1 }}
+          style={{ color: "#e2e8f0", background: "rgba(255,255,255,0.06)", opacity: isBusy || periodInvalid ? 0.5 : 1 }}
         >
-          Save amounts
+          Save
         </button>
+        {reportHref && (
+          <a
+            href={reportHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-semibold px-3 py-1.5 rounded"
+            style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)" }}
+          >
+            Open report
+          </a>
+        )}
       </div>
 
       <div className="flex gap-2 flex-wrap pt-2 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        {status === "draft" && (
-          <button onClick={() => onPatch(cycle.id, { action: "mark_report_sent" })} disabled={isBusy} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#f59e0b", background: "rgba(245,158,11,0.1)", opacity: isBusy ? 0.5 : 1 }}>
-            Mark report sent
+        {(status === "draft" || status === "ready_to_bill") && (
+          <button
+            onClick={() => onPatch(cycle.id, { action: "mark_report_sent" })}
+            disabled={isBusy}
+            className="text-xs font-semibold px-3 py-1.5 rounded"
+            style={{ color: "#f59e0b", background: "rgba(245,158,11,0.1)", opacity: isBusy ? 0.5 : 1 }}
+            title={status === "ready_to_bill" ? "Restarts the 3-day objection window" : undefined}
+          >
+            {status === "ready_to_bill" ? "Mark report sent (restart window)" : "Mark report sent"}
           </button>
         )}
         {status === "report_sent" && (

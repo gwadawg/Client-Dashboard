@@ -13,7 +13,7 @@ const CYCLE_FIELDS =
   'id, client_id, period_start, period_end, base_amount, show_count, bailed_count, pay_per_show, pay_per_bailed, performance_amount, discount, status, report_sent_at, objection_deadline_at, dispute_note, billing_id, note, created_at, updated_at';
 
 const CLIENT_SNAPSHOT =
-  'id, name, lifecycle_status, billing_paused, billing_model, mrr, pay_per_show, pay_per_bailed, performance_terms';
+  'id, name, lifecycle_status, billing_paused, billing_model, mrr, pay_per_show, pay_per_bailed, performance_terms, share_token';
 
 type CycleRow = Record<string, unknown>;
 

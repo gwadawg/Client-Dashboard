@@ -50,6 +50,7 @@ export type ClientBilling = {
   contract_term_months?: number | null;
   source?: string | null;
   performance_terms: string | null;
+  share_token?: string | null;
   next_billing_date: string | null;
   next_billing_status: "upcoming" | "due_soon" | "overdue" | null;
   suggested_next_date: string | null;

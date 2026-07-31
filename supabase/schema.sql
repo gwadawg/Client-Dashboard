@@ -50,7 +50,7 @@ create table if not exists clients (
   is_live          boolean not null default true,
   reporting_type   text    not null default 'RM',
   ghl_location_id  text,
-  share_token      text,
+  share_token      text default encode(gen_random_bytes(16), 'hex'),
   team_invite_token text,
   created_at       timestamptz default now(),
 

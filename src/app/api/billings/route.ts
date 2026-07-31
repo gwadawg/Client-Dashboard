@@ -16,7 +16,7 @@ import {
 } from '@/lib/client-revenue-access';
 
 const CLIENT_BILLING_FIELDS =
-  'id, name, reporting_type, is_live, lifecycle_status, billing_paused, billing_paused_at, billing_paused_note, billing_model, pay_per_show, pay_per_bailed, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, source';
+  'id, name, reporting_type, is_live, lifecycle_status, billing_paused, billing_paused_at, billing_paused_note, billing_model, pay_per_show, pay_per_bailed, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, source, share_token';
 
 const BILLING_FIELDS = BILLING_LEDGER_FIELDS;
 
