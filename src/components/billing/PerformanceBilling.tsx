@@ -37,6 +37,8 @@ export type BillingCycle = {
   dispute_note: string | null;
   billing_id: string | null;
   note: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   client: ClientBilling | null;
 };
 
