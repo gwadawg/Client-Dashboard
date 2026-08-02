@@ -112,6 +112,10 @@ export type ScheduleOpts = {
   dueDate: string;
   note?: string;
   markPaid?: boolean;
+  /** $0 paid free/pause month — advances cadence without collecting cash. */
+  is_extension?: boolean;
+  periodStart?: string;
+  periodEnd?: string;
   method?: string;
 } & RevenueTagOpts;
 

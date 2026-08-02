@@ -100,9 +100,8 @@ A client is **locked** when:
   bails (base/`mrr` may be 0)
 
 A client is **Pending** when active, not billing-paused, and not
-locked. Pending rows appear in the queue with status **Pending**
-and action **Set up billing** (opens Setup / disposition panel).
-No monthly File billing prompt after lock.
+locked. Pending clients appear only under **Setup** (not Past Due /
+Upcoming). No monthly File billing prompt after lock.
 
 Migration of today’s “unscheduled” rows: if day (+ rates as
 required) already exist → treat as locked immediately.

@@ -121,10 +121,13 @@ Shared defaults live in `src/lib/billing-revenue.ts` (`resolveRevenueDefaults`).
 
 ### Extensions (free month)
 
-When a due cycle is given as a free month for retention, use **Mark as
-extension** in the Manage panel (next to Mark fully paid). That sets
-`is_extension`, zeros all amounts, marks the row `paid`, and advances the
-next billing date like any other recorded cycle.
+When a due cycle is given as a free/paused month, use **Mark as extension**
+on the disposition panel (cadence due) or in Manage on an existing row. That
+sets `is_extension`, zeros all amounts, marks the row `paid`, and advances
+the next billing date like any other recorded cycle.
+
+**Mark paid** records cash collected. Pending (unlocked) clients stay under
+**Setup** only — they do not appear in Past Due / Upcoming.
 
 This is different from **Due date → Update**, which only pushes the due
 date and does not complete the cycle.

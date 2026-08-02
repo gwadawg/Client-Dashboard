@@ -301,23 +301,28 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     setBusy(null);
   }
 
-  // scheduleBilling: files the next billing cycle as 'scheduled' so it enters
-  // the queue without immediately issuing an invoice.
+  // scheduleBilling: files the next billing cycle as 'scheduled' (owed, not
+  // collected yet), paid, or a $0 extension that advances the cadence.
   async function scheduleBilling(client: ClientBilling, opts: ScheduleOpts) {
     const key = `sch-${client.id}`;
     setBusy(key);
+    const isExtension = opts.is_extension === true;
     await fetch("/api/billings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         client_id: client.id,
-        billed_on: todayYmd(),
+        billed_on: opts.dueDate || todayYmd(),
         due_date: opts.dueDate,
-        base_amount: opts.base,
-        performance_amount: opts.performance,
+        period_start: opts.periodStart,
+        period_end: opts.periodEnd,
+        base_amount: isExtension ? 0 : opts.base,
+        performance_amount: isExtension ? 0 : opts.performance,
         late_fee: 0,
-        discount: opts.discount,
-        status: opts.markPaid ? "paid" : "scheduled",
+        discount: isExtension ? 0 : opts.discount,
+        status: isExtension || opts.markPaid ? "paid" : "scheduled",
+        is_extension: isExtension || undefined,
+        note: opts.note,
         ...revenuePayload(opts),
       }),
     });
@@ -426,10 +431,8 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
 
       if (!isInBillingQueue(c)) continue;
 
-      if (!isCadenceLocked(c)) {
-        upcoming.push({ kind: "pending_setup", client: c });
-        continue;
-      }
+      // Pending setup lives only under Setup — not in Past Due / Upcoming.
+      if (!isCadenceLocked(c)) continue;
 
       if (isPerformanceBilling(c.billing_model)) {
         const clientCycles = cyclesByClient.get(c.id) ?? [];
@@ -531,7 +534,7 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Billing</h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            One queue for Fixed and Performance. Lock billing/report day once in Setup — each month appears on that day until pause or churn.
+            One queue for Fixed and Performance. Set billing/report day in Setup — locked clients appear here each month until pause or churn. Pending setup stays under Setup.
             Performance: enter shows / live transfers / bailed, send report, then bill after the objection window.
           </p>
         </div>
@@ -1067,6 +1070,8 @@ function WorkRowView({
                 client={row.client}
                 busy={busy}
                 defaultDueDate={row.dueDate}
+                periodStart={row.periodStart}
+                periodEnd={row.periodEnd}
                 onSchedule={(opts) => { onSchedule(row.client, opts); setExpanded(false); }}
               />
             )}
@@ -1102,19 +1107,19 @@ function LabeledInput({ label, children }: { label: string; children: ReactNode 
   );
 }
 
-// ScheduleEditor: files the next billing cycle as 'scheduled'.
-// Replaces the old ForecastEditor — creates a real DB row instead of a
-// transient pending billing, so terms can be edited before payment is due.
+// ScheduleEditor: files the next billing cycle on the ledger.
 function ScheduleEditor({
-  client, busy, onSchedule, submitLabel, busyLabel, showMarkPaid = true, defaultDueDate,
+  client, busy, onSchedule, submitLabel, busyLabel, defaultDueDate,
+  periodStart, periodEnd,
 }: {
   client: ClientBilling;
   busy: string | null;
   onSchedule: (opts: ScheduleOpts) => void;
   submitLabel?: string;
   busyLabel?: string;
-  showMarkPaid?: boolean;
   defaultDueDate?: string | null;
+  periodStart?: string;
+  periodEnd?: string;
 }) {
   const suggestedDate = defaultDueDate ?? client.suggested_next_date ?? client.next_billing_date ?? todayYmd();
   const [base, setBase] = useState(String(client.mrr ?? ""));
@@ -1136,29 +1141,35 @@ function ScheduleEditor({
     (Number(base) || 0) + (Number(performance) || 0) - (Number(discount) || 0)
   );
   const pifNeedsTerm = revenueType === "pif" && !(Number(termMonths) > 0);
-  const disabled = busy === schedKey || total <= 0 || pifNeedsTerm;
+  const busyNow = busy === schedKey;
+  const disabled = busyNow || total <= 0 || pifNeedsTerm;
 
-  function buildOpts(markPaid?: boolean): ScheduleOpts {
+  function buildOpts(markPaid?: boolean, isExtension?: boolean): ScheduleOpts {
     return {
-      base: Number(base) || 0,
-      performance: Number(performance) || 0,
-      discount: Number(discount) || 0,
+      base: isExtension ? 0 : Number(base) || 0,
+      performance: isExtension ? 0 : Number(performance) || 0,
+      discount: isExtension ? 0 : Number(discount) || 0,
       dueDate,
-      note: note || undefined,
-      markPaid,
+      note: note || (isExtension ? "Extension — free / paused month" : undefined),
+      markPaid: isExtension ? true : markPaid,
+      is_extension: isExtension || undefined,
+      periodStart,
+      periodEnd,
       revenue_type: revenueType,
       revenue_segment: revenueSegment,
       term_months: Number(termMonths) || undefined,
-      processing_fee: Number(processingFee) || undefined,
+      processing_fee: isExtension ? 0 : Number(processingFee) || undefined,
       method: method || undefined,
-      stripe_invoice_id: stripeInvoiceId.trim() || undefined,
+      stripe_invoice_id: isExtension ? undefined : (stripeInvoiceId.trim() || undefined),
     };
   }
 
   return (
     <div className="space-y-3">
       <p className="text-xs px-3 py-2 rounded-lg" style={{ color: "#818cf8", background: "rgba(129,140,248,0.08)", border: "1px solid rgba(129,140,248,0.2)" }}>
-        Record this month&apos;s charge on the locked due day. Tag the revenue type so CEO cash KPIs stay accurate.
+        <strong style={{ color: "#c7d2fe" }}>Mark paid</strong> when cash is collected.
+        {" "}
+        <strong style={{ color: "#c7d2fe" }}>Extension</strong> for a free/paused month ($0) so the cycle advances.
       </p>
 
       {client.performance_terms && (
@@ -1285,23 +1296,26 @@ function ScheduleEditor({
           Total due: <strong style={{ color: "#e2e8f0" }}>{money(total)}</strong>
         </span>
         <button
-          onClick={() => onSchedule(buildOpts())}
+          onClick={() => onSchedule(buildOpts(true))}
           disabled={disabled}
           className="text-xs font-semibold px-3 py-1.5 rounded"
-          style={{ color: "#818cf8", background: "rgba(129,140,248,0.1)", opacity: disabled ? 0.5 : 1 }}
+          style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: disabled ? 0.5 : 1 }}
         >
-          {busy === schedKey ? (busyLabel ?? "Scheduling…") : (submitLabel ?? "Schedule billing")}
+          {busyNow ? (busyLabel ?? "Saving…") : (submitLabel ?? "Mark paid")}
         </button>
-        {showMarkPaid && (
-          <button
-            onClick={() => onSchedule(buildOpts(true))}
-            disabled={disabled}
-            className="text-xs font-semibold px-3 py-1.5 rounded"
-            style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: disabled ? 0.5 : 1 }}
-          >
-            Schedule + mark paid
-          </button>
-        )}
+        <button
+          onClick={() => onSchedule(buildOpts(true, true))}
+          disabled={busyNow || pifNeedsTerm}
+          className="text-xs font-semibold px-3 py-1.5 rounded"
+          style={{
+            color: "#a78bfa",
+            background: "rgba(167,139,250,0.12)",
+            opacity: busyNow || pifNeedsTerm ? 0.5 : 1,
+          }}
+          title="Free or paused month — $0 paid, advances cadence"
+        >
+          Mark as extension
+        </button>
       </div>
     </div>
   );
@@ -2085,7 +2099,7 @@ function BillingPausedPanel({
                         className="text-xs font-semibold px-3 py-1.5 rounded"
                         style={{ color: "#818cf8", background: "rgba(129,140,248,0.1)", opacity: isBusy ? 0.5 : 1 }}
                       >
-                        {expanded ? "Close" : "Unpause & schedule"}
+                        {expanded ? "Close" : "Unpause & mark paid"}
                       </button>
                     )}
                   </div>
@@ -2096,7 +2110,7 @@ function BillingPausedPanel({
                     <ScheduleEditor
                       client={c}
                       busy={busy}
-                      submitLabel="Unpause & schedule billing"
+                      submitLabel="Unpause & mark paid"
                       busyLabel="Saving…"
                       onSchedule={(opts) => {
                         onUnpauseAndSchedule(c, opts);
