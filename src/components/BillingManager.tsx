@@ -765,17 +765,15 @@ function UnifiedBilling({
       )}
 
       {subView === "setup" && (
-        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-          <SetupTable
-            clients={clients}
-            busy={busy}
-            canViewRevenue={canViewRevenue}
-            onPatch={onPatchClient}
-            onPauseBilling={onPauseBilling}
-            onRequestPause={onRequestPause}
-            onRequestOffboard={onRequestOffboard}
-          />
-        </div>
+        <SetupTable
+          clients={clients}
+          busy={busy}
+          canViewRevenue={canViewRevenue}
+          onPatch={onPatchClient}
+          onPauseBilling={onPauseBilling}
+          onRequestPause={onRequestPause}
+          onRequestOffboard={onRequestOffboard}
+        />
       )}
     </ViewHub>
   );
@@ -1759,150 +1757,212 @@ function SetupTable({
   onRequestPause: (clientId: string, clientName: string) => void;
   onRequestOffboard: (clientId: string) => void;
 }) {
-  const sorted = clients
+  const inQueue = clients
     .filter(c => isInBillingQueue(c))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const missingConfig = sorted.filter(c => !isCadenceLocked(c)).length;
+  const needsSetup = inQueue.filter(c => !isCadenceLocked(c));
+  const locked = inQueue.filter(c => isCadenceLocked(c));
 
   const headers = canViewRevenue
     ? ["Client", "Model", "Base $", "$/conversation", "$/bailed", "Day of month", "Next due", "Actions"]
     : ["Client", "Model", "Day of month", "Next due", "Actions"];
 
+  const rowProps = { busy, canViewRevenue, onPatch, onPauseBilling, onRequestPause, onRequestOffboard, headers };
+
+  return (
+    <div className="space-y-6">
+      <SetupGroup
+        title="Needs setup"
+        accent="#a78bfa"
+        hint="Set day of month (and for Performance, $/conversation or $/bailed) to lock cadence."
+        clients={needsSetup}
+        emptyText="All active clients have locked billing cadence."
+        {...rowProps}
+      />
+      <SetupGroup
+        title="Locked"
+        accent="#22c55e"
+        hint="Cadence is set — due day repeats every month until pause or churn."
+        clients={locked}
+        emptyText="No locked clients yet."
+        {...rowProps}
+      />
+    </div>
+  );
+}
+
+function SetupGroup({
+  title, accent, hint, clients, emptyText, headers, busy, canViewRevenue,
+  onPatch, onPauseBilling, onRequestPause, onRequestOffboard,
+}: {
+  title: string;
+  accent: string;
+  hint: string;
+  clients: ClientBilling[];
+  emptyText: string;
+  headers: string[];
+  busy: string | null;
+  canViewRevenue: boolean;
+  onPatch: (clientId: string, body: Record<string, unknown>) => void;
+  onPauseBilling: (client: ClientBilling) => void;
+  onRequestPause: (clientId: string, clientName: string) => void;
+  onRequestOffboard: (clientId: string) => void;
+}) {
   return (
     <div>
-      {missingConfig > 0 && (
-        <p className="text-xs px-4 py-2" style={{ color: "#f59e0b", background: "rgba(245,158,11,0.06)" }}>
-          {missingConfig} client{missingConfig === 1 ? "" : "s"} still Pending — set day of month (and for Performance, $/conversation or $/bailed) to lock cadence.
-        </p>
-      )}
-      <table className="w-full text-sm">
-        <thead>
-          <tr style={{ background: "#081225" }}>
-            {headers.map((h, i) => (
-              <th
-                key={i}
-                className="sticky z-10 text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider"
-                style={{ ...stickyThStyle("#081225"), color: "#334155" }}
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((c, i) => {
-            const isBusy = busy === `cfg-${c.id}`;
-            return (
-              <tr
-                key={c.id}
-                style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}
-              >
-                <td className="px-4 py-2.5 font-medium" style={{ color: "#e2e8f0" }}>
-                  {c.name}
-                  {!isCadenceLocked(c) && (
-                    <div className="text-[10px] mt-0.5 font-semibold" style={{ color: "#a78bfa" }}>Pending setup</div>
-                  )}
-                </td>
-                <td className="px-4 py-2.5">
-                  <select
-                    value={c.billing_model ?? "fixed"}
-                    disabled={isBusy}
-                    onChange={e => onPatch(c.id, { billing_model: e.target.value })}
-                    className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer"
-                    style={fieldStyle()}
-                  >
-                    <option value="fixed">Fixed retainer</option>
-                    <option value="performance">Performance</option>
-                  </select>
-                </td>
-                {canViewRevenue && (
-                  <>
-                    <td className="px-4 py-2.5">
-                      <input
-                        type="number"
-                        defaultValue={c.mrr ?? ""}
-                        disabled={isBusy}
-                        onBlur={e => { if (String(c.mrr ?? "") !== e.target.value) onPatch(c.id, { mrr: e.target.value }); }}
-                        placeholder="0"
-                        className="px-2 py-1 rounded-lg text-xs outline-none w-20"
-                        style={fieldStyle()}
-                      />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <input
-                        type="number"
-                        defaultValue={c.pay_per_show ?? ""}
-                        disabled={isBusy || isFixedBilling(c.billing_model)}
-                        onBlur={e => { if (String(c.pay_per_show ?? "") !== e.target.value) onPatch(c.id, { pay_per_show: e.target.value }); }}
-                        placeholder="—"
-                        title="$/conversation (shows + live transfers)"
-                        className="px-2 py-1 rounded-lg text-xs outline-none w-20"
-                        style={fieldStyle()}
-                      />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <input
-                        type="number"
-                        defaultValue={c.pay_per_bailed ?? ""}
-                        disabled={isBusy || isFixedBilling(c.billing_model)}
-                        onBlur={e => { if (String(c.pay_per_bailed ?? "") !== e.target.value) onPatch(c.id, { pay_per_bailed: e.target.value }); }}
-                        placeholder="—"
-                        className="px-2 py-1 rounded-lg text-xs outline-none w-20"
-                        style={fieldStyle()}
-                      />
-                    </td>
-                  </>
-                )}
-                <td className="px-4 py-2.5">
-                  <input
-                    type="number"
-                    min={1}
-                    max={31}
-                    defaultValue={c.billing_day ?? ""}
-                    disabled={isBusy}
-                    onBlur={e => { if (String(c.billing_day ?? "") !== e.target.value) onPatch(c.id, { billing_day: e.target.value }); }}
-                    placeholder="—"
-                    title={isPerformanceBilling(c.billing_model) ? "Report due day (1-31)" : "Billing day (1-31)"}
-                    className="px-2 py-1 rounded-lg text-xs outline-none w-16"
-                    style={fieldStyle()}
-                  />
-                </td>
-                <td className="px-4 py-2.5 text-xs" style={{ color: c.suggested_next_date ? "#cbd5e1" : "#475569" }}>
-                  {c.suggested_next_date ?? (c.next_billing_date ?? "—")}
-                </td>
-                <td className="px-4 py-2.5 whitespace-nowrap">
-                  <button
-                    onClick={() => onPauseBilling(c)}
-                    disabled={isBusy}
-                    className="text-xs font-semibold mr-3"
-                    style={{ color: "#fbbf24" }}
-                    title="Remove from billing queue without changing client lifecycle"
-                  >
-                    Pause billing
-                  </button>
-                  <button
-                    onClick={() => onRequestPause(c.id, c.name)}
-                    disabled={isBusy}
-                    className="text-xs font-semibold mr-3"
-                    style={{ color: "#f59e0b" }}
-                    title="Pause client lifecycle (moves to inactive roster)"
-                  >
-                    Pause client
-                  </button>
-                  <button
-                    onClick={() => onRequestOffboard(c.id)}
-                    disabled={isBusy}
-                    className="text-xs font-semibold"
-                    style={{ color: "#ef4444" }}
-                  >
-                    Churn
-                  </button>
+      <div className="flex items-center gap-2 mb-2 px-1">
+        <span className="w-2.5 h-2.5 rounded-full" style={{ background: accent }} />
+        <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#cbd5e1" }}>
+          {title}
+        </h3>
+        <span className="text-xs" style={{ color: "#475569" }}>({clients.length})</span>
+      </div>
+      <p className="text-xs mb-2 px-1" style={{ color: "#64748b" }}>{hint}</p>
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: "#081225" }}>
+              {headers.map((h, i) => (
+                <th
+                  key={i}
+                  className="sticky z-10 text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider"
+                  style={{ ...stickyThStyle("#081225"), color: "#334155" }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {clients.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={headers.length}
+                  className="px-4 py-6 text-center text-xs"
+                  style={{ color: "#334155" }}
+                >
+                  {emptyText}
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            ) : (
+              clients.map((c, i) => {
+                const isBusy = busy === `cfg-${c.id}`;
+                const locked = isCadenceLocked(c);
+                return (
+                  <tr
+                    key={c.id}
+                    style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}
+                  >
+                    <td className="px-4 py-2.5 font-medium" style={{ color: "#e2e8f0" }}>
+                      {c.name}
+                      {!locked && (
+                        <div className="text-[10px] mt-0.5 font-semibold" style={{ color: "#a78bfa" }}>
+                          Pending setup
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <select
+                        value={c.billing_model ?? "fixed"}
+                        disabled={isBusy}
+                        onChange={e => onPatch(c.id, { billing_model: e.target.value })}
+                        className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer"
+                        style={fieldStyle()}
+                      >
+                        <option value="fixed">Fixed retainer</option>
+                        <option value="performance">Performance</option>
+                      </select>
+                    </td>
+                    {canViewRevenue && (
+                      <>
+                        <td className="px-4 py-2.5">
+                          <input
+                            type="number"
+                            defaultValue={c.mrr ?? ""}
+                            disabled={isBusy}
+                            onBlur={e => { if (String(c.mrr ?? "") !== e.target.value) onPatch(c.id, { mrr: e.target.value }); }}
+                            placeholder="0"
+                            className="px-2 py-1 rounded-lg text-xs outline-none w-20"
+                            style={fieldStyle()}
+                          />
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <input
+                            type="number"
+                            defaultValue={c.pay_per_show ?? ""}
+                            disabled={isBusy || isFixedBilling(c.billing_model)}
+                            onBlur={e => { if (String(c.pay_per_show ?? "") !== e.target.value) onPatch(c.id, { pay_per_show: e.target.value }); }}
+                            placeholder="—"
+                            title="$/conversation (shows + live transfers)"
+                            className="px-2 py-1 rounded-lg text-xs outline-none w-20"
+                            style={fieldStyle()}
+                          />
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <input
+                            type="number"
+                            defaultValue={c.pay_per_bailed ?? ""}
+                            disabled={isBusy || isFixedBilling(c.billing_model)}
+                            onBlur={e => { if (String(c.pay_per_bailed ?? "") !== e.target.value) onPatch(c.id, { pay_per_bailed: e.target.value }); }}
+                            placeholder="—"
+                            className="px-2 py-1 rounded-lg text-xs outline-none w-20"
+                            style={fieldStyle()}
+                          />
+                        </td>
+                      </>
+                    )}
+                    <td className="px-4 py-2.5">
+                      <input
+                        type="number"
+                        min={1}
+                        max={31}
+                        defaultValue={c.billing_day ?? ""}
+                        disabled={isBusy}
+                        onBlur={e => { if (String(c.billing_day ?? "") !== e.target.value) onPatch(c.id, { billing_day: e.target.value }); }}
+                        placeholder="—"
+                        title={isPerformanceBilling(c.billing_model) ? "Report due day (1-31)" : "Billing day (1-31)"}
+                        className="px-2 py-1 rounded-lg text-xs outline-none w-16"
+                        style={fieldStyle()}
+                      />
+                    </td>
+                    <td className="px-4 py-2.5 text-xs" style={{ color: c.suggested_next_date ? "#cbd5e1" : "#475569" }}>
+                      {c.suggested_next_date ?? (c.next_billing_date ?? "—")}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <button
+                        onClick={() => onPauseBilling(c)}
+                        disabled={isBusy}
+                        className="text-xs font-semibold mr-3"
+                        style={{ color: "#fbbf24" }}
+                        title="Remove from billing queue without changing client lifecycle"
+                      >
+                        Pause billing
+                      </button>
+                      <button
+                        onClick={() => onRequestPause(c.id, c.name)}
+                        disabled={isBusy}
+                        className="text-xs font-semibold mr-3"
+                        style={{ color: "#f59e0b" }}
+                        title="Pause client lifecycle (moves to inactive roster)"
+                      >
+                        Pause client
+                      </button>
+                      <button
+                        onClick={() => onRequestOffboard(c.id)}
+                        disabled={isBusy}
+                        className="text-xs font-semibold"
+                        style={{ color: "#ef4444" }}
+                      >
+                        Churn
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
