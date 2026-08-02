@@ -7,6 +7,7 @@ import {
   isPerformanceBilling,
   normalizeBillingModel,
 } from '@/lib/billing-model';
+import { periodBoundsForMonth } from '@/lib/billing-cadence';
 import { canViewClientRevenue } from '@/lib/client-revenue-access';
 
 const CYCLE_FIELDS =
@@ -99,12 +100,12 @@ export async function GET(req: Request) {
   return NextResponse.json({ cycles, can_view_revenue: includeRevenue });
 }
 
-function calendarMonthBounds(now = new Date()) {
+function currentPeriodBounds(billingDay: number, now = new Date()) {
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth();
-  const period_start = `${y}-${String(m + 1).padStart(2, '0')}-01`;
-  const period_end = new Date(Date.UTC(y, m + 1, 0)).toISOString().slice(0, 10);
-  return { period_start, period_end };
+  const day = Number.isFinite(billingDay) && billingDay >= 1 && billingDay <= 31 ? billingDay : 1;
+  const { periodStart, periodEnd } = periodBoundsForMonth(y, m, day);
+  return { period_start: periodStart, period_end: periodEnd };
 }
 
 // POST /api/billing-cycles — create a draft performance cycle
@@ -123,7 +124,7 @@ export async function POST(req: Request) {
 
   const { data: client, error: clientErr } = await ctx.service
     .from('clients')
-    .select('id, billing_model, mrr, pay_per_show, pay_per_bailed, lifecycle_status, billing_paused')
+    .select('id, billing_model, mrr, pay_per_show, pay_per_bailed, lifecycle_status, billing_paused, billing_day')
     .eq('id', client_id)
     .single();
   if (clientErr) return NextResponse.json({ error: clientErr.message }, { status: 404 });
@@ -135,7 +136,7 @@ export async function POST(req: Request) {
   let period_end = body.period_end as string | undefined;
 
   if (body.ensure_current) {
-    const bounds = calendarMonthBounds();
+    const bounds = currentPeriodBounds(Number(client.billing_day) || 1);
     period_start = bounds.period_start;
     period_end = bounds.period_end;
   }

@@ -14,6 +14,8 @@ import {
   type CycleStatus,
 } from "@/lib/billing-model";
 import {
+  cadenceSetupHint,
+  fixedMonthCovered,
   isCadenceLocked,
   modelBadgeLabel,
   openCadenceMonths,
@@ -434,6 +436,10 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         const day = typeof c.billing_day === "number" ? c.billing_day : 1;
         for (const cycle of clientCycles) {
           if (cycle.status === "billed" || cycle.status === "voided") continue;
+          // Hide cycles already settled by paid revenue (Stripe/sheet backfill).
+          const cycleYm = cycle.period_end?.slice(0, 7);
+          const paidBillings = c.billings.filter(b => b.status === "paid" || b.status === "refunded");
+          if (cycleYm && fixedMonthCovered(cycleYm, paidBillings)) continue;
           const periodYear = Number(cycle.period_end.slice(0, 4));
           const periodMonth = Number(cycle.period_end.slice(5, 7)) - 1;
           const dim = new Date(Date.UTC(periodYear, periodMonth + 1, 0)).getUTCDate();
@@ -443,7 +449,11 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
             reportDue,
           );
         }
-        for (const month of openCadenceMonths(c, { cycles: clientCycles })) {
+        for (const month of openCadenceMonths(c, {
+          cycles: clientCycles,
+          // Paid ledger rows settle Performance months too (Stripe/revenue backfill).
+          billings: c.billings,
+        })) {
           pushByDue({
             kind: "cadence_due",
             client: c,
@@ -1764,17 +1774,22 @@ function SetupTable({
   const locked = inQueue.filter(c => isCadenceLocked(c));
 
   const headers = canViewRevenue
-    ? ["Client", "Model", "Base $", "$/conversation", "$/bailed", "Day of month", "Next due", "Actions"]
-    : ["Client", "Model", "Day of month", "Next due", "Actions"];
+    ? ["Client", "Model", "Base $", "$/conversation", "$/bailed", "Due day (1–31)", "Suggested next", "Actions"]
+    : ["Client", "Model", "Due day (1–31)", "Suggested next", "Actions"];
 
   const rowProps = { busy, canViewRevenue, onPatch, onPauseBilling, onRequestPause, onRequestOffboard, headers };
 
   return (
     <div className="space-y-6">
+      <p className="text-xs px-1" style={{ color: "#94a3b8" }}>
+        No Lock button — fill <strong style={{ color: "#e2e8f0" }}>Due day (1–31)</strong>
+        {canViewRevenue ? <> (and Performance rates)</> : null}, then blur/tab out of the field.
+        The client moves to Locked automatically. The Suggested next column is computed, not editable.
+      </p>
       <SetupGroup
         title="Needs setup"
         accent="#a78bfa"
-        hint="Set day of month (and for Performance, $/conversation or $/bailed) to lock cadence."
+        hint="Enter Due day below. For Performance also set $/conversation or $/bailed."
         clients={needsSetup}
         emptyText="All active clients have locked billing cadence."
         {...rowProps}
@@ -1782,7 +1797,7 @@ function SetupTable({
       <SetupGroup
         title="Locked"
         accent="#22c55e"
-        hint="Cadence is set — due day repeats every month until pause or churn."
+        hint="Cadence is set — that due day repeats every month until pause or churn."
         clients={locked}
         emptyText="No locked clients yet."
         {...rowProps}
@@ -1856,9 +1871,14 @@ function SetupGroup({
                     <td className="px-4 py-2.5 font-medium" style={{ color: "#e2e8f0" }}>
                       {c.name}
                       {!locked && (
-                        <div className="text-[10px] mt-0.5 font-semibold" style={{ color: "#a78bfa" }}>
-                          Pending setup
-                        </div>
+                        <>
+                          <div className="text-[10px] mt-0.5 font-semibold" style={{ color: "#a78bfa" }}>
+                            Pending setup
+                          </div>
+                          <div className="text-[10px] mt-0.5" style={{ color: "#f59e0b" }}>
+                            {cadenceSetupHint(c)}
+                          </div>
+                        </>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
@@ -1919,13 +1939,18 @@ function SetupGroup({
                         defaultValue={c.billing_day ?? ""}
                         disabled={isBusy}
                         onBlur={e => { if (String(c.billing_day ?? "") !== e.target.value) onPatch(c.id, { billing_day: e.target.value }); }}
-                        placeholder="—"
-                        title={isPerformanceBilling(c.billing_model) ? "Report due day (1-31)" : "Billing day (1-31)"}
+                        placeholder="e.g. 1"
+                        title={isPerformanceBilling(c.billing_model) ? "Report due day (1-31) — required to lock" : "Billing day (1-31) — required to lock"}
                         className="px-2 py-1 rounded-lg text-xs outline-none w-16"
-                        style={fieldStyle()}
+                        style={{
+                          ...fieldStyle(),
+                          ...(c.billing_day == null || !(Number(c.billing_day) >= 1)
+                            ? { border: "1px solid rgba(167,139,250,0.55)", boxShadow: "0 0 0 1px rgba(167,139,250,0.15)" }
+                            : {}),
+                        }}
                       />
                     </td>
-                    <td className="px-4 py-2.5 text-xs" style={{ color: c.suggested_next_date ? "#cbd5e1" : "#475569" }}>
+                    <td className="px-4 py-2.5 text-xs" style={{ color: "#64748b" }} title="Computed from due day / history — not the lock field">
                       {c.suggested_next_date ?? (c.next_billing_date ?? "—")}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">

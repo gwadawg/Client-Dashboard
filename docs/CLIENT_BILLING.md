@@ -78,6 +78,16 @@ value, so it never drifts):
 | `monthly` / `pif_monthly` (fallback) | One month after the latest recorded billing, or next anniversary if never billed. |
 | `pif` | None — paid in full is one-time. |
 
+**Sign vs launch:** First cash is collected on **sign date**. No payment is
+collected on launch day. Recurring cadence therefore starts the calendar month
+*after* `launch_date` (or `date_signed` when launch is unset). That first
+payment does not need a monthly ledger row for the queue to treat history as
+covered.
+
+**Anniversary periods:** With `billing_day` D, the cycle due on month M ends
+on D−1 and starts on D of the prior month (e.g. day 26 → Apr 26 → May 25,
+due May 26). Not calendar months (1st → last day) unless D = 1.
+
 Status (`deriveStatus`): `overdue` if the next date is past, `due_soon` if within
 7 days (`DUE_SOON_DAYS`), otherwise `upcoming`.
 
