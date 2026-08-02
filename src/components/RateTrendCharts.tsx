@@ -21,16 +21,37 @@ type Props = {
   reportingType?: ReportingType;
 };
 
-type RateKey = "net_show_rate" | "show_rate" | "lead_to_qual" | "hand_raise_rate" | "booking_rate" | "lead_booking_rate" | "conversation_rate";
+type RateKey =
+  | "net_show_rate"
+  | "show_rate"
+  | "lead_to_qual"
+  | "hand_raise_rate"
+  | "booking_rate"
+  | "lead_booking_rate"
+  | "conversation_rate"
+  | "leads";
 
-const CHARTS: { key: RateKey; title: string; subtitle: string; color: string; heOnly?: boolean; rmOnly?: boolean }[] = [
+type ChartFormat = "pct" | "int";
+
+const CHARTS: {
+  key: RateKey;
+  title: string;
+  subtitle: string;
+  color: string;
+  format?: ChartFormat;
+  heOnly?: boolean;
+  rmOnly?: boolean;
+}[] = [
   { key: "lead_to_qual", title: "Qualified rate", subtitle: "Qualified Leads ÷ Total Leads", color: "#22c55e", rmOnly: true },
   { key: "net_show_rate", title: "Net show rate", subtitle: "Shows ÷ (Shows + No-Shows)", color: "#34d399" },
   { key: "show_rate", title: "Show rate (of booked)", subtitle: "Shows ÷ (Shows + No Shows + LO bailed)", color: "#3b82f6" },
   { key: "hand_raise_rate", title: "Hand-raise rate", subtitle: "Unique (Booked ∪ Claimed ∪ LT) ÷ Qualified — conversion benchmark", color: "#f59e0b", rmOnly: true },
   { key: "booking_rate", title: "Booking rate (ref)", subtitle: "Unique booked ÷ Qualified — not graded", color: "#64748b", rmOnly: true },
   { key: "lead_booking_rate", title: "Booking rate (ref)", subtitle: "Unique booked ÷ Total Leads — not graded", color: "#64748b", heOnly: true },
-  { key: "conversation_rate", title: "Conversation rate", subtitle: "Unique (Show ∪ Claimed ∪ LT) ÷ Qualified", color: "#a78bfa" },
+  // HE has no ad spend / CPL — lead volume is the volume signal instead of cost trends.
+  { key: "leads", title: "Lead volume", subtitle: "Total leads ingested per period", color: "#38bdf8", format: "int", heOnly: true },
+  // ÷ Qualified — only meaningful for RM (HE uses Total Leads denominators).
+  { key: "conversation_rate", title: "Conversation rate", subtitle: "Unique (Show ∪ Claimed ∪ LT) ÷ Qualified", color: "#a78bfa", rmOnly: true },
 ];
 
 function formatDateLabel(date: string, granularity: "day" | "week"): string {
@@ -41,11 +62,17 @@ function formatDateLabel(date: string, granularity: "day" | "week"): string {
   );
 }
 
+function formatChartValue(value: number, format: ChartFormat): string {
+  if (format === "int") return Math.round(value).toLocaleString("en-US");
+  return `${value.toFixed(1)}%`;
+}
+
 function ChartPanel({
   title,
   subtitle,
   dataKey,
   color,
+  format = "pct",
   data,
   granularity,
 }: {
@@ -53,14 +80,18 @@ function ChartPanel({
   subtitle: string;
   dataKey: RateKey;
   color: string;
+  format?: ChartFormat;
   data: KpiTimelineBucket[];
   granularity: "day" | "week";
 }) {
   const chartData = data.map(p => ({
     label: formatDateLabel(p.date, granularity),
-    value: p[dataKey],
+    value: p[dataKey] as number | null,
   }));
-  const hasAnyValue = chartData.some(d => d.value != null);
+  const hasAnyValue =
+    format === "int"
+      ? chartData.some(d => d.value != null && d.value > 0)
+      : chartData.some(d => d.value != null);
 
   return (
     <div
@@ -79,7 +110,13 @@ function ChartPanel({
             <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
               <XAxis dataKey="label" tick={{ fill: "#64748b", fontSize: 10 }} interval="preserveStartEnd" minTickGap={24} />
-              <YAxis tick={{ fill: "#64748b", fontSize: 10 }} tickFormatter={v => `${v}%`} width={40} domain={[0, 100]} />
+              <YAxis
+                tick={{ fill: "#64748b", fontSize: 10 }}
+                tickFormatter={v => (format === "int" ? `${v}` : `${v}%`)}
+                width={format === "int" ? 44 : 40}
+                domain={format === "int" ? [0, "auto"] : [0, 100]}
+                allowDecimals={format !== "int"}
+              />
               <Tooltip
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
@@ -87,7 +124,7 @@ function ChartPanel({
                   return (
                     <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}>
                       <p className="font-semibold mb-1" style={{ color }}>{point.label}</p>
-                      <p>{point.value != null ? `${point.value.toFixed(1)}%` : "—"}</p>
+                      <p>{point.value != null ? formatChartValue(point.value, format) : "—"}</p>
                     </div>
                   );
                 }}
@@ -146,6 +183,7 @@ export default function RateTrendCharts({
           subtitle={chart.subtitle}
           dataKey={chart.key}
           color={chart.color}
+          format={chart.format}
           data={kpiSeries}
           granularity={granularity}
         />
