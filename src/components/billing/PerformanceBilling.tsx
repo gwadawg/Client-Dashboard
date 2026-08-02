@@ -189,7 +189,7 @@ export default function PerformanceBilling({
     <div className="space-y-6">
       <p className="text-xs" style={{ color: "#475569" }}>
         Performance clients bill on report cadence: mark report sent → 3-day objection window → ready to bill.
-        Enter show and bail counts manually each cycle.
+        Open the work report for an itemized booked / showed / LO-bailed lead list, or pull live counts into the cycle.
       </p>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -428,7 +428,8 @@ function CycleEditor({
   const [showRate, setShowRate] = useState(String(cycle.pay_per_show));
   const [bailRate, setBailRate] = useState(String(cycle.pay_per_bailed));
   const [discount, setDiscount] = useState(String(cycle.discount));
-  const isBusy = busy === cycle.id;
+  const [pullingCounts, setPullingCounts] = useState(false);
+  const isBusy = busy === cycle.id || pullingCounts;
 
   // Keep local fields in sync when the parent reloads the cycle after save.
   useEffect(() => {
@@ -461,9 +462,34 @@ function CycleEditor({
   const status = cycle.effective_status ?? cycle.status;
   const periodInvalid = !periodStart || !periodEnd || periodStart > periodEnd;
   const shareToken = cycle.client?.share_token ?? null;
-  const reportHref = shareToken
+  const billingReportHref = shareToken
+    ? `/report/${shareToken}/billing?start_date=${encodeURIComponent(periodStart)}&end_date=${encodeURIComponent(periodEnd)}&cycle_id=${encodeURIComponent(cycle.id)}`
+    : null;
+  const kpiReportHref = shareToken
     ? `/report/${shareToken}?start_date=${encodeURIComponent(periodStart)}&end_date=${encodeURIComponent(periodEnd)}`
     : null;
+
+  async function pullLiveCounts() {
+    if (!shareToken || periodInvalid) return;
+    setPullingCounts(true);
+    try {
+      const params = new URLSearchParams({
+        token: shareToken,
+        start_date: periodStart,
+        end_date: periodEnd,
+        cycle_id: cycle.id,
+      });
+      const res = await fetch(`/api/report/billing-work?${params}`);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to load appointments");
+      setShows(String(d.summary?.shows ?? 0));
+      setBailed(String(d.summary?.lo_bailed ?? 0));
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Failed to pull live counts");
+    } finally {
+      setPullingCounts(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -503,15 +529,36 @@ function CycleEditor({
         >
           Save
         </button>
-        {reportHref && (
+        <button
+          type="button"
+          onClick={() => void pullLiveCounts()}
+          disabled={isBusy || periodInvalid || !shareToken}
+          className="text-xs font-semibold px-3 py-1.5 rounded"
+          style={{ color: "#34d399", background: "rgba(52,211,153,0.1)", opacity: isBusy || periodInvalid || !shareToken ? 0.5 : 1 }}
+          title="Fill Shows / Bailed from appointments in this period"
+        >
+          Pull live counts
+        </button>
+        {billingReportHref && (
           <a
-            href={reportHref}
+            href={billingReportHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-semibold px-3 py-1.5 rounded"
+            style={{ color: "#f0b429", background: "rgba(240,180,41,0.12)" }}
+          >
+            Open work report
+          </a>
+        )}
+        {kpiReportHref && (
+          <a
+            href={kpiReportHref}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs font-semibold px-3 py-1.5 rounded"
             style={{ color: "#38bdf8", background: "rgba(56,189,248,0.1)" }}
           >
-            Open report
+            KPI report
           </a>
         )}
       </div>
