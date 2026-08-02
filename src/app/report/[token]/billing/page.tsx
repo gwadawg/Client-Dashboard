@@ -78,24 +78,59 @@ function SummaryCard({ label, value, sub }: { label: string; value: string; sub?
   );
 }
 
+function ChargePill({ billable, reason }: { billable: boolean; reason: string | null }) {
+  if (billable) {
+    return (
+      <span
+        className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold"
+        style={{ color: "#166534", background: "#dcfce7" }}
+      >
+        Billable
+      </span>
+    );
+  }
+  return (
+    <span title={reason ?? undefined} className="inline-flex flex-col gap-0.5 max-w-[14rem]">
+      <span
+        className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold w-fit"
+        style={{ color: "#92400e", background: "#fef3c7" }}
+      >
+        Dupe — not charged
+      </span>
+      {reason && (
+        <span className="text-[10px] leading-snug" style={{ color: "#a16207" }}>{reason}</span>
+      )}
+    </span>
+  );
+}
+
 function LeadTable({
   title,
   rows,
   empty,
   showStatus,
+  showCharge,
+  billableCount,
 }: {
   title: string;
   rows: BillingWorkRow[];
   empty: string;
   showStatus?: boolean;
+  showCharge?: boolean;
+  billableCount?: number;
 }) {
+  const colCount = 4 + (showStatus ? 1 : 0) + (showCharge ? 1 : 0);
   return (
     <section className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: "#0f172a" }}>
           {title}
         </h2>
-        <span className="text-xs font-semibold" style={{ color: "#64748b" }}>{rows.length}</span>
+        <span className="text-xs font-semibold" style={{ color: "#64748b" }}>
+          {billableCount != null
+            ? `${billableCount} billable · ${rows.length} listed`
+            : rows.length}
+        </span>
       </div>
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e2e8f0", background: "#fff" }}>
         <table className="w-full text-sm">
@@ -108,18 +143,30 @@ function LeadTable({
               {showStatus && (
                 <th className="text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>Status</th>
               )}
+              {showCharge && (
+                <th className="text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>Charge</th>
+              )}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={showStatus ? 5 : 4} className="px-4 py-8 text-center text-xs" style={{ color: "#94a3b8" }}>
+                <td colSpan={colCount} className="px-4 py-8 text-center text-xs" style={{ color: "#94a3b8" }}>
                   {empty}
                 </td>
               </tr>
             ) : (
               rows.map((row, i) => (
-                <tr key={row.id} style={{ background: i % 2 === 0 ? "#fff" : "#f8fafc", borderTop: "1px solid #f1f5f9" }}>
+                <tr
+                  key={row.id}
+                  style={{
+                    background: !row.billable && showCharge
+                      ? "rgba(254,243,199,0.35)"
+                      : i % 2 === 0 ? "#fff" : "#f8fafc",
+                    borderTop: "1px solid #f1f5f9",
+                    opacity: !row.billable && showCharge ? 0.85 : 1,
+                  }}
+                >
                   <td className="px-4 py-2.5 font-medium" style={{ color: "#0f172a" }}>{row.lead_name || "—"}</td>
                   <td className="px-4 py-2.5 font-mono text-xs" style={{ color: "#475569" }}>{row.lead_phone || "—"}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: "#475569" }}>
@@ -128,6 +175,11 @@ function LeadTable({
                   <td className="px-4 py-2.5 text-xs" style={{ color: "#64748b" }}>{row.agent_name || "—"}</td>
                   {showStatus && (
                     <td className="px-4 py-2.5"><StatusPill status={row.status} /></td>
+                  )}
+                  {showCharge && (
+                    <td className="px-4 py-2.5">
+                      <ChargePill billable={row.billable} reason={row.dupe_reason} />
+                    </td>
                   )}
                 </tr>
               ))
@@ -195,9 +247,6 @@ function BillingWorkInner() {
   }
 
   const { summary, charges } = report;
-  const otherBooked = report.booked.filter(
-    r => r.status !== "show" && r.status !== "lo_bailed",
-  );
 
   return (
     <div className="min-h-screen billing-work-root" style={{ background: "#f1f5f9", color: "#0f172a" }}>
@@ -233,16 +282,28 @@ function BillingWorkInner() {
 
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
         <p className="text-sm billing-work-hide-print" style={{ color: "#64748b" }}>
-          Itemized appointments we booked, showed, and LO-bailed — the work this invoice covers. Dial volume and other funnel metrics are excluded.
+          Same counting rules as Client KPIs (events by date recorded). Itemized shows, LO bails, and bookings — dials excluded.
         </p>
 
         <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <SummaryCard label="Booked" value={String(summary.booked)} />
-          <SummaryCard label="Shows" value={String(summary.shows)} />
-          <SummaryCard label="LO bailed" value={String(summary.lo_bailed)} />
+          <SummaryCard
+            label="Booked"
+            value={`${summary.unique_booked} / ${summary.booked}`}
+            sub="unique / total"
+          />
+          <SummaryCard
+            label="Shows (billable)"
+            value={String(summary.unique_shows)}
+            sub={`${summary.shows} events · ${Math.max(0, summary.shows - summary.unique_shows)} dupes`}
+          />
+          <SummaryCard
+            label="LO bailed (billable)"
+            value={String(summary.unique_lo_bailed)}
+            sub={`${summary.lo_bailed} events · ${Math.max(0, summary.lo_bailed - summary.unique_lo_bailed)} not charged`}
+          />
           <SummaryCard label="No shows" value={String(summary.no_shows)} />
-          <SummaryCard label="Show rate" value={pct(summary.show_rate)} sub="of dispositioned" />
-          <SummaryCard label="LO bail rate" value={pct(summary.lo_bail_rate)} sub="of booked" />
+          <SummaryCard label="Show rate" value={pct(summary.show_rate)} sub="of dispositioned (raw)" />
+          <SummaryCard label="LO bail rate" value={pct(summary.lo_bail_rate)} sub="of booked (raw)" />
         </section>
 
         {charges && (
@@ -278,21 +339,32 @@ function BillingWorkInner() {
               <span className="text-sm font-semibold" style={{ color: "#0f172a" }}>Total</span>
               <span className="text-xl font-bold" style={{ color: "#0c1f3d" }}>{money(charges.total)}</span>
             </div>
-            {(charges.live_show_count !== charges.show_count || charges.live_bailed_count !== charges.bailed_count) && (
+            {charges.filed_show_count != null && charges.filed_bailed_count != null && (
               <p className="text-xs" style={{ color: "#b45309" }}>
-                Live from appointments: {charges.live_show_count} shows · {charges.live_bailed_count} LO bailed
-                (filed cycle uses {charges.show_count} / {charges.bailed_count}).
+                Charges use unique billable counts (dupes / bail→show excluded). Filed cycle still has {charges.filed_show_count} / {charges.filed_bailed_count} — Pull live counts → Save to update it.
               </p>
             )}
           </section>
         )}
 
-        <LeadTable title="Shows" rows={report.shows} empty="No shows in this period." />
-        <LeadTable title="LO bailed" rows={report.lo_bailed} empty="No LO bails in this period." />
         <LeadTable
-          title="Other booked appointments"
-          rows={otherBooked}
-          empty="No other booked appointments in this period."
+          title="Shows"
+          rows={report.shows}
+          empty="No shows in this period."
+          showCharge
+          billableCount={summary.unique_shows}
+        />
+        <LeadTable
+          title="LO bailed"
+          rows={report.lo_bailed}
+          empty="No LO bails in this period."
+          showCharge
+          billableCount={summary.unique_lo_bailed}
+        />
+        <LeadTable
+          title="Appointments booked"
+          rows={report.booked}
+          empty="No appointments booked in this period."
           showStatus
         />
       </main>

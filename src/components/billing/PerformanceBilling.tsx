@@ -482,8 +482,8 @@ function CycleEditor({
       const res = await fetch(`/api/report/billing-work?${params}`);
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed to load appointments");
-      setShows(String(d.summary?.shows ?? 0));
-      setBailed(String(d.summary?.lo_bailed ?? 0));
+      setShows(String(d.summary?.unique_shows ?? d.summary?.shows ?? 0));
+      setBailed(String(d.summary?.unique_lo_bailed ?? d.summary?.lo_bailed ?? 0));
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Failed to pull live counts");
     } finally {
