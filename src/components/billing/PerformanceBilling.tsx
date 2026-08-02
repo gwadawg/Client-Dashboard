@@ -7,7 +7,7 @@ import {
   cycleStatusLabel,
   type CycleStatus,
 } from "@/lib/billing-model";
-import type { ClientBilling } from "@/components/billing/billing-types";
+import type { BillingCycle, ClientBilling } from "@/components/billing/billing-types";
 import {
   fieldStyle,
   LabeledInput,
@@ -17,30 +17,6 @@ import {
   STICKY_TH_BG,
   todayYmd,
 } from "@/components/billing/billing-ui";
-
-export type BillingCycle = {
-  id: string;
-  client_id: string;
-  period_start: string;
-  period_end: string;
-  base_amount: number;
-  show_count: number;
-  bailed_count: number;
-  pay_per_show: number;
-  pay_per_bailed: number;
-  performance_amount: number;
-  discount: number;
-  status: string;
-  effective_status: CycleStatus;
-  report_sent_at: string | null;
-  objection_deadline_at: string | null;
-  dispute_note: string | null;
-  billing_id: string | null;
-  note: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  client: ClientBilling | null;
-};
 
 type Props = {
   clients: ClientBilling[];
@@ -412,7 +388,7 @@ function CycleSection({
   );
 }
 
-function CycleEditor({
+export function CycleEditor({
   cycle, busy, onPatch, onBill,
 }: {
   cycle: BillingCycle;
@@ -423,6 +399,7 @@ function CycleEditor({
   const [periodStart, setPeriodStart] = useState(cycle.period_start);
   const [periodEnd, setPeriodEnd] = useState(cycle.period_end);
   const [shows, setShows] = useState(String(cycle.show_count));
+  const [liveTransfers, setLiveTransfers] = useState(String(cycle.live_transfer_count ?? 0));
   const [bailed, setBailed] = useState(String(cycle.bailed_count));
   const [base, setBase] = useState(String(cycle.base_amount));
   const [showRate, setShowRate] = useState(String(cycle.pay_per_show));
@@ -436,6 +413,7 @@ function CycleEditor({
     setPeriodStart(cycle.period_start);
     setPeriodEnd(cycle.period_end);
     setShows(String(cycle.show_count));
+    setLiveTransfers(String(cycle.live_transfer_count ?? 0));
     setBailed(String(cycle.bailed_count));
     setBase(String(cycle.base_amount));
     setShowRate(String(cycle.pay_per_show));
@@ -446,6 +424,7 @@ function CycleEditor({
     cycle.period_start,
     cycle.period_end,
     cycle.show_count,
+    cycle.live_transfer_count,
     cycle.bailed_count,
     cycle.base_amount,
     cycle.pay_per_show,
@@ -455,7 +434,11 @@ function CycleEditor({
   ]);
 
   const perf = computePerformanceAmount(
-    { show_count: Number(shows) || 0, bailed_count: Number(bailed) || 0 },
+    {
+      show_count: Number(shows) || 0,
+      live_transfer_count: Number(liveTransfers) || 0,
+      bailed_count: Number(bailed) || 0,
+    },
     { pay_per_show: Number(showRate) || 0, pay_per_bailed: Number(bailRate) || 0 },
   );
   const total = computeCycleTotal(Number(base) || 0, perf, Number(discount) || 0);
@@ -483,6 +466,7 @@ function CycleEditor({
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed to load appointments");
       setShows(String(d.summary?.unique_shows ?? d.summary?.shows ?? 0));
+      setLiveTransfers(String(d.summary?.unique_live_transfers ?? 0));
       setBailed(String(d.summary?.unique_lo_bailed ?? d.summary?.lo_bailed ?? 0));
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Failed to pull live counts");
@@ -497,10 +481,11 @@ function CycleEditor({
         <LabeledInput label="Period start"><input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="Period end"><input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="Shows"><input type="number" value={shows} onChange={e => setShows(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
+        <LabeledInput label="Live transfers"><input type="number" value={liveTransfers} onChange={e => setLiveTransfers(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="Bailed"><input type="number" value={bailed} onChange={e => setBailed(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="Base retainer"><input type="number" value={base} onChange={e => setBase(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="Discount"><input type="number" value={discount} onChange={e => setDiscount(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
-        <LabeledInput label="$/show"><input type="number" value={showRate} onChange={e => setShowRate(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
+        <LabeledInput label="$/conversation"><input type="number" value={showRate} onChange={e => setShowRate(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="$/bailed"><input type="number" value={bailRate} onChange={e => setBailRate(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
       </div>
 
@@ -517,6 +502,7 @@ function CycleEditor({
             period_start: periodStart,
             period_end: periodEnd,
             show_count: Number(shows) || 0,
+            live_transfer_count: Number(liveTransfers) || 0,
             bailed_count: Number(bailed) || 0,
             base_amount: Number(base) || 0,
             pay_per_show: Number(showRate) || 0,
@@ -535,7 +521,7 @@ function CycleEditor({
           disabled={isBusy || periodInvalid || !shareToken}
           className="text-xs font-semibold px-3 py-1.5 rounded"
           style={{ color: "#34d399", background: "rgba(52,211,153,0.1)", opacity: isBusy || periodInvalid || !shareToken ? 0.5 : 1 }}
-          title="Fill Shows / Bailed from appointments in this period"
+          title="Fill Shows / Live transfers / Bailed from activity in this period"
         >
           Pull live counts
         </button>
@@ -627,6 +613,7 @@ function CreateCycleForm({
   const [periodStart, setPeriodStart] = useState(monthStart);
   const [periodEnd, setPeriodEnd] = useState(monthEnd);
   const [shows, setShows] = useState("0");
+  const [liveTransfers, setLiveTransfers] = useState("0");
   const [bailed, setBailed] = useState("0");
 
   const disabled = busy === "create-cycle" || !client;
@@ -644,6 +631,7 @@ function CreateCycleForm({
         <LabeledInput label="Period start"><input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="Period end"><input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="Shows"><input type="number" value={shows} onChange={e => setShows(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
+        <LabeledInput label="Live transfers"><input type="number" value={liveTransfers} onChange={e => setLiveTransfers(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
         <LabeledInput label="Bailed"><input type="number" value={bailed} onChange={e => setBailed(e.target.value)} className="px-2 py-1.5 rounded-lg text-sm outline-none w-full" style={fieldStyle()} /></LabeledInput>
       </div>
       <button
@@ -652,6 +640,7 @@ function CreateCycleForm({
           period_start: periodStart,
           period_end: periodEnd,
           show_count: Number(shows) || 0,
+          live_transfer_count: Number(liveTransfers) || 0,
           bailed_count: Number(bailed) || 0,
           base_amount: client.mrr,
           pay_per_show: client.pay_per_show,
@@ -679,7 +668,7 @@ function PerfSetupTable({
   onRequestOffboard: (id: string) => void;
 }) {
   const headers = canViewRevenue
-    ? ["Client", "Base $", "$/show", "$/bailed", "Billing model", "Actions"]
+    ? ["Client", "Base $", "$/conversation", "$/bailed", "Billing model", "Actions"]
     : ["Client", "Billing model", "Actions"];
 
   return (

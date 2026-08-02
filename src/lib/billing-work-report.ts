@@ -20,7 +20,8 @@ export type BillingWorkStatus =
   | 'no_show'
   | 'appointment_cancelled'
   | 'appointment_rescheduled'
-  | 'lo_bailed';
+  | 'lo_bailed'
+  | 'live_transfer';
 
 export type BillingWorkRow = {
   id: string;
@@ -47,6 +48,10 @@ export type BillingWorkSummary = {
   shows: number;
   /** Unique billable shows (what we charge). */
   unique_shows: number;
+  /** Raw live_transfer events in range. */
+  live_transfers: number;
+  /** Unique billable live transfers (conversations; counted even if lead also showed). */
+  unique_live_transfers: number;
   /** Raw no_show events in range. */
   no_shows: number;
   /** Raw lo_bailed events in range. */
@@ -69,6 +74,8 @@ export type BillingWorkCharges = {
   base_amount: number;
   /** Unique billable shows. */
   show_count: number;
+  /** Unique billable live transfers. */
+  live_transfer_count: number;
   /** Unique billable LO bails. */
   bailed_count: number;
   pay_per_show: number;
@@ -77,6 +84,7 @@ export type BillingWorkCharges = {
   discount: number;
   total: number;
   filed_show_count: number | null;
+  filed_live_transfer_count: number | null;
   filed_bailed_count: number | null;
 };
 
@@ -88,6 +96,7 @@ export type BillingWorkReport = {
   summary: BillingWorkSummary;
   rows: BillingWorkRow[];
   shows: BillingWorkRow[];
+  live_transfers: BillingWorkRow[];
   lo_bailed: BillingWorkRow[];
   booked: BillingWorkRow[];
   charges: BillingWorkCharges | null;
@@ -95,7 +104,7 @@ export type BillingWorkReport = {
 
 type OutcomeEvent = {
   id: string;
-  event_type: 'show' | 'lo_bailed';
+  event_type: 'show' | 'lo_bailed' | 'live_transfer';
   occurred_at: string | null;
   ghl_contact_id?: string | null;
   lead_phone?: string | null;
@@ -111,6 +120,7 @@ const RANGE_EVENT_TYPES = [
   'show',
   'no_show',
   'lo_bailed',
+  'live_transfer',
   'appointment_cancelled',
   'appointment_rescheduled',
 ] as const;
@@ -128,6 +138,7 @@ function asStatus(value: string | null | undefined): BillingWorkStatus {
     case 'appointment_cancelled':
     case 'appointment_rescheduled':
     case 'lo_bailed':
+    case 'live_transfer':
       return value;
     default:
       return 'pending';
@@ -250,11 +261,65 @@ export function assignBillableOutcomes(
   return { showFlags, bailFlags, unique_shows, unique_lo_bailed };
 }
 
+/**
+ * One unique billable live transfer per lead (shows do not suppress LTs —
+ * both count as conversations).
+ */
+export function assignBillableLiveTransfers(
+  clientId: string,
+  transferEvents: OutcomeEvent[],
+): {
+  transferFlags: Map<string, { billable: boolean; dupe_reason: string | null }>;
+  unique_live_transfers: number;
+} {
+  type LeadBucket = { transfers: OutcomeEvent[] };
+  const byLead = new Map<string, LeadBucket>();
+
+  const keyFor = (e: OutcomeEvent) =>
+    leadIdentityKey({
+      client_id: clientId,
+      ghl_contact_id: e.ghl_contact_id,
+      lead_phone: e.lead_phone,
+      lead_email: e.lead_email,
+      lead_name: e.lead_name,
+    }) ?? `event:${e.id}`;
+
+  for (const e of transferEvents) {
+    const key = keyFor(e);
+    const bucket = byLead.get(key) ?? { transfers: [] };
+    bucket.transfers.push(e);
+    byLead.set(key, bucket);
+  }
+
+  const transferFlags = new Map<string, { billable: boolean; dupe_reason: string | null }>();
+  let unique_live_transfers = 0;
+  const byTime = (a: OutcomeEvent, b: OutcomeEvent) =>
+    (a.occurred_at ?? '').localeCompare(b.occurred_at ?? '') || a.id.localeCompare(b.id);
+
+  for (const bucket of byLead.values()) {
+    bucket.transfers.sort(byTime);
+    if (bucket.transfers.length === 0) continue;
+    const [first, ...rest] = bucket.transfers;
+    transferFlags.set(first.id, { billable: true, dupe_reason: null });
+    unique_live_transfers++;
+    for (const dup of rest) {
+      transferFlags.set(dup.id, {
+        billable: false,
+        dupe_reason: 'Duplicate live transfer — already charged for this lead',
+      });
+    }
+  }
+
+  return { transferFlags, unique_live_transfers };
+}
+
 export function summarizeBillingWork(input: {
   booked: number;
   unique_booked: number;
   shows: number;
   unique_shows: number;
+  live_transfers: number;
+  unique_live_transfers: number;
   no_shows: number;
   lo_bailed: number;
   unique_lo_bailed: number;
@@ -299,7 +364,7 @@ function sortRows(a: BillingWorkRow, b: BillingWorkRow): number {
 
 function asOutcomeEvent(
   e: Record<string, unknown>,
-  type: 'show' | 'lo_bailed',
+  type: 'show' | 'lo_bailed' | 'live_transfer',
 ): OutcomeEvent {
   return {
     id: String(e.id),
@@ -315,8 +380,9 @@ function asOutcomeEvent(
 /**
  * Client billing work report:
  * - Date window on event `occurred_at` (same axis as Client KPIs)
- * - Sheet lists every show / LO bail; dupes marked, not charged
- * - Charges use unique shows + unique LO bails (show wins over bail for same lead)
+ * - Sheet lists every show / live transfer / LO bail; dupes marked, not charged
+ * - Conversations = unique shows + unique live transfers at $/show
+ * - LO bails charged separately (show wins over bail for same lead)
  */
 export async function loadBillingWorkReport(
   service: ServiceClient,
@@ -346,6 +412,7 @@ export async function loadBillingWorkReport(
 
   const bookings = events.filter(e => e.event_type === 'appointment_booked');
   const showEvents = events.filter(e => e.event_type === 'show');
+  const transferEvents = events.filter(e => e.event_type === 'live_transfer');
   const noShowEvents = events.filter(e => e.event_type === 'no_show');
   const loBailEvents = events.filter(e => e.event_type === 'lo_bailed');
   const cancelledEvents = events.filter(e => e.event_type === 'appointment_cancelled');
@@ -388,11 +455,18 @@ export async function loadBillingWorkReport(
     loBailEvents.map(e => asOutcomeEvent(e, 'lo_bailed')),
   );
 
+  const { transferFlags, unique_live_transfers } = assignBillableLiveTransfers(
+    clientId,
+    transferEvents.map(e => asOutcomeEvent(e, 'live_transfer')),
+  );
+
   const summary = summarizeBillingWork({
     booked: bookings.length,
     unique_booked: uniqueBookedKeys.size,
     shows: showEvents.length,
     unique_shows,
+    live_transfers: transferEvents.length,
+    unique_live_transfers,
     no_shows: noShowEvents.length,
     lo_bailed: loBailEvents.length,
     unique_lo_bailed,
@@ -408,6 +482,13 @@ export async function loadBillingWorkReport(
     })
     .sort(sortRows);
 
+  const liveTransfers = transferEvents
+    .map(e => {
+      const flag = transferFlags.get(String(e.id)) ?? { billable: true, dupe_reason: null };
+      return toRow(e, 'live_transfer', flag.billable, flag.dupe_reason);
+    })
+    .sort(sortRows);
+
   const loBailed = loBailEvents
     .map(e => {
       const flag = bailFlags.get(String(e.id)) ?? { billable: true, dupe_reason: null };
@@ -420,7 +501,7 @@ export async function loadBillingWorkReport(
     const { data: cycle, error } = await service
       .from('client_billing_cycles')
       .select(
-        'id, client_id, base_amount, show_count, bailed_count, pay_per_show, pay_per_bailed, discount, status',
+        'id, client_id, base_amount, show_count, live_transfer_count, bailed_count, pay_per_show, pay_per_bailed, discount, status',
       )
       .eq('id', cycleId)
       .eq('client_id', clientId)
@@ -432,26 +513,34 @@ export async function loadBillingWorkReport(
       const payPerBailed = Number(cycle.pay_per_bailed) || 0;
       const discount = Number(cycle.discount) || 0;
       const liveShows = unique_shows;
+      const liveLts = unique_live_transfers;
       const liveBailed = unique_lo_bailed;
       const filedShows = Number(cycle.show_count) || 0;
+      const filedLts = Number(cycle.live_transfer_count) || 0;
       const filedBailed = Number(cycle.bailed_count) || 0;
+      const mismatched =
+        filedShows !== liveShows || filedLts !== liveLts || filedBailed !== liveBailed;
       const performance = computePerformanceAmount(
-        { show_count: liveShows, bailed_count: liveBailed },
+        {
+          show_count: liveShows,
+          live_transfer_count: liveLts,
+          bailed_count: liveBailed,
+        },
         { pay_per_show: payPerShow, pay_per_bailed: payPerBailed },
       );
       charges = {
         base_amount: base,
         show_count: liveShows,
+        live_transfer_count: liveLts,
         bailed_count: liveBailed,
         pay_per_show: payPerShow,
         pay_per_bailed: payPerBailed,
         performance_amount: performance,
         discount,
         total: computeCycleTotal(base, performance, discount),
-        filed_show_count:
-          filedShows !== liveShows || filedBailed !== liveBailed ? filedShows : null,
-        filed_bailed_count:
-          filedShows !== liveShows || filedBailed !== liveBailed ? filedBailed : null,
+        filed_show_count: mismatched ? filedShows : null,
+        filed_live_transfer_count: mismatched ? filedLts : null,
+        filed_bailed_count: mismatched ? filedBailed : null,
       };
     }
   }
@@ -464,6 +553,7 @@ export async function loadBillingWorkReport(
     summary,
     rows: bookedRows,
     shows,
+    live_transfers: liveTransfers,
     lo_bailed: loBailed,
     booked: bookedRows,
     charges,

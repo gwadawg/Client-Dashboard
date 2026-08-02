@@ -4,10 +4,28 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import { useNavigateChurnOffboard } from "@/hooks/useNavigateChurnOffboard";
 import ViewHub from "@/components/nav/ViewHub";
-import PerformanceBilling from "@/components/billing/PerformanceBilling";
+import { CycleEditor } from "@/components/billing/PerformanceBilling";
 import ReportingTypeBadge from "@/components/ReportingTypeBadge";
-import { isFixedBilling, isPerformanceBilling } from "@/lib/billing-model";
-import type { ClientBilling, RecordOpts, RecordedRow, ScheduleOpts, WorkRow } from "@/components/billing/billing-types";
+import {
+  computeCycleTotal,
+  cycleStatusLabel,
+  isFixedBilling,
+  isPerformanceBilling,
+  type CycleStatus,
+} from "@/lib/billing-model";
+import {
+  isCadenceLocked,
+  modelBadgeLabel,
+  openCadenceMonths,
+} from "@/lib/billing-cadence";
+import type {
+  BillingCycle,
+  ClientBilling,
+  RecordOpts,
+  RecordedRow,
+  ScheduleOpts,
+  WorkRow,
+} from "@/components/billing/billing-types";
 import {
   METHOD_OPTIONS,
   REVENUE_SEGMENT_OPTIONS,
@@ -41,6 +59,14 @@ const BILLING_STATUS_STYLE: Record<string, { color: string; bg: string }> = {
   overdue:   { color: "#ef4444", bg: "rgba(239,68,68,0.12)"   },
   failed:    { color: "#ef4444", bg: "rgba(239,68,68,0.12)"   },
   refunded:  { color: "#94a3b8", bg: "rgba(148,163,184,0.12)" },
+  draft:     { color: "#94a3b8", bg: "rgba(148,163,184,0.12)" },
+  report_sent: { color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+  ready_to_bill: { color: "#22c55e", bg: "rgba(34,197,94,0.12)" },
+  disputed:  { color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+  billed:    { color: "#38bdf8", bg: "rgba(56,189,248,0.12)" },
+  awaiting_report: { color: "#94a3b8", bg: "rgba(148,163,184,0.12)" },
+  pending_setup: { color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
+  cadence_due: { color: "#818cf8", bg: "rgba(129,140,248,0.12)" },
 };
 
 function money(n: number | null | undefined): string {
@@ -151,11 +177,11 @@ function isBillingPaused(c: ClientBilling): boolean {
 
 export default function BillingManager({ canViewRevenue: initialCanViewRevenue = false }: { canViewRevenue?: boolean }) {
   const [clients, setClients] = useState<ClientBilling[]>([]);
+  const [cycles, setCycles] = useState<BillingCycle[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [showBillingPaused, setShowBillingPaused] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [billingTab, setBillingTab] = useState<"fixed" | "performance">("fixed");
   const [canViewRevenue, setCanViewRevenue] = useState(initialCanViewRevenue);
   const [statusChange, setStatusChange] = useState<{
     clientId: string;
@@ -165,21 +191,23 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
   const navigateChurnOffboard = useNavigateChurnOffboard();
 
   async function load() {
-    const res = await fetch("/api/billings");
-    const d = await res.json();
-    setClients(d.clients ?? []);
-    if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
+    const [billingsRes, cyclesRes] = await Promise.all([
+      fetch("/api/billings"),
+      fetch("/api/billing-cycles"),
+    ]);
+    const [billingsData, cyclesData] = await Promise.all([billingsRes.json(), cyclesRes.json()]);
+    setClients(billingsData.clients ?? []);
+    setCycles(cyclesData.cycles ?? []);
+    if (typeof billingsData.can_view_revenue === "boolean") {
+      setCanViewRevenue(billingsData.can_view_revenue);
+    }
     setLoading(false);
   }
 
   useEffect(() => {
-    fetch("/api/billings")
-      .then(r => r.json())
-      .then(d => {
-        setClients(d.clients ?? []);
-        if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
-        setLoading(false);
-      });
+    void load();
+    // Initial data load only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function patchBilling(id: string, body: Record<string, unknown>) {
@@ -191,6 +219,54 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     });
     await load();
     setBusy(null);
+  }
+
+  async function patchCycle(id: string, body: Record<string, unknown>) {
+    setBusy(id);
+    await fetch(`/api/billing-cycles/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    await load();
+    setBusy(null);
+  }
+
+  async function billCycle(id: string, markPaid: boolean) {
+    setBusy(id);
+    await fetch(`/api/billing-cycles/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markPaid, billed_on: todayYmd() }),
+    });
+    await load();
+    setBusy(null);
+  }
+
+  async function ensureCycle(
+    client: ClientBilling,
+    period?: { periodStart: string; periodEnd: string },
+  ): Promise<BillingCycle | null> {
+    setBusy(`ensure-${client.id}`);
+    try {
+      const body = period
+        ? { client_id: client.id, period_start: period.periodStart, period_end: period.periodEnd }
+        : { client_id: client.id, ensure_current: true };
+      const res = await fetch("/api/billing-cycles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create billing cycle");
+      await load();
+      return data.cycle ? { ...data.cycle, client } as BillingCycle : null;
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Failed to create billing cycle");
+      return null;
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function voidBilling(id: string) {
@@ -318,67 +394,100 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     setBusy(null);
   }
 
-  // Bucket all billing data into display sections.
-  //
-  // Only ACTIVE clients appear in the main worklist (Past Due / Upcoming).
-  // Inactive clients' open billings are surfaced only in the InactiveTable so
-  // they don't pollute the primary queue.
-  //
-  // Scheduled billings are bucketed by their due date: past-due-date scheduled
-  // billings go to Past Due (overdue collection needed), future ones go to
-  // Upcoming. Their badge always shows "scheduled" so it's clear no invoice has
-  // been issued yet.
-  //
-  // Active clients with no open or scheduled billing get a SchedulePromptRow in
-  // Upcoming — but only once billing day or launch date is set so unconfigured
-  // roster entries stay in Billing configuration until they're ready to file.
+  // Unified Fixed + Performance queue. Locked cadence replaces monthly
+  // "unscheduled / File billing". Pending = needs day/rates disposition.
   const { pastDue, upcoming, paid } = useMemo(() => {
     const pastDue: WorkRow[] = [];
     const upcoming: WorkRow[] = [];
     const paid: RecordedRow[] = [];
+    const cyclesByClient = new Map<string, BillingCycle[]>();
+    for (const cycle of cycles) {
+      const list = cyclesByClient.get(cycle.client_id) ?? [];
+      list.push(cycle);
+      cyclesByClient.set(cycle.client_id, list);
+    }
+
+    const pushByDue = (row: WorkRow, due: string | null) => {
+      const days = daysFromToday(due);
+      if (days !== null && days < 0) pastDue.push(row);
+      else upcoming.push(row);
+    };
 
     for (const c of clients) {
-      if (!isFixedBilling(c.billing_model)) continue;
-      if (isInBillingQueue(c)) {
-        let hasOpenOrScheduled = false;
-
-        for (const b of c.billings) {
-          const state = recordedState(b);
-
-          if (state === "paid" || state === "refunded") {
-            paid.push({ kind: "recorded", client: c, billing: b });
-          } else if (state === "scheduled") {
-            hasOpenOrScheduled = true;
-            const days = daysFromToday(b.due_date ?? b.billed_on);
-            (days !== null && days < 0 ? pastDue : upcoming).push({ kind: "recorded", client: c, billing: b });
-          } else if (state === "overdue" || state === "failed") {
-            hasOpenOrScheduled = true;
-            pastDue.push({ kind: "recorded", client: c, billing: b });
-          } else {
-            // pending, partial
-            hasOpenOrScheduled = true;
-            upcoming.push({ kind: "recorded", client: c, billing: b });
-          }
+      // Paid history for everyone (both models)
+      for (const b of c.billings) {
+        const state = recordedState(b);
+        if (state === "paid" || state === "refunded") {
+          paid.push({ kind: "recorded", client: c, billing: b });
         }
+      }
 
-        if (!hasOpenOrScheduled && isBillingConfigured(c)) {
-          upcoming.push({ kind: "schedule_prompt", client: c });
+      if (!isInBillingQueue(c)) continue;
+
+      if (!isCadenceLocked(c)) {
+        upcoming.push({ kind: "pending_setup", client: c });
+        continue;
+      }
+
+      if (isPerformanceBilling(c.billing_model)) {
+        const clientCycles = cyclesByClient.get(c.id) ?? [];
+        const day = typeof c.billing_day === "number" ? c.billing_day : 1;
+        for (const cycle of clientCycles) {
+          if (cycle.status === "billed" || cycle.status === "voided") continue;
+          const periodYear = Number(cycle.period_end.slice(0, 4));
+          const periodMonth = Number(cycle.period_end.slice(5, 7)) - 1;
+          const dim = new Date(Date.UTC(periodYear, periodMonth + 1, 0)).getUTCDate();
+          const reportDue = `${cycle.period_end.slice(0, 8)}${String(Math.min(day, dim)).padStart(2, "0")}`;
+          pushByDue(
+            { kind: "perf_cycle", client: c, cycle: { ...cycle, client: cycle.client ?? c }, dueDate: reportDue },
+            reportDue,
+          );
         }
-      } else if (isFixedBilling(c.billing_model)) {
-        // Inactive fixed clients: only contribute to paid history.
-        for (const b of c.billings) {
-          const state = recordedState(b);
-          if (state === "paid" || state === "refunded") {
-            paid.push({ kind: "recorded", client: c, billing: b });
-          }
+        for (const month of openCadenceMonths(c, { cycles: clientCycles })) {
+          pushByDue({
+            kind: "cadence_due",
+            client: c,
+            yearMonth: month.yearMonth,
+            periodStart: month.periodStart,
+            periodEnd: month.periodEnd,
+            dueDate: month.dueDate,
+          }, month.dueDate);
         }
+        continue;
+      }
+
+      // Fixed locked
+      for (const b of c.billings) {
+        const state = recordedState(b);
+        if (state === "paid" || state === "refunded" || state === "voided") continue;
+        if (state === "overdue" || state === "failed") {
+          pastDue.push({ kind: "recorded", client: c, billing: b });
+        } else if (state === "scheduled") {
+          const days = daysFromToday(b.due_date ?? b.billed_on);
+          (days !== null && days < 0 ? pastDue : upcoming).push({ kind: "recorded", client: c, billing: b });
+        } else {
+          // pending, partial — bucket by due date
+          pushByDue({ kind: "recorded", client: c, billing: b }, b.due_date ?? b.billed_on);
+        }
+      }
+      for (const month of openCadenceMonths(c, { billings: c.billings })) {
+        pushByDue({
+          kind: "cadence_due",
+          client: c,
+          yearMonth: month.yearMonth,
+          periodStart: month.periodStart,
+          periodEnd: month.periodEnd,
+          dueDate: month.dueDate,
+        }, month.dueDate);
       }
     }
 
-    const dueKey = (r: WorkRow) =>
-      r.kind === "schedule_prompt"
-        ? (r.client.suggested_next_date ?? r.client.next_billing_date ?? "9999")
-        : (r.billing.due_date ?? r.billing.billed_on) ?? "";
+    const dueKey = (r: WorkRow) => {
+      if (r.kind === "pending_setup") return r.client.suggested_next_date ?? r.client.next_billing_date ?? "9999";
+      if (r.kind === "cadence_due") return r.dueDate;
+      if (r.kind === "perf_cycle") return r.dueDate;
+      return (r.billing.due_date ?? r.billing.billed_on) ?? "";
+    };
 
     pastDue.sort((a, b) => dueKey(a).localeCompare(dueKey(b)));
     upcoming.sort((a, b) => dueKey(a).localeCompare(dueKey(b)));
@@ -387,34 +496,20 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     );
 
     return { pastDue, upcoming, paid };
-  }, [clients]);
+  }, [clients, cycles]);
 
-  const inactiveFixed = useMemo(
-    () => clients.filter(c => !isActive(c) && isFixedBilling(c.billing_model)).sort((a, b) => a.name.localeCompare(b.name)),
+  const inactiveClients = useMemo(
+    () => clients.filter(c => !isActive(c)).sort((a, b) => a.name.localeCompare(b.name)),
     [clients],
   );
 
-  const setupFixedCount = useMemo(
-    () => clients.filter(c => isInBillingQueue(c) && isFixedBilling(c.billing_model)).length,
+  const setupCount = useMemo(
+    () => clients.filter(c => isInBillingQueue(c)).length,
     [clients],
   );
 
   const billingPaused = useMemo(
-    () => clients.filter(c => {
-      if (!isBillingPaused(c)) return false;
-      return billingTab === "performance"
-        ? isPerformanceBilling(c.billing_model)
-        : isFixedBilling(c.billing_model);
-    }).sort((a, b) => a.name.localeCompare(b.name)),
-    [clients, billingTab],
-  );
-
-  const fixedCount = useMemo(
-    () => clients.filter(c => isActive(c) && isFixedBilling(c.billing_model) && !c.billing_paused).length,
-    [clients],
-  );
-  const perfCount = useMemo(
-    () => clients.filter(c => isActive(c) && isPerformanceBilling(c.billing_model) && !c.billing_paused).length,
+    () => clients.filter(c => isBillingPaused(c)).sort((a, b) => a.name.localeCompare(b.name)),
     [clients],
   );
 
@@ -426,8 +521,8 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Billing</h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            Fixed retainer clients bill on schedule; performance clients bill after report send and a 3-day objection window.
-            Use the sub-views on the Fixed retainer tab for paid history, paused/churned clients, and billing configuration.
+            One queue for Fixed and Performance. Lock billing/report day once in Setup — each month appears on that day until pause or churn.
+            Performance: enter shows / live transfers / bailed, send report, then bill after the objection window.
           </p>
         </div>
         <button
@@ -500,54 +595,32 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
         />
       )}
 
-      {showImport && canViewRevenue && billingTab === "fixed" && (
+      {showImport && canViewRevenue && (
         <RecordPastPaymentForm clients={clients.filter(c => isFixedBilling(c.billing_model))} busy={busy} onRecord={recordBilling} />
       )}
 
-      <ViewHub
-        tabs={[
-          { key: "fixed", label: `Fixed retainer (${fixedCount})` },
-          { key: "performance", label: `Performance (${perfCount})` },
-        ]}
-        activeTab={billingTab}
-        onTabChange={k => setBillingTab(k as "fixed" | "performance")}
-      >
-        {billingTab === "fixed" ? (
-          <FixedRetainerBilling
-            pastDue={pastDue}
-            upcoming={upcoming}
-            paid={paid}
-            inactiveFixed={inactiveFixed}
-            setupCount={setupFixedCount}
-            clients={clients}
-            busy={busy}
-            canViewRevenue={canViewRevenue}
-            onPatchBilling={patchBilling}
-            onDeleteBilling={voidBilling}
-            onSchedule={scheduleBilling}
-            onPatchClient={patchClient}
-            onPauseBilling={pauseClientBilling}
-            onRequestPause={(clientId, clientName) =>
-              setStatusChange({ clientId, clientName, targetStatus: "paused" })
-            }
-            onRequestOffboard={clientId => navigateChurnOffboard(clientId)}
-          />
-        ) : (
-          <PerformanceBilling
-            clients={clients}
-            canViewRevenue={canViewRevenue}
-            busy={busy}
-            setBusy={setBusy}
-            onReloadClients={load}
-            onPatchClient={patchClient}
-            onPauseBilling={pauseClientBilling}
-            onRequestPause={(clientId, clientName) =>
-              setStatusChange({ clientId, clientName, targetStatus: "paused" })
-            }
-            onRequestOffboard={clientId => navigateChurnOffboard(clientId)}
-          />
-        )}
-      </ViewHub>
+      <UnifiedBilling
+        pastDue={pastDue}
+        upcoming={upcoming}
+        paid={paid}
+        inactiveClients={inactiveClients}
+        setupCount={setupCount}
+        clients={clients}
+        busy={busy}
+        canViewRevenue={canViewRevenue}
+        onPatchBilling={patchBilling}
+        onDeleteBilling={voidBilling}
+        onSchedule={scheduleBilling}
+        onPatchClient={patchClient}
+        onPatchCycle={patchCycle}
+        onBillCycle={billCycle}
+        onEnsureCycle={ensureCycle}
+        onPauseBilling={pauseClientBilling}
+        onRequestPause={(clientId, clientName) =>
+          setStatusChange({ clientId, clientName, targetStatus: "paused" })
+        }
+        onRequestOffboard={clientId => navigateChurnOffboard(clientId)}
+      />
 
       <StatusChangeModal
         open={!!statusChange}
@@ -563,13 +636,13 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-type FixedSubView = "queue" | "paid" | "inactive" | "setup";
+type BillingSubView = "queue" | "paid" | "inactive" | "setup";
 
-function FixedRetainerBilling({
+function UnifiedBilling({
   pastDue,
   upcoming,
   paid,
-  inactiveFixed,
+  inactiveClients,
   setupCount,
   clients,
   busy,
@@ -578,6 +651,9 @@ function FixedRetainerBilling({
   onDeleteBilling,
   onSchedule,
   onPatchClient,
+  onPatchCycle,
+  onBillCycle,
+  onEnsureCycle,
   onPauseBilling,
   onRequestPause,
   onRequestOffboard,
@@ -585,7 +661,7 @@ function FixedRetainerBilling({
   pastDue: WorkRow[];
   upcoming: WorkRow[];
   paid: RecordedRow[];
-  inactiveFixed: ClientBilling[];
+  inactiveClients: ClientBilling[];
   setupCount: number;
   clients: ClientBilling[];
   busy: string | null;
@@ -594,11 +670,17 @@ function FixedRetainerBilling({
   onDeleteBilling: (id: string) => void;
   onSchedule: (client: ClientBilling, opts: ScheduleOpts) => void;
   onPatchClient: (clientId: string, body: Record<string, unknown>) => void;
+  onPatchCycle: (id: string, body: Record<string, unknown>) => Promise<void> | void;
+  onBillCycle: (id: string, markPaid: boolean) => Promise<void> | void;
+  onEnsureCycle: (
+    client: ClientBilling,
+    period?: { periodStart: string; periodEnd: string },
+  ) => Promise<BillingCycle | null>;
   onPauseBilling: (client: ClientBilling) => void;
   onRequestPause: (clientId: string, clientName: string) => void;
   onRequestOffboard: (clientId: string) => void;
 }) {
-  const [subView, setSubView] = useState<FixedSubView>("queue");
+  const [subView, setSubView] = useState<BillingSubView>("queue");
 
   const queueCount = pastDue.length + upcoming.length;
 
@@ -608,11 +690,11 @@ function FixedRetainerBilling({
       tabs.push({ key: "paid", label: `Paid (${paid.length})` });
     }
     tabs.push(
-      { key: "inactive", label: `Paused / churned (${inactiveFixed.length})` },
-      { key: "setup", label: `Billing configuration (${setupCount})` },
+      { key: "inactive", label: `Paused / churned (${inactiveClients.length})` },
+      { key: "setup", label: `Setup (${setupCount})` },
     );
     return tabs;
-  }, [queueCount, canViewRevenue, paid.length, inactiveFixed.length, setupCount]);
+  }, [queueCount, canViewRevenue, paid.length, inactiveClients.length, setupCount]);
 
   useEffect(() => {
     if (subView === "paid" && !canViewRevenue) setSubView("queue");
@@ -622,7 +704,7 @@ function FixedRetainerBilling({
     <ViewHub
       tabs={subTabs}
       activeTab={subView}
-      onTabChange={k => setSubView(k as FixedSubView)}
+      onTabChange={k => setSubView(k as BillingSubView)}
     >
       {subView === "queue" && (
         <>
@@ -636,6 +718,10 @@ function FixedRetainerBilling({
             onPatch={onPatchBilling}
             onDelete={onDeleteBilling}
             onSchedule={onSchedule}
+            onPatchCycle={onPatchCycle}
+            onBillCycle={onBillCycle}
+            onEnsureCycle={onEnsureCycle}
+            onGoSetup={() => setSubView("setup")}
           />
           <WorklistSection
             title="Upcoming"
@@ -647,6 +733,10 @@ function FixedRetainerBilling({
             onPatch={onPatchBilling}
             onDelete={onDeleteBilling}
             onSchedule={onSchedule}
+            onPatchCycle={onPatchCycle}
+            onBillCycle={onBillCycle}
+            onEnsureCycle={onEnsureCycle}
+            onGoSetup={() => setSubView("setup")}
           />
         </>
       )}
@@ -664,7 +754,7 @@ function FixedRetainerBilling({
       {subView === "inactive" && (
         <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
           <InactiveTable
-            clients={inactiveFixed}
+            clients={inactiveClients}
             busy={busy}
             canViewRevenue={canViewRevenue}
             onPatch={onPatchClient}
@@ -684,7 +774,6 @@ function FixedRetainerBilling({
             onPauseBilling={onPauseBilling}
             onRequestPause={onRequestPause}
             onRequestOffboard={onRequestOffboard}
-            billingModelFilter="fixed"
           />
         </div>
       )}
@@ -692,20 +781,44 @@ function FixedRetainerBilling({
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, label }: { status: string; label?: string }) {
   const s = BILLING_STATUS_STYLE[status] ?? BILLING_STATUS_STYLE.pending;
   return (
     <span
       className="px-2 py-0.5 rounded-full text-xs font-semibold"
       style={{ color: s.color, background: s.bg }}
     >
-      {status}
+      {label ?? status}
     </span>
   );
 }
 
+function ModelBadge({ model }: { model: string | null | undefined }) {
+  const label = modelBadgeLabel(model);
+  const perf = label === "Performance";
+  return (
+    <span
+      className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+      style={{
+        color: perf ? "#c4b5fd" : "#93c5fd",
+        background: perf ? "rgba(167,139,250,0.12)" : "rgba(96,165,250,0.12)",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function workRowKey(r: WorkRow): string {
+  if (r.kind === "pending_setup") return `pending-${r.client.id}`;
+  if (r.kind === "cadence_due") return `cadence-${r.client.id}-${r.yearMonth}`;
+  if (r.kind === "perf_cycle") return `cycle-${r.cycle.id}`;
+  return r.billing.id;
+}
+
 function WorklistSection({
   title, accent, emptyText, rows, busy, canViewRevenue, onPatch, onDelete, onSchedule,
+  onPatchCycle, onBillCycle, onEnsureCycle, onGoSetup,
 }: {
   title: string;
   accent: string;
@@ -716,10 +829,17 @@ function WorklistSection({
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onDelete: (id: string) => void;
   onSchedule: (client: ClientBilling, opts: ScheduleOpts) => void;
+  onPatchCycle: (id: string, body: Record<string, unknown>) => Promise<void> | void;
+  onBillCycle: (id: string, markPaid: boolean) => Promise<void> | void;
+  onEnsureCycle: (
+    client: ClientBilling,
+    period?: { periodStart: string; periodEnd: string },
+  ) => Promise<BillingCycle | null>;
+  onGoSetup: () => void;
 }) {
   const headers = canViewRevenue
-    ? ["Client", "Offer", "Amount", "Paid", "Balance", "Due date", "When", "Status", "Action"]
-    : ["Client", "Offer", "Due date", "When", "Status", "Action"];
+    ? ["Client", "Offer", "Model", "Amount", "Paid", "Balance", "Due date", "When", "Status", "Action"]
+    : ["Client", "Offer", "Model", "Due date", "When", "Status", "Action"];
   const colSpan = headers.length;
 
   return (
@@ -754,7 +874,7 @@ function WorklistSection({
             ) : (
               rows.map((r, i) => (
                 <WorkRowView
-                  key={r.kind === "schedule_prompt" ? `sp-${r.client.id}` : r.billing.id}
+                  key={workRowKey(r)}
                   row={r}
                   striped={i % 2 === 0}
                   busy={busy}
@@ -762,6 +882,10 @@ function WorklistSection({
                   onPatch={onPatch}
                   onDelete={onDelete}
                   onSchedule={onSchedule}
+                  onPatchCycle={onPatchCycle}
+                  onBillCycle={onBillCycle}
+                  onEnsureCycle={onEnsureCycle}
+                  onGoSetup={onGoSetup}
                 />
               ))
             )}
@@ -774,6 +898,7 @@ function WorklistSection({
 
 function WorkRowView({
   row, striped, busy, canViewRevenue, onPatch, onDelete, onSchedule,
+  onPatchCycle, onBillCycle, onEnsureCycle, onGoSetup,
 }: {
   row: WorkRow;
   striped: boolean;
@@ -782,29 +907,89 @@ function WorkRowView({
   onPatch: (id: string, body: Record<string, unknown>) => void;
   onDelete: (id: string) => void;
   onSchedule: (client: ClientBilling, opts: ScheduleOpts) => void;
+  onPatchCycle: (id: string, body: Record<string, unknown>) => Promise<void> | void;
+  onBillCycle: (id: string, markPaid: boolean) => Promise<void> | void;
+  onEnsureCycle: (
+    client: ClientBilling,
+    period?: { periodStart: string; periodEnd: string },
+  ) => Promise<BillingCycle | null>;
+  onGoSetup: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const colSpan = canViewRevenue ? 9 : 6;
+  const [ensuredCycle, setEnsuredCycle] = useState<BillingCycle | null>(null);
+  const colSpan = canViewRevenue ? 10 : 7;
 
-  // Schedule-prompt rows get a subtly different background to signal "no
-  // billing filed yet" without being alarming.
-  const isPrompt = row.kind === "schedule_prompt";
-  const rowBg = isPrompt
+  const isPending = row.kind === "pending_setup";
+  const isCadence = row.kind === "cadence_due";
+  const isPerf = row.kind === "perf_cycle";
+  const isRecorded = row.kind === "recorded";
+  const soft = isPending || isCadence;
+
+  const rowBg = soft
     ? (striped ? "rgba(129,140,248,0.04)" : "rgba(129,140,248,0.02)")
     : (striped ? "#080f1e" : "#060d1a");
 
-  const dueDate = isPrompt
-    ? (row.client.suggested_next_date ?? row.client.next_billing_date)
-    : (row.billing.due_date ?? row.billing.billed_on);
-  const amount  = isPrompt ? row.client.mrr                  : row.billing.amount;
-  const paid    = isPrompt ? null                             : (Number(row.billing.amount_paid) || 0);
-  const balance = isPrompt ? null                             : balanceOf(row.billing);
-  const sub     = !isPrompt && canViewRevenue ? breakdownLabel(row.billing) : null;
-  const state   = isPrompt ? null : recordedState(row.billing);
+  let dueDate: string | null = null;
+  let amount: number | null = null;
+  let paid: number | null = null;
+  let balance: number | null = null;
+  let sub: string | null = null;
+  let statusKey = "pending";
+  let statusLabel = "pending";
+  let actionLabel = "Manage";
 
-  const actionLabel = isPrompt
-    ? "File billing"
-    : (state === "scheduled" ? "Manage" : "Manage");
+  if (isPending) {
+    dueDate = row.client.suggested_next_date ?? row.client.next_billing_date;
+    amount = row.client.mrr;
+    statusKey = "pending_setup";
+    statusLabel = "Pending";
+    actionLabel = "Set up billing";
+    sub = "Set billing day + rates in Setup";
+  } else if (isCadence) {
+    dueDate = row.dueDate;
+    amount = isPerformanceBilling(row.client.billing_model) ? null : row.client.mrr;
+    statusKey = "cadence_due";
+    statusLabel = isPerformanceBilling(row.client.billing_model) ? "Awaiting report" : "Due";
+    actionLabel = "Manage";
+    sub = `${row.periodStart} → ${row.periodEnd}`;
+  } else if (isPerf) {
+    dueDate = row.dueDate;
+    amount = computeCycleTotal(row.cycle.base_amount, row.cycle.performance_amount, row.cycle.discount);
+    statusKey = row.cycle.effective_status ?? row.cycle.status;
+    statusLabel = cycleStatusLabel(statusKey as CycleStatus);
+    actionLabel = "Manage";
+    sub = `${row.cycle.period_start} → ${row.cycle.period_end}`;
+  } else {
+    dueDate = row.billing.due_date ?? row.billing.billed_on;
+    amount = row.billing.amount;
+    paid = Number(row.billing.amount_paid) || 0;
+    balance = balanceOf(row.billing);
+    sub = canViewRevenue ? breakdownLabel(row.billing) : null;
+    statusKey = recordedState(row.billing);
+    statusLabel = statusKey;
+    actionLabel = "Manage";
+  }
+
+  async function handleAction() {
+    if (isPending) {
+      onGoSetup();
+      return;
+    }
+    if (isCadence && isPerformanceBilling(row.client.billing_model)) {
+      const cycle = await onEnsureCycle(row.client, {
+        periodStart: row.periodStart,
+        periodEnd: row.periodEnd,
+      });
+      if (cycle) {
+        setEnsuredCycle({ ...cycle, client: cycle.client ?? row.client });
+        setExpanded(true);
+      }
+      return;
+    }
+    setExpanded(e => !e);
+  }
+
+  const activeCycle = isPerf ? row.cycle : ensuredCycle;
 
   return (
     <>
@@ -812,20 +997,14 @@ function WorkRowView({
         style={{
           background: rowBg,
           borderTop: "1px solid rgba(255,255,255,0.04)",
-          opacity: isPrompt ? 0.75 : 1,
+          opacity: soft ? 0.9 : 1,
         }}
       >
-        {/* Client name */}
         <td className="px-4 py-3">
-          <span className="font-medium" style={{ color: isPrompt ? "#94a3b8" : "#e2e8f0" }}>
+          <span className="font-medium" style={{ color: soft ? "#cbd5e1" : "#e2e8f0" }}>
             {row.client.name}
           </span>
           {sub && <div className="text-xs mt-0.5" style={{ color: "#475569" }}>{sub}</div>}
-          {isPrompt && (
-            <div className="text-xs mt-0.5" style={{ color: "#475569" }}>
-              No billing filed for this cycle
-            </div>
-          )}
         </td>
 
         <td className="px-4 py-3">
@@ -836,7 +1015,10 @@ function WorkRowView({
           )}
         </td>
 
-        {/* Revenue columns */}
+        <td className="px-4 py-3">
+          <ModelBadge model={row.client.billing_model} />
+        </td>
+
         {canViewRevenue && (
           <>
             <td className="px-4 py-3" style={{ color: "#e2e8f0" }}>{money(amount)}</td>
@@ -850,31 +1032,16 @@ function WorkRowView({
         <td className="px-4 py-3" style={{ color: "#cbd5e1" }}>{dueDate ?? "—"}</td>
         <td className="px-4 py-3 text-xs" style={{ color: "#94a3b8" }}>{relativeLabel(dueDate)}</td>
 
-        {/* Status badge */}
         <td className="px-4 py-3">
-          {isPrompt ? (
-            <span
-              className="px-2 py-0.5 rounded-full text-xs font-semibold"
-              style={{
-                color: "#818cf8",
-                background: "rgba(129,140,248,0.08)",
-                border: "1px dashed rgba(129,140,248,0.3)",
-              }}
-            >
-              unscheduled
-            </span>
-          ) : (
-            <StatusBadge status={state!} />
-          )}
+          <StatusBadge status={statusKey} label={statusLabel} />
         </td>
 
-        {/* Action */}
         <td className="px-4 py-3 text-right whitespace-nowrap">
-          {canViewRevenue ? (
+          {canViewRevenue || isPending ? (
             <button
-              onClick={() => setExpanded(e => !e)}
+              onClick={() => void handleAction()}
               className="text-xs font-semibold"
-              style={{ color: isPrompt ? "#818cf8" : "#60a5fa" }}
+              style={{ color: isPending ? "#a78bfa" : "#60a5fa" }}
             >
               {expanded ? "Close" : actionLabel}
             </button>
@@ -884,17 +1051,26 @@ function WorkRowView({
         </td>
       </tr>
 
-      {/* Expanded editor */}
       {expanded && canViewRevenue && (
         <tr style={{ background: "#04101f" }}>
           <td colSpan={colSpan} className="px-4 py-4">
-            {isPrompt ? (
+            {isCadence && isFixedBilling(row.client.billing_model) && (
               <ScheduleEditor
                 client={row.client}
                 busy={busy}
+                defaultDueDate={row.dueDate}
                 onSchedule={(opts) => { onSchedule(row.client, opts); setExpanded(false); }}
               />
-            ) : (
+            )}
+            {activeCycle && (
+              <CycleEditor
+                cycle={activeCycle}
+                busy={busy}
+                onPatch={onPatchCycle}
+                onBill={onBillCycle}
+              />
+            )}
+            {isRecorded && (
               <RecordedEditor
                 billing={row.billing}
                 busy={busy}
@@ -922,7 +1098,7 @@ function LabeledInput({ label, children }: { label: string; children: ReactNode 
 // Replaces the old ForecastEditor — creates a real DB row instead of a
 // transient pending billing, so terms can be edited before payment is due.
 function ScheduleEditor({
-  client, busy, onSchedule, submitLabel, busyLabel, showMarkPaid = true,
+  client, busy, onSchedule, submitLabel, busyLabel, showMarkPaid = true, defaultDueDate,
 }: {
   client: ClientBilling;
   busy: string | null;
@@ -930,8 +1106,9 @@ function ScheduleEditor({
   submitLabel?: string;
   busyLabel?: string;
   showMarkPaid?: boolean;
+  defaultDueDate?: string | null;
 }) {
-  const suggestedDate = client.suggested_next_date ?? client.next_billing_date ?? todayYmd();
+  const suggestedDate = defaultDueDate ?? client.suggested_next_date ?? client.next_billing_date ?? todayYmd();
   const [base, setBase] = useState(String(client.mrr ?? ""));
   const [performance, setPerformance] = useState("0");
   const [discount, setDiscount] = useState("0");
@@ -973,7 +1150,7 @@ function ScheduleEditor({
   return (
     <div className="space-y-3">
       <p className="text-xs px-3 py-2 rounded-lg" style={{ color: "#818cf8", background: "rgba(129,140,248,0.08)", border: "1px solid rgba(129,140,248,0.2)" }}>
-        Filing a billing commits this cycle to the queue. Tag the revenue type so CEO cash KPIs stay accurate.
+        Record this month&apos;s charge on the locked due day. Tag the revenue type so CEO cash KPIs stay accurate.
       </p>
 
       {client.performance_terms && (
@@ -1573,7 +1750,6 @@ function PaidSection({
 
 function SetupTable({
   clients, busy, canViewRevenue, onPatch, onPauseBilling, onRequestPause, onRequestOffboard,
-  billingModelFilter = "fixed",
 }: {
   clients: ClientBilling[];
   busy: string | null;
@@ -1582,22 +1758,21 @@ function SetupTable({
   onPauseBilling: (client: ClientBilling) => void;
   onRequestPause: (clientId: string, clientName: string) => void;
   onRequestOffboard: (clientId: string) => void;
-  billingModelFilter?: "fixed" | "performance";
 }) {
   const sorted = clients
-    .filter(c => isInBillingQueue(c) && (billingModelFilter === "fixed" ? isFixedBilling(c.billing_model) : isPerformanceBilling(c.billing_model)))
+    .filter(c => isInBillingQueue(c))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const missingConfig = sorted.filter(c => !c.billing_day && !c.launch_date).length;
+  const missingConfig = sorted.filter(c => !isCadenceLocked(c)).length;
 
   const headers = canViewRevenue
-    ? ["Client", "Billing model", "Billing type", "Monthly $", "Billing day", "Launch date", "Suggested next", "Lifecycle"]
-    : ["Client", "Billing model", "Billing type", "Billing day", "Launch date", "Suggested next", "Lifecycle"];
+    ? ["Client", "Model", "Base $", "$/conversation", "$/bailed", "Day of month", "Next due", "Actions"]
+    : ["Client", "Model", "Day of month", "Next due", "Actions"];
 
   return (
     <div>
       {missingConfig > 0 && (
         <p className="text-xs px-4 py-2" style={{ color: "#f59e0b", background: "rgba(245,158,11,0.06)" }}>
-          {missingConfig} active client{missingConfig === 1 ? "" : "s"} have no billing day or launch date — set one below before they appear in the Upcoming queue.
+          {missingConfig} client{missingConfig === 1 ? "" : "s"} still Pending — set day of month (and for Performance, $/conversation or $/bailed) to lock cadence.
         </p>
       )}
       <table className="w-full text-sm">
@@ -1622,7 +1797,12 @@ function SetupTable({
                 key={c.id}
                 style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}
               >
-                <td className="px-4 py-2.5 font-medium" style={{ color: "#e2e8f0" }}>{c.name}</td>
+                <td className="px-4 py-2.5 font-medium" style={{ color: "#e2e8f0" }}>
+                  {c.name}
+                  {!isCadenceLocked(c) && (
+                    <div className="text-[10px] mt-0.5 font-semibold" style={{ color: "#a78bfa" }}>Pending setup</div>
+                  )}
+                </td>
                 <td className="px-4 py-2.5">
                   <select
                     value={c.billing_model ?? "fixed"}
@@ -1635,32 +1815,43 @@ function SetupTable({
                     <option value="performance">Performance</option>
                   </select>
                 </td>
-                <td className="px-4 py-2.5">
-                  <select
-                    value={c.billing_type ?? ""}
-                    disabled={isBusy}
-                    onChange={e => onPatch(c.id, { billing_type: e.target.value })}
-                    className="px-2 py-1 rounded-lg text-xs outline-none cursor-pointer"
-                    style={fieldStyle()}
-                  >
-                    <option value="">Monthly (default)</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="pif">PIF</option>
-                    <option value="pif_monthly">PIF + Monthly</option>
-                  </select>
-                </td>
                 {canViewRevenue && (
-                  <td className="px-4 py-2.5">
-                    <input
-                      type="number"
-                      defaultValue={c.mrr ?? ""}
-                      disabled={isBusy}
-                      onBlur={e => { if (String(c.mrr ?? "") !== e.target.value) onPatch(c.id, { mrr: e.target.value }); }}
-                      placeholder="0"
-                      className="px-2 py-1 rounded-lg text-xs outline-none w-24"
-                      style={fieldStyle()}
-                    />
-                  </td>
+                  <>
+                    <td className="px-4 py-2.5">
+                      <input
+                        type="number"
+                        defaultValue={c.mrr ?? ""}
+                        disabled={isBusy}
+                        onBlur={e => { if (String(c.mrr ?? "") !== e.target.value) onPatch(c.id, { mrr: e.target.value }); }}
+                        placeholder="0"
+                        className="px-2 py-1 rounded-lg text-xs outline-none w-20"
+                        style={fieldStyle()}
+                      />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <input
+                        type="number"
+                        defaultValue={c.pay_per_show ?? ""}
+                        disabled={isBusy || isFixedBilling(c.billing_model)}
+                        onBlur={e => { if (String(c.pay_per_show ?? "") !== e.target.value) onPatch(c.id, { pay_per_show: e.target.value }); }}
+                        placeholder="—"
+                        title="$/conversation (shows + live transfers)"
+                        className="px-2 py-1 rounded-lg text-xs outline-none w-20"
+                        style={fieldStyle()}
+                      />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <input
+                        type="number"
+                        defaultValue={c.pay_per_bailed ?? ""}
+                        disabled={isBusy || isFixedBilling(c.billing_model)}
+                        onBlur={e => { if (String(c.pay_per_bailed ?? "") !== e.target.value) onPatch(c.id, { pay_per_bailed: e.target.value }); }}
+                        placeholder="—"
+                        className="px-2 py-1 rounded-lg text-xs outline-none w-20"
+                        style={fieldStyle()}
+                      />
+                    </td>
+                  </>
                 )}
                 <td className="px-4 py-2.5">
                   <input
@@ -1671,18 +1862,8 @@ function SetupTable({
                     disabled={isBusy}
                     onBlur={e => { if (String(c.billing_day ?? "") !== e.target.value) onPatch(c.id, { billing_day: e.target.value }); }}
                     placeholder="—"
-                    title="Day of month (1-31); blank = launch day"
+                    title={isPerformanceBilling(c.billing_model) ? "Report due day (1-31)" : "Billing day (1-31)"}
                     className="px-2 py-1 rounded-lg text-xs outline-none w-16"
-                    style={fieldStyle()}
-                  />
-                </td>
-                <td className="px-4 py-2.5">
-                  <input
-                    type="date"
-                    value={c.launch_date ?? ""}
-                    disabled={isBusy}
-                    onChange={e => onPatch(c.id, { launch_date: e.target.value })}
-                    className="px-2 py-1 rounded-lg text-xs outline-none"
                     style={fieldStyle()}
                   />
                 </td>

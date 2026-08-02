@@ -1,7 +1,7 @@
 # Unified Client Billing Queue + Locked Cadence
 
 Date: 2026-08-02
-Status: Approved for planning
+Status: Implemented (ready for QA)
 Surface: Admin → Client Billing (`BillingManager`,
 `PerformanceBilling`)
 Ledger: `client_billings` + `client_billing_cycles` (performance

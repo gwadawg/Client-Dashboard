@@ -13,18 +13,23 @@ import {
 } from '@/lib/billing-revenue';
 
 const CYCLE_FIELDS =
-  'id, client_id, period_start, period_end, base_amount, show_count, bailed_count, pay_per_show, pay_per_bailed, performance_amount, discount, status, report_sent_at, objection_deadline_at, dispute_note, billing_id, note, created_at, updated_at';
+  'id, client_id, period_start, period_end, base_amount, show_count, live_transfer_count, bailed_count, pay_per_show, pay_per_bailed, performance_amount, discount, status, report_sent_at, objection_deadline_at, dispute_note, billing_id, note, created_at, updated_at';
 
 const BILLING_FIELDS = BILLING_LEDGER_FIELDS;
 
 function recomputePerformance(row: {
   show_count: number;
+  live_transfer_count: number;
   bailed_count: number;
   pay_per_show: number;
   pay_per_bailed: number;
 }) {
   return computePerformanceAmount(
-    { show_count: row.show_count, bailed_count: row.bailed_count },
+    {
+      show_count: row.show_count,
+      live_transfer_count: row.live_transfer_count,
+      bailed_count: row.bailed_count,
+    },
     { pay_per_show: row.pay_per_show, pay_per_bailed: row.pay_per_bailed },
   );
 }
@@ -55,6 +60,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   const showCount = 'show_count' in body ? Math.max(0, Number(body.show_count) || 0) : Number(current.show_count) || 0;
+  const liveTransferCount = 'live_transfer_count' in body
+    ? Math.max(0, Number(body.live_transfer_count) || 0)
+    : Number(current.live_transfer_count) || 0;
   const bailedCount = 'bailed_count' in body ? Math.max(0, Number(body.bailed_count) || 0) : Number(current.bailed_count) || 0;
   const payPerShow = 'pay_per_show' in body ? Number(body.pay_per_show) || 0 : Number(current.pay_per_show) || 0;
   const payPerBailed = 'pay_per_bailed' in body ? Number(body.pay_per_bailed) || 0 : Number(current.pay_per_bailed) || 0;
@@ -63,6 +71,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   if (
     'show_count' in body ||
+    'live_transfer_count' in body ||
     'bailed_count' in body ||
     'pay_per_show' in body ||
     'pay_per_bailed' in body ||
@@ -70,6 +79,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     'discount' in body
   ) {
     updates.show_count = showCount;
+    updates.live_transfer_count = liveTransferCount;
     updates.bailed_count = bailedCount;
     updates.pay_per_show = payPerShow;
     updates.pay_per_bailed = payPerBailed;
@@ -77,6 +87,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     updates.discount = discount;
     updates.performance_amount = recomputePerformance({
       show_count: showCount,
+      live_transfer_count: liveTransferCount,
       bailed_count: bailedCount,
       pay_per_show: payPerShow,
       pay_per_bailed: payPerBailed,

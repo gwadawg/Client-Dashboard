@@ -84,7 +84,7 @@ export async function GET(req: Request) {
     const rows = byClient.get(c.id) ?? [];
 
     const lastRealBilling = (rows.find(r => r.status !== 'scheduled') as BillingRow | undefined) ?? null;
-    const nextBillingDate = computeNextBillingDate(c, lastRealBilling);
+    const nextBillingDate = computeNextBillingDate(c, lastRealBilling, new Date(), rows);
     const nextBillingStatus = deriveStatus(nextBillingDate, new Date());
     const suggestedNextDate = nextBillingDate;
 

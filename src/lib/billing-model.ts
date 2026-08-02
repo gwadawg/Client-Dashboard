@@ -23,6 +23,8 @@ export interface PerformanceRates {
 
 export interface CycleCounts {
   show_count?: number | null;
+  /** Live transfers bill at the same $/conversation rate as shows. */
+  live_transfer_count?: number | null;
   bailed_count?: number | null;
 }
 
@@ -46,15 +48,21 @@ export function isFixedBilling(value: unknown): boolean {
   return normalizeBillingModel(value) === 'fixed';
 }
 
+/**
+ * Conversations = shows + live transfers, billed at pay_per_show
+ * ($/conversation). Bailed uses pay_per_bailed.
+ */
 export function computePerformanceAmount(
   counts: CycleCounts,
   rates: PerformanceRates,
 ): number {
   const shows = Math.max(0, Number(counts.show_count) || 0);
+  const liveTransfers = Math.max(0, Number(counts.live_transfer_count) || 0);
   const bailed = Math.max(0, Number(counts.bailed_count) || 0);
-  const showRate = Math.max(0, Number(rates.pay_per_show) || 0);
+  const conversationRate = Math.max(0, Number(rates.pay_per_show) || 0);
   const bailRate = Math.max(0, Number(rates.pay_per_bailed) || 0);
-  return shows * showRate + bailed * bailRate;
+  const conversations = shows + liveTransfers;
+  return conversations * conversationRate + bailed * bailRate;
 }
 
 export function computeCycleTotal(

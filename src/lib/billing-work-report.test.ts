@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  assignBillableLiveTransfers,
   assignBillableOutcomes,
   isYmd,
   summarizeBillingWork,
@@ -61,6 +62,8 @@ describe('billing-work-report helpers', () => {
       unique_booked: 72,
       shows: 51,
       unique_shows: 43,
+      live_transfers: 12,
+      unique_live_transfers: 10,
       no_shows: 16,
       lo_bailed: 8,
       unique_lo_bailed: 6,
@@ -69,7 +72,35 @@ describe('billing-work-report helpers', () => {
       pending: 11,
     });
     assert.equal(s.unique_shows, 43);
+    assert.equal(s.unique_live_transfers, 10);
     assert.equal(s.unique_lo_bailed, 6);
     assert.equal(s.show_rate, (51 / (51 + 16 + 8)) * 100);
+  });
+
+  it('charges unique live transfers per lead independently of shows', () => {
+    const result = assignBillableLiveTransfers('client-1', [
+      {
+        id: 'lt1',
+        event_type: 'live_transfer',
+        occurred_at: '2026-07-10T15:00:00.000Z',
+        ghl_contact_id: 'lead-a',
+      },
+      {
+        id: 'lt2',
+        event_type: 'live_transfer',
+        occurred_at: '2026-07-20T15:00:00.000Z',
+        ghl_contact_id: 'lead-a',
+      },
+      {
+        id: 'lt3',
+        event_type: 'live_transfer',
+        occurred_at: '2026-07-11T15:00:00.000Z',
+        ghl_contact_id: 'lead-b',
+      },
+    ]);
+    assert.equal(result.unique_live_transfers, 2);
+    assert.equal(result.transferFlags.get('lt1')?.billable, true);
+    assert.equal(result.transferFlags.get('lt2')?.billable, false);
+    assert.equal(result.transferFlags.get('lt3')?.billable, true);
   });
 });

@@ -1211,6 +1211,33 @@ grant select on v_monthly_churn to anon;
 alter table client_billings add column if not exists voided_at timestamptz;
 alter table client_billings add column if not exists voided_by uuid references auth.users(id) on delete set null;
 
+-- Performance billing cycles (see migrations/add_client_billing_model.sql)
+create table if not exists client_billing_cycles (
+  id                    uuid        primary key default gen_random_uuid(),
+  client_id             uuid        not null references clients(id) on delete cascade,
+  period_start          date        not null,
+  period_end            date        not null,
+  base_amount           numeric     not null default 0,
+  show_count            int         not null default 0,
+  live_transfer_count   int         not null default 0,
+  bailed_count          int         not null default 0,
+  pay_per_show          numeric     not null default 0,
+  pay_per_bailed        numeric     not null default 0,
+  performance_amount    numeric     not null default 0,
+  discount              numeric     not null default 0,
+  status                text        not null default 'draft',
+  report_sent_at        timestamptz,
+  objection_deadline_at timestamptz,
+  dispute_note          text,
+  billing_id            uuid        references client_billings(id) on delete set null,
+  note                  text,
+  created_by            uuid        references auth.users(id) on delete set null,
+  created_at            timestamptz default now(),
+  updated_at            timestamptz default now()
+);
+alter table client_billing_cycles
+  add column if not exists live_transfer_count int not null default 0;
+
 alter table client_calls add column if not exists status_history_id uuid
   references client_status_history(id) on delete set null;
 alter table client_notes add column if not exists related_call_id uuid

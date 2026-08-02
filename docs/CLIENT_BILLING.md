@@ -13,10 +13,17 @@ You file charges in Client Billing; you review company cash in Finance. Do not e
 
 ---
 
-The **Admin → Client Billing** tab shows each client's billing dates, a computed
-next-billing date with status (upcoming / due soon / overdue), company totals, and
-the full history of every billing made. Waiz owns all billing data; ClickUp is
-used only as the reminder channel.
+The **Admin → Client Billing** tab is one mixed queue for **Fixed** and
+**Performance** clients (Past due / Upcoming / Paid / Inactive / Setup).
+Cadence is **locked once** (billing/report day + rates); there is no monthly
+“unscheduled / File billing” loop. Pending = client still needs day/rates set.
+
+Performance months use `client_billing_cycles` (report → 3-day objection →
+bill). Conversations = shows + live transfers at `$/conversation`
+(`pay_per_show`); bailed is separate. Work report:
+`/report/{share_token}/billing`.
+
+Waiz owns all billing data; ClickUp is used only as the reminder channel.
 
 CEO cash KPIs (**Executive → Finance → Overview**) and the company charge log
 (**Finance → Revenue**) read the same `client_billings` ledger.
@@ -31,6 +38,9 @@ Run these migrations (idempotent) in **Supabase SQL Editor** (or apply via MCP):
 - `supabase/migrations/add_billing_revenue_fields.sql` — CEO revenue tags
 - `supabase/migrations/billing_data_foundation.sql` — Stripe ids, `is_first_payment`,
   `billing_events` audit log, `stripe_invoices` staging
+- `supabase/migrations/add_client_billing_model.sql` — Fixed vs Performance + cycles
+- `supabase/migrations/add_billing_cycle_live_transfers.sql` —
+  `live_transfer_count` on cycles
 
 Mirrored in `supabase/schema.sql`.
 
@@ -59,16 +69,19 @@ commissions stay in the agent commission system — not duplicated on invoice ro
 
 ## 3. How "next billing date" is computed
 
-Derived in `src/lib/billing.ts` (no stored value, so it never drifts):
+Derived in `src/lib/billing.ts` + `src/lib/billing-cadence.ts` (no stored
+value, so it never drifts):
 
-| billing_type  | Next billing date |
-|---------------|-------------------|
-| `monthly`     | One month after the latest recorded billing, on the day-of-month from `billing_day` / launch. If never billed, the signing date. |
-| `pif_monthly` | Same recurring rule as `monthly`. |
-| `pif`         | None — paid in full is one-time. |
+| Case | Next billing / report due |
+|------|---------------------------|
+| Locked cadence (`billing_day` set) | Earliest **open** month still needing disposition on that day-of-month. Late months are not skipped. |
+| `monthly` / `pif_monthly` (fallback) | One month after the latest recorded billing, or next anniversary if never billed. |
+| `pif` | None — paid in full is one-time. |
 
 Status (`deriveStatus`): `overdue` if the next date is past, `due_soon` if within
 7 days (`DUE_SOON_DAYS`), otherwise `upcoming`.
+
+Helpers: `isCadenceLocked`, `openCadenceMonths` in `src/lib/billing-cadence.ts`.
 
 ## 4. Editing billing fields
 

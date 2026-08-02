@@ -3,6 +3,8 @@
 //
 // Dates are handled as plain YYYY-MM-DD strings in UTC to avoid timezone drift.
 
+import { isCadenceLocked, nextOpenCadenceDueDate } from './billing-cadence';
+
 export type BillingType = "monthly" | "pif" | "pif_monthly";
 export type NextBillingStatus = "upcoming" | "due_soon" | "overdue";
 
@@ -110,21 +112,24 @@ function nextOccurrence(anchorDay: number, from: Date): Date {
  * The next date this client should be billed, or null when there is no
  * recurring schedule.
  *
- * The billing day comes from the explicit billing_day when set; otherwise it is
- * anchored to the launch date (falls back to date_signed, then the last
- * billing). Any client that is not explicitly PIF recurs monthly on that day —
- * including clients with no billing_type set yet — so the whole active roster
- * projects and can be adjusted.
+ * When `billing_day` is set (locked cadence), prefer the earliest open month
+ * still needing disposition — late months are not skipped. Pass `openBillings`
+ * (all non-voided rows) for accurate coverage; without them, falls back to
+ * +1 month from last billing / next anniversary.
  *
- * - Already billed: one month after the last billing, on the anchor day.
- * - Never billed: the next billing-day anniversary on or after today (so a
- *   client launched long ago shows an upcoming date, not a stale overdue one).
  * - pif: one-time, so there is no recurring "next" date.
  */
 export function computeNextBillingDate(
   client: BillingClient,
   lastBilling?: BillingRow | null,
   today: Date = new Date(),
+  openBillings?: Array<{
+    due_date?: string | null;
+    billed_on?: string | null;
+    period_start?: string | null;
+    period_end?: string | null;
+    status?: string | null;
+  }>,
 ): string | null {
   const type = (client.billing_type ?? "").toLowerCase();
   if (type === "pif") return null;
@@ -138,6 +143,15 @@ export function computeNextBillingDate(
     const anchorSource = client.launch_date ?? client.date_signed ?? lastBilling?.billed_on ?? null;
     if (!anchorSource) return null;
     anchorDay = parseYmd(anchorSource).getUTCDate();
+  }
+
+  // Locked day-of-month: surface the earliest uncovered cadence due date.
+  if (isCadenceLocked(client) && openBillings) {
+    const openDue = nextOpenCadenceDueDate(client, {
+      billings: openBillings,
+      today,
+    });
+    if (openDue) return openDue;
   }
 
   if (lastBilling?.billed_on) {

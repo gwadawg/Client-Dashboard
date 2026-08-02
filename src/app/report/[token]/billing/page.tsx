@@ -43,6 +43,7 @@ const STATUS_LABEL: Record<string, string> = {
   show: "Show",
   no_show: "No show",
   lo_bailed: "LO bailed",
+  live_transfer: "Live transfer",
   appointment_cancelled: "Cancelled",
   appointment_rescheduled: "Rescheduled",
   pending: "Pending",
@@ -53,6 +54,7 @@ function StatusPill({ status }: { status: string }) {
     show: { color: "#166534", bg: "#dcfce7" },
     no_show: { color: "#991b1b", bg: "#fee2e2" },
     lo_bailed: { color: "#6b21a8", bg: "#f3e8ff" },
+    live_transfer: { color: "#1e40af", bg: "#dbeafe" },
     appointment_cancelled: { color: "#475569", bg: "#e2e8f0" },
     appointment_rescheduled: { color: "#075985", bg: "#e0f2fe" },
     pending: { color: "#92400e", bg: "#fef3c7" },
@@ -297,13 +299,17 @@ function BillingWorkInner() {
             sub={`${summary.shows} events · ${Math.max(0, summary.shows - summary.unique_shows)} dupes`}
           />
           <SummaryCard
+            label="Live transfers"
+            value={String(summary.unique_live_transfers)}
+            sub={`${summary.live_transfers} events · conversations`}
+          />
+          <SummaryCard
             label="LO bailed (billable)"
             value={String(summary.unique_lo_bailed)}
             sub={`${summary.lo_bailed} events · ${Math.max(0, summary.lo_bailed - summary.unique_lo_bailed)} not charged`}
           />
           <SummaryCard label="No shows" value={String(summary.no_shows)} />
           <SummaryCard label="Show rate" value={pct(summary.show_rate)} sub="of dispositioned (raw)" />
-          <SummaryCard label="LO bail rate" value={pct(summary.lo_bail_rate)} sub="of booked (raw)" />
         </section>
 
         {charges && (
@@ -318,9 +324,17 @@ function BillingWorkInner() {
               </div>
               <div className="flex justify-between gap-4 px-3 py-2 rounded-lg" style={{ background: "#f8fafc" }}>
                 <span style={{ color: "#64748b" }}>
-                  Shows ({charges.show_count} × {money(charges.pay_per_show)})
+                  Conversations ({charges.show_count + charges.live_transfer_count} × {money(charges.pay_per_show)})
                 </span>
-                <span className="font-semibold">{money(charges.show_count * charges.pay_per_show)}</span>
+                <span className="font-semibold">
+                  {money((charges.show_count + charges.live_transfer_count) * charges.pay_per_show)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-4 px-3 py-2 rounded-lg" style={{ background: "#f8fafc" }}>
+                <span style={{ color: "#64748b" }}>
+                  Shows {charges.show_count} + LTs {charges.live_transfer_count}
+                </span>
+                <span className="font-semibold" style={{ color: "#64748b" }}>$/conversation</span>
               </div>
               <div className="flex justify-between gap-4 px-3 py-2 rounded-lg" style={{ background: "#f8fafc" }}>
                 <span style={{ color: "#64748b" }}>
@@ -341,7 +355,7 @@ function BillingWorkInner() {
             </div>
             {charges.filed_show_count != null && charges.filed_bailed_count != null && (
               <p className="text-xs" style={{ color: "#b45309" }}>
-                Charges use unique billable counts (dupes / bail→show excluded). Filed cycle still has {charges.filed_show_count} / {charges.filed_bailed_count} — Pull live counts → Save to update it.
+                Charges use unique billable counts. Filed cycle still has {charges.filed_show_count} shows / {charges.filed_live_transfer_count ?? 0} LTs / {charges.filed_bailed_count} bailed — Pull live counts → Save to update it.
               </p>
             )}
           </section>
@@ -353,6 +367,13 @@ function BillingWorkInner() {
           empty="No shows in this period."
           showCharge
           billableCount={summary.unique_shows}
+        />
+        <LeadTable
+          title="Live transfers"
+          rows={report.live_transfers}
+          empty="No live transfers in this period."
+          showCharge
+          billableCount={summary.unique_live_transfers}
         />
         <LeadTable
           title="LO bailed"

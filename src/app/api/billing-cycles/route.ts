@@ -10,10 +10,10 @@ import {
 import { canViewClientRevenue } from '@/lib/client-revenue-access';
 
 const CYCLE_FIELDS =
-  'id, client_id, period_start, period_end, base_amount, show_count, bailed_count, pay_per_show, pay_per_bailed, performance_amount, discount, status, report_sent_at, objection_deadline_at, dispute_note, billing_id, note, created_at, updated_at';
+  'id, client_id, period_start, period_end, base_amount, show_count, live_transfer_count, bailed_count, pay_per_show, pay_per_bailed, performance_amount, discount, status, report_sent_at, objection_deadline_at, dispute_note, billing_id, note, created_at, updated_at';
 
 const CLIENT_SNAPSHOT =
-  'id, name, lifecycle_status, billing_paused, billing_model, mrr, pay_per_show, pay_per_bailed, performance_terms, share_token';
+  'id, name, lifecycle_status, billing_paused, billing_model, mrr, pay_per_show, pay_per_bailed, performance_terms, share_token, billing_day';
 
 type CycleRow = Record<string, unknown>;
 
@@ -99,7 +99,16 @@ export async function GET(req: Request) {
   return NextResponse.json({ cycles, can_view_revenue: includeRevenue });
 }
 
+function calendarMonthBounds(now = new Date()) {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const period_start = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  const period_end = new Date(Date.UTC(y, m + 1, 0)).toISOString().slice(0, 10);
+  return { period_start, period_end };
+}
+
 // POST /api/billing-cycles — create a draft performance cycle
+// Body may include ensure_current: true to open this month's draft if missing.
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -109,11 +118,8 @@ export async function POST(req: Request) {
   if (revenueDenied) return revenueDenied;
 
   const body = await req.json();
-  const { client_id, period_start, period_end } = body;
+  const { client_id } = body;
   if (!client_id) return NextResponse.json({ error: 'client_id is required' }, { status: 400 });
-  if (!period_start || !period_end) {
-    return NextResponse.json({ error: 'period_start and period_end are required' }, { status: 400 });
-  }
 
   const { data: client, error: clientErr } = await ctx.service
     .from('clients')
@@ -125,14 +131,43 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Client is not on performance billing' }, { status: 400 });
   }
 
+  let period_start = body.period_start as string | undefined;
+  let period_end = body.period_end as string | undefined;
+
+  if (body.ensure_current) {
+    const bounds = calendarMonthBounds();
+    period_start = bounds.period_start;
+    period_end = bounds.period_end;
+  }
+
+  if (!period_start || !period_end) {
+    return NextResponse.json({ error: 'period_start and period_end are required' }, { status: 400 });
+  }
+
+  // Reuse an open cycle for the same period when ensuring / re-opening Manage.
+  if (body.ensure_current || body.reuse_existing !== false) {
+    const { data: existing } = await ctx.service
+      .from('client_billing_cycles')
+      .select(CYCLE_FIELDS)
+      .eq('client_id', client_id)
+      .eq('period_start', period_start)
+      .neq('status', 'voided')
+      .maybeSingle();
+
+    if (existing) {
+      return NextResponse.json({ cycle: enrichCycle(existing as CycleRow), ensured: true, created: false });
+    }
+  }
+
   const showCount = Math.max(0, Number(body.show_count) || 0);
+  const liveTransferCount = Math.max(0, Number(body.live_transfer_count) || 0);
   const bailedCount = Math.max(0, Number(body.bailed_count) || 0);
   const payPerShow = Number(body.pay_per_show ?? client.pay_per_show) || 0;
   const payPerBailed = Number(body.pay_per_bailed ?? client.pay_per_bailed) || 0;
   const baseAmount = Number(body.base_amount ?? client.mrr) || 0;
   const discount = Number(body.discount) || 0;
   const performanceAmount = computePerformanceAmount(
-    { show_count: showCount, bailed_count: bailedCount },
+    { show_count: showCount, live_transfer_count: liveTransferCount, bailed_count: bailedCount },
     { pay_per_show: payPerShow, pay_per_bailed: payPerBailed },
   );
 
@@ -142,6 +177,7 @@ export async function POST(req: Request) {
     period_end,
     base_amount: baseAmount,
     show_count: showCount,
+    live_transfer_count: liveTransferCount,
     bailed_count: bailedCount,
     pay_per_show: payPerShow,
     pay_per_bailed: payPerBailed,
@@ -159,5 +195,9 @@ export async function POST(req: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ cycle: enrichCycle(data as CycleRow) });
+  return NextResponse.json({
+    cycle: enrichCycle(data as CycleRow),
+    ensured: !!body.ensure_current,
+    created: true,
+  });
 }

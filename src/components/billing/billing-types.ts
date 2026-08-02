@@ -58,6 +58,31 @@ export type ClientBilling = {
   billings: Billing[];
 };
 
+export type BillingCycle = {
+  id: string;
+  client_id: string;
+  period_start: string;
+  period_end: string;
+  base_amount: number;
+  show_count: number;
+  live_transfer_count: number;
+  bailed_count: number;
+  pay_per_show: number;
+  pay_per_bailed: number;
+  performance_amount: number;
+  discount: number;
+  status: string;
+  effective_status: string;
+  report_sent_at: string | null;
+  objection_deadline_at: string | null;
+  dispute_note: string | null;
+  billing_id: string | null;
+  note: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  client: ClientBilling | null;
+};
+
 export type RevenueTagOpts = {
   revenue_type?: string;
   revenue_segment?: string;
@@ -90,9 +115,18 @@ export type ScheduleOpts = {
   method?: string;
 } & RevenueTagOpts;
 
-export type SchedulePromptRow = { kind: "schedule_prompt"; client: ClientBilling };
+export type PendingSetupRow = { kind: "pending_setup"; client: ClientBilling };
+export type CadenceDueRow = {
+  kind: "cadence_due";
+  client: ClientBilling;
+  yearMonth: string;
+  periodStart: string;
+  periodEnd: string;
+  dueDate: string;
+};
 export type RecordedRow = { kind: "recorded"; client: ClientBilling; billing: Billing };
-export type WorkRow = SchedulePromptRow | RecordedRow;
+export type PerfCycleRow = { kind: "perf_cycle"; client: ClientBilling; cycle: BillingCycle; dueDate: string };
+export type WorkRow = PendingSetupRow | CadenceDueRow | RecordedRow | PerfCycleRow;
 
 export const REVENUE_TYPE_OPTIONS = [
   { value: "mrr", label: "MRR / retainer" },
