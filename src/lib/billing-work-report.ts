@@ -96,6 +96,8 @@ export type BillingWorkReport = {
   summary: BillingWorkSummary;
   rows: BillingWorkRow[];
   shows: BillingWorkRow[];
+  /** Lead no-show events in range. */
+  no_shows: BillingWorkRow[];
   live_transfers: BillingWorkRow[];
   lo_bailed: BillingWorkRow[];
   booked: BillingWorkRow[];
@@ -496,6 +498,8 @@ export async function loadBillingWorkReport(
     })
     .sort(sortRows);
 
+  const noShows = noShowEvents.map(e => toRow(e, 'no_show', true, null)).sort(sortRows);
+
   let charges: BillingWorkCharges | null = null;
   if (cycleId) {
     const { data: cycle, error } = await service
@@ -553,6 +557,7 @@ export async function loadBillingWorkReport(
     summary,
     rows: bookedRows,
     shows,
+    no_shows: noShows,
     live_transfers: liveTransfers,
     lo_bailed: loBailed,
     booked: bookedRows,

@@ -11,6 +11,10 @@ export type ClientReportChartFlags = {
   funnel: boolean;
   rateTrends: boolean;
   costTrends: boolean;
+  /** Itemized booked / show / no-show / bail / LT / claimed tables. */
+  itemizedWork: boolean;
+  /** Itemized total leads table with dates. */
+  itemizedLeads: boolean;
 };
 
 export type ClientReportDefaults = {
@@ -55,6 +59,8 @@ const BASE_CHARTS: ClientReportChartFlags = {
   funnel: true,
   rateTrends: true,
   costTrends: false,
+  itemizedWork: false,
+  itemizedLeads: false,
 };
 
 export function getClientReportDefaults(

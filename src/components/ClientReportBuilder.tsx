@@ -22,6 +22,7 @@ import type {
   KpiTimelineBucket,
   MetricsResult,
 } from "@/lib/metrics";
+import type { ClientReportItemized } from "@/lib/client-report-itemized";
 
 type Client = ClientOption & { reporting_type?: ReportingType };
 
@@ -41,6 +42,8 @@ export default function ClientReportBuilder({ clients }: Props) {
     funnel: true,
     rateTrends: true,
     costTrends: false,
+    itemizedWork: false,
+    itemizedLeads: false,
   });
 
   const [metrics, setMetrics] = useState<MetricsResult | null>(null);
@@ -49,6 +52,9 @@ export default function ClientReportBuilder({ clients }: Props) {
   const [trendsGranularity, setTrendsGranularity] = useState<"day" | "week">("day");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [itemized, setItemized] = useState<ClientReportItemized | null>(null);
+  const [itemizedLoading, setItemizedLoading] = useState(false);
+  const [itemizedError, setItemizedError] = useState("");
 
   const selectedClient = useMemo(
     () => clients.find(c => c.id === clientId) ?? null,
@@ -166,6 +172,71 @@ export default function ClientReportBuilder({ clients }: Props) {
       cancelled = true;
     };
   }, [clientId, range.start, range.end, hasDateRange, preset]);
+
+  // Itemized work / leads lists when toggled on.
+  useEffect(() => {
+    const wantWork = charts.itemizedWork;
+    const wantLeads = charts.itemizedLeads;
+    if (!clientId || (!wantWork && !wantLeads)) {
+      setItemized(null);
+      setItemizedError("");
+      setItemizedLoading(false);
+      return;
+    }
+    if (!hasDateRange || !range.start || !range.end) {
+      setItemized(null);
+      setItemizedError("Itemized lists need a date range with a start and end date.");
+      setItemizedLoading(false);
+      return;
+    }
+    if (preset === "custom" && range.start > range.end) {
+      setItemized(null);
+      setItemizedError("Enter a valid custom date range.");
+      return;
+    }
+
+    let cancelled = false;
+    setItemizedLoading(true);
+    setItemizedError("");
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      start_date: range.start,
+      end_date: range.end,
+    });
+    if (wantWork) params.set("include_work", "1");
+    if (wantLeads) params.set("include_leads", "1");
+
+    fetch(`/api/client-report/itemized?${params}`)
+      .then(async r => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error || `Failed to load itemized data (${r.status})`);
+        return body as ClientReportItemized;
+      })
+      .then(data => {
+        if (cancelled) return;
+        setItemized(data);
+        setItemizedLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setItemized(null);
+        setItemizedError(err instanceof Error ? err.message : "Failed to load itemized data");
+        setItemizedLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    clientId,
+    range.start,
+    range.end,
+    hasDateRange,
+    preset,
+    charts.itemizedWork,
+    charts.itemizedLeads,
+  ]);
 
   function toggleMetric(key: keyof MetricsResult) {
     setSelectedMetrics(prev => {
@@ -373,6 +444,39 @@ export default function ClientReportBuilder({ clients }: Props) {
                   )}
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>
+                  Itemized lists
+                </label>
+                <div
+                  className="rounded-lg p-3 space-y-2"
+                  style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <ChartToggle
+                    label="Appointments & outcomes"
+                    checked={charts.itemizedWork}
+                    onChange={v => setCharts(c => ({ ...c, itemizedWork: v }))}
+                    disabled={!hasDateRange}
+                    hint={
+                      !hasDateRange
+                        ? "Needs a date range"
+                        : "Booked (with status), showed, no-showed, LO bailed, live transfers, claimed — with dates"
+                    }
+                  />
+                  <ChartToggle
+                    label="All leads"
+                    checked={charts.itemizedLeads}
+                    onChange={v => setCharts(c => ({ ...c, itemizedLeads: v }))}
+                    disabled={!hasDateRange}
+                    hint={
+                      !hasDateRange
+                        ? "Needs a date range"
+                        : "Every lead in the period with received date, phone, source"
+                    }
+                  />
+                </div>
+              </div>
             </>
           )}
 
@@ -402,8 +506,14 @@ export default function ClientReportBuilder({ clients }: Props) {
           {loading && (
             <span className="text-xs" style={{ color: "#94a3b8" }}>Loading…</span>
           )}
+          {itemizedLoading && !loading && (
+            <span className="text-xs" style={{ color: "#94a3b8" }}>Loading lists…</span>
+          )}
           {error && !loading && (
             <span className="text-xs text-red-400">{error}</span>
+          )}
+          {itemizedError && !itemizedLoading && !error && (
+            <span className="text-xs text-red-400">{itemizedError}</span>
           )}
         </div>
 
@@ -446,6 +556,9 @@ export default function ClientReportBuilder({ clients }: Props) {
                   hasDateRange={hasDateRange}
                   trendsLoading={loading}
                   trendsError={error}
+                  itemized={itemized}
+                  itemizedLoading={itemizedLoading}
+                  itemizedError={itemizedError}
                 />
               </div>
             </div>
@@ -501,6 +614,15 @@ export default function ClientReportBuilder({ clients }: Props) {
           }
 
           .client-report-block {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          .client-report-block table {
+            break-inside: auto;
+          }
+
+          .client-report-block tr {
             break-inside: avoid;
             page-break-inside: avoid;
           }

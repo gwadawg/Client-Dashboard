@@ -1,5 +1,11 @@
 "use client";
 
+import type {
+  ClientReportItemized,
+  ClientReportLeadRow,
+  ClientReportWorkBundle,
+  ClientReportWorkRow,
+} from "@/lib/client-report-itemized";
 import type { MetricsResult, KpiTimelineBucket, CostTrendPoint } from "@/lib/metrics";
 import {
   formatKpiValue,
@@ -19,7 +25,6 @@ type Props = {
   sections: KpiSectionDefinition[];
   charts: ClientReportChartFlags;
   reportingType: ReportingType;
-  /** Show cost chart block only when RM + flag + data available. */
   showCostCharts: boolean;
   kpiSeries?: KpiTimelineBucket[];
   costSeries?: CostTrendPoint[];
@@ -27,7 +32,34 @@ type Props = {
   hasDateRange: boolean;
   trendsLoading?: boolean;
   trendsError?: string;
+  itemized?: ClientReportItemized | null;
+  itemizedLoading?: boolean;
+  itemizedError?: string;
 };
+
+const STATUS_LABEL: Record<string, string> = {
+  show: "Showed",
+  no_show: "No showed",
+  lo_bailed: "LO bailed",
+  live_transfer: "Live transfer",
+  appointment_cancelled: "Cancelled",
+  appointment_rescheduled: "Rescheduled",
+  pending: "Pending",
+  claimed: "Claimed",
+};
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value.slice(0, 10);
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 function formatCardValue(
   card: KpiSectionDefinition["cards"][number],
@@ -37,6 +69,254 @@ function formatCardValue(
   if (!card.secondaryMetric) return primary;
   const secondary = formatKpiValue(metrics[card.secondaryMetric], card.format);
   return `${primary} / ${secondary}`;
+}
+
+function StatusPill({ status }: { status: string }) {
+  const colors: Record<string, { color: string; bg: string }> = {
+    show: { color: "#166534", bg: "#dcfce7" },
+    no_show: { color: "#991b1b", bg: "#fee2e2" },
+    lo_bailed: { color: "#92400e", bg: "#fef3c7" },
+    live_transfer: { color: "#1e40af", bg: "#dbeafe" },
+    appointment_cancelled: { color: "#475569", bg: "#e2e8f0" },
+    appointment_rescheduled: { color: "#075985", bg: "#e0f2fe" },
+    pending: { color: "#92400e", bg: "#fef3c7" },
+    claimed: { color: "#5b21b6", bg: "#ede9fe" },
+  };
+  const s = colors[status] ?? { color: "#475569", bg: "#f1f5f9" };
+  return (
+    <span
+      className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
+      style={{ color: s.color, background: s.bg }}
+    >
+      {STATUS_LABEL[status] ?? status}
+    </span>
+  );
+}
+
+function WorkTable({
+  title,
+  rows,
+  empty,
+  showStatus = false,
+}: {
+  title: string;
+  rows: ClientReportWorkRow[];
+  empty: string;
+  showStatus?: boolean;
+}) {
+  return (
+    <section className="client-report-block space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "#64748b" }}>
+          {title}
+        </h3>
+        <span className="text-xs font-semibold tabular-nums" style={{ color: "#64748b" }}>
+          {rows.length}
+        </span>
+      </div>
+      <div className="rounded-lg overflow-hidden border" style={{ borderColor: "#e2e8f0" }}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: "#f8fafc" }}>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+                Date
+              </th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+                Lead
+              </th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+                Phone
+              </th>
+              {showStatus && (
+                <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+                  Status
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={showStatus ? 4 : 3}
+                  className="px-3 py-6 text-center text-xs"
+                  style={{ color: "#94a3b8" }}
+                >
+                  {empty}
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, i) => (
+                <tr
+                  key={row.id}
+                  style={{
+                    background: i % 2 === 0 ? "#fff" : "#f8fafc",
+                    borderTop: "1px solid #f1f5f9",
+                  }}
+                >
+                  <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap" style={{ color: "#475569" }}>
+                    {formatDateTime(row.date)}
+                  </td>
+                  <td className="px-3 py-2 font-medium" style={{ color: "#0f172a" }}>
+                    {row.lead_name || "—"}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs" style={{ color: "#475569" }}>
+                    {row.lead_phone || "—"}
+                  </td>
+                  {showStatus && (
+                    <td className="px-3 py-2">
+                      <StatusPill status={row.status} />
+                    </td>
+                  )}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function LeadsTable({ rows }: { rows: ClientReportLeadRow[] }) {
+  return (
+    <section className="client-report-block space-y-2 mt-8">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "#64748b" }}>
+          All leads
+        </h2>
+        <span className="text-xs font-semibold tabular-nums" style={{ color: "#64748b" }}>
+          {rows.length}
+        </span>
+      </div>
+      <p className="text-[11px]" style={{ color: "#94a3b8" }}>
+        Every new lead recorded in this period, with date received.
+      </p>
+      <div className="rounded-lg overflow-hidden border" style={{ borderColor: "#e2e8f0" }}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: "#f8fafc" }}>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+                Date
+              </th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+                Lead
+              </th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+                Phone
+              </th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+                Source
+              </th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+                Flags
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-3 py-6 text-center text-xs" style={{ color: "#94a3b8" }}>
+                  No leads in this range.
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, i) => (
+                <tr
+                  key={row.id}
+                  style={{
+                    background: i % 2 === 0 ? "#fff" : "#f8fafc",
+                    borderTop: "1px solid #f1f5f9",
+                  }}
+                >
+                  <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap" style={{ color: "#475569" }}>
+                    {formatDateTime(row.date)}
+                  </td>
+                  <td className="px-3 py-2 font-medium" style={{ color: "#0f172a" }}>
+                    {row.lead_name || "—"}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs" style={{ color: "#475569" }}>
+                    {row.lead_phone || "—"}
+                  </td>
+                  <td className="px-3 py-2 text-xs" style={{ color: "#64748b" }}>
+                    {row.lead_source || "—"}
+                  </td>
+                  <td className="px-3 py-2 text-[10px]" style={{ color: "#64748b" }}>
+                    {[row.is_qualified ? "Qualified" : null, row.is_hot ? "Hot" : null]
+                      .filter(Boolean)
+                      .join(" · ") || "—"}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ItemizedWorkSection({ work }: { work: ClientReportWorkBundle }) {
+  const { summary } = work;
+  return (
+    <section className="client-report-block mt-8 space-y-6">
+      <div>
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "#64748b" }}>
+          Itemized appointments & outcomes
+        </h2>
+        <p className="text-[11px] mt-1" style={{ color: "#94a3b8" }}>
+          Booked leads with status, plus shows, no-shows, LO bails, live transfers, and claimed — with dates.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        {[
+          { label: "Booked", value: `${summary.unique_booked} / ${summary.booked}`, sub: "unique / total" },
+          { label: "Showed", value: String(summary.shows) },
+          { label: "No showed", value: String(summary.no_shows) },
+          { label: "LO bailed", value: String(summary.lo_bailed) },
+          { label: "Live transfers", value: String(summary.live_transfers) },
+          { label: "Claimed", value: String(summary.claimed) },
+        ].map(card => (
+          <div
+            key={card.label}
+            className="rounded-lg px-3 py-2"
+            style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}
+          >
+            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+              {card.label}
+            </p>
+            <p className="text-lg font-bold tabular-nums" style={{ color: "#0f172a" }}>
+              {card.value}
+            </p>
+            {card.sub && (
+              <p className="text-[10px]" style={{ color: "#94a3b8" }}>
+                {card.sub}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-6">
+        <WorkTable
+          title="Booked appointments"
+          rows={work.booked}
+          empty="No appointments booked in this range."
+          showStatus
+        />
+        <WorkTable title="Showed" rows={work.shows} empty="No shows in this range." />
+        <WorkTable title="No showed" rows={work.no_shows} empty="No lead no-shows in this range." />
+        <WorkTable title="LO bailed" rows={work.lo_bailed} empty="No LO bails in this range." />
+        <WorkTable
+          title="Live transfers"
+          rows={work.live_transfers}
+          empty="No live transfers in this range."
+        />
+        <WorkTable title="Claimed" rows={work.claimed} empty="No claimed leads in this range." />
+      </div>
+    </section>
+  );
 }
 
 function LightShowQuality({ metrics }: { metrics: MetricsResult }) {
@@ -178,6 +458,9 @@ export default function ClientReportSheet({
   hasDateRange,
   trendsLoading = false,
   trendsError = "",
+  itemized = null,
+  itemizedLoading = false,
+  itemizedError = "",
 }: Props) {
   const generatedLabel =
     generatedAt ??
@@ -186,6 +469,8 @@ export default function ClientReportSheet({
       month: "long",
       day: "numeric",
     });
+
+  const wantsItemized = charts.itemizedWork || charts.itemizedLeads;
 
   return (
     <article className="client-report-sheet" style={{ background: "#fff", color: "#0f172a" }}>
@@ -225,7 +510,7 @@ export default function ClientReportSheet({
       </header>
 
       {sections.length === 0 ? (
-        <p className="text-sm py-12 text-center" style={{ color: "#94a3b8" }}>
+        <p className="text-sm py-8 text-center" style={{ color: "#94a3b8" }}>
           No KPIs selected. Choose metrics in the builder panel.
         </p>
       ) : (
@@ -316,6 +601,23 @@ export default function ClientReportSheet({
             />
           </div>
         </section>
+      )}
+
+      {wantsItemized && (
+        <>
+          {itemizedLoading && !itemized && (
+            <p className="mt-8 text-sm text-center" style={{ color: "#94a3b8" }}>
+              Loading itemized lists…
+            </p>
+          )}
+          {itemizedError && !itemizedLoading && (
+            <p className="mt-8 text-sm text-center" style={{ color: "#b91c1c" }}>
+              {itemizedError}
+            </p>
+          )}
+          {itemized?.work && charts.itemizedWork && <ItemizedWorkSection work={itemized.work} />}
+          {itemized?.leads && charts.itemizedLeads && <LeadsTable rows={itemized.leads} />}
+        </>
       )}
 
       <footer className="mt-10 pt-4 text-center" style={{ borderTop: "1px solid #e2e8f0" }}>
