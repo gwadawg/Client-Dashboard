@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+import { Barlow_Condensed, IBM_Plex_Sans } from "next/font/google";
 import type {
   ClientReportItemized,
   ClientReportLeadRow,
@@ -13,8 +15,21 @@ import {
   type ReportingType,
 } from "@/lib/kpi-layouts";
 import type { ClientReportChartFlags } from "@/lib/client-report-defaults";
+import { WAIZ } from "@/lib/waiz-brand";
 import RateTrendCharts from "@/components/RateTrendCharts";
 import CostTrendCharts from "@/components/CostTrendCharts";
+
+const barlow = Barlow_Condensed({
+  weight: ["600", "700", "800", "900"],
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const plex = IBM_Plex_Sans({
+  weight: ["300", "400", "500", "600"],
+  subsets: ["latin"],
+  display: "swap",
+});
 
 type Props = {
   clientName: string;
@@ -71,21 +86,32 @@ function formatCardValue(
   return `${primary} / ${secondary}`;
 }
 
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <p
+      className="text-[11px] font-semibold uppercase mb-2"
+      style={{ color: WAIZ.accent, letterSpacing: "0.18em" }}
+    >
+      {children}
+    </p>
+  );
+}
+
 function StatusPill({ status }: { status: string }) {
   const colors: Record<string, { color: string; bg: string }> = {
-    show: { color: "#166534", bg: "#dcfce7" },
-    no_show: { color: "#991b1b", bg: "#fee2e2" },
-    lo_bailed: { color: "#92400e", bg: "#fef3c7" },
-    live_transfer: { color: "#1e40af", bg: "#dbeafe" },
-    appointment_cancelled: { color: "#475569", bg: "#e2e8f0" },
-    appointment_rescheduled: { color: "#075985", bg: "#e0f2fe" },
-    pending: { color: "#92400e", bg: "#fef3c7" },
-    claimed: { color: "#5b21b6", bg: "#ede9fe" },
+    show: { color: WAIZ.navy, bg: "rgba(124,255,122,0.28)" },
+    no_show: { color: "#9B1C1C", bg: "#FEE2E2" },
+    lo_bailed: { color: WAIZ.navy, bg: "rgba(245,200,66,0.25)" },
+    live_transfer: { color: WAIZ.navy, bg: "rgba(79,163,255,0.22)" },
+    appointment_cancelled: { color: WAIZ.mid, bg: WAIZ.light },
+    appointment_rescheduled: { color: WAIZ.royal, bg: "rgba(79,163,255,0.12)" },
+    pending: { color: WAIZ.navy, bg: "rgba(245,200,66,0.2)" },
+    claimed: { color: WAIZ.royal, bg: "rgba(14,47,115,0.1)" },
   };
-  const s = colors[status] ?? { color: "#475569", bg: "#f1f5f9" };
+  const s = colors[status] ?? { color: WAIZ.mid, bg: WAIZ.light };
   return (
     <span
-      className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
+      className="inline-block px-2 py-0.5 rounded-sm text-[10px] font-semibold"
       style={{ color: s.color, background: s.bg }}
     >
       {STATUS_LABEL[status] ?? status}
@@ -107,28 +133,31 @@ function WorkTable({
   return (
     <section className="client-report-block space-y-2">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "#64748b" }}>
+        <h3
+          className={`${barlow.className} text-base font-bold uppercase tracking-wide`}
+          style={{ color: WAIZ.navy }}
+        >
           {title}
         </h3>
-        <span className="text-xs font-semibold tabular-nums" style={{ color: "#64748b" }}>
+        <span className="text-xs font-semibold tabular-nums" style={{ color: WAIZ.mid }}>
           {rows.length}
         </span>
       </div>
-      <div className="rounded-lg overflow-hidden border" style={{ borderColor: "#e2e8f0" }}>
-        <table className="w-full text-sm">
+      <div className="overflow-hidden" style={{ border: `1px solid ${WAIZ.divider}` }}>
+        <table className="w-full text-sm client-report-table">
           <thead>
-            <tr style={{ background: "#f8fafc" }}>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+            <tr style={{ background: WAIZ.navy }}>
+              <th className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: WAIZ.white }}>
                 Date
               </th>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+              <th className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: WAIZ.white }}>
                 Lead
               </th>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+              <th className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: WAIZ.white }}>
                 Phone
               </th>
               {showStatus && (
-                <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+                <th className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: WAIZ.white }}>
                   Status
                 </th>
               )}
@@ -140,7 +169,7 @@ function WorkTable({
                 <td
                   colSpan={showStatus ? 4 : 3}
                   className="px-3 py-6 text-center text-xs"
-                  style={{ color: "#94a3b8" }}
+                  style={{ color: WAIZ.mid, background: WAIZ.white }}
                 >
                   {empty}
                 </td>
@@ -150,17 +179,17 @@ function WorkTable({
                 <tr
                   key={row.id}
                   style={{
-                    background: i % 2 === 0 ? "#fff" : "#f8fafc",
-                    borderTop: "1px solid #f1f5f9",
+                    background: i % 2 === 0 ? WAIZ.white : WAIZ.light,
+                    borderTop: `1px solid ${WAIZ.divider}`,
                   }}
                 >
-                  <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap" style={{ color: "#475569" }}>
+                  <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap" style={{ color: WAIZ.mid }}>
                     {formatDateTime(row.date)}
                   </td>
-                  <td className="px-3 py-2 font-medium" style={{ color: "#0f172a" }}>
+                  <td className="px-3 py-2 font-medium" style={{ color: WAIZ.navy }}>
                     {row.lead_name || "—"}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs" style={{ color: "#475569" }}>
+                  <td className="px-3 py-2 font-mono text-xs" style={{ color: WAIZ.mid }}>
                     {row.lead_phone || "—"}
                   </td>
                   {showStatus && (
@@ -181,42 +210,40 @@ function WorkTable({
 function LeadsTable({ rows }: { rows: ClientReportLeadRow[] }) {
   return (
     <section className="client-report-block space-y-2 mt-8">
+      <SectionLabel>Lead roster</SectionLabel>
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "#64748b" }}>
+        <h2
+          className={`${barlow.className} text-xl font-bold uppercase tracking-wide`}
+          style={{ color: WAIZ.navy }}
+        >
           All leads
         </h2>
-        <span className="text-xs font-semibold tabular-nums" style={{ color: "#64748b" }}>
+        <span className="text-xs font-semibold tabular-nums" style={{ color: WAIZ.mid }}>
           {rows.length}
         </span>
       </div>
-      <p className="text-[11px]" style={{ color: "#94a3b8" }}>
+      <p className="text-[12px] mb-2" style={{ color: WAIZ.mid }}>
         Every new lead recorded in this period, with date received.
       </p>
-      <div className="rounded-lg overflow-hidden border" style={{ borderColor: "#e2e8f0" }}>
-        <table className="w-full text-sm">
+      <div className="overflow-hidden" style={{ border: `1px solid ${WAIZ.divider}` }}>
+        <table className="w-full text-sm client-report-table">
           <thead>
-            <tr style={{ background: "#f8fafc" }}>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
-                Date
-              </th>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
-                Lead
-              </th>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
-                Phone
-              </th>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
-                Source
-              </th>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
-                Flags
-              </th>
+            <tr style={{ background: WAIZ.navy }}>
+              {["Date", "Lead", "Phone", "Source", "Flags"].map(h => (
+                <th
+                  key={h}
+                  className="text-left px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider"
+                  style={{ color: WAIZ.white }}
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-xs" style={{ color: "#94a3b8" }}>
+                <td colSpan={5} className="px-3 py-6 text-center text-xs" style={{ color: WAIZ.mid, background: WAIZ.white }}>
                   No leads in this range.
                 </td>
               </tr>
@@ -225,23 +252,23 @@ function LeadsTable({ rows }: { rows: ClientReportLeadRow[] }) {
                 <tr
                   key={row.id}
                   style={{
-                    background: i % 2 === 0 ? "#fff" : "#f8fafc",
-                    borderTop: "1px solid #f1f5f9",
+                    background: i % 2 === 0 ? WAIZ.white : WAIZ.light,
+                    borderTop: `1px solid ${WAIZ.divider}`,
                   }}
                 >
-                  <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap" style={{ color: "#475569" }}>
+                  <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap" style={{ color: WAIZ.mid }}>
                     {formatDateTime(row.date)}
                   </td>
-                  <td className="px-3 py-2 font-medium" style={{ color: "#0f172a" }}>
+                  <td className="px-3 py-2 font-medium" style={{ color: WAIZ.navy }}>
                     {row.lead_name || "—"}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs" style={{ color: "#475569" }}>
+                  <td className="px-3 py-2 font-mono text-xs" style={{ color: WAIZ.mid }}>
                     {row.lead_phone || "—"}
                   </td>
-                  <td className="px-3 py-2 text-xs" style={{ color: "#64748b" }}>
+                  <td className="px-3 py-2 text-xs" style={{ color: WAIZ.mid }}>
                     {row.lead_source || "—"}
                   </td>
-                  <td className="px-3 py-2 text-[10px]" style={{ color: "#64748b" }}>
+                  <td className="px-3 py-2 text-[10px] font-medium" style={{ color: WAIZ.royal }}>
                     {[row.is_qualified ? "Qualified" : null, row.is_hot ? "Hot" : null]
                       .filter(Boolean)
                       .join(" · ") || "—"}
@@ -261,10 +288,14 @@ function ItemizedWorkSection({ work }: { work: ClientReportWorkBundle }) {
   return (
     <section className="client-report-block mt-8 space-y-6">
       <div>
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "#64748b" }}>
+        <SectionLabel>Detail</SectionLabel>
+        <h2
+          className={`${barlow.className} text-xl font-bold uppercase tracking-wide`}
+          style={{ color: WAIZ.navy }}
+        >
           Itemized appointments & outcomes
         </h2>
-        <p className="text-[11px] mt-1" style={{ color: "#94a3b8" }}>
+        <p className="text-[12px] mt-1" style={{ color: WAIZ.mid }}>
           Booked leads with status, plus shows, no-shows, LO bails, live transfers, and claimed — with dates.
         </p>
       </div>
@@ -280,17 +311,23 @@ function ItemizedWorkSection({ work }: { work: ClientReportWorkBundle }) {
         ].map(card => (
           <div
             key={card.label}
-            className="rounded-lg px-3 py-2"
-            style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}
+            className="px-3 py-3"
+            style={{
+              background: WAIZ.navy,
+              borderRadius: 4,
+            }}
           >
-            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: WAIZ.accent }}>
               {card.label}
             </p>
-            <p className="text-lg font-bold tabular-nums" style={{ color: "#0f172a" }}>
+            <p
+              className={`${barlow.className} text-xl font-extrabold tabular-nums mt-0.5`}
+              style={{ color: WAIZ.white }}
+            >
               {card.value}
             </p>
             {card.sub && (
-              <p className="text-[10px]" style={{ color: "#94a3b8" }}>
+              <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.55)" }}>
                 {card.sub}
               </p>
             )}
@@ -321,29 +358,38 @@ function ItemizedWorkSection({ work }: { work: ClientReportWorkBundle }) {
 
 function LightShowQuality({ metrics }: { metrics: MetricsResult }) {
   const segments = [
-    { key: "shows", label: "Showed", value: metrics.shows, color: "#059669" },
-    { key: "no_shows", label: "No-showed", value: metrics.no_shows, color: "#dc2626" },
-    { key: "lo_bailed", label: "LO bailed", value: metrics.lo_bailed, color: "#d97706" },
-    { key: "cancelled", label: "Cancelled", value: metrics.appointment_cancelled, color: "#94a3b8" },
-    { key: "rescheduled", label: "Rescheduled", value: metrics.appointment_rescheduled, color: "#0284c7" },
-    { key: "pending", label: "Pending", value: metrics.appts_to_take_place, color: "#64748b" },
+    { key: "shows", label: "Showed", value: metrics.shows, color: WAIZ.green },
+    { key: "no_shows", label: "No-showed", value: metrics.no_shows, color: "#EF4444" },
+    { key: "lo_bailed", label: "LO bailed", value: metrics.lo_bailed, color: WAIZ.gold },
+    { key: "cancelled", label: "Cancelled", value: metrics.appointment_cancelled, color: WAIZ.mid },
+    { key: "rescheduled", label: "Rescheduled", value: metrics.appointment_rescheduled, color: WAIZ.accent },
+    { key: "pending", label: "Pending", value: metrics.appts_to_take_place, color: WAIZ.royal },
   ];
   const total = segments.reduce((sum, s) => sum + s.value, 0);
 
   return (
-    <div className="client-report-block rounded-lg border p-5" style={{ borderColor: "#e2e8f0", background: "#fff" }}>
+    <div
+      className="client-report-block p-5"
+      style={{
+        background: WAIZ.white,
+        border: `1px solid ${WAIZ.divider}`,
+        borderLeft: `3px solid ${WAIZ.navy}`,
+      }}
+    >
       <div className="mb-1 flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-semibold" style={{ color: "#0f172a" }}>Appointment outcomes</h3>
-        <span className="text-xs tabular-nums" style={{ color: "#64748b" }}>{total} booked</span>
+        <h3 className={`${barlow.className} text-base font-bold uppercase tracking-wide`} style={{ color: WAIZ.navy }}>
+          Appointment outcomes
+        </h3>
+        <span className="text-xs tabular-nums font-medium" style={{ color: WAIZ.mid }}>{total} booked</span>
       </div>
-      <p className="text-[11px] mb-4" style={{ color: "#64748b" }}>
+      <p className="text-[12px] mb-4" style={{ color: WAIZ.mid }}>
         Where every booked appointment ended up. Net show rate counts only Showed vs. No-showed.
       </p>
       {total === 0 ? (
-        <p className="text-xs py-6 text-center" style={{ color: "#94a3b8" }}>No appointments in this range.</p>
+        <p className="text-xs py-6 text-center" style={{ color: WAIZ.mid }}>No appointments in this range.</p>
       ) : (
         <>
-          <div className="flex w-full h-4 rounded overflow-hidden" style={{ background: "#f1f5f9" }}>
+          <div className="flex w-full h-3 overflow-hidden" style={{ background: WAIZ.light, borderRadius: 2 }}>
             {segments.map(s =>
               s.value > 0 ? (
                 <div
@@ -357,12 +403,12 @@ function LightShowQuality({ metrics }: { metrics: MetricsResult }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
             {segments.map(s => (
               <div key={s.key} className="flex items-start gap-2">
-                <span className="mt-1 w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: s.color }} />
+                <span className="mt-1 w-2.5 h-2.5 flex-shrink-0" style={{ background: s.color, borderRadius: 1 }} />
                 <div className="min-w-0">
-                  <p className="text-[11px] truncate" style={{ color: "#64748b" }}>{s.label}</p>
-                  <p className="text-sm font-semibold tabular-nums" style={{ color: "#0f172a" }}>
+                  <p className="text-[11px] truncate" style={{ color: WAIZ.mid }}>{s.label}</p>
+                  <p className="text-sm font-semibold tabular-nums" style={{ color: WAIZ.navy }}>
                     {s.value}
-                    <span className="text-[10px] font-normal ml-1" style={{ color: "#94a3b8" }}>
+                    <span className="text-[10px] font-normal ml-1" style={{ color: WAIZ.mid }}>
                       {((s.value / total) * 100).toFixed(0)}%
                     </span>
                   </p>
@@ -394,13 +440,22 @@ function LightFunnel({ metrics }: { metrics: MetricsResult }) {
   }
 
   return (
-    <div className="client-report-block rounded-lg border p-5" style={{ borderColor: "#e2e8f0", background: "#fff" }}>
-      <h3 className="text-sm font-semibold mb-1" style={{ color: "#0f172a" }}>Conversion funnel</h3>
-      <p className="text-[11px] mb-4" style={{ color: "#64748b" }}>
+    <div
+      className="client-report-block p-5"
+      style={{
+        background: WAIZ.white,
+        border: `1px solid ${WAIZ.divider}`,
+        borderLeft: `3px solid ${WAIZ.navy}`,
+      }}
+    >
+      <h3 className={`${barlow.className} text-base font-bold uppercase tracking-wide mb-1`} style={{ color: WAIZ.navy }}>
+        Conversion funnel
+      </h3>
+      <p className="text-[12px] mb-4" style={{ color: WAIZ.mid }}>
         Lead → funded. Right column is step conversion from the stage above.
       </p>
       {top === 0 ? (
-        <p className="text-xs py-6 text-center" style={{ color: "#94a3b8" }}>No leads in this range.</p>
+        <p className="text-xs py-6 text-center" style={{ color: WAIZ.mid }}>No leads in this range.</p>
       ) : (
         <div className="space-y-2">
           {stages.map((stage, i) => {
@@ -409,25 +464,26 @@ function LightFunnel({ metrics }: { metrics: MetricsResult }) {
             const isLast = i === stages.length - 1;
             return (
               <div key={stage.label} className="flex items-center gap-3">
-                <span className="text-[11px] w-20 flex-shrink-0 truncate" style={{ color: "#64748b" }}>
+                <span className="text-[11px] w-20 flex-shrink-0 truncate font-medium" style={{ color: WAIZ.mid }}>
                   {stage.label}
                 </span>
-                <div className="flex-1 h-7 rounded relative overflow-hidden" style={{ background: "#f1f5f9" }}>
+                <div className="flex-1 h-7 relative overflow-hidden" style={{ background: WAIZ.light, borderRadius: 2 }}>
                   <div
-                    className="h-full rounded flex items-center px-2"
+                    className="h-full flex items-center px-2"
                     style={{
                       width: `${widthPct}%`,
                       background: isLast
-                        ? "linear-gradient(90deg, #d97706, #f59e0b)"
-                        : "linear-gradient(90deg, #1e40af, #3b82f6)",
+                        ? `linear-gradient(90deg, ${WAIZ.gold}, #E8A820)`
+                        : `linear-gradient(90deg, ${WAIZ.navy}, ${WAIZ.accent})`,
+                      borderRadius: 2,
                     }}
                   >
-                    <span className="text-xs font-semibold tabular-nums text-white">
+                    <span className="text-xs font-semibold tabular-nums" style={{ color: WAIZ.white }}>
                       {stage.value}
                     </span>
                   </div>
                 </div>
-                <span className="text-[11px] w-14 flex-shrink-0 text-right tabular-nums" style={{ color: "#64748b" }}>
+                <span className="text-[11px] w-14 flex-shrink-0 text-right tabular-nums font-medium" style={{ color: WAIZ.mid }}>
                   {prev != null ? stepPct(stage.value, prev) : "100%"}
                 </span>
               </div>
@@ -440,7 +496,7 @@ function LightFunnel({ metrics }: { metrics: MetricsResult }) {
 }
 
 /**
- * Client-clean performance sheet — light document layout for screen preview and print/PDF.
+ * Client-clean performance sheet — Waiz Media branded document for preview & print/PDF.
  */
 export default function ClientReportSheet({
   clientName,
@@ -473,158 +529,208 @@ export default function ClientReportSheet({
   const wantsItemized = charts.itemizedWork || charts.itemizedLeads;
 
   return (
-    <article className="client-report-sheet" style={{ background: "#fff", color: "#0f172a" }}>
-      <header className="client-report-header pb-6 mb-6" style={{ borderBottom: "2px solid #0f172a" }}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3 min-w-0">
-            <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, #1e3a5f, #0f172a)" }}
-              aria-hidden
-            >
-              <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">
-                <path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: "#64748b" }}>
-                {title}
+    <article
+      className={`client-report-sheet ${plex.className}`}
+      style={{ background: WAIZ.white, color: WAIZ.dark }}
+    >
+      {/* Prepared strip */}
+      <div
+        className="client-report-banner text-center px-4 py-2 text-[11px] font-medium"
+        style={{
+          background: WAIZ.royal,
+          color: "rgba(255,255,255,0.9)",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        Prepared by <strong style={{ color: WAIZ.white, fontWeight: 600 }}>{WAIZ.brandName}</strong>
+        {" · "}
+        {generatedLabel}
+      </div>
+
+      {/* Navy hero */}
+      <header
+        className="client-report-hero client-report-header relative overflow-hidden px-6 sm:px-8 py-8 sm:py-10"
+        style={{ background: WAIZ.navy }}
+      >
+        <div
+          className="pointer-events-none absolute"
+          style={{
+            top: -80,
+            right: -80,
+            width: 280,
+            height: 280,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(79,163,255,0.18) 0%, transparent 70%)",
+          }}
+          aria-hidden
+        />
+        <div className="relative z-[1]">
+          <p
+            className="text-[11px] font-semibold uppercase mb-3"
+            style={{ color: WAIZ.accent, letterSpacing: "0.22em" }}
+          >
+            {title || "Performance Report"}
+          </p>
+          <h1
+            className={`${barlow.className} text-3xl sm:text-4xl font-extrabold uppercase tracking-wide leading-none mb-3`}
+            style={{ color: WAIZ.white }}
+          >
+            {clientName}
+          </h1>
+          <p className="text-sm font-light mb-5" style={{ color: "rgba(255,255,255,0.72)" }}>
+            Performance summary for the selected period
+          </p>
+          <div
+            className="flex flex-wrap gap-6 pt-4"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}
+          >
+            <div>
+              <p className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: WAIZ.accent, letterSpacing: "0.14em" }}>
+                Period
               </p>
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight truncate" style={{ color: "#0f172a" }}>
-                {clientName}
-              </h1>
-              <p className="text-sm mt-1" style={{ color: "#475569" }}>
+              <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.92)" }}>
                 {rangeLabel}
               </p>
             </div>
-          </div>
-          <div className="text-right flex-shrink-0 hidden sm:block">
-            <p className="text-[10px] uppercase tracking-wider" style={{ color: "#94a3b8" }}>
-              Prepared
-            </p>
-            <p className="text-xs font-medium" style={{ color: "#475569" }}>
-              {generatedLabel}
-            </p>
+            <div>
+              <p className="text-[10px] font-semibold uppercase mb-0.5" style={{ color: WAIZ.accent, letterSpacing: "0.14em" }}>
+                Prepared
+              </p>
+              <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.92)" }}>
+                {generatedLabel}
+              </p>
+            </div>
           </div>
         </div>
       </header>
 
-      {sections.length === 0 ? (
-        <p className="text-sm py-8 text-center" style={{ color: "#94a3b8" }}>
-          No KPIs selected. Choose metrics in the builder panel.
-        </p>
-      ) : (
-        <div className="space-y-8">
-          {sections.map((section, sectionIndex) => (
-            <section key={section.title} className="client-report-block">
-              {sectionIndex > 0 && (
-                <div className="mb-6" style={{ borderTop: "1px solid #e2e8f0" }} />
-              )}
-              <h2
-                className="text-[11px] font-bold uppercase tracking-[0.12em] mb-3"
-                style={{ color: "#64748b" }}
-              >
-                {section.title}
-              </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                {section.cards.map(card => (
-                  <div
-                    key={`${section.title}-${card.label}`}
-                    className="rounded-lg p-4"
-                    style={{
-                      background: card.accent ? "#fffbeb" : "#f8fafc",
-                      border: `1px solid ${card.accent ? "#fde68a" : "#e2e8f0"}`,
-                    }}
-                  >
-                    <p className="text-[11px] font-medium" style={{ color: "#64748b" }}>
-                      {card.label}
-                    </p>
-                    <p className="text-2xl font-bold tabular-nums mt-1" style={{ color: "#0f172a" }}>
-                      {formatCardValue(card, metrics)}
-                    </p>
-                    {card.valueCaption && (
-                      <p className="text-[10px] mt-0.5 uppercase tracking-wide" style={{ color: "#94a3b8" }}>
-                        {card.valueCaption}
+      <div className="px-6 sm:px-8 py-8" style={{ background: WAIZ.white }}>
+        {sections.length === 0 ? (
+          <p className="text-sm py-8 text-center" style={{ color: WAIZ.mid }}>
+            No KPIs selected. Choose metrics in the builder panel.
+          </p>
+        ) : (
+          <div className="space-y-8">
+            {sections.map(section => (
+              <section key={section.title} className="client-report-block">
+                <SectionLabel>{section.title}</SectionLabel>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {section.cards.map(card => (
+                    <div
+                      key={`${section.title}-${card.label}`}
+                      className="p-4"
+                      style={{
+                        background: card.accent ? "rgba(245,200,66,0.1)" : WAIZ.light,
+                        border: `1px solid ${card.accent ? WAIZ.gold : WAIZ.divider}`,
+                        borderLeft: `3px solid ${card.accent ? WAIZ.gold : WAIZ.navy}`,
+                        borderRadius: 2,
+                      }}
+                    >
+                      <p className="text-[11px] font-medium" style={{ color: WAIZ.mid }}>
+                        {card.label}
                       </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
-
-      {(charts.showQuality || charts.funnel) && (
-        <div className="mt-8 space-y-4">
-          {charts.showQuality && <LightShowQuality metrics={metrics} />}
-          {charts.funnel && <LightFunnel metrics={metrics} />}
-        </div>
-      )}
-
-      {charts.rateTrends && (
-        <section className="client-report-block mt-8">
-          <h2
-            className="text-[11px] font-bold uppercase tracking-[0.12em] mb-3"
-            style={{ color: "#64748b" }}
-          >
-            Rate trends
-          </h2>
-          <div className="client-report-charts rounded-lg border p-4" style={{ borderColor: "#e2e8f0" }}>
-            <RateTrendCharts
-              kpiSeries={kpiSeries}
-              granularity={trendsGranularity}
-              loading={trendsLoading}
-              error={trendsError}
-              hasDateRange={hasDateRange}
-              reportingType={reportingType}
-            />
+                      <p
+                        className={`${barlow.className} text-2xl font-extrabold tabular-nums mt-1 leading-none`}
+                        style={{ color: WAIZ.navy }}
+                      >
+                        {formatCardValue(card, metrics)}
+                      </p>
+                      {card.valueCaption && (
+                        <p className="text-[10px] mt-1.5 uppercase tracking-wide font-medium" style={{ color: WAIZ.mid }}>
+                          {card.valueCaption}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
           </div>
-        </section>
-      )}
+        )}
 
-      {showCostCharts && charts.costTrends && (
-        <section className="client-report-block mt-8">
-          <h2
-            className="text-[11px] font-bold uppercase tracking-[0.12em] mb-3"
-            style={{ color: "#64748b" }}
-          >
-            Cost trends
-          </h2>
-          <div className="client-report-charts rounded-lg border p-4" style={{ borderColor: "#e2e8f0" }}>
-            <CostTrendCharts
-              series={costSeries}
-              granularity={trendsGranularity}
-              loading={trendsLoading}
-              error={trendsError}
-              hasDateRange={hasDateRange}
-            />
+        {(charts.showQuality || charts.funnel) && (
+          <div className="mt-8 space-y-4">
+            <SectionLabel>Visuals</SectionLabel>
+            {charts.showQuality && <LightShowQuality metrics={metrics} />}
+            {charts.funnel && <LightFunnel metrics={metrics} />}
           </div>
-        </section>
-      )}
+        )}
 
-      {wantsItemized && (
-        <>
-          {itemizedLoading && !itemized && (
-            <p className="mt-8 text-sm text-center" style={{ color: "#94a3b8" }}>
-              Loading itemized lists…
-            </p>
-          )}
-          {itemizedError && !itemizedLoading && (
-            <p className="mt-8 text-sm text-center" style={{ color: "#b91c1c" }}>
-              {itemizedError}
-            </p>
-          )}
-          {itemized?.work && charts.itemizedWork && <ItemizedWorkSection work={itemized.work} />}
-          {itemized?.leads && charts.itemizedLeads && <LeadsTable rows={itemized.leads} />}
-        </>
-      )}
+        {charts.rateTrends && (
+          <section className="client-report-block mt-8">
+            <SectionLabel>Trends</SectionLabel>
+            <h2
+              className={`${barlow.className} text-xl font-bold uppercase tracking-wide mb-3`}
+              style={{ color: WAIZ.navy }}
+            >
+              Rate trends
+            </h2>
+            <div
+              className="client-report-charts p-4"
+              style={{ border: `1px solid ${WAIZ.divider}`, background: WAIZ.light, borderRadius: 2 }}
+            >
+              <RateTrendCharts
+                kpiSeries={kpiSeries}
+                granularity={trendsGranularity}
+                loading={trendsLoading}
+                error={trendsError}
+                hasDateRange={hasDateRange}
+                reportingType={reportingType}
+              />
+            </div>
+          </section>
+        )}
 
-      <footer className="mt-10 pt-4 text-center" style={{ borderTop: "1px solid #e2e8f0" }}>
-        <p className="text-[10px] leading-relaxed" style={{ color: "#94a3b8" }}>
-          Figures for the selected period. Generated {generatedLabel}.
-        </p>
-      </footer>
+        {showCostCharts && charts.costTrends && (
+          <section className="client-report-block mt-8">
+            <SectionLabel>Trends</SectionLabel>
+            <h2
+              className={`${barlow.className} text-xl font-bold uppercase tracking-wide mb-3`}
+              style={{ color: WAIZ.navy }}
+            >
+              Cost trends
+            </h2>
+            <div
+              className="client-report-charts p-4"
+              style={{ border: `1px solid ${WAIZ.divider}`, background: WAIZ.light, borderRadius: 2 }}
+            >
+              <CostTrendCharts
+                series={costSeries}
+                granularity={trendsGranularity}
+                loading={trendsLoading}
+                error={trendsError}
+                hasDateRange={hasDateRange}
+              />
+            </div>
+          </section>
+        )}
+
+        {wantsItemized && (
+          <>
+            {itemizedLoading && !itemized && (
+              <p className="mt-8 text-sm text-center" style={{ color: WAIZ.mid }}>
+                Loading itemized lists…
+              </p>
+            )}
+            {itemizedError && !itemizedLoading && (
+              <p className="mt-8 text-sm text-center" style={{ color: "#b91c1c" }}>
+                {itemizedError}
+              </p>
+            )}
+            {itemized?.work && charts.itemizedWork && <ItemizedWorkSection work={itemized.work} />}
+            {itemized?.leads && charts.itemizedLeads && <LeadsTable rows={itemized.leads} />}
+          </>
+        )}
+
+        <footer
+          className="mt-10 pt-5 text-center"
+          style={{ borderTop: `1px solid ${WAIZ.divider}` }}
+        >
+          <p className="text-[11px] leading-relaxed" style={{ color: WAIZ.mid }}>
+            Figures for the selected period · Prepared by {WAIZ.brandName} · {generatedLabel}
+          </p>
+        </footer>
+      </div>
     </article>
   );
 }

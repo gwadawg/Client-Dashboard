@@ -271,10 +271,10 @@ export default function ClientReportBuilder({ clients }: Props) {
     <div className="client-report-builder flex flex-col lg:flex-row gap-0 min-h-[calc(100vh-8rem)]">
       {/* Builder chrome — hidden when printing */}
       <aside
-        className="client-report-builder-panel report-print-hide w-full lg:w-80 xl:w-96 flex-shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r"
+        className="client-report-builder-panel report-print-hide w-full lg:w-80 xl:w-96 flex-shrink-0 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto border-b lg:border-b-0 lg:border-r"
         style={{ borderColor: "rgba(255,255,255,0.08)", background: "#0a1220" }}
       >
-        <div className="p-4 space-y-5">
+        <div className="p-4 space-y-5 relative z-10">
           <div>
             <h2 className="text-sm font-bold" style={{ color: "#f1f5f9" }}>
               Client report builder
@@ -300,6 +300,7 @@ export default function ClientReportBuilder({ clients }: Props) {
               }}
               clients={clients}
               includeLive={false}
+              className="w-full"
             />
             {!clientId && (
               <p className="text-[11px]" style={{ color: "#64748b" }}>
@@ -538,9 +539,9 @@ export default function ClientReportBuilder({ clients }: Props) {
           ) : metrics ? (
             <div
               className="client-report-print-root rounded-xl shadow-2xl overflow-hidden"
-              style={{ background: "#fff", boxShadow: "0 25px 50px rgba(0,0,0,0.35)" }}
+              style={{ background: "#fff", boxShadow: "0 25px 50px rgba(6,26,74,0.25)" }}
             >
-              <div className="p-6 md:p-10">
+              <div className="p-0">
                 <ClientReportSheet
                   clientName={selectedClient.name}
                   title={title.trim() || DEFAULT_REPORT_TITLE}
@@ -606,11 +607,24 @@ export default function ClientReportBuilder({ clients }: Props) {
             padding: 0 !important;
           }
 
-          .client-report-sheet,
-          .client-report-sheet * {
-            color: #0f172a !important;
+          .client-report-sheet {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+          }
+
+          .client-report-sheet * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          /* Preserve navy brand blocks in PDF output */
+          .client-report-banner {
+            background: #0E2F73 !important;
+            color: rgba(255, 255, 255, 0.9) !important;
+          }
+
+          .client-report-hero {
+            background: #061A4A !important;
           }
 
           .client-report-block {

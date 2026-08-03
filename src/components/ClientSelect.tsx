@@ -98,11 +98,11 @@ export default function ClientSelect({
   }
 
   return (
-    <div className={`relative ${className}`} ref={rootRef}>
+    <div className={`relative ${className}`} ref={rootRef} style={{ zIndex: open ? 40 : undefined }}>
       <button
         type="button"
         onClick={() => { if (!open) setActiveIndex(0); setOpen(o => !o); }}
-        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium outline-none transition-colors min-w-[11rem]"
+        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium outline-none transition-colors min-w-[11rem] w-full"
         style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
       >
         <span className="flex-1 text-left truncate">{selectedLabel}</span>
@@ -113,7 +113,7 @@ export default function ClientSelect({
 
       {open && (
         <div
-          className="absolute top-full left-0 mt-1.5 rounded-xl overflow-hidden z-30 w-64"
+          className="absolute top-full left-0 mt-1.5 rounded-xl overflow-hidden z-50 w-64 max-w-[calc(100vw-2rem)]"
           style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}
         >
           <div className="p-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>

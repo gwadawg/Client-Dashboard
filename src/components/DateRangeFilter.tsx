@@ -46,12 +46,12 @@ export default function DateRangeFilter({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="relative" ref={ref}>
+    <div className={`flex flex-wrap items-center gap-2 ${isInline ? "w-full" : ""}`}>
+      <div className={`relative ${isInline ? "w-full" : ""}`} ref={ref}>
         <button
           type="button"
           onClick={() => setOpen(v => !v)}
-          className="flex items-center gap-2 rounded-lg text-sm font-medium transition-colors"
+          className={`flex items-center gap-2 rounded-lg text-sm font-medium transition-colors ${isInline ? "w-full" : ""}`}
           style={
             isInline
               ? { background: "#f59e0b", color: "#fff", padding: "6px 12px", minWidth: "8.5rem" }
@@ -59,14 +59,25 @@ export default function DateRangeFilter({
           }
         >
           <span className="flex-1 text-left">{PRESET_LABELS[preset]}</span>
-          <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5 opacity-70 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
           </svg>
         </button>
         {open && (
           <div
-            className="absolute top-full right-0 mt-1.5 rounded-xl overflow-hidden z-30 w-48"
-            style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}
+            className={[
+              "absolute top-full mt-1.5 rounded-xl z-50 w-48",
+              // Inline (side panels): open rightward so the menu stays inside the panel.
+              // Header: open leftward toward the center of the top bar.
+              isInline ? "left-0 right-auto" : "right-0 left-auto",
+            ].join(" ")}
+            style={{
+              background: "#0f2040",
+              border: "1px solid rgba(255,255,255,0.10)",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+              maxHeight: "min(20rem, 70vh)",
+              overflowY: "auto",
+            }}
           >
             {PRESET_ORDER.map(p => (
               <button
