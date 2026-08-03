@@ -52,7 +52,8 @@ export type PermissionSubject = {
 /** Views that share access (e.g. simulator ↔ dashboard). */
 const VIEW_ALIASES: Record<string, string[]> = {
   kpi_simulator: ["dashboard"],
-  dashboard: ["kpi_simulator", "state_looker"],
+  client_report_builder: ["dashboard"],
+  dashboard: ["kpi_simulator", "state_looker", "client_report_builder"],
   state_looker: ["dashboard"],
   ceo: ["ceo_raw"],
   ceo_raw: ["ceo"],

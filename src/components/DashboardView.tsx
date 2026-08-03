@@ -83,6 +83,7 @@ const CostTrendCharts = lazyTab(() => import("./CostTrendCharts"), "Loading cost
 const RateTrendCharts = lazyTab(() => import("./RateTrendCharts"), "Loading rate trends…");
 const ClientConversionsView = lazyTab(() => import("./ClientConversionsView"));
 const FunnelSimulatorView = lazyTab(() => import("./FunnelSimulatorView"));
+const ClientReportBuilder = lazyTab(() => import("./ClientReportBuilder"));
 const OpsOverview = lazyTab(() => import("./OpsOverview"));
 const CcmCommandDashboard = lazyTab(() => import("./team-dashboards/CcmCommandDashboard"));
 const MediaBuyerCommandDashboard = lazyTab(
@@ -154,6 +155,7 @@ function parseUrlView(searchParams: URLSearchParams): { view: View; tab: string 
 const NAV_ICONS: Record<View, string> = {
   dashboard:     "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
   kpi_simulator: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z",
+  client_report_builder: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
   ceo:           "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6",
   ceo_raw:       "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
   dial_analytics:   "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
@@ -946,6 +948,8 @@ export default function DashboardView({
               ? "overflow-hidden p-6 md:p-8"
               : view === "admin_clients"
                 ? "overflow-auto px-6 md:px-8 pb-6 md:pb-8 pt-0"
+                : view === "client_report_builder"
+                  ? "overflow-hidden p-0"
                 : "overflow-auto p-6 md:p-8"
           }`}
           style={{ background: "#080f1e" }}
@@ -1233,6 +1237,10 @@ export default function DashboardView({
               initialEncoded={searchParams.get("sim")}
               onStateChange={updateSimulatorUrl}
             />
+          )}
+
+          {view === "client_report_builder" && (
+            <ClientReportBuilder clients={clients} />
           )}
 
           {view === "ceo" && <CeoDashboard canViewRevenue={canViewRevenue} mode="dashboard" />}

@@ -21,6 +21,7 @@ export type HubView =
 export type View =
   | "dashboard"
   | "kpi_simulator"
+  | "client_report_builder"
   | "ceo"
   | "ceo_raw"
   | "dial_analytics"
@@ -240,6 +241,7 @@ export const NAV: NavItem[] = [
   { view: "ops_overview",       label: "Ops Dashboard",         group: "Team Dashboards" },
   { view: "dashboard",          label: "Client KPIs",           group: "Clients"      },
   { view: "kpi_simulator",      label: "Funnel Simulator",      group: "Clients"      },
+  { view: "client_report_builder", label: "Client Reports",     group: "Clients"      },
   { view: "dial_analytics",     label: "Dial Analytics",        group: "Clients"      },
   { view: "media_buyer",        label: "Ad Performance",        group: "Clients"      },
   { view: "client_health",      label: "Client Success",        group: "Clients"      },
