@@ -238,7 +238,7 @@ export const KPI_META: Record<KpiKey, { label: string; short: string }> = {
   booking_rate: { label: 'Booking Rate (unique ÷ qualified)', short: 'Booking' },
   hand_raise_rate: { label: 'Hand-raise Rate (unique booked ∪ claimed ∪ LT)', short: 'Hand-raise' },
   lead_booking_rate: { label: 'Booking Rate (unique ÷ total leads)', short: 'Book %' },
-  show_rate: { label: 'Show Rate (true, ex-LO-bail)', short: 'Show' },
+  show_rate: { label: 'Book-to-Conversation (unique booked → spoke)', short: 'Book→spoke' },
   close_rate: { label: 'Close Rate', short: 'Close' },
   cpl: { label: 'Cost Per Lead', short: 'CPL' },
   cpql: { label: 'Cost Per Qualified Lead', short: 'CPQL' },
@@ -293,7 +293,7 @@ const KPI_MIN_DENOMINATOR: Record<KpiKey, number> = {
   booking_rate: 5,
   hand_raise_rate: 5,
   lead_booking_rate: 5,
-  show_rate: 10,
+  show_rate: 5,
   close_rate: 10,
   cpl: 5,
   cpql: 3,
@@ -455,9 +455,14 @@ export function clientHealthSnapshotFromMetrics(
   const grades: KpiGrade[] = [
     grade('lead_to_qualified', lead_to_qualified_pct, formatPct(lead_to_qualified_pct), metrics.new_leads),
     grade('hand_raise_rate', metrics.hand_raise_rate, formatPct(metrics.hand_raise_rate), metrics.qualified_leads),
-    // True (LO-bail-fair) show rate: shows / (shows + no_shows). Denominator is
-    // resolved appointments only, so still-pending recent bookings don't deflate it.
-    grade('show_rate', metrics.net_show_pct, formatPct(metrics.net_show_pct), metrics.shows + metrics.no_shows),
+    // Book-to-conversation: unique booked leads who spoke (show∪claim∪LT) ÷ unique booked.
+    // Denominator is unique bookings — sample enough unique booked, not event show+no-show.
+    grade(
+      'show_rate',
+      metrics.booked_to_conversation_rate,
+      formatPct(metrics.booked_to_conversation_rate),
+      metrics.unique_booked_appointments,
+    ),
     grade('close_rate', close_rate_pct, formatPct(close_rate_pct), metrics.shows),
     grade('cpl', metrics.cpl, formatMoney(metrics.cpl), metrics.new_leads),
     grade('cpql', cpql, formatMoney(cpql), metrics.qualified_leads),
@@ -526,7 +531,12 @@ export function heClientHealthSnapshotFromMetrics(
 
   const grades: KpiGrade[] = [
     grade('hand_raise_rate', heHandRaisePct, formatPct(heHandRaisePct), metrics.new_leads),
-    grade('show_rate', metrics.net_show_pct, formatPct(metrics.net_show_pct), metrics.shows + metrics.no_shows),
+    grade(
+      'show_rate',
+      metrics.booked_to_conversation_rate,
+      formatPct(metrics.booked_to_conversation_rate),
+      metrics.unique_booked_appointments,
+    ),
   ];
 
   const graded = grades.filter(g => g.tier !== 'insufficient');
@@ -612,7 +622,7 @@ function inferConstraint(
     return { constraint: 'call_center', constraint_label: 'Call center — script / booking flow' };
   }
   if (!handRaiseBad && showBad && metrics.booked_appointments >= 3) {
-    return { constraint: 'show_rate', constraint_label: 'Show rate — confirmations / LO prep' };
+    return { constraint: 'show_rate', constraint_label: 'Book-to-conversation — confirmations / rebook / LO prep' };
   }
   if (grades.every(g => g.tier === 'insufficient')) {
     return { constraint: 'insufficient_data', constraint_label: 'Not enough volume to grade' };
@@ -639,7 +649,7 @@ function inferHeConstraint(
     return { constraint: 'call_center', constraint_label: 'Call center — script / booking / LT flow' };
   }
   if (showBad && metrics.booked_appointments >= 3) {
-    return { constraint: 'show_rate', constraint_label: 'Show rate — confirmations / LO prep' };
+    return { constraint: 'show_rate', constraint_label: 'Book-to-conversation — confirmations / rebook / LO prep' };
   }
   if (grades.every(g => g.tier === 'insufficient')) {
     return { constraint: 'insufficient_data', constraint_label: 'Not enough volume to grade' };
@@ -772,20 +782,20 @@ export function buildConstraintGuidance(
     case 'show_rate':
       return {
         ...base,
-        headline: 'Show rate — booked appointments are not showing up',
-        whatsWrong: `Booking is healthy but only ${m.show_pct.toFixed(
+        headline: 'Book-to-conversation — booked leads are not speaking to the LO',
+        whatsWrong: `Booking is healthy but only ${m.booked_to_conversation_rate.toFixed(
           0,
-        )}% of the ${m.booked_appointments} booked appointments showed. The fallout is between booking and the consultation.`,
+        )}% of unique booked leads spoke (${m.unique_booked_converted} of ${m.unique_booked_appointments}). Include show, claim, and live transfer after recovery.`,
         fixSteps: [
           {
             owner: 'Client success (L4)',
             action: 'Audit and strengthen the GHL reminder/confirmation sequence (SMS + call) before each appointment.',
             timebox: '5 business days',
-            successMetric: 'Show rate ≥ 60%',
+            successMetric: 'Book-to-conversation ≥ 70%',
           },
           {
             owner: 'Client success (L4)',
-            action: 'Prefer near-term slots and confirm LO pre-call prep so leads do not go cold.',
+            action: 'Run no-show rebook process aggressively; prefer near-term slots and LO pre-call prep.',
             timebox: '5 business days',
           },
         ],
@@ -857,7 +867,7 @@ function buildHeConstraintGuidance(snapshot: ClientHealthSnapshot): ConstraintGu
   const base = {
     layer: CONSTRAINT_LAYER[snapshot.constraint],
     cpconvMath: `${m.outbound_dials} outbound dials · ${m.new_leads} leads · ${m.unique_hand_raises} unique hand-raises`,
-    crossCheck: `Hand-raise ${heHandRaisePct.toFixed(1)}% (unique ÷ total leads) · Show ${m.net_show_pct.toFixed(0)}% · ${m.outbound_dials} dials`,
+    crossCheck: `Hand-raise ${heHandRaisePct.toFixed(1)}% (unique ÷ total leads) · Book→spoke ${m.booked_to_conversation_rate.toFixed(0)}% · ${m.outbound_dials} dials`,
   };
 
   switch (snapshot.constraint) {
@@ -886,20 +896,20 @@ function buildHeConstraintGuidance(snapshot: ClientHealthSnapshot): ConstraintGu
     case 'show_rate':
       return {
         ...base,
-        headline: 'Show rate — booked appointments are not showing up',
-        whatsWrong: `Hand-raise is healthy but only ${m.net_show_pct.toFixed(
+        headline: 'Book-to-conversation — booked leads are not speaking to the LO',
+        whatsWrong: `Hand-raise is healthy but only ${m.booked_to_conversation_rate.toFixed(
           0,
-        )}% of resolved appointments showed (${m.shows} shows of ${m.shows + m.no_shows} resolved).`,
+        )}% of unique booked leads spoke (${m.unique_booked_converted} of ${m.unique_booked_appointments}).`,
         fixSteps: [
           {
             owner: 'Client success (L4)',
             action: 'Audit and strengthen the GHL reminder/confirmation sequence (SMS + call) before each appointment.',
             timebox: '5 business days',
-            successMetric: 'Net show rate ≥ 70%',
+            successMetric: 'Book-to-conversation ≥ 70%',
           },
           {
             owner: 'Client success (L4)',
-            action: 'Prefer near-term slots and confirm LO pre-call prep so leads do not go cold.',
+            action: 'Run no-show rebook process aggressively; prefer near-term slots and LO pre-call prep.',
             timebox: '5 business days',
           },
         ],
@@ -924,7 +934,7 @@ function buildHeConstraintGuidance(snapshot: ClientHealthSnapshot): ConstraintGu
       return {
         ...base,
         headline: 'Healthy — within KPI range',
-        whatsWrong: `Hand-raise ${heHandRaisePct.toFixed(1)}%, show ${m.net_show_pct.toFixed(
+        whatsWrong: `Hand-raise ${heHandRaisePct.toFixed(1)}%, book→spoke ${m.booked_to_conversation_rate.toFixed(
           0,
         )}% — all at or above target.`,
         fixSteps: [
@@ -933,7 +943,7 @@ function buildHeConstraintGuidance(snapshot: ClientHealthSnapshot): ConstraintGu
             action: 'Log weekly and monitor the recent trend for early slides.',
           },
         ],
-        doNotDo: ['Do not chase volume at the expense of hand-raise or show rate.'],
+        doNotDo: ['Do not chase volume at the expense of hand-raise or book-to-conversation rate.'],
       };
   }
 }
@@ -957,7 +967,7 @@ export const SUCCESS_METRIC_META: Record<
   cpconv: { label: 'CPConv (cost / conv)', lowerIsBetter: true, unit: 'money' },
   cpql: { label: 'Cost per qualified lead', lowerIsBetter: true, unit: 'money' },
   cpl: { label: 'Cost per lead', lowerIsBetter: true, unit: 'money' },
-  show_rate: { label: 'Show rate', lowerIsBetter: false, unit: 'pct' },
+  show_rate: { label: 'Book-to-conversation rate (unique booked → spoke)', lowerIsBetter: false, unit: 'pct' },
   hand_raise_rate: { label: 'Hand-raise rate (unique booked ∪ claimed ∪ LT)', lowerIsBetter: false, unit: 'pct' },
   booking_rate: { label: 'Booking rate (unique ÷ qualified)', lowerIsBetter: false, unit: 'pct' },
   lead_booking_rate: { label: 'Booking rate (unique ÷ total leads)', lowerIsBetter: false, unit: 'pct' },
@@ -981,7 +991,7 @@ export function metricValue(
     case 'cpl':
       return snapshot.metrics.cpl;
     case 'show_rate':
-      return snapshot.metrics.net_show_pct;
+      return snapshot.metrics.booked_to_conversation_rate;
     case 'hand_raise_rate':
       return snapshot.metrics.hand_raise_rate;
     case 'booking_rate':

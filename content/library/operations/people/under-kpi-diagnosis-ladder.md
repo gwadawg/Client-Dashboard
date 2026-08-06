@@ -87,7 +87,7 @@ If any fail → **DATA_HOLD**. Client Success records Why: “data incomplete �
 #### Client Success — book call + north star
 
 - [ ] Gate A Media Buyer + CCM checks done (or blocked with named owner)
-- [ ] North star still red **after** dispositions are clean (RM/DSCR = CPConv; HE = hand-raise and/or show)
+- [ ] North star still red **after** dispositions are clean (RM/DSCR = CPConv; HE = hand-raise and/or **book→spoke**)
 - [ ] If all layer metrics look fine but CPConv is red → suspect **attribution / data_issue**, not quality
 - [ ] Decide: **pass Gate A** or **DATA_HOLD** with Founder/Ops escalate when tracking is broken
 
@@ -102,8 +102,9 @@ If any fail → **DATA_HOLD**. Client Success records Why: “data incomplete �
 | **LO bailed** | Partner LO missed (do not bury as lead no-show) |
 | **Cancelled / rescheduled** | Meeting moved or killed — not left blank |
 | **Pending** | Future or undecided only — **never** used in show % as if it were final |
+| **Claimed / live transfer** | Client spoke outside / via transfer — still counts as “spoke” for **book→spoke** when the lead also booked |
 
-Blank Showed? / blank status on past appointments = **Gate A fail**. Fill them before trusting show rate, conversation count, or CPConv.
+Blank Showed? / blank status on past appointments = **Gate A fail**. Fill them before trusting **book-to-conversation (book→spoke)**, conversation count, or CPConv. Slot net show alone understates recovery and overstates when cancels are ignored.
 
 ---
 
@@ -118,7 +119,9 @@ Blank Showed? / blank status on past appointments = **Gate A fail**. Fill them b
 | L1 Ads | CPL, spend efficiency, audience | Media Buyer |
 | L2 Landing / lead quality | Lead→qual, opt-in, CPQL | Media Buyer |
 | L3 Call center | Hand-raise / booking, dials, script | Call Center Manager |
-| L4 Show / LO | Net show, LO bail, confirmations | Call Center Manager + Client Success |
+| L4 Book→spoke / LO | **Book→spoke** (unique booked who spoke), confirmations, rebook after no-show, LO bail | Call Center Manager + Client Success |
+
+Graded L4 show quality = **book→spoke**, not event `Shows ÷ (Shows + No-shows)`.
 
 4. Ask: does Mr. Waiz’s constraint match the first broken layer?  
    - **Yes** → proceed to Gate C.  

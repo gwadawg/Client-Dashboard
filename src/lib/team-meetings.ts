@@ -79,7 +79,7 @@ export const TEAM_MEETING_SEED: TeamMeetingSeed[] = [
       'Monday floor catch-up (CCM + setters).',
       '',
       'In:',
-      '1. Last week — dials / bookings / show vs targets; what landed, what slipped.',
+      '1. Last week — dials / bookings / book→spoke vs targets; what landed, what slipped.',
       '2. This week — progress to date and the plan for the rest of the week.',
       '3. Account focus — which logos need dial coverage / under-KPI attention.',
       '4. Week schedule — which days each setter works which accounts / blocks.',

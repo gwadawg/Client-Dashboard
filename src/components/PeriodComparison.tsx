@@ -60,11 +60,11 @@ function verdictRows(
         : deltaNum(current.cpconv, prior.cpconv, true),
     },
     {
-      label: "Net show rate",
-      current: `${cm.net_show_pct.toFixed(0)}%`,
-      prior: `${pm.net_show_pct.toFixed(0)}%`,
-      delta: `${(cm.net_show_pct - pm.net_show_pct).toFixed(0)} pts`,
-      improved: deltaNum(cm.net_show_pct, pm.net_show_pct, false),
+      label: "Book-to-conversation",
+      current: `${cm.booked_to_conversation_rate.toFixed(0)}%`,
+      prior: `${pm.booked_to_conversation_rate.toFixed(0)}%`,
+      delta: `${(cm.booked_to_conversation_rate - pm.booked_to_conversation_rate).toFixed(0)} pts`,
+      improved: deltaNum(cm.booked_to_conversation_rate, pm.booked_to_conversation_rate, false),
     },
     {
       label: "Leads",

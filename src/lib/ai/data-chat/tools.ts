@@ -101,6 +101,8 @@ async function fetchFulfillmentMetrics(ctx: AuthContext, filters: DataChatFilter
       live_transfers: m.live_transfers,
       claimed: m.claimed,
       unique_conversations: m.unique_conversations,
+      booked_to_conversation_rate: m.booked_to_conversation_rate,
+      unique_booked_converted: m.unique_booked_converted,
       conversation_rate: m.conversation_rate,
       hand_raise_rate: m.hand_raise_rate,
       closed: m.closed,

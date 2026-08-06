@@ -53,6 +53,8 @@ describe('unique-lead rates (booking, hand-raise, conversation)', () => {
     assert.equal(m.lead_booking_rate, 40);
     assert.equal(m.unique_hand_raises, 2);
     assert.equal(m.lead_hand_raise_rate, 40);
+    assert.equal(m.unique_booked_converted, 0);
+    assert.equal(m.booked_to_conversation_rate, 0);
   });
 
   it('counts a lead once in hand-raise when booked and later claimed', () => {
@@ -77,6 +79,9 @@ describe('unique-lead rates (booking, hand-raise, conversation)', () => {
     assert.equal(m.lead_hand_raise_rate, 40);
     // Unique booked: A → 1 / 5 = 20%
     assert.equal(m.appt_booking_rate, 20);
+    // Booked∩spoken: A only (B is LT without book) → 1 / 1 = 100%
+    assert.equal(m.unique_booked_converted, 1);
+    assert.equal(m.booked_to_conversation_rate, 100);
   });
 
   it('counts a lead once in conversation rate when showed and live-transferred', () => {
@@ -99,6 +104,9 @@ describe('unique-lead rates (booking, hand-raise, conversation)', () => {
     assert.equal(m.unique_conversations, 2);
     assert.equal(m.conversation_rate, 40);
     assert.equal(m.cp_conversation, 100); // 200 / 2 unique
+    // Neither A nor B booked → book-to-conversation n/a
+    assert.equal(m.unique_booked_converted, 0);
+    assert.equal(m.booked_to_conversation_rate, 0);
   });
 
   it('timeline rates also dedupe across days in a week rollup', () => {
@@ -156,6 +164,72 @@ describe('unique-lead rates (booking, hand-raise, conversation)', () => {
     assert.equal(week[0].hand_raise_rate, 50); // same lead still once
     assert.equal(week[0].conversation_rate, 50); // show + LT same lead → once
     assert.equal(week[0].client_conversations, 1);
+    assert.equal(week[0].booked_to_conversation_rate, 100); // A booked and spoke
+  });
+});
+
+describe('booked-to-conversation rate (unique book → spoke to LO)', () => {
+  it('recovers no-show rebook then show as one success', () => {
+    const events: EventRow[] = [
+      lead({ ghl_contact_id: 'A' }),
+      lead({ ghl_contact_id: 'B' }),
+      evt('appointment_booked', 'A'),
+      evt('no_show', 'A'),
+      evt('appointment_booked', 'A'),
+      evt('show', 'A'),
+      evt('appointment_booked', 'B'),
+      evt('appointment_cancelled', 'B'),
+    ];
+    const m = calculateMetrics(events, []);
+    assert.equal(m.unique_booked_appointments, 2);
+    assert.equal(m.unique_booked_converted, 1); // A only
+    assert.equal(m.booked_to_conversation_rate, 50);
+  });
+
+  it('counts book + claim and book + live transfer as spoke', () => {
+    const events: EventRow[] = [
+      lead({ ghl_contact_id: 'A' }),
+      lead({ ghl_contact_id: 'B' }),
+      lead({ ghl_contact_id: 'C' }),
+      evt('appointment_booked', 'A'),
+      evt('claimed', 'A'),
+      evt('appointment_booked', 'B'),
+      evt('live_transfer', 'B'),
+      evt('appointment_booked', 'C'),
+    ];
+    const m = calculateMetrics(events, []);
+    assert.equal(m.unique_booked_appointments, 3);
+    assert.equal(m.unique_booked_converted, 2);
+    assert.equal(m.booked_to_conversation_rate, (2 / 3) * 100);
+  });
+
+  it('does not let spoken-without-book inflate book-to-conversation', () => {
+    const events: EventRow[] = [
+      lead({ ghl_contact_id: 'A' }),
+      lead({ ghl_contact_id: 'B' }),
+      evt('appointment_booked', 'A'),
+      evt('show', 'A'),
+      evt('live_transfer', 'B'), // no book
+      evt('claimed', 'B'),
+    ];
+    const m = calculateMetrics(events, []);
+    assert.equal(m.unique_conversations, 2);
+    assert.equal(m.unique_booked_appointments, 1);
+    assert.equal(m.unique_booked_converted, 1);
+    assert.equal(m.booked_to_conversation_rate, 100);
+  });
+
+  it('book without speak stays in denom only', () => {
+    const events: EventRow[] = [
+      lead({ ghl_contact_id: 'A' }),
+      evt('appointment_booked', 'A'),
+      evt('no_show', 'A'),
+      evt('appointment_cancelled', 'A'),
+    ];
+    const m = calculateMetrics(events, []);
+    assert.equal(m.unique_booked_appointments, 1);
+    assert.equal(m.unique_booked_converted, 0);
+    assert.equal(m.booked_to_conversation_rate, 0);
   });
 });
 

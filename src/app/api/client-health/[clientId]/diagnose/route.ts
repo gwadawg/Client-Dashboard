@@ -142,7 +142,7 @@ export async function POST(
     cpql: healthSnap.cpql,
     cpl: healthSnap.metrics.cpl,
     conversation_yield: healthSnap.conversation_yield,
-    show_rate: healthSnap.metrics.net_show_pct,
+    show_rate: healthSnap.metrics.booked_to_conversation_rate,
     booking_rate: healthSnap.metrics.appt_booking_rate,
     lead_to_qual: healthSnap.lead_to_qualified_pct,
     attention_score: healthSnap.attention_score,

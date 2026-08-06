@@ -20,13 +20,14 @@ type Props = {
   endDate?: string;
 };
 
-type MetricKey = "cpconv" | "cpql" | "cpl" | "net_show_rate" | "booking_rate" | "lead_to_qual";
+type MetricKey = "cpconv" | "cpql" | "cpl" | "booked_to_conversation_rate" | "net_show_rate" | "booking_rate" | "lead_to_qual";
 
 const METRICS: { key: MetricKey; label: string; unit: "money" | "pct"; lowerIsBetter: boolean }[] = [
   { key: "cpconv", label: "CPConv (cost / conv)", unit: "money", lowerIsBetter: true },
   { key: "cpql", label: "CPQL", unit: "money", lowerIsBetter: true },
   { key: "cpl", label: "CPL", unit: "money", lowerIsBetter: true },
-  { key: "net_show_rate", label: "Show rate (true)", unit: "pct", lowerIsBetter: false },
+  { key: "booked_to_conversation_rate", label: "Book→spoke", unit: "pct", lowerIsBetter: false },
+  { key: "net_show_rate", label: "Show rate (slots)", unit: "pct", lowerIsBetter: false },
   { key: "booking_rate", label: "Booking rate", unit: "pct", lowerIsBetter: false },
   { key: "lead_to_qual", label: "Lead-to-qualified", unit: "pct", lowerIsBetter: false },
 ];

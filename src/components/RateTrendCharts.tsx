@@ -24,6 +24,7 @@ type Props = {
 type RateKey =
   | "net_show_rate"
   | "show_rate"
+  | "booked_to_conversation_rate"
   | "lead_to_qual"
   | "hand_raise_rate"
   | "booking_rate"
@@ -43,7 +44,13 @@ const CHARTS: {
   rmOnly?: boolean;
 }[] = [
   { key: "lead_to_qual", title: "Qualified rate", subtitle: "Qualified Leads ÷ Total Leads", color: "#22c55e", rmOnly: true },
-  { key: "net_show_rate", title: "Net show rate", subtitle: "Shows ÷ (Shows + No-Shows)", color: "#34d399" },
+  {
+    key: "booked_to_conversation_rate",
+    title: "Book-to-conversation",
+    subtitle: "Unique (booked ∩ spoke) ÷ unique booked — recovery-inclusive",
+    color: "#34d399",
+  },
+  { key: "net_show_rate", title: "Net show rate (slots)", subtitle: "Shows ÷ (Shows + No-Shows)", color: "#64748b" },
   { key: "show_rate", title: "Show rate (of booked)", subtitle: "Shows ÷ (Shows + No Shows + LO bailed)", color: "#3b82f6" },
   { key: "hand_raise_rate", title: "Hand-raise rate", subtitle: "Unique (Booked ∪ Claimed ∪ LT) ÷ Qualified — conversion benchmark", color: "#f59e0b", rmOnly: true },
   { key: "booking_rate", title: "Booking rate (ref)", subtitle: "Unique booked ÷ Qualified — not graded", color: "#64748b", rmOnly: true },

@@ -122,7 +122,7 @@ export function snapshotToInsert(
     cpql: snap.cpql,
     cpl: m.cpl,
     conversation_yield: snap.conversation_yield,
-    show_rate: m.net_show_pct,
+    show_rate: m.booked_to_conversation_rate,
     booking_rate: m.appt_booking_rate,
     lead_to_qual: snap.lead_to_qualified_pct,
     attention_score: snap.attention_score,
@@ -144,7 +144,7 @@ function minVolumeForMetric(key: SuccessMetricKey, snap: ClientHealthSnapshot): 
     case 'cpl':
       return m.new_leads >= 5;
     case 'show_rate':
-      return m.shows + m.no_shows >= 10;
+      return m.unique_booked_appointments >= 5;
     case 'booking_rate':
     case 'hand_raise_rate':
       return m.qualified_leads >= 5;

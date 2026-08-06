@@ -61,10 +61,22 @@ Run Monday Week Plan and Thursday Commitment Check so every under-KPI account le
 |------|------------------|
 | **Client Success** | Hosts; R/Y/G rollup; client/LO risk; captures commitments in the panel |
 | **Media Buyer** | Reds on CPL / CPQL / opt-in / lead quality |
-| **Call Center Manager** | Reds on hand-raise/booking, show, dial coverage on under-KPI logos |
+| **Call Center Manager** | Reds on unique hand-raise, **book→spoke** (unique booked → spoke to LO), dial coverage on under-KPI logos |
 | **Founder** | Not required in Mon/Thu KPI room; batch-approves Needs Founder in Ops Planning |
 
-North star: RM/DSCR = **CPConv**; HE = **hand-raise and/or show**. Do not chase CPL alone when CPConv is healthy.
+North star: RM/DSCR = **CPConv**; HE = **hand-raise and/or book→spoke**. Do not chase CPL alone when CPConv is healthy.
+
+**Show quality grade (Mr. Waiz / Client Success):** use **Book-to-Conversation**, not slot net show.
+
+```text
+Book→spoke = unique booked leads who eventually spoke (show ∪ claimed ∪ live transfer)
+           ÷ unique booked leads × 100
+```
+
+- Counts on the board: `spoke / unique booked` (e.g. 47/80).
+- Recovery-inclusive: no-show → rebook → show still counts as success for that lead once.
+- Slot Net Show Rate (events Shows÷(Shows+No-shows)) is ops disposition hygiene only — **not** the Mon/Thu graded show metric.
+- When “show” is red: confirmations, rebook process, LO prep — then check claimed / live-transfer path so speak outcomes are logged.
 
 ---
 

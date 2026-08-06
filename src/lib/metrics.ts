@@ -98,6 +98,16 @@ export type MetricsResult = {
    * their earliest appointment_booked in-range (claim-watch / sabotage).
    */
   claimed_after_booked: number;
+  /**
+   * Unique booked leads who also spoke to the LO in-range
+   * (booked ∩ (show ∪ claimed ∪ live_transfer)). Recovery-inclusive.
+   */
+  unique_booked_converted: number;
+  /**
+   * Unique booked leads who eventually spoke ÷ unique booked leads × 100.
+   * Primary calendar→conversation quality KPI (not slot-level net show).
+   */
+  booked_to_conversation_rate: number;
   /** Unique conversations ÷ qualified leads. */
   conversation_rate: number;
   /**
@@ -196,7 +206,7 @@ export function leadIdentityKey(event: {
   return null;
 }
 
-function uniqueLeadCountForEvents(events: EventRow[], eventTypes: Set<string>): number {
+function uniqueLeadKeysForEvents(events: EventRow[], eventTypes: Set<string>): Set<string> {
   const leadKeys = new Set<string>();
   for (const event of events) {
     if (!eventTypes.has(event.event_type)) continue;
@@ -204,7 +214,34 @@ function uniqueLeadCountForEvents(events: EventRow[], eventTypes: Set<string>): 
     if (!key) continue;
     leadKeys.add(key);
   }
-  return leadKeys.size;
+  return leadKeys;
+}
+
+function uniqueLeadCountForEvents(events: EventRow[], eventTypes: Set<string>): number {
+  return uniqueLeadKeysForEvents(events, eventTypes).size;
+}
+
+/** Count keys present in both sets (booked ∩ spoken). */
+export function countLeadKeyIntersection(a: Set<string>, b: Set<string>): number {
+  let count = 0;
+  for (const key of a) {
+    if (b.has(key)) count++;
+  }
+  return count;
+}
+
+const SPOKEN_EVENT_TYPES = new Set(['show', 'claimed', 'live_transfer']);
+const BOOKED_EVENT_TYPES = new Set(['appointment_booked']);
+
+/**
+ * Unique leads with ≥1 appointment_booked who also have ≥1 speak path
+ * (show ∪ claimed ∪ live_transfer) in the same event set.
+ */
+export function countUniqueBookedConverted(events: EventRow[]): number {
+  const booked = uniqueLeadKeysForEvents(events, BOOKED_EVENT_TYPES);
+  if (booked.size === 0) return 0;
+  const spoken = uniqueLeadKeysForEvents(events, SPOKEN_EVENT_TYPES);
+  return countLeadKeyIntersection(booked, spoken);
 }
 
 /** Earliest book vs earliest claim per lead; count when claim is strictly after book. */
@@ -301,22 +338,20 @@ export function calculateMetrics(
   const speed = computeSpeedToLead(speedEvents, availability, timeZone);
   const speed_to_lead_min = speed.median_min ?? 0;
 
-  const unique_booked_leads = uniqueLeadCountForEvents(events, new Set(['appointment_booked']));
+  const unique_booked_leads = uniqueLeadCountForEvents(events, BOOKED_EVENT_TYPES);
   const unique_hand_raise_leads = uniqueLeadCountForEvents(
     events,
     new Set(['appointment_booked', 'live_transfer', 'claimed']),
   );
   // Client conversations: show ∪ claimed ∪ live transfer — one lead once.
-  const unique_conversation_leads = uniqueLeadCountForEvents(
-    events,
-    new Set(['show', 'claimed', 'live_transfer']),
-  );
+  const unique_conversation_leads = uniqueLeadCountForEvents(events, SPOKEN_EVENT_TYPES);
   // Call Center billable: live transfer ∪ show — claimed excluded.
   const billable_conversations = uniqueLeadCountForEvents(
     events,
     new Set(['show', 'live_transfer']),
   );
   const claimed_after_booked = countClaimedAfterBooked(events);
+  const unique_booked_converted = countUniqueBookedConverted(events);
 
   return {
     new_leads: leads,
@@ -337,6 +372,9 @@ export function calculateMetrics(
     unique_conversations: unique_conversation_leads,
     billable_conversations,
     claimed_after_booked,
+    unique_booked_converted,
+    booked_to_conversation_rate:
+      unique_booked_leads > 0 ? (unique_booked_converted / unique_booked_leads) * 100 : 0,
     conversation_rate: qualified_leads > 0 ? (unique_conversation_leads / qualified_leads) * 100 : 0,
     unique_hand_raises: unique_hand_raise_leads,
     hand_raise_rate: qualified_leads > 0 ? (unique_hand_raise_leads / qualified_leads) * 100 : 0,
@@ -567,6 +605,11 @@ export type KpiTimelineBucket = {
   conversation_rate: number | null;
   /** Unique hand-raise leads (booked ∪ claimed ∪ LT) ÷ Qualified Leads. */
   hand_raise_rate: number | null;
+  /**
+   * Unique (booked ∩ spoken) ÷ unique booked within this bucket.
+   * Note: recovery across week boundaries only fully shows on whole-range metrics.
+   */
+  booked_to_conversation_rate: number | null;
   lead_to_qual: number | null;
 };
 
@@ -616,6 +659,10 @@ function finalizeBucket(c: RawCounts): KpiTimelineBucket {
   const dispositioned = c.shows + c.no_shows + c.lo_bailed;
   const uniqueBooked = c.unique_booked_leads.size;
   const uniqueHandRaise = c.unique_hand_raise_leads.size;
+  const uniqueBookedConverted = countLeadKeyIntersection(
+    c.unique_booked_leads,
+    c.unique_conversation_leads,
+  );
   return {
     date: c.date,
     spend: c.spend,
@@ -634,6 +681,8 @@ function finalizeBucket(c: RawCounts): KpiTimelineBucket {
     lead_booking_rate: c.leads > 0 ? (uniqueBooked / c.leads) * 100 : null,
     conversation_rate: c.qualified_leads > 0 ? (uniqueConversations / c.qualified_leads) * 100 : null,
     hand_raise_rate: c.qualified_leads > 0 ? (uniqueHandRaise / c.qualified_leads) * 100 : null,
+    booked_to_conversation_rate:
+      uniqueBooked > 0 ? (uniqueBookedConverted / uniqueBooked) * 100 : null,
     lead_to_qual: c.leads > 0 ? (c.qualified_leads / c.leads) * 100 : null,
   };
 }

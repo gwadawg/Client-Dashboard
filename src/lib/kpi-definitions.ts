@@ -147,15 +147,15 @@ export const KPI_DEFINITIONS: Record<KpiKey, KpiDefinition> = {
   show_rate: {
     key: 'show_rate',
     meaning:
-      'True attendance: of appointments that dispositioned (show or no-show), how many showed. Excludes LO bails.',
-    formula: 'Shows ÷ (Shows + No-shows) × 100',
+      'Of unique people we booked, how many eventually spoke to the LO (show, claimed, or live transfer) — recovery-inclusive after no-show/reschedule.',
+    formula: 'Unique (booked ∩ show∪claimed∪LT) ÷ Unique booked × 100',
     owner: 'ccm',
-    ownerLabel: 'CCM (+ confirmations)',
+    ownerLabel: 'CCM (+ confirmations / rebook)',
     perClientEditable: false,
     fixHints: [
       'Confirmation sequence (SMS / call) before the appointment',
-      'Reschedule path instead of silent no-shows',
-      'LO bails are tracked separately — do not bury them here',
+      'No-show rebook path until they speak or close out',
+      'Claimed and live transfers count as spoke — not calendar show only',
     ],
     librarySlug: null,
   },

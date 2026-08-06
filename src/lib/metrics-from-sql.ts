@@ -41,6 +41,8 @@ export type SqlKpiCounts = {
   unique_conversations: number;
   billable_conversations: number;
   claimed_after_booked: number;
+  /** Unique booked leads who also have show ∪ claimed ∪ live_transfer. */
+  unique_booked_converted: number;
   proposals_made: number;
   submissions_made: number;
   funded_loans: number;
@@ -60,6 +62,8 @@ export type SqlTimelineRow = {
   unique_booked_leads: number;
   unique_hand_raise_leads: number;
   unique_conversation_leads: number;
+  /** Unique booked ∩ spoken within the bucket (when SQL provides it). */
+  unique_booked_converted_leads: number;
 };
 
 function n(value: unknown): number {
@@ -93,6 +97,7 @@ export function emptySqlKpiCounts(): SqlKpiCounts {
     unique_conversations: 0,
     billable_conversations: 0,
     claimed_after_booked: 0,
+    unique_booked_converted: 0,
     proposals_made: 0,
     submissions_made: 0,
     funded_loans: 0,
@@ -127,6 +132,7 @@ export function parseSqlKpiCounts(raw: unknown): SqlKpiCounts | null {
     unique_conversations: n(o.unique_conversations),
     billable_conversations: n(o.billable_conversations),
     claimed_after_booked: n(o.claimed_after_booked),
+    unique_booked_converted: n(o.unique_booked_converted),
     proposals_made: n(o.proposals_made),
     submissions_made: n(o.submissions_made),
     funded_loans: n(o.funded_loans),
@@ -188,6 +194,7 @@ export function metricsFromSqlCounts(
   const unique_conversation_leads = counts.unique_conversations;
   const billable_conversations = counts.billable_conversations;
   const claimed_after_booked = counts.claimed_after_booked;
+  const unique_booked_converted = counts.unique_booked_converted;
   const proposals_made = counts.proposals_made;
   const submissions_made = counts.submissions_made;
   const funded_loans = counts.funded_loans;
@@ -218,6 +225,9 @@ export function metricsFromSqlCounts(
     unique_conversations: unique_conversation_leads,
     billable_conversations,
     claimed_after_booked,
+    unique_booked_converted,
+    booked_to_conversation_rate:
+      unique_booked_leads > 0 ? (unique_booked_converted / unique_booked_leads) * 100 : 0,
     conversation_rate:
       qualified_leads > 0 ? (unique_conversation_leads / qualified_leads) * 100 : 0,
     unique_hand_raises: unique_hand_raise_leads,
@@ -274,6 +284,7 @@ function finalizeTimelineBucket(
   const dispositioned = row.shows + row.no_shows + row.lo_bailed;
   const uniqueBooked = row.unique_booked_leads;
   const uniqueHandRaise = row.unique_hand_raise_leads;
+  const uniqueBookedConverted = row.unique_booked_converted_leads;
   return {
     date: row.bucket_date,
     spend,
@@ -296,6 +307,8 @@ function finalizeTimelineBucket(
       row.qualified_leads > 0 ? (uniqueConversations / row.qualified_leads) * 100 : null,
     hand_raise_rate:
       row.qualified_leads > 0 ? (uniqueHandRaise / row.qualified_leads) * 100 : null,
+    booked_to_conversation_rate:
+      uniqueBooked > 0 ? (uniqueBookedConverted / uniqueBooked) * 100 : null,
     lead_to_qual: row.leads > 0 ? (row.qualified_leads / row.leads) * 100 : null,
   };
 }
@@ -337,6 +350,7 @@ export function parseSqlTimelineRows(raw: unknown): SqlTimelineRow[] {
       unique_booked_leads: n(o.unique_booked_leads),
       unique_hand_raise_leads: n(o.unique_hand_raise_leads),
       unique_conversation_leads: n(o.unique_conversation_leads),
+      unique_booked_converted_leads: n(o.unique_booked_converted_leads),
     };
   });
 }
