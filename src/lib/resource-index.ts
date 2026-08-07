@@ -14,7 +14,7 @@ import {
 } from "@/lib/library-manifest";
 import { rowToDocMeta, type LibraryDocumentRow } from "@/lib/library-processor";
 
-export type LibSection = "playbooks" | "forms" | "links";
+export type LibSection = "playbooks" | "forms" | "links" | "closebot_agents";
 
 export type LinkCategory = "form" | "sop" | "document" | "template" | "other";
 
@@ -273,6 +273,12 @@ export const LIB_SECTION_META: Record<
     description: "External docs, templates, and bookmarks",
     color: "#c084fc",
     tint: "rgba(192,132,252,0.10)",
+  },
+  closebot_agents: {
+    label: "Closebot Agents",
+    description: "AI agents you select when logging prompt changes",
+    color: "#60a5fa",
+    tint: "rgba(96,165,250,0.10)",
   },
 };
 

@@ -99,6 +99,7 @@ const AcquisitionMarketing = lazyTab(() => import("./AcquisitionMarketing"));
 const CeoDashboard = lazyTab(() => import("./CeoDashboard"));
 const AcquisitionSalesReps = lazyTab(() => import("./AcquisitionSalesReps"));
 const ResourcesLibrary = lazyTab(() => import("./ResourcesLibrary"), "Loading library…");
+const ClosebotPromptLog = lazyTab(() => import("./ClosebotPromptLog"), "Loading Closebot log…");
 const CallLibrary = lazyTab(() => import("./CallLibrary"));
 const TeamMeetings = lazyTab(() => import("./TeamMeetings"));
 const AccountWeekPlansHub = lazyTab(() => import("./AccountWeekPlansHub"));
@@ -179,6 +180,7 @@ const NAV_ICONS: Record<View, string> = {
   acquisition_data_explorer: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
   agents:        "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
   resources:        "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253",
+  closebot_log:     "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
   team_meetings:    "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
   account_work:     "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
   call_library:     "M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z",
@@ -1261,7 +1263,26 @@ export default function DashboardView({
 
           {view === "resources" && (
             <Suspense fallback={<p className="text-sm text-slate-500 py-12">Loading library…</p>}>
-              <ResourcesLibrary canManage={isOwner || isAdmin} />
+              <ResourcesLibrary
+                canManage={isOwner || isAdmin}
+                canManageClosebot={
+                  isOwner
+                  || isAdmin
+                  || hasPermission("closebot_log", { isOwner, allowedPermissions })
+                }
+              />
+            </Suspense>
+          )}
+
+          {view === "closebot_log" && (
+            <Suspense fallback={<p className="text-sm text-slate-500 py-12">Loading Closebot log…</p>}>
+              <ClosebotPromptLog
+                canWrite={
+                  isOwner
+                  || isAdmin
+                  || hasPermission("closebot_log", { isOwner, allowedPermissions })
+                }
+              />
             </Suspense>
           )}
 
