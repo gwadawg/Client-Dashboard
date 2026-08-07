@@ -7,6 +7,7 @@ import {
   filterActiveWorkTasks,
   isAccountPlanTaskStatus,
   isAccountWeekPlanStatus,
+  isTaskOverdue,
   softDuplicatePlanWarn,
   weekPlanModeForTemplateSlug,
   weekStartMondayContaining,
@@ -96,5 +97,44 @@ describe('account-week-plans', () => {
     assert.equal(canApprovePlans({ isOwner: true, hasCeoPermission: false }), true);
     assert.equal(canApprovePlans({ isOwner: false, hasCeoPermission: true }), true);
     assert.equal(canApprovePlans({ isOwner: false, hasCeoPermission: false }), false);
+  });
+
+  it('isTaskOverdue only for approved open past scheduled day', () => {
+    assert.equal(
+      isTaskOverdue({
+        planStatus: 'approved',
+        taskStatus: 'open',
+        scheduledFor: '2026-08-01',
+        todayYmd: '2026-08-06',
+      }),
+      true,
+    );
+    assert.equal(
+      isTaskOverdue({
+        planStatus: 'pending',
+        taskStatus: 'open',
+        scheduledFor: '2026-08-01',
+        todayYmd: '2026-08-06',
+      }),
+      false,
+    );
+    assert.equal(
+      isTaskOverdue({
+        planStatus: 'approved',
+        taskStatus: 'done',
+        scheduledFor: '2026-08-01',
+        todayYmd: '2026-08-06',
+      }),
+      false,
+    );
+    assert.equal(
+      isTaskOverdue({
+        planStatus: 'approved',
+        taskStatus: 'open',
+        scheduledFor: '2026-08-06',
+        todayYmd: '2026-08-06',
+      }),
+      false,
+    );
   });
 });

@@ -29,6 +29,13 @@ export type AccountWeekPlan = {
   tasks?: AccountPlanTask[];
 };
 
+export type AccountPlanTaskReviewVerdict =
+  | 'helped'
+  | 'no_change'
+  | 'hurt'
+  | 'unclear'
+  | 'too_early';
+
 export type AccountPlanTask = {
   id: string;
   plan_id: string;
@@ -43,10 +50,34 @@ export type AccountPlanTask = {
   completed_at: string | null;
   completed_by: string | null;
   client_action_log_id: string | null;
+  success_metric: string | null;
+  baseline_value: number | null;
+  outcome_value: number | null;
+  review_notes: string | null;
+  review_verdict: AccountPlanTaskReviewVerdict | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
 };
+
+export const ACCOUNT_PLAN_TASK_REVIEW_VERDICTS: AccountPlanTaskReviewVerdict[] = [
+  'helped',
+  'no_change',
+  'hurt',
+  'unclear',
+  'too_early',
+];
+
+export function isAccountPlanTaskReviewVerdict(
+  v: unknown,
+): v is AccountPlanTaskReviewVerdict {
+  return (
+    typeof v === 'string' &&
+    (ACCOUNT_PLAN_TASK_REVIEW_VERDICTS as string[]).includes(v)
+  );
+}
 
 export const ACCOUNT_WEEK_PLAN_STATUSES: AccountWeekPlanStatus[] = [
   'pending',
@@ -166,3 +197,23 @@ export function canApprovePlans(opts: {
 }): boolean {
   return opts.isOwner || opts.hasCeoPermission;
 }
+
+/** Open work past its scheduled day (call-center calendar). */
+export function isTaskOverdue(opts: {
+  planStatus: AccountWeekPlanStatus;
+  taskStatus: AccountPlanTaskStatus;
+  scheduledFor: string | null | undefined;
+  todayYmd: string;
+}): boolean {
+  if (opts.planStatus !== 'approved') return false;
+  if (opts.taskStatus !== 'open') return false;
+  if (!opts.scheduledFor || !/^\d{4}-\d{2}-\d{2}/.test(opts.scheduledFor)) return false;
+  return opts.scheduledFor.slice(0, 10) < opts.todayYmd;
+}
+
+export type CalendarTaskItem = AccountPlanTask & {
+  plan_status: AccountWeekPlanStatus;
+  client_name: string | null;
+  why: string;
+  overdue: boolean;
+};

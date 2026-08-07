@@ -237,6 +237,10 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
         tactic_tag: optionalText(item.tactic_tag),
         assignee_user_id: optionalText(item.assignee_user_id),
         scheduled_for: scheduled,
+        success_metric:
+          typeof item.success_metric === 'string' && item.success_metric.trim()
+            ? item.success_metric.trim()
+            : null,
         status: 'open',
         sort_order: typeof item.sort_order === 'number' ? item.sort_order : i,
       });

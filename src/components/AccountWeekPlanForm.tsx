@@ -26,6 +26,7 @@ type TaskDraft = {
   tactic_tag: string;
   assignee_user_id: string;
   scheduled_for: string;
+  success_metric: string;
 };
 
 type Props = {
@@ -35,6 +36,20 @@ type Props = {
   compact?: boolean;
 };
 
+const KPI_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Target KPI (optional)" },
+  { value: "cpconv", label: "CPConv" },
+  { value: "cpql", label: "CPQL" },
+  { value: "cpl", label: "CPL" },
+  { value: "show_rate", label: "Show Rate" },
+  { value: "hand_raise_rate", label: "Hand-raise rate" },
+  { value: "booking_rate", label: "Booking rate" },
+  { value: "lead_booking_rate", label: "Lead booking rate" },
+  { value: "lead_to_qual", label: "Lead → qualified" },
+  { value: "conversation_yield", label: "Conversation yield" },
+  { value: "optin_rate", label: "Opt-in rate" },
+];
+
 function emptyTask(): TaskDraft {
   return {
     key: Math.random().toString(36).slice(2),
@@ -43,6 +58,7 @@ function emptyTask(): TaskDraft {
     tactic_tag: "",
     assignee_user_id: "",
     scheduled_for: "",
+    success_metric: "",
   };
 }
 
@@ -112,6 +128,7 @@ export default function AccountWeekPlanForm({
           tactic_tag: t.tactic_tag.trim() || null,
           assignee_user_id: t.assignee_user_id || null,
           scheduled_for: t.scheduled_for || null,
+          success_metric: t.success_metric || null,
           sort_order: i,
         }));
 
@@ -290,8 +307,20 @@ export default function AccountWeekPlanForm({
                 value={t.scheduled_for}
                 onChange={e => updateTask(t.key, { scheduled_for: e.target.value })}
                 style={fieldStyle}
+                title="Due / do-on day"
               />
             </div>
+            <select
+              value={t.success_metric}
+              onChange={e => updateTask(t.key, { success_metric: e.target.value })}
+              style={fieldStyle}
+            >
+              {KPI_OPTIONS.map(o => (
+                <option key={o.value || "none"} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
             <input
               placeholder="Notes (optional)"
               value={t.notes}

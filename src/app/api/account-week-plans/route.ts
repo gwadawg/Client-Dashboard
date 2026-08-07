@@ -4,12 +4,14 @@ import {
   isAuthError,
 } from '@/lib/api-auth';
 import {
+  isTaskOverdue,
   softDuplicatePlanWarn,
   weekStartMondayContaining,
   type AccountPlanTask,
   type AccountWeekPlan,
   type AccountWeekPlanSeverity,
   type AccountWeekPlanStatus,
+  type CalendarTaskItem,
 } from '@/lib/account-week-plans';
 import {
   PLAN_SELECT,
@@ -19,7 +21,9 @@ import {
   requirePlanAccess,
   userCanApprovePlans,
 } from '@/lib/account-week-plans-api';
-import { todayYmdInCallCenterTz } from '@/lib/time';
+import { isSuccessMetricKey } from '@/lib/account-plan-task-kpi';
+import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz, ymdInTimeZone } from '@/lib/time';
+import { addDaysToYmd } from '@/lib/team-meetings';
 
 const SEVERITIES: AccountWeekPlanSeverity[] = ['911', 'below', 'watch'];
 
@@ -50,6 +54,7 @@ type TaskInput = {
   tactic_tag: string | null;
   assignee_user_id: string | null;
   scheduled_for: string | null;
+  success_metric: string | null;
   sort_order: number;
 };
 
@@ -73,16 +78,103 @@ function parseTasks(raw: unknown): TaskInput[] | NextResponse {
       typeof row.scheduled_for === 'string' && /^\d{4}-\d{2}-\d{2}/.test(row.scheduled_for)
         ? row.scheduled_for.slice(0, 10)
         : null;
+    let success_metric: string | null = null;
+    if (row.success_metric != null && row.success_metric !== '') {
+      if (!isSuccessMetricKey(row.success_metric)) {
+        return NextResponse.json(
+          { error: `tasks[${i}].success_metric is invalid` },
+          { status: 400 },
+        );
+      }
+      success_metric = row.success_metric;
+    }
     out.push({
       title,
       notes: optionalText(row.notes),
       tactic_tag: optionalText(row.tactic_tag),
       assignee_user_id: optionalText(row.assignee_user_id),
       scheduled_for: scheduled,
+      success_metric,
       sort_order: typeof row.sort_order === 'number' ? row.sort_order : i,
     });
   }
   return out;
+}
+
+/** Flat schedule tasks for calendar / overdue board. */
+async function loadCalendarTasks(
+  service: Parameters<typeof loadTasksForPlans>[0],
+  opts: {
+    fromYmd?: string | null;
+    toYmd?: string | null;
+    overdueOnly?: boolean;
+  },
+): Promise<CalendarTaskItem[]> {
+  const today = todayYmdInCallCenterTz();
+
+  let taskQ = service
+    .from('account_plan_tasks')
+    .select(TASK_SELECT)
+    .not('scheduled_for', 'is', null)
+    .order('scheduled_for', { ascending: true })
+    .order('sort_order', { ascending: true });
+
+  if (opts.overdueOnly) {
+    taskQ = taskQ.eq('status', 'open').lt('scheduled_for', today);
+  } else {
+    if (opts.fromYmd) taskQ = taskQ.gte('scheduled_for', opts.fromYmd);
+    if (opts.toYmd) taskQ = taskQ.lte('scheduled_for', opts.toYmd);
+  }
+
+  const { data: taskRows, error: taskErr } = await taskQ;
+  if (taskErr) throw new Error(taskErr.message);
+  const tasks = (taskRows ?? []) as AccountPlanTask[];
+  if (!tasks.length) return [];
+
+  const planIds = [...new Set(tasks.map(t => t.plan_id))];
+  const { data: planRows, error: planErr } = await service
+    .from('account_week_plans')
+    .select(PLAN_SELECT)
+    .in('id', planIds);
+  if (planErr) throw new Error(planErr.message);
+  const plans = (planRows ?? []) as AccountWeekPlan[];
+  const planById = new Map(plans.map(p => [p.id, p]));
+
+  const clientIds = [...new Set(tasks.map(t => t.client_id))];
+  const { data: clientRows } = await service
+    .from('clients')
+    .select('id, name')
+    .in('id', clientIds);
+  const nameById = new Map(
+    ((clientRows ?? []) as { id: string; name: string }[]).map(c => [c.id, c.name]),
+  );
+
+  const items: CalendarTaskItem[] = [];
+  for (const t of tasks) {
+    const plan = planById.get(t.plan_id);
+    if (!plan) continue;
+    // Draft plans only show when not overdue-only (calendar can show pending for context)
+    if (opts.overdueOnly && plan.status !== 'approved') continue;
+    if (plan.status === 'rejected') continue;
+
+    const overdue = isTaskOverdue({
+      planStatus: plan.status,
+      taskStatus: t.status,
+      scheduledFor: t.scheduled_for,
+      todayYmd: today,
+    });
+    if (opts.overdueOnly && !overdue) continue;
+
+    items.push({
+      ...t,
+      plan_status: plan.status,
+      client_name: nameById.get(t.client_id) ?? null,
+      why: plan.why,
+      overdue,
+    });
+  }
+
+  return items;
 }
 
 export async function GET(req: Request) {
@@ -97,6 +189,117 @@ export async function GET(req: Request) {
   const clientId = url.searchParams.get('client_id');
   const originMeetingId = url.searchParams.get('origin_meeting_id');
   const includeTasks = url.searchParams.get('include_tasks') !== '0';
+  const fromYmd = url.searchParams.get('from');
+  const toYmd = url.searchParams.get('to');
+
+  // Calendar / schedule: flat tasks for a date range
+  if (view === 'calendar') {
+    if (!fromYmd || !toYmd) {
+      return NextResponse.json(
+        { error: 'from and to (YYYY-MM-DD) are required for view=calendar' },
+        { status: 400 },
+      );
+    }
+    try {
+      const tasks = await loadCalendarTasks(ctx.service, {
+        fromYmd: fromYmd.slice(0, 10),
+        toYmd: toYmd.slice(0, 10),
+      });
+      const overdue = await loadCalendarTasks(ctx.service, { overdueOnly: true });
+      return NextResponse.json({
+        tasks,
+        overdue,
+        today: todayYmdInCallCenterTz(),
+        from: fromYmd.slice(0, 10),
+        to: toYmd.slice(0, 10),
+      });
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : 'Failed to load calendar' },
+        { status: 500 },
+      );
+    }
+  }
+
+  if (view === 'overdue') {
+    try {
+      const overdue = await loadCalendarTasks(ctx.service, { overdueOnly: true });
+      return NextResponse.json({
+        tasks: overdue,
+        overdue,
+        today: todayYmdInCallCenterTz(),
+      });
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : 'Failed to load overdue' },
+        { status: 500 },
+      );
+    }
+  }
+
+  /** Team review: tasks marked done on a call-center calendar day. */
+  if (view === 'deployed') {
+    const date =
+      typeof url.searchParams.get('date') === 'string' &&
+      /^\d{4}-\d{2}-\d{2}/.test(url.searchParams.get('date')!)
+        ? url.searchParams.get('date')!.slice(0, 10)
+        : todayYmdInCallCenterTz();
+
+    // Pull a padded UTC range; filter in app to America/Sao_Paulo day
+    const padStart = addDaysToYmd(date, -1);
+    const padEnd = addDaysToYmd(date, 1);
+
+    const { data: taskRows, error: taskErr } = await ctx.service
+      .from('account_plan_tasks')
+      .select(TASK_SELECT)
+      .eq('status', 'done')
+      .not('completed_at', 'is', null)
+      .gte('completed_at', `${padStart}T00:00:00.000Z`)
+      .lte('completed_at', `${padEnd}T23:59:59.999Z`)
+      .order('completed_at', { ascending: true });
+
+    if (taskErr) return NextResponse.json({ error: taskErr.message }, { status: 500 });
+
+    const allTasks = (taskRows ?? []) as AccountPlanTask[];
+    const tasks = allTasks.filter(t => {
+      if (!t.completed_at) return false;
+      return ymdInTimeZone(new Date(t.completed_at), CALL_CENTER_TIMEZONE) === date;
+    });
+
+    if (!tasks.length) {
+      return NextResponse.json({ date, tasks: [], today: todayYmdInCallCenterTz() });
+    }
+
+    const planIds = [...new Set(tasks.map(t => t.plan_id))];
+    const clientIds = [...new Set(tasks.map(t => t.client_id))];
+    const [{ data: planRows }, { data: clientRows }] = await Promise.all([
+      ctx.service.from('account_week_plans').select(PLAN_SELECT).in('id', planIds),
+      ctx.service.from('clients').select('id, name').in('id', clientIds),
+    ]);
+    const planById = new Map(
+      ((planRows ?? []) as AccountWeekPlan[]).map(p => [p.id, p]),
+    );
+    const nameById = new Map(
+      ((clientRows ?? []) as { id: string; name: string }[]).map(c => [c.id, c.name]),
+    );
+
+    const enriched = tasks.map(t => {
+      const plan = planById.get(t.plan_id);
+      return {
+        ...t,
+        plan_status: plan?.status ?? null,
+        client_name: nameById.get(t.client_id) ?? null,
+        why: plan?.why ?? '',
+        week_start: plan?.week_start ?? null,
+      };
+    });
+
+    return NextResponse.json({
+      date,
+      tasks: enriched,
+      today: todayYmdInCallCenterTz(),
+    });
+  }
 
   let query = ctx.service
     .from('account_week_plans')
@@ -247,6 +450,7 @@ export async function POST(req: Request) {
       tactic_tag: t.tactic_tag,
       assignee_user_id: t.assignee_user_id,
       scheduled_for: t.scheduled_for,
+      success_metric: t.success_metric,
       status: 'open' as const,
       sort_order: t.sort_order,
     }));

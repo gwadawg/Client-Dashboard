@@ -1948,3 +1948,31 @@ create index if not exists account_plan_tasks_status_idx
 create index if not exists account_plan_tasks_open_assignee_day_idx
   on account_plan_tasks (assignee_user_id, scheduled_for)
   where status = 'open';
+
+-- task KPI target + team review (post-deploy)
+alter table account_plan_tasks
+  add column if not exists success_metric text,
+  add column if not exists baseline_value numeric,
+  add column if not exists outcome_value numeric,
+  add column if not exists review_notes text,
+  add column if not exists review_verdict text,
+  add column if not exists reviewed_at timestamptz,
+  add column if not exists reviewed_by uuid references auth.users(id) on delete set null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'account_plan_tasks_review_verdict_check'
+  ) then
+    alter table account_plan_tasks
+      add constraint account_plan_tasks_review_verdict_check check (
+        review_verdict is null or review_verdict in (
+          'helped', 'no_change', 'hurt', 'unclear', 'too_early'
+        )
+      );
+  end if;
+end $$;
+
+create index if not exists account_plan_tasks_completed_at_idx
+  on account_plan_tasks (completed_at desc)
+  where completed_at is not null;
