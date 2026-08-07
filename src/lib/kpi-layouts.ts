@@ -143,14 +143,6 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
         hint: "Unique booked → spoke (show, claimed, or live transfer) ÷ unique booked. Credits recovery after no-show/reschedule. One lead once. Graded Client Success show quality.",
       },
       {
-        label: "Booked who spoke",
-        metric: "unique_booked_converted",
-        secondaryMetric: "unique_booked_appointments",
-        format: "int",
-        valueCaption: "spoke / unique booked",
-        hint: "Count form of Show Rate: unique booked who spoke ÷ unique booked.",
-      },
-      {
         label: "True Show",
         metric: "show_pct",
         format: "pct",
@@ -258,14 +250,6 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
         format: "pct",
         accent: true,
         hint: "Unique booked → spoke (show, claimed, or live transfer) ÷ unique booked. Credits recovery after no-show/reschedule. Graded show quality.",
-      },
-      {
-        label: "Booked who spoke",
-        metric: "unique_booked_converted",
-        secondaryMetric: "unique_booked_appointments",
-        format: "int",
-        valueCaption: "spoke / unique booked",
-        hint: "Count form of Show Rate: unique booked who spoke vs unique booked.",
       },
       {
         label: "True Show",

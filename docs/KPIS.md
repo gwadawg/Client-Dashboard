@@ -92,7 +92,7 @@ The main **Dashboard** view for RM clients shows these sections:
 
 1. **Leads & Pipeline** — Total Leads, Qualified, Hot, Out of State, Claimed, Live Transfers  
 2. **Appointments** — Booked, booking rate, appts to take place, shows, no-shows, LO bailed, cancellations  
-3. **Show Quality & Conversion** — **Show Rate** (primary), booked who spoke counts, **True Show**, Cancel Rate, LO Bail Rate, Conversation Rate  
+3. **Show Quality & Conversion** — **Show Rate** (primary), **True Show**, Cancel Rate, LO Bail Rate, Conversation Rate  
 4. **Acquisition Costs** — Total Spend, CPL, CPQL, CPH, Cost per Appointment, Cost per Conversation  
 5. **Conversions** — Proposals Made, Submissions, Funded Loans, and per-stage cost  
 6. **Trends** — Line charts for CPL, CPQL, and Cost per Conversation over the selected date range  
