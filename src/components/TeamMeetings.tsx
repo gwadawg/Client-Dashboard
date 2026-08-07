@@ -8,7 +8,10 @@ import {
   type TeamMeetingInstanceView,
 } from "@/lib/team-meetings";
 import { commitmentModeForTemplateSlug } from "@/lib/meeting-commitments";
+import { weekPlanModeForTemplateSlug } from "@/lib/account-week-plans";
 import MeetingCommitmentsPanel from "@/components/MeetingCommitmentsPanel";
+import AccountWeekPlanForm from "@/components/AccountWeekPlanForm";
+import AccountWeekPlansWeekList from "@/components/AccountWeekPlansWeekList";
 
 const fieldStyle = {
   background: "#0f2040",
@@ -430,6 +433,33 @@ function TeamMeetingRunbook({
             {row.template.agenda_md || "—"}
           </pre>
         </section>
+
+        {weekPlanModeForTemplateSlug(row.template.slug) === "intake" && (
+          <section
+            className="rounded-lg p-3 space-y-2"
+            style={{ border: "1px solid rgba(56,189,248,0.2)", background: "rgba(14,116,144,0.08)" }}
+          >
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-sky-400/90">
+              Account week plans (new)
+            </h4>
+            {!locked && <AccountWeekPlanForm originMeetingId={row.id} compact />}
+            {locked && (
+              <AccountWeekPlansWeekList originMeetingId={row.id} />
+            )}
+          </section>
+        )}
+
+        {weekPlanModeForTemplateSlug(row.template.slug) === "review" && (
+          <section
+            className="rounded-lg p-3"
+            style={{ border: "1px solid rgba(56,189,248,0.2)", background: "rgba(14,116,144,0.08)" }}
+          >
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-sky-400/90 mb-2">
+              Account week plans (new)
+            </h4>
+            <AccountWeekPlansWeekList />
+          </section>
+        )}
 
         {commitmentMode && (
           <MeetingCommitmentsPanel

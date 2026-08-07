@@ -46,6 +46,7 @@ import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import ClientInterventionHistory from "@/components/ClientInterventionHistory";
+import AccountWeekPlansClientHistory from "@/components/AccountWeekPlansClientHistory";
 import ClientAccountOffersPanel from "@/components/ClientAccountOffersPanel";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
@@ -991,6 +992,10 @@ export default function ClientFile({
               <ClientInterventionHistory clientId={clientId} compact />
             </Section>
 
+            <Section title="Account work (week plans)">
+              <AccountWeekPlansClientHistory clientId={clientId} compact />
+            </Section>
+
             <Section title="Account timeline">
               {activities.length === 0 ? (
                 <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>
@@ -1052,6 +1057,10 @@ export default function ClientFile({
 
             <Section title={`Success interventions`}>
               <ClientInterventionHistory clientId={clientId} />
+            </Section>
+
+            <Section title="Account work (week plans)">
+              <AccountWeekPlansClientHistory clientId={clientId} />
             </Section>
 
             <Section title={`Lifecycle history (${statusHistory.length})`}>

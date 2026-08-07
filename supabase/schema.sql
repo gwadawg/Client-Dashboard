@@ -1866,3 +1866,85 @@ create index if not exists meeting_commitments_approved_meeting_idx
 
 create index if not exists meeting_commitments_last_touched_meeting_idx
   on meeting_commitments (last_touched_meeting_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Account week plans + tasks (Mon KPI work plans, founder approve, person/day)
+-- Spec: Wm-os docs/superpowers/specs/2026-08-06-account-week-plans-design.md
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists account_week_plans (
+  id                  uuid primary key default gen_random_uuid(),
+  client_id           uuid not null references clients(id) on delete cascade,
+  week_start          date not null,
+  why                 text not null default '',
+  severity            text,
+  status              text not null default 'pending',
+  success_signal      text,
+  origin_meeting_id   uuid references team_meeting_instances(id) on delete set null,
+  approved_by         uuid references auth.users(id) on delete set null,
+  approved_at         timestamptz,
+  founder_note        text,
+  created_by          uuid references auth.users(id) on delete set null,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now(),
+  constraint account_week_plans_severity_check check (
+    severity is null or severity in ('911', 'below', 'watch')
+  ),
+  constraint account_week_plans_status_check check (
+    status in ('pending', 'approved', 'rejected')
+  )
+);
+
+create index if not exists account_week_plans_client_week_idx
+  on account_week_plans (client_id, week_start desc);
+
+create index if not exists account_week_plans_status_idx
+  on account_week_plans (status);
+
+create index if not exists account_week_plans_week_status_idx
+  on account_week_plans (week_start, status);
+
+create index if not exists account_week_plans_origin_meeting_idx
+  on account_week_plans (origin_meeting_id)
+  where origin_meeting_id is not null;
+
+create index if not exists account_week_plans_pending_idx
+  on account_week_plans (status)
+  where status = 'pending';
+
+create table if not exists account_plan_tasks (
+  id                     uuid primary key default gen_random_uuid(),
+  plan_id                uuid not null references account_week_plans(id) on delete cascade,
+  client_id              uuid not null references clients(id) on delete cascade,
+  title                  text not null,
+  notes                  text,
+  tactic_tag             text,
+  assignee_user_id       uuid references auth.users(id) on delete set null,
+  scheduled_for          date,
+  status                 text not null default 'open',
+  completion_report      text,
+  completed_at           timestamptz,
+  completed_by           uuid references auth.users(id) on delete set null,
+  client_action_log_id   uuid references client_action_logs(id) on delete set null,
+  sort_order             int not null default 0,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now(),
+  constraint account_plan_tasks_status_check check (
+    status in ('open', 'done', 'cancelled')
+  )
+);
+
+create index if not exists account_plan_tasks_assignee_day_idx
+  on account_plan_tasks (assignee_user_id, scheduled_for);
+
+create index if not exists account_plan_tasks_client_created_idx
+  on account_plan_tasks (client_id, created_at desc);
+
+create index if not exists account_plan_tasks_plan_sort_idx
+  on account_plan_tasks (plan_id, sort_order);
+
+create index if not exists account_plan_tasks_status_idx
+  on account_plan_tasks (status);
+
+create index if not exists account_plan_tasks_open_assignee_day_idx
+  on account_plan_tasks (assignee_user_id, scheduled_for)
+  where status = 'open';

@@ -72,6 +72,8 @@ const VIEW_ALIASES: Record<string, string[]> = {
   ops_overview: ["team_dashboard", "ceo"],
   // Lead seats with Call Library / Team Command / CEO can open Team Meetings.
   team_meetings: ["call_library", "team_dashboard", "team_dashboard_ccm", "ops_overview", "ceo"],
+  // Weekly account plans: anyone in meetings / CS / ops / ceo.
+  account_work: ["team_meetings", "client_health", "ops_overview", "ceo", "team_dashboard"],
 };
 
 /** All keys that satisfy a permission check (hub ↔ legacy children). */
