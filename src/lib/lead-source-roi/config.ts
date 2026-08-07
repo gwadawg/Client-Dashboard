@@ -70,6 +70,10 @@ export const FIELD_TOOLTIPS: Record<
     definition: "Share of leads that became a real conversation.",
     why: "Pickup and answer quality drive cost per conversation.",
   },
+  cost_per_conversation: {
+    definition: "Ad spend ÷ conversations (contacts). Not editable.",
+    why: "What they pay just to talk to someone — lower contact rate = more expensive conversations.",
+  },
   close_rate_pct: {
     definition: "Share of conversations that fund or close.",
     why: "Close is measured on people spoken with — not raw leads.",

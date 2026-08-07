@@ -183,6 +183,8 @@ function SideColumn({
   linkSpend,
   linkCommission,
   includeFees,
+  costPerConversation,
+  contacts,
   onPatch,
 }: {
   title: string;
@@ -193,6 +195,9 @@ function SideColumn({
   linkSpend: boolean;
   linkCommission: boolean;
   includeFees: boolean;
+  /** Derived: ad spend ÷ contacts (not loaded fees). */
+  costPerConversation: number | null;
+  contacts: number;
   onPatch: (key: SideKey, patch: SidePatch) => void;
 }) {
   const spendLocked = isWaiz && linkSpend;
@@ -245,6 +250,44 @@ function SideColumn({
         caption={isWaiz ? rangeCaption("contact_rate_pct") : "Of leads that became a conversation"}
         onChange={(v) => onPatch(sideKey, { contact_rate_pct: v })}
       />
+
+      {/* Derived — not editable; live from spend ÷ contacts */}
+      <div
+        className="rounded-lg px-3 py-2.5"
+        style={{
+          background: isWaiz ? "rgba(245,158,11,0.1)" : "rgba(148,163,184,0.08)",
+          border: isWaiz
+            ? "1px solid rgba(245,158,11,0.28)"
+            : "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center text-xs font-medium" style={{ color: LABEL }}>
+            Cost per conversation
+            <FieldTooltip fieldKey="cost_per_conversation" />
+          </span>
+          <span
+            className="text-[10px] uppercase tracking-wide shrink-0"
+            style={{ color: MUTED }}
+          >
+            Auto
+          </span>
+        </div>
+        <p
+          className="text-2xl font-semibold tabular-nums mt-1"
+          style={{ color: isWaiz ? AMBER : TEXT }}
+        >
+          {formatMoney(costPerConversation)}
+        </p>
+        <p className="text-[10px] mt-1 leading-snug" style={{ color: MUTED }}>
+          Ad spend ÷ contacts
+          {contacts > 0
+            ? ` · ${formatNum(contacts)} conversations`
+            : " · need contact rate & leads for this"}
+          . Not editable.
+        </p>
+      </div>
+
       <NumField
         label="Close rate"
         fieldKey="close_rate_pct"
@@ -343,7 +386,6 @@ function deltaNum(n: number, digits = 1): string {
 
 function formatOutcomes(
   o: SideOutcomes,
-  includeFees: boolean,
 ): {
   contacts: string;
   deals: string;
@@ -355,9 +397,8 @@ function formatOutcomes(
   return {
     contacts: formatNum(o.contacts),
     deals: formatNum(o.deals),
-    cpc: formatMoney(
-      includeFees ? o.cost_per_conversation_loaded : o.cost_per_conversation,
-    ),
+    // Always media cost to talk — spend ÷ contacts (not program fee).
+    cpc: formatMoney(o.cost_per_conversation),
     net: formatMoney(o.net_commission),
     mult: formatMult(o.roi_multiple),
     pct: formatPct(o.roi_pct),
@@ -390,11 +431,13 @@ export default function LeadSourceRoiCalculator({
   }, [state, onStateChange]);
 
   const result = useMemo(() => simulateCompare(state), [state]);
-  const currentF = formatOutcomes(result.current, state.include_fees);
-  const waizF = formatOutcomes(result.waiz, state.include_fees);
-  const cpcLabel = state.include_fees
-    ? "Cost / conversation (loaded)"
-    : "Cost / conversation";
+  const currentF = formatOutcomes(result.current);
+  const waizF = formatOutcomes(result.waiz);
+
+  const cpcCurrent = result.current.cost_per_conversation;
+  const cpcWaiz = result.waiz.cost_per_conversation;
+  const cpcSavings =
+    cpcCurrent != null && cpcWaiz != null ? cpcCurrent - cpcWaiz : null;
 
   function onPatch(key: SideKey, patch: SidePatch) {
     setState((s) => patchSide(s, key, patch));
@@ -512,36 +555,75 @@ export default function LeadSourceRoiCalculator({
         </div>
       </div>
 
-      {/* Hero delta */}
-      <div
-        className="rounded-xl px-5 py-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2"
-        style={{
-          background: "linear-gradient(135deg, rgba(34,197,94,0.08), rgba(10,22,40,0.9))",
-          border: `1px solid ${deltaNet >= 0 ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"}`,
-        }}
-      >
-        <div>
+      {/* Hero: net $ + cost to talk */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div
+          className="rounded-xl px-5 py-4"
+          style={{
+            background: "linear-gradient(135deg, rgba(34,197,94,0.08), rgba(10,22,40,0.9))",
+            border: `1px solid ${deltaNet >= 0 ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)"}`,
+          }}
+        >
           <p className="text-xs uppercase tracking-wide" style={{ color: MUTED }}>
             Delta net commission (With Waiz − Current)
           </p>
           <p className="text-3xl md:text-4xl font-semibold tabular-nums mt-1" style={{ color: heroColor }}>
             {deltaMoney(deltaNet)}
           </p>
-        </div>
-        <div className="text-right text-xs space-y-0.5" style={{ color: LABEL }}>
-          <p>
+          <p className="text-xs mt-2" style={{ color: LABEL }}>
             Deals Δ{" "}
             <span className="tabular-nums font-medium" style={{ color: TEXT }}>
               {deltaNum(result.delta.deals)}
             </span>
-          </p>
-          <p>
+            {" · "}
             ROI Δ{" "}
             <span className="tabular-nums font-medium" style={{ color: TEXT }}>
               {result.delta.roi_multiple != null
                 ? `${result.delta.roi_multiple >= 0 ? "+" : ""}${result.delta.roi_multiple.toFixed(2)}×`
                 : "—"}
             </span>
+          </p>
+        </div>
+
+        <div
+          className="rounded-xl px-5 py-4"
+          style={{
+            background: "linear-gradient(135deg, rgba(59,130,246,0.1), rgba(10,22,40,0.9))",
+            border: "1px solid rgba(59,130,246,0.28)",
+          }}
+        >
+          <div className="flex items-center gap-1">
+            <p className="text-xs uppercase tracking-wide" style={{ color: MUTED }}>
+              Cost to talk (per conversation)
+            </p>
+            <FieldTooltip fieldKey="cost_per_conversation" />
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[10px] uppercase" style={{ color: MUTED }}>
+                Current
+              </p>
+              <p className="text-2xl font-semibold tabular-nums" style={{ color: TEXT }}>
+                {formatMoney(cpcCurrent)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase" style={{ color: MUTED }}>
+                With Waiz
+              </p>
+              <p className="text-2xl font-semibold tabular-nums" style={{ color: AMBER }}>
+                {formatMoney(cpcWaiz)}
+              </p>
+            </div>
+          </div>
+          <p className="text-xs mt-2" style={{ color: LABEL }}>
+            {cpcSavings == null
+              ? "Ad spend ÷ contacts — updates when spend or contact rate changes."
+              : cpcSavings > 0
+                ? `They save ${formatMoney(cpcSavings)} per conversation vs their source.`
+                : cpcSavings < 0
+                  ? `Waiz is ${formatMoney(Math.abs(cpcSavings))} higher per conversation on these inputs.`
+                  : "Same cost per conversation on these inputs."}
           </p>
         </div>
       </div>
@@ -557,6 +639,8 @@ export default function LeadSourceRoiCalculator({
           linkSpend={state.link_spend}
           linkCommission={state.link_commission}
           includeFees={state.include_fees}
+          costPerConversation={result.current.cost_per_conversation}
+          contacts={result.current.contacts}
           onPatch={onPatch}
         />
         <SideColumn
@@ -568,6 +652,8 @@ export default function LeadSourceRoiCalculator({
           linkSpend={state.link_spend}
           linkCommission={state.link_commission}
           includeFees={state.include_fees}
+          costPerConversation={result.waiz.cost_per_conversation}
+          contacts={result.waiz.contacts}
           onPatch={onPatch}
         />
       </div>
@@ -596,21 +682,27 @@ export default function LeadSourceRoiCalculator({
           delta={deltaNum(result.delta.contacts)}
         />
         <OutcomeRow
+          label="Cost per conversation"
+          current={currentF.cpc}
+          waiz={waizF.cpc}
+          delta={
+            cpcSavings != null
+              ? cpcSavings > 0
+                ? `−${formatMoney(cpcSavings)} saved`
+                : cpcSavings < 0
+                  ? `+${formatMoney(Math.abs(cpcSavings))}`
+                  : "$0"
+              : "—"
+          }
+          range="Auto · ad spend ÷ contacts (not editable)"
+          emphasize
+        />
+        <OutcomeRow
           label="Deals"
           current={currentF.deals}
           waiz={waizF.deals}
           delta={deltaNum(result.delta.deals)}
           range={`Range: ${formatNum(result.waiz_worst.deals)} – ${formatNum(result.waiz_best.deals)}`}
-        />
-        <OutcomeRow
-          label={cpcLabel}
-          current={currentF.cpc}
-          waiz={waizF.cpc}
-          delta={
-            result.delta.cost_per_conversation != null
-              ? deltaMoney(result.delta.cost_per_conversation)
-              : "—"
-          }
         />
         <OutcomeRow
           label="Net commission"
