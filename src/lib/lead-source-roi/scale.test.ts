@@ -1,11 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import {
-  buildContactRateCurve,
-  buildSpendLadder,
-  computeEffort,
-  DEFAULT_EFFORT,
-} from "./scale";
+import { buildContactRateCurve, buildSpendLadder } from "./scale";
 import { createDefaultState } from "./state";
 
 describe("buildSpendLadder", () => {
@@ -29,27 +24,17 @@ describe("buildSpendLadder", () => {
   });
 });
 
-describe("computeEffort", () => {
-  it("lower contact rate means more leads and touches per conversation", () => {
-    const low = computeEffort(1000, 10, DEFAULT_EFFORT);
-    const high = computeEffort(1000, 40, DEFAULT_EFFORT);
-    assert.equal(low.leadsPerConversation, 10);
-    assert.equal(high.leadsPerConversation, 2.5);
-    assert.ok(low.touchesPerConversation! > high.touchesPerConversation!);
-    assert.ok(low.hoursPerConversation! > high.hoursPerConversation!);
-  });
-
-  it("returns nulls when contact rate is zero", () => {
-    const e = computeEffort(500, 0);
-    assert.equal(e.leadsPerConversation, null);
-    assert.equal(e.conversations, 0);
-  });
-});
-
 describe("buildContactRateCurve", () => {
   it("cost per conversation falls as contact rate rises", () => {
-    const pts = buildContactRateCurve(10_000, 200, DEFAULT_EFFORT, 10, 40, 10);
+    const pts = buildContactRateCurve(10_000, 200, 10, 40, 10);
     assert.equal(pts.length, 4);
     assert.ok(pts[0].costPerConversation! > pts[3].costPerConversation!);
+    // 10% of 200 leads = 20 conversations → $500 each.
+    assert.equal(pts[0].costPerConversation, 500);
+  });
+
+  it("returns null cost when no leads convert", () => {
+    const pts = buildContactRateCurve(10_000, 0, 10, 20, 10);
+    assert.equal(pts[0].costPerConversation, null);
   });
 });

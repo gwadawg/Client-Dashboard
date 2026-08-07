@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Area,
   Bar,
@@ -14,17 +14,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  buildContactRateCurve,
-  buildSpendLadder,
-  computeEffort,
-  DEFAULT_EFFORT,
-  type EffortAssumptions,
-} from "@/lib/lead-source-roi/scale";
+import { buildContactRateCurve, buildSpendLadder } from "@/lib/lead-source-roi/scale";
 import type { CompareState } from "@/lib/lead-source-roi/types";
 
 const PANEL_BG = "linear-gradient(140deg, #0f2040 0%, #0b1830 60%, #0a1628 100%)";
-const INPUT_BG = "#0f2040";
 const MUTED = "#64748b";
 const LABEL = "#94a3b8";
 const TEXT = "#e2e8f0";
@@ -50,7 +43,10 @@ function compactMoney(n: number): string {
   if (!Number.isFinite(n)) return "—";
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `$${Math.round(n / 1_000)}k`;
+  // Below $10k a tick can land off a round thousand — keep a decimal so
+  // $1,200 doesn't render as "$1k" next to $1,600 rendering as "$2k".
+  if (abs >= 10_000) return `$${Math.round(n / 1_000)}k`;
+  if (abs >= 1_000) return `$${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
   return `$${Math.round(n)}`;
 }
 
@@ -189,56 +185,7 @@ function SpendTick({
   );
 }
 
-/** Proportional bar comparing outreach grind between the two sides. */
-function EffortBar({ ratio, color }: { ratio: number; color: string }) {
-  return (
-    <div
-      className="mt-3 h-1.5 rounded-full overflow-hidden"
-      style={{ background: "rgba(148,163,184,0.15)" }}
-    >
-      <div
-        className="h-full rounded-full transition-all duration-500"
-        style={{ width: `${Math.min(100, Math.max(3, ratio * 100))}%`, background: color }}
-      />
-    </div>
-  );
-}
-
-function MiniNumber({
-  label,
-  value,
-  onChange,
-  suffix,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-  suffix: string;
-}) {
-  return (
-    <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTED }}>
-      {label}
-      <input
-        type="number"
-        min={0}
-        step={1}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
-        className="w-14 py-1 px-2 rounded-md text-xs tabular-nums outline-none"
-        style={{
-          background: INPUT_BG,
-          border: "1px solid rgba(255,255,255,0.12)",
-          color: TEXT,
-        }}
-      />
-      {suffix}
-    </label>
-  );
-}
-
 export default function ScaleScenariosSection({ state }: { state: CompareState }) {
-  const [effort, setEffort] = useState<EffortAssumptions>(DEFAULT_EFFORT);
-
   const ladder = useMemo(() => buildSpendLadder(state), [state]);
   const ladderData = useMemo(
     () =>
@@ -261,49 +208,21 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
     [ladder],
   );
 
-  const currentEffort = useMemo(
-    () => computeEffort(state.current.leads, state.current.contact_rate_pct, effort),
-    [state.current.leads, state.current.contact_rate_pct, effort],
-  );
-  const waizEffort = useMemo(
-    () => computeEffort(state.waiz.leads, state.waiz.contact_rate_pct, effort),
-    [state.waiz.leads, state.waiz.contact_rate_pct, effort],
-  );
-
+  const { ad_spend: curveSpend, leads: curveLeads } = state.current;
   const curve = useMemo(
     () =>
-      buildContactRateCurve(
-        state.current.ad_spend,
-        state.current.leads,
-        effort,
-      ).map((p) => ({
+      buildContactRateCurve(curveSpend, curveLeads).map((p) => ({
         label: `${p.contactRatePct}%`,
         pct: p.contactRatePct,
         "Cost / conversation": p.costPerConversation
           ? Math.round(p.costPerConversation)
           : null,
-        "Touches / conversation": p.touchesPerConversation
-          ? Math.round(p.touchesPerConversation)
-          : null,
       })),
-    [state.current.ad_spend, state.current.leads, effort],
+    [curveSpend, curveLeads],
   );
 
   const topRung = ladder[ladder.length - 1];
   const baseRung = ladder.find((r) => r.multiplier === 1) ?? ladder[0];
-  const hoursSaved =
-    currentEffort.hoursPerConversation != null && waizEffort.hoursPerConversation != null
-      ? currentEffort.hoursPerConversation - waizEffort.hoursPerConversation
-      : null;
-  const maxTouches = Math.max(
-    currentEffort.touchesPerConversation ?? 0,
-    waizEffort.touchesPerConversation ?? 0,
-    1,
-  );
-  const touchesSaved =
-    currentEffort.touchesPerConversation != null && waizEffort.touchesPerConversation != null
-      ? currentEffort.touchesPerConversation - waizEffort.touchesPerConversation
-      : null;
 
   return (
     <div className="space-y-4">
@@ -404,23 +323,7 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
       <Panel
         eyebrow="The hidden cost of low pickup"
         title="Cheap leads you never reach are the expensive ones"
-        blurb="Hold spend flat and slide the contact rate. Cost per conversation and the dials/texts to get one live person move together — poor pickup taxes both your budget and your calendar."
-        right={
-          <div className="flex flex-wrap gap-3 shrink-0">
-            <MiniNumber
-              label="Touches / lead"
-              value={effort.touchesPerLead}
-              suffix=""
-              onChange={(v) => setEffort((e) => ({ ...e, touchesPerLead: v }))}
-            />
-            <MiniNumber
-              label="Min / touch"
-              value={effort.minutesPerTouch}
-              suffix="min"
-              onChange={(v) => setEffort((e) => ({ ...e, minutesPerTouch: v }))}
-            />
-          </div>
-        }
+        blurb="Hold spend flat and slide the contact rate. The fewer leads you actually reach, the more every conversation costs you — same budget, fewer shots at closing."
       >
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_INITIAL}>
@@ -453,23 +356,9 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
                 tickFormatter={(v) => compactMoney(Number(v))}
                 width={54}
               />
-              <YAxis
-                yAxisId="touch"
-                orientation="right"
-                tick={{ fill: MUTED, fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-                width={40}
-              />
               <Tooltip
                 cursor={{ stroke: GRID }}
-                content={
-                  <ChartTooltip
-                    formatter={(v, name) =>
-                      name.startsWith("Cost") ? money(v) : `${num(v, 0)} touches`
-                    }
-                  />
-                }
+                content={<ChartTooltip formatter={(v) => money(v)} />}
               />
               <Legend
                 verticalAlign="top"
@@ -484,15 +373,6 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
                 stroke="#ef4444"
                 strokeWidth={2.5}
                 fill="url(#costArea)"
-              />
-              <Line
-                yAxisId="touch"
-                type="monotone"
-                dataKey="Touches / conversation"
-                stroke="#38bdf8"
-                strokeWidth={2}
-                strokeDasharray="5 4"
-                dot={false}
               />
               <ReferenceDot
                 yAxisId="cost"
@@ -526,102 +406,6 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
         <p className="text-[11px] mt-2" style={{ color: MUTED }}>
           Dots mark where each side sits today — grey is their source, amber is Waiz.
         </p>
-      </Panel>
-
-      <Panel
-        eyebrow="Return on your time"
-        title="Less dialing and texting for every live conversation"
-        blurb="Contact rate is a labor number as much as a cost number. Better pickup means fewer touches burned before someone answers — the same rep hours produce more real conversations."
-      >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="rounded-xl p-4" style={{ background: "rgba(10,22,40,0.7)", border: BORDER }}>
-            <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: MUTED }}>
-              Their source
-            </p>
-            <p className="text-3xl font-semibold tabular-nums" style={{ color: TEXT }}>
-              {num(currentEffort.touchesPerConversation, 0)}
-            </p>
-            <p className="text-[11px] mt-1" style={{ color: LABEL }}>
-              touches per conversation
-            </p>
-            <p className="text-[11px] mt-2" style={{ color: MUTED }}>
-              {num(currentEffort.leadsPerConversation)} leads worked ·{" "}
-              {num(currentEffort.hoursPerConversation)} hrs each
-            </p>
-            <EffortBar
-              ratio={(currentEffort.touchesPerConversation ?? 0) / maxTouches}
-              color={SLATE_LINE}
-            />
-          </div>
-
-          <div
-            className="rounded-xl p-4"
-            style={{
-              background: "linear-gradient(140deg, rgba(245,158,11,0.16), rgba(10,22,40,0.85))",
-              border: "1px solid rgba(245,158,11,0.3)",
-            }}
-          >
-            <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: AMBER }}>
-              With Waiz
-            </p>
-            <p className="text-3xl font-semibold tabular-nums" style={{ color: AMBER }}>
-              {num(waizEffort.touchesPerConversation, 0)}
-            </p>
-            <p className="text-[11px] mt-1" style={{ color: LABEL }}>
-              touches per conversation
-            </p>
-            <p className="text-[11px] mt-2" style={{ color: MUTED }}>
-              {num(waizEffort.leadsPerConversation)} leads worked ·{" "}
-              {num(waizEffort.hoursPerConversation)} hrs each
-            </p>
-            <EffortBar
-              ratio={(waizEffort.touchesPerConversation ?? 0) / maxTouches}
-              color={AMBER}
-            />
-          </div>
-
-          <div className="rounded-xl p-4" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)" }}>
-            <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: GOOD }}>
-              You get back
-            </p>
-            <p className="text-3xl font-semibold tabular-nums" style={{ color: GOOD }}>
-              {touchesSaved != null && touchesSaved > 0 ? num(touchesSaved, 0) : "—"}
-            </p>
-            <p className="text-[11px] mt-1" style={{ color: LABEL }}>
-              fewer touches per conversation
-            </p>
-            <p className="text-[11px] mt-2" style={{ color: MUTED }}>
-              {hoursSaved != null && hoursSaved > 0
-                ? `${num(hoursSaved)} hrs saved for every conversation you land`
-                : "Raise the Waiz contact rate to see the time saved"}
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-3">
-          <StatChip
-            label="Conversations · their source"
-            value={num(currentEffort.conversations)}
-            sub="at current leads"
-          />
-          <StatChip
-            label="Conversations · Waiz"
-            value={num(waizEffort.conversations)}
-            accent={AMBER}
-            sub="same budget"
-          />
-          <StatChip
-            label="Extra conversations"
-            value={num(waizEffort.conversations - currentEffort.conversations)}
-            accent={GOOD}
-            sub="more shots at closing"
-          />
-          <StatChip
-            label="Assumption"
-            value={`${effort.touchesPerLead} × ${effort.minutesPerTouch}m`}
-            sub="touches per lead × minutes each"
-          />
-        </div>
       </Panel>
     </div>
   );
