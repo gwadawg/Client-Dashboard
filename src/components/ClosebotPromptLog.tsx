@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ClosebotAgentsSection from "@/components/ClosebotAgentsSection";
 import {
   CLOSEBOT_LOG_STATUSES,
   CLOSEBOT_STATUS_META,
@@ -93,6 +94,7 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [agentsOpen, setAgentsOpen] = useState(false);
 
   const activeAgents = useMemo(() => agents.filter((a) => a.is_active), [agents]);
 
@@ -236,17 +238,56 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
             What we changed, why, and whether it worked — tied to each Closebot agent.
           </p>
         </div>
-        {canWrite && (
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={openCreate}
+            onClick={() => setAgentsOpen((v) => !v)}
             className="rounded-lg px-4 py-2.5 text-sm font-semibold"
-            style={{ background: "#3b82f6", color: "#fff" }}
+            style={{
+              border: "1px solid rgba(255,255,255,0.12)",
+              color: "#e2e8f0",
+              background: agentsOpen ? "rgba(96,165,250,0.12)" : "transparent",
+            }}
           >
-            Log update
+            {agentsOpen ? "Hide agents" : `Agents (${agents.length})`}
           </button>
-        )}
+          {canWrite && (
+            <button
+              type="button"
+              onClick={openCreate}
+              className="rounded-lg px-4 py-2.5 text-sm font-semibold"
+              style={{ background: "#3b82f6", color: "#fff" }}
+              disabled={activeAgents.length === 0}
+              title={
+                activeAgents.length === 0
+                  ? "Add an agent first"
+                  : undefined
+              }
+            >
+              Log update
+            </button>
+          )}
+        </div>
       </div>
+
+      {(agentsOpen || agents.length === 0) && (
+        <div
+          className="rounded-xl p-4"
+          style={{
+            background: "rgba(255,255,255,0.02)",
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          <ClosebotAgentsSection
+            canManage={canWrite}
+            embedded
+            onAgentsChanged={() => {
+              void loadAgents();
+              setAgentsOpen(true);
+            }}
+          />
+        </div>
+      )}
 
       {/* Filters */}
       <div
@@ -316,22 +357,11 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
         </p>
       ) : agents.length === 0 ? (
         <div
-          className="rounded-xl px-6 py-14 text-center"
+          className="rounded-xl px-6 py-10 text-center"
           style={{ border: "1px dashed rgba(255,255,255,0.1)" }}
         >
           <p className="text-sm font-medium" style={{ color: "#94a3b8" }}>
-            Add Closebot agents first
-          </p>
-          <p className="text-xs mt-2" style={{ color: "#64748b" }}>
-            Manage agents in{" "}
-            <a
-              href="/dashboard?view=resources&lib=closebot_agents"
-              className="underline"
-              style={{ color: "#60a5fa" }}
-            >
-              Resource Library → Closebot Agents
-            </a>
-            .
+            Add a Closebot agent above to start logging prompt updates.
           </p>
         </div>
       ) : logs.length === 0 ? (
@@ -518,13 +548,19 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
                   </option>
                 ))}
               </select>
-              <a
-                href="/dashboard?view=resources&lib=closebot_agents"
-                className="text-[11px] underline"
-                style={{ color: "#60a5fa" }}
-              >
-                Manage agents → Library
-              </a>
+              {canWrite && (
+                <button
+                  type="button"
+                  className="text-[11px] underline"
+                  style={{ color: "#60a5fa" }}
+                  onClick={() => {
+                    setModalOpen(false);
+                    setAgentsOpen(true);
+                  }}
+                >
+                  Manage agents
+                </button>
+              )}
             </label>
 
             <label className="block space-y-1">

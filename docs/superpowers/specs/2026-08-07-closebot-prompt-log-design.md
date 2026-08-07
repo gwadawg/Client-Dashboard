@@ -4,8 +4,7 @@ Date: 2026-08-07
 Status: Implemented (ready for QA)  
 Surfaces:
 
-- Ops → **Closebot Log** (timeline of prompt changes)
-- Resource Library → **Closebot Agents** (managed agent directory)
+- Team → **Closebot Log** (timeline of prompt changes + agent directory)
 
 ## Problem
 
@@ -19,7 +18,7 @@ already try a fix for this? On which agent? Did it work?”
 
 1. Log every Closebot prompt update with date, full prompt text, reason,
    problem solved, and reference links (tickets/bugs).
-2. Manage Closebot agents natively in the Resource Library; every log
+2. Manage Closebot agents on the same Closebot Log page; every log
    row **relates** to an agent via foreign key.
 3. Track outcome with a simple status: open · watching · worked · did
    not work · reverted.
@@ -43,13 +42,13 @@ already try a fix for this? On which agent? Did it work?”
 |-------|----------|
 | Scope | Closebot AI prompt changes only |
 | Approach | Flat log table + timeline UI (not version chain, not generic changelog) |
-| Agents | Dedicated `closebot_agents` directory, managed in Resource Library |
+| Agents | Dedicated `closebot_agents` directory, managed on Closebot Log page |
 | Log ↔ agent | `agent_id` FK; no free-text agent name on logs |
 | Archive | Soft-archive agents (`is_active = false`); do not cascade-delete |
 | Outcome | Immediate status on create/edit (not review-window workflow) |
 | Statuses | `open` · `watching` · `worked` · `did_not_work` · `reverted` |
 | Default status | `watching` |
-| Placement | Ops sidebar entry for logs; Library section for agents |
+| Placement | Team → Closebot Log (agents + timeline on one page) |
 | Permissions | Dedicated view key + write for ops writers (see Auth) |
 | Prompt storage | Full pasted prompt on each log row |
 | Reference links | `text[]` of `http(s)` URLs |
@@ -58,12 +57,8 @@ already try a fix for this? On which agent? Did it work?”
 ## Architecture
 
 ```text
-Resource Library
-  └── Closebot Agents (CRUD directory)
-         ▲
-         │ agent_id (FK)
-         │
-Ops → Closebot Log
+Team → Closebot Log
+  ├── Agents (CRUD directory on same page)
   ├── Filters (agent, status, date range)
   ├── Timeline (newest first)
   └── Log update form (select agent → details → prompt → status)
@@ -123,24 +118,21 @@ Indexes (Postgres best practices):
 
 Library playbooks are markdown content (`artifact_type` includes
 `prompt` for SOPs/playbooks). Agents are **lookup options** that need
-stable IDs for FKs, soft archive, and fast dropdowns. A small directory
-table under the Library **UI** is the right home; content model stays
-separate.
+stable IDs for FKs, soft archive, and fast dropdowns. They live in a
+directory table managed on the **Closebot Log** page (not Resource Library).
 
 ## UI
 
-### Resource Library — Closebot Agents
+### Team — Closebot Log
 
-New section alongside Playbooks / Forms / Links:
+**Header:** title + one-line purpose + **Agents** toggle + **Log update** CTA.
+
+**Agents panel** (same page; open by default when empty, otherwise toggle):
 
 - List: name, description, active/archived, optional log count
 - Add agent: name (required), description (optional); derive `slug` from name with uniqueness suffix if needed
 - Edit name/description; archive / reactivate
 - Writers with log write permission (or admin/owner) may manage agents
-
-### Ops — Closebot Log
-
-**Header:** title + one-line purpose + **Log update** CTA.
 
 **Filters:** agent (any | id) · status · optional date range on `changed_at`.
 
@@ -160,7 +152,7 @@ Expand / detail:
 
 **Form (modal or drawer):**
 
-1. Agent (active only; link “Manage agents → Library”)
+1. Agent (active only; “Manage agents” expands agents panel on the same page)
 2. Live date (`changed_at`)
 3. Problem this solves
 4. Why we changed it
@@ -171,7 +163,7 @@ Expand / detail:
 
 Empty states:
 
-- No agents → prompt to create first agent in Library
+- No agents → agents panel shown; prompt to add first agent
 - No logs → “Log your first prompt change”
 - Archived agent on historical row → name + “Archived” badge
 
@@ -191,10 +183,9 @@ layout).
 
 Wire:
 
-- `src/lib/nav.ts` — new Ops `View` (e.g. `closebot_log`)
+- `src/lib/nav.ts` — new Team `View` (`closebot_log`)
 - `permissions` / UserManager — assignable like other views
-- `DashboardView` — lazy-load the log surface
-- Library section — agents CRUD behind write (or admin)
+- `DashboardView` — lazy-load the log surface (agents + timeline)
 
 Session enforced via existing `api-auth` patterns (no direct browser
 writes with public keys).
@@ -249,14 +240,14 @@ Base under `/api/closebot/…`. All mutations require write; GETs require view.
 
 ## Primary flows
 
-1. **Add agent** — Library → Closebot Agents → name (+ description) → active.
-2. **Log prompt change** — Ops → Log update → agent, date, problem, why, links, prompt → status `watching`.
+1. **Add agent** — Closebot Log → Agents → name (+ description) → active.
+2. **Log prompt change** — Log update → agent, date, problem, why, links, prompt → status `watching`.
 3. **Ticket follow-up** — open entry → set status to worked / did_not_work / reverted + outcome notes (+ optional link).
 4. **Review history** — filter by agent and/or status; expand prior prompts for comparison.
 
 ## Acceptance tests
 
-1. Writer creates an agent in Library; it appears in the log form dropdown.
+1. Writer creates an agent on Closebot Log; it appears in the log form dropdown.
 2. Writer creates a log; it appears at the top of the timeline with correct agent and status.
 3. Inactive agent is hidden from new-log dropdown; historical rows still show agent name + archived badge.
 4. Filters by agent, status, and date range return expected subsets.

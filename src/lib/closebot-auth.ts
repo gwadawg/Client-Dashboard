@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import type { AuthContext } from "@/lib/api-auth";
-import { requireAnyPermission, requirePermission } from "@/lib/api-auth";
+import { requirePermission } from "@/lib/api-auth";
 import { hasPermission } from "@/lib/permissions";
 
-/** View timeline / list logs. */
+/** View timeline / list logs / list agents. */
 export function requireClosebotLogView(ctx: AuthContext): NextResponse | null {
   return requirePermission(ctx, "closebot_log");
 }
@@ -26,7 +26,7 @@ export function requireClosebotLogWrite(ctx: AuthContext): NextResponse | null {
   return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 }
 
-/** List agents from Library (resources) or Ops log form. */
+/** List agents for log UI (same tab as Closebot Log). */
 export function requireClosebotAgentsRead(ctx: AuthContext): NextResponse | null {
-  return requireAnyPermission(ctx, ["closebot_log", "resources"]);
+  return requireClosebotLogView(ctx);
 }

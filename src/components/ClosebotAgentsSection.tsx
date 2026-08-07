@@ -16,9 +16,17 @@ const inputStyle: React.CSSProperties = {
 
 type Props = {
   canManage: boolean;
+  /** Called after agents are created/updated so the parent can refresh dropdowns. */
+  onAgentsChanged?: () => void;
+  /** Compact header when embedded under Closebot Log. */
+  embedded?: boolean;
 };
 
-export default function ClosebotAgentsSection({ canManage }: Props) {
+export default function ClosebotAgentsSection({
+  canManage,
+  onAgentsChanged,
+  embedded = false,
+}: Props) {
   const [agents, setAgents] = useState<ClosebotAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +101,7 @@ export default function ClosebotAgentsSection({ canManage }: Props) {
       }
       setModalOpen(false);
       await load();
+      onAgentsChanged?.();
     } catch {
       setFormError("Could not save agent");
     } finally {
@@ -113,6 +122,7 @@ export default function ClosebotAgentsSection({ canManage }: Props) {
         return;
       }
       await load();
+      onAgentsChanged?.();
     } catch {
       setError("Could not update agent");
     }
@@ -122,11 +132,14 @@ export default function ClosebotAgentsSection({ canManage }: Props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold" style={{ color: "#f1f5f9" }}>
-            Closebot Agents
+          <h3
+            className={embedded ? "text-base font-semibold" : "text-lg font-semibold"}
+            style={{ color: "#f1f5f9" }}
+          >
+            Agents
           </h3>
           <p className="text-sm mt-0.5" style={{ color: "#64748b" }}>
-            Options for the prompt log — which AI agent each update applies to.
+            Which Closebot agent each prompt update applies to.
           </p>
         </div>
         {canManage && (

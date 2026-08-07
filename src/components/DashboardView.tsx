@@ -1263,14 +1263,7 @@ export default function DashboardView({
 
           {view === "resources" && (
             <Suspense fallback={<p className="text-sm text-slate-500 py-12">Loading library…</p>}>
-              <ResourcesLibrary
-                canManage={isOwner || isAdmin}
-                canManageClosebot={
-                  isOwner
-                  || isAdmin
-                  || hasPermission("closebot_log", { isOwner, allowedPermissions })
-                }
-              />
+              <ResourcesLibrary canManage={isOwner || isAdmin} />
             </Suspense>
           )}
 

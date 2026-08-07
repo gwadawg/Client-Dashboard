@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import ClosebotAgentsSection from "@/components/ClosebotAgentsSection";
 import LibraryDocCard from "@/components/library/LibraryDocCard";
 import LibraryDocEditor, {
   EMPTY_LIBRARY_EDITOR,
@@ -54,7 +53,7 @@ const CATEGORY_META: Record<Category, { label: string; color: string; tint: stri
 
 const CATEGORY_ORDER: Category[] = ["form", "sop", "document", "template", "other"];
 const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
-const TAB_SECTIONS: LibSection[] = ["playbooks", "forms", "links", "closebot_agents"];
+const TAB_SECTIONS: LibSection[] = ["playbooks", "forms", "links"];
 type AddContentType = "playbook" | "link" | "form";
 
 function registryRowToFormDef(row: FormRegistryRow): InternalFormDef {
@@ -111,13 +110,7 @@ function parseSection(raw: string | null): LibSection {
   return "playbooks";
 }
 
-export default function ResourcesLibrary({
-  canManage = false,
-  canManageClosebot = false,
-}: {
-  canManage?: boolean;
-  canManageClosebot?: boolean;
-}) {
+export default function ResourcesLibrary({ canManage = false }: { canManage?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -151,7 +144,6 @@ export default function ResourcesLibrary({
 
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
-  const [closebotAgentCount, setClosebotAgentCount] = useState(0);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const section = parseSection(searchParams.get("lib"));
@@ -174,9 +166,8 @@ export default function ResourcesLibrary({
       playbooks: playbookItems.length,
       forms: formItems.length,
       links: linkItems.length,
-      closebot_agents: closebotAgentCount,
     }),
-    [playbookItems.length, formItems.length, linkItems.length, closebotAgentCount],
+    [playbookItems.length, formItems.length, linkItems.length],
   );
 
   const isSearching = query.trim().length > 0;
@@ -222,27 +213,23 @@ export default function ResourcesLibrary({
   async function load() {
     setLoading(true);
     try {
-      const [resRes, libRes, formsRes, agentsRes] = await Promise.all([
+      const [resRes, libRes, formsRes] = await Promise.all([
         fetch("/api/resources"),
         fetch("/api/library"),
         fetch("/api/forms-registry"),
-        fetch("/api/closebot/agents"),
       ]);
-      const [resData, libData, formsData, agentsData] = await Promise.all([
+      const [resData, libData, formsData] = await Promise.all([
         resRes.json(),
         libRes.json(),
         formsRes.json(),
-        agentsRes.ok ? agentsRes.json() : Promise.resolve([]),
       ]);
       setResources(Array.isArray(resData) ? resData : []);
       setLibraryDocs(Array.isArray(libData) ? libData : []);
       setRegistryForms(Array.isArray(formsData) ? formsData : []);
-      setClosebotAgentCount(Array.isArray(agentsData) ? agentsData.length : 0);
     } catch {
       setResources([]);
       setLibraryDocs([]);
       setRegistryForms([]);
-      setClosebotAgentCount(0);
     } finally {
       setLoading(false);
     }
@@ -509,7 +496,7 @@ export default function ResourcesLibrary({
             Resources
           </h2>
           <p className="text-sm mt-1 max-w-xl" style={{ color: "#64748b" }}>
-            Playbooks, forms, links, and Closebot agents — organized so your team can find what they need fast.
+            Playbooks, forms, and links — organized so your team can find what they need fast.
           </p>
         </div>
         {canManage && !isSearching && (
@@ -638,10 +625,6 @@ export default function ResourcesLibrary({
           onAdd={openAddForm}
           onEdit={openEditFormRegistry}
           onDelete={handleDeleteFormRegistry}
-        />
-      ) : section === "closebot_agents" ? (
-        <ClosebotAgentsSection
-          canManage={canManageClosebot || canManage}
         />
       ) : (
         <LinksPanel
