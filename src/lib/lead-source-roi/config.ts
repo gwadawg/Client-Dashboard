@@ -34,7 +34,8 @@ export const DEFAULT_COMPARE_STATE: CompareState = {
   current: { ...DEMO_CURRENT },
   waiz: { ...DEMO_WAIZ },
   link_spend: true,
-  link_commission: true,
+  /** Default off so Waiz can model higher DSCR commissions independently. */
+  link_commission: false,
   include_fees: false,
 };
 
@@ -74,8 +75,9 @@ export const FIELD_TOOLTIPS: Record<
     why: "Close is measured on people spoken with — not raw leads.",
   },
   avg_commission: {
-    definition: "Average gross commission per closed deal.",
-    why: "Turns deals into dollars so net ROI is concrete.",
+    definition:
+      "Average gross commission per closed deal on that product/source.",
+    why: "Can differ by product — e.g. current mix vs DSCR — so Waiz ROI can reflect higher per-deal pay.",
   },
   program_fee: {
     definition: "Monthly program or vendor fee (loaded cost).",

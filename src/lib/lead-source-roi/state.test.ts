@@ -4,6 +4,7 @@ import {
   createDefaultState,
   patchSide,
   setLinkSpend,
+  setLinkCommission,
   setIncludeFees,
   encodeCompareState,
   decodeCompareState,
@@ -17,7 +18,16 @@ describe("lead-source-roi state", () => {
     const c = resolveVolume(s.current);
     assert.ok(c.leads > 0);
     assert.equal(s.link_spend, true);
+    assert.equal(s.link_commission, false);
     assert.equal(s.include_fees, false);
+  });
+
+  it("default leaves Waiz commission independent of Current", () => {
+    let s = createDefaultState();
+    s = patchSide(s, "current", { avg_commission: 2_500 });
+    s = patchSide(s, "waiz", { avg_commission: 6_500 });
+    assert.equal(s.current.avg_commission, 2_500);
+    assert.equal(s.waiz.avg_commission, 6_500);
   });
 
   it("patch current spend with link_spend mirrors to waiz", () => {
@@ -48,8 +58,8 @@ describe("lead-source-roi state", () => {
     assert.equal(s.current.cpl, s.current.ad_spend / 250);
   });
 
-  it("link_commission mirrors avg_commission", () => {
-    let s = createDefaultState();
+  it("link_commission mirrors avg_commission when turned on", () => {
+    let s = setLinkCommission(createDefaultState(), true);
     s = patchSide(s, "current", { avg_commission: 6_000 });
     assert.equal(s.waiz.avg_commission, 6_000);
   });

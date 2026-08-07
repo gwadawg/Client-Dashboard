@@ -260,7 +260,13 @@ function SideColumn({
         value={inputs.avg_commission}
         prefix="$"
         disabled={commissionLocked}
-        caption={commissionLocked ? "Linked to Current" : undefined}
+        caption={
+          commissionLocked
+            ? "Linked to Current"
+            : isWaiz
+              ? "Edit freely — e.g. higher DSCR pay vs their current product"
+              : "What they make per close on their current product mix"
+        }
         onChange={(v) => onPatch(sideKey, { avg_commission: v })}
       />
       {includeFees && (
@@ -501,6 +507,7 @@ export default function LeadSourceRoiCalculator({
               onChange={(e) => setState((s) => setLinkCommission(s, e.target.checked))}
             />
             Commission linked
+            <span style={{ color: MUTED }}>(off = set each product separately)</span>
           </label>
         </div>
       </div>
