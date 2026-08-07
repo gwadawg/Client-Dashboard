@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission, type AuthContext } from '@/lib/api-auth';
-import { hasPermission } from '@/lib/permissions';
+import { getAuthContext, isAuthError, type AuthContext } from '@/lib/api-auth';
+import { canAccessTeamCommandApi } from '@/lib/team-dashboards/access';
 import {
   upsertMbLaunchCheck,
   type MbLaunchCheckField,
@@ -9,16 +9,18 @@ import {
 const FIELDS = new Set<MbLaunchCheckField>(['funnel', 'ads_manager', 'mr_waiz']);
 
 async function canAccessMediaCommand(ctx: AuthContext): Promise<boolean> {
-  const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
-  if (ctx.isAdmin || hasPermission('team_dashboard_media', subject)) return true;
-
   const { data: linked } = await ctx.service
     .from('agents')
     .select('pay_type')
     .eq('user_id', ctx.userId)
     .maybeSingle();
 
-  return linked?.pay_type === 'media_buyer' || linked?.pay_type === 'operations';
+  return canAccessTeamCommandApi({
+    isOwner: ctx.isOwner,
+    isAdmin: ctx.isAdmin,
+    allowedPermissions: ctx.allowedPermissions,
+    payType: linked?.pay_type,
+  });
 }
 
 export async function PATCH(req: Request) {
@@ -26,8 +28,7 @@ export async function PATCH(req: Request) {
   if (isAuthError(ctx)) return ctx;
 
   if (!(await canAccessMediaCommand(ctx))) {
-    const denied = requirePermission(ctx, 'team_dashboard_media');
-    if (denied) return denied;
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   let body: unknown;

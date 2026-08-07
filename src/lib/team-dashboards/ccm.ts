@@ -16,6 +16,11 @@ import { ccmStatus, gradesForLens, TIER_WEIGHT } from '@/lib/dept-health';
 import { usesCallCenterKpiLayout } from '@/lib/kpi-layouts';
 import { defaultHealthGradingRange, loadClientHealthBundle } from '@/lib/load-client-health';
 import { buildDayContext, type DayContext } from '@/lib/team-dashboards/ccm-playbook';
+import {
+  CALL_CENTER_TIMEZONE,
+  todayYmdInCallCenterTz,
+  ymdInTimeZone,
+} from '@/lib/time';
 import type { createServiceClient } from '@/lib/supabase';
 
 export type CcmFloorSnapshot = {
@@ -108,7 +113,7 @@ function redKpisForCcm(grades: KpiGrade[]): string[] {
 export async function buildCcmCommandPayload(
   service: ReturnType<typeof createServiceClient>,
 ): Promise<CcmCommandPayload> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayYmdInCallCenterTz();
   const todayLocal = ymdLocal(new Date());
   const weekRange = getDateRange('last_7');
   const healthRange = defaultHealthGradingRange();
@@ -200,7 +205,9 @@ export async function buildCcmCommandPayload(
     const name = resolveAgent(row.agent_name);
     if (!name || !callRepNames.has(name)) continue;
     const a = agentMap.get(name)!;
-    const isToday = row.occurred_at?.startsWith(today);
+    const isToday =
+      !!row.occurred_at &&
+      ymdInTimeZone(new Date(row.occurred_at), CALL_CENTER_TIMEZONE) === today;
     if (row.event_type === 'dial') {
       a.week_dials++;
       if (row.is_conversation) a.week_conversations++;

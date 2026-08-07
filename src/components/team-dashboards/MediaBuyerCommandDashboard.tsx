@@ -4,8 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { MediaBuyerCommandPayload, MbLaunchCheckField } from "@/lib/team-dashboards/media";
 import { MB_LAUNCH_CHECK_DAYS } from "@/lib/team-dashboards/media";
+import { cachedJsonFetch, peekCachedJson, invalidateCachedJson } from "@/lib/client-fetch-cache";
 
 const POLL_MS = 90_000;
+const CACHE_KEY = "team-command-media";
+const STALE_MS = 45_000;
 
 const TIER_COLOR: Record<string, string> = {
   critical: "#f87171",
@@ -42,21 +45,28 @@ function pct(n: number | null): string {
 
 type Props = {
   onNavigate?: (view: string, tab?: string) => void;
+  /** Hide page chrome when nested under Team Command hub. */
+  embedded?: boolean;
 };
 
-export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
+export default function MediaBuyerCommandDashboard({ onNavigate, embedded = false }: Props) {
   const router = useRouter();
-  const [data, setData] = useState<MediaBuyerCommandPayload | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<MediaBuyerCommandPayload | null>(
+    () => peekCachedJson<MediaBuyerCommandPayload>(CACHE_KEY) ?? null,
+  );
+  const [loading, setLoading] = useState(!data);
   const [error, setError] = useState<string | null>(null);
   const [pendingCheck, setPendingCheck] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/team-dashboards/media");
-      const json = await res.json();
-      if (!res.ok) {
-        setError(json.error ?? "Failed to load Media Buyer Command");
+      const json = await cachedJsonFetch<MediaBuyerCommandPayload & { error?: string }>(
+        CACHE_KEY,
+        "/api/team-dashboards/media",
+        { staleTime: STALE_MS, preferCache: false },
+      );
+      if (json.error) {
+        setError(json.error);
         return;
       }
       setData(json);
@@ -69,19 +79,40 @@ export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
   }, []);
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, POLL_MS);
+    void load();
+    const id = setInterval(() => void load(), POLL_MS);
     return () => clearInterval(id);
   }, [load]);
 
   function go(view: string, tab?: string) {
     if (onNavigate) {
+      // Normalize legacy Team Dashboard deep links into the unified hub.
+      if (view === "ops_overview") {
+        onNavigate("team_dashboard", "cs");
+        return;
+      }
+      if (view === "team_dashboard_ccm") {
+        onNavigate("team_dashboard", "ccm");
+        return;
+      }
+      if (view === "team_dashboard_media") {
+        onNavigate("team_dashboard", "media");
+        return;
+      }
       onNavigate(view, tab);
       return;
     }
     const params = new URLSearchParams();
-    params.set("view", view);
-    if (tab) params.set("tab", tab);
+    if (view === "ops_overview" || view === "team_dashboard_ccm" || view === "team_dashboard_media") {
+      params.set("view", "team_dashboard");
+      params.set(
+        "tab",
+        view === "ops_overview" ? "cs" : view === "team_dashboard_ccm" ? "ccm" : "media",
+      );
+    } else {
+      params.set("view", view);
+      if (tab) params.set("tab", tab);
+    }
     router.push(`/dashboard?${params.toString()}`);
   }
 
@@ -127,6 +158,7 @@ export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
           counts: { ...prev.counts, fresh_incomplete },
         };
       });
+      invalidateCachedJson(CACHE_KEY);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update check");
     } finally {
@@ -189,32 +221,44 @@ export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
 
   return (
     <div className="mb-command space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p
-            className="text-[11px] font-semibold uppercase tracking-[0.2em]"
-            style={{ color: "#64748b" }}
-          >
-            Team Dashboards
-          </p>
-          <h1
-            className="text-2xl font-semibold tracking-tight mt-1"
-            style={{ color: "#f1f5f9" }}
-          >
-            Media Buyer Command
-          </h1>
-          <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-            Underperforming ads · {MB_LAUNCH_CHECK_DAYS}d launch checks · OB queue
-          </p>
-        </div>
-        <div className="text-right text-xs" style={{ color: "#475569" }}>
-          <div>{data.today}</div>
-          <div>Updated {new Date(data.generated_at).toLocaleTimeString()}</div>
-          <div className="mt-1" style={{ color: "#94a3b8" }}>
-            Mode: {modeLabel}
+      {!embedded ? (
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p
+              className="text-[11px] font-semibold uppercase tracking-[0.2em]"
+              style={{ color: "#64748b" }}
+            >
+              Team Dashboards
+            </p>
+            <h1
+              className="text-2xl font-semibold tracking-tight mt-1"
+              style={{ color: "#f1f5f9" }}
+            >
+              Media Buyer Command
+            </h1>
+            <p className="text-sm mt-1" style={{ color: "#64748b" }}>
+              Underperforming ads · {MB_LAUNCH_CHECK_DAYS}d launch checks · OB queue
+            </p>
+          </div>
+          <div className="text-right text-xs" style={{ color: "#475569" }}>
+            <div>{data.today}</div>
+            <div>Updated {new Date(data.generated_at).toLocaleTimeString()}</div>
+            <div className="mt-1" style={{ color: "#94a3b8" }}>
+              Mode: {modeLabel}
+            </div>
+          </div>
+        </header>
+      ) : (
+        <div className="flex justify-end text-xs" style={{ color: "#475569" }}>
+          <div className="text-right">
+            <div>{data.today}</div>
+            <div>Updated {new Date(data.generated_at).toLocaleTimeString()}</div>
+            <div className="mt-1" style={{ color: "#94a3b8" }}>
+              Mode: {modeLabel}
+            </div>
           </div>
         </div>
-      </header>
+      )}
 
       {dayContext.is_reds_day && (
         <div
@@ -804,12 +848,12 @@ export default function MediaBuyerCommandDashboard({ onNavigate }: Props) {
               Media Buyer EOD form →
             </a>
             <DeepLink label="Ad Performance" onClick={() => go("media_buyer")} />
-            <DeepLink label="Ops Dashboard" onClick={() => go("ops_overview")} />
-            <DeepLink label="Client Roster" onClick={() => go("admin_clients")} />
+            <DeepLink label="CS Command" onClick={() => go("ops_overview")} />
             <DeepLink
               label="Client Success (Media lens)"
               onClick={() => go("client_health")}
             />
+            <DeepLink label="Client Roster" onClick={() => go("admin_clients")} />
           </div>
         </aside>
       </div>

@@ -5,8 +5,11 @@ import { useRouter } from "next/navigation";
 import type { CcmCommandPayload } from "@/lib/team-dashboards/ccm";
 import type { TeamMeetingInstanceView } from "@/lib/team-meetings";
 import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz } from "@/lib/team-meetings";
+import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
 
 const POLL_MS = 90_000;
+const CACHE_KEY = "team-command-ccm";
+const STALE_MS = 45_000;
 
 const STATUS_COLOR = {
   on_track: "#34d399",
@@ -41,20 +44,27 @@ function Skeleton({ className = "" }: { className?: string }) {
 
 type Props = {
   onNavigate?: (view: string, tab?: string) => void;
+  /** Hide page chrome when nested under Team Command hub. */
+  embedded?: boolean;
 };
 
-export default function CcmCommandDashboard({ onNavigate }: Props) {
+export default function CcmCommandDashboard({ onNavigate, embedded = false }: Props) {
   const router = useRouter();
-  const [data, setData] = useState<CcmCommandPayload | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<CcmCommandPayload | null>(
+    () => peekCachedJson<CcmCommandPayload>(CACHE_KEY) ?? null,
+  );
+  const [loading, setLoading] = useState(!data);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/team-dashboards/ccm");
-      const json = await res.json();
-      if (!res.ok) {
-        setError(json.error ?? "Failed to load CCM Command");
+      const json = await cachedJsonFetch<CcmCommandPayload & { error?: string }>(
+        CACHE_KEY,
+        "/api/team-dashboards/ccm",
+        { staleTime: STALE_MS, preferCache: false },
+      );
+      if (json.error) {
+        setError(json.error);
         return;
       }
       setData(json);
@@ -67,8 +77,8 @@ export default function CcmCommandDashboard({ onNavigate }: Props) {
   }, []);
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, POLL_MS);
+    void load();
+    const id = setInterval(() => void load(), POLL_MS);
     return () => clearInterval(id);
   }, [load]);
 
@@ -113,29 +123,38 @@ export default function CcmCommandDashboard({ onNavigate }: Props) {
 
   return (
     <div className="ccm-command space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p
-            className="text-[11px] font-semibold uppercase tracking-[0.2em]"
-            style={{ color: "#64748b" }}
-          >
-            Team Dashboards
-          </p>
-          <h1
-            className="text-2xl font-semibold tracking-tight mt-1"
-            style={{ color: "#f1f5f9", fontFamily: "ui-sans-serif, system-ui, sans-serif" }}
-          >
-            CCM Command
-          </h1>
-          <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-            Floor pace · under-KPI dial focus · Daily OS reminder
-          </p>
+      {!embedded ? (
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p
+              className="text-[11px] font-semibold uppercase tracking-[0.2em]"
+              style={{ color: "#64748b" }}
+            >
+              Team Dashboards
+            </p>
+            <h1
+              className="text-2xl font-semibold tracking-tight mt-1"
+              style={{ color: "#f1f5f9", fontFamily: "ui-sans-serif, system-ui, sans-serif" }}
+            >
+              CCM Command
+            </h1>
+            <p className="text-sm mt-1" style={{ color: "#64748b" }}>
+              Floor pace · under-KPI dial focus · Daily OS reminder
+            </p>
+          </div>
+          <div className="text-right text-xs" style={{ color: "#475569" }}>
+            <div>{data.today}</div>
+            <div>Updated {new Date(data.generated_at).toLocaleTimeString()}</div>
+          </div>
+        </header>
+      ) : (
+        <div className="flex justify-end text-xs" style={{ color: "#475569" }}>
+          <div className="text-right">
+            <div>{data.today}</div>
+            <div>Updated {new Date(data.generated_at).toLocaleTimeString()}</div>
+          </div>
         </div>
-        <div className="text-right text-xs" style={{ color: "#475569" }}>
-          <div>{data.today}</div>
-          <div>Updated {new Date(data.generated_at).toLocaleTimeString()}</div>
-        </div>
-      </header>
+      )}
 
       {dayContext.is_reds_day && (
         <div

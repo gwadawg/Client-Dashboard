@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { canAccessTeamCommandApi } from '@/lib/team-dashboards/access';
-import { buildCcmCommandPayload } from '@/lib/team-dashboards/ccm';
+import { buildCsCommandPayload } from '@/lib/team-dashboards/cs';
 import { createTtlCache } from '@/lib/ttl-cache';
 
-const ccmCommandCache = createTtlCache<unknown>(45_000);
+const csCommandCache = createTtlCache<unknown>(45_000);
 
 export async function GET() {
   const ctx = await getAuthContext();
@@ -27,8 +27,8 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const cacheKey = 'ccm-command';
-  const cached = ccmCommandCache.get(cacheKey);
+  const cacheKey = 'cs-command';
+  const cached = csCommandCache.get(cacheKey);
   if (cached) {
     return NextResponse.json(cached, {
       headers: { 'Cache-Control': 'private, max-age=20' },
@@ -36,8 +36,8 @@ export async function GET() {
   }
 
   try {
-    const payload = await buildCcmCommandPayload(ctx.service);
-    ccmCommandCache.set(cacheKey, payload);
+    const payload = await buildCsCommandPayload(ctx.service);
+    csCommandCache.set(cacheKey, payload);
     return NextResponse.json(payload, {
       headers: { 'Cache-Control': 'private, max-age=20' },
     });

@@ -8,6 +8,8 @@ export type AcquisitionDataExplorerTab = "leads" | "appointments" | "offers" | "
 export type AcquisitionKpiTab = "overview" | "setters" | "closers" | "costs";
 export type AgentsTab = "performance" | "goals" | "credit_queue" | "recordings" | "examples" | "weekly_focus";
 export type ClientSuccessTab = "health" | "followups";
+/** Seat lenses inside the unified Team Command hub. */
+export type TeamDashboardTab = "cs" | "ccm" | "media";
 
 export type HubView =
   | "heatmaps"
@@ -16,7 +18,8 @@ export type HubView =
   | "acquisition_data_explorer"
   | "acquisition_kpis"
   | "agents"
-  | "client_health";
+  | "client_health"
+  | "team_dashboard";
 
 export type View =
   | "dashboard"
@@ -130,6 +133,30 @@ export const CLIENT_SUCCESS_TABS: HubTabDef<ClientSuccessTab>[] = [
   { key: "followups", label: "Follow-ups" },
 ];
 
+export const TEAM_DASHBOARD_TABS: HubTabDef<TeamDashboardTab>[] = [
+  { key: "cs", label: "CS" },
+  { key: "ccm", label: "CCM" },
+  { key: "media", label: "Media Buyer" },
+];
+
+/**
+ * Shared default when no role home — CS (Laura plate) is the relationship / commitment view.
+ * Role homes still override via homeSeat (cs / ccm / media per pay_type).
+ */
+export const TEAM_COMMAND_DEFAULT_SEAT: TeamDashboardTab = "cs";
+
+/**
+ * Old standalone team dashboard views → unified hub seat.
+ * Kept for deep links, bookmarks, and stored permissions.
+ */
+export const TEAM_COMMAND_LEGACY_REDIRECTS: Record<string, TeamDashboardTab> = {
+  team_dashboard_ccm: "ccm",
+  team_dashboard_media: "media",
+  ops_overview: "cs",
+  // Pre-rename seat key
+  ops: "cs",
+};
+
 /** Hub view → legacy permission keys that grant access. */
 export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
   heatmaps: ["heatmap_show", "heatmap_pickup", "heatmap_leads"],
@@ -157,6 +184,8 @@ export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
   ],
   agents: ["agent_stats", "agent_scorecards", "agent_credit_queue", "recordings", "goals", "schedule"],
   client_health: ["client_health"],
+  // Prior three sidebar dashboards now live as seats under Team Command.
+  team_dashboard: ["team_dashboard_ccm", "team_dashboard_media", "ops_overview"],
 };
 
 /** All legacy keys still honored in stored permissions (soft deprecation). */
@@ -166,6 +195,8 @@ export const LEGACY_PERMISSION_KEYS: string[] = [
   "ad_spend",
   ...HUB_LEGACY_CHILDREN.acquisition.filter(k => k !== "acquisition"),
   ...HUB_LEGACY_CHILDREN.agents,
+  // Prior Team Dashboard sidebar entries (now seats under team_dashboard).
+  ...HUB_LEGACY_CHILDREN.team_dashboard,
 ];
 
 export const LEGACY_VIEW_REDIRECTS: Record<LegacyView, { view: View; tab: string }> = {
@@ -201,6 +232,7 @@ export const HUB_VIEWS: HubView[] = [
   "acquisition_kpis",
   "agents",
   "client_health",
+  "team_dashboard",
 ];
 
 export const HUB_TAB_LABELS: Record<HubView, HubTabDef<string>[]> = {
@@ -211,6 +243,7 @@ export const HUB_TAB_LABELS: Record<HubView, HubTabDef<string>[]> = {
   acquisition_kpis: ACQUISITION_KPI_TABS,
   agents: AGENTS_TABS,
   client_health: CLIENT_SUCCESS_TABS,
+  team_dashboard: TEAM_DASHBOARD_TABS,
 };
 
 export function isHubView(view: string): view is HubView {
@@ -236,9 +269,7 @@ export const NAV_GROUPS = [
 ] as const;
 
 export const NAV: NavItem[] = [
-  { view: "team_dashboard_ccm", label: "CCM Command",           group: "Team Dashboards" },
-  { view: "team_dashboard_media", label: "Media Buyer Command", group: "Team Dashboards" },
-  { view: "ops_overview",       label: "Ops Dashboard",         group: "Team Dashboards" },
+  { view: "team_dashboard",     label: "Team Command",          group: "Team Dashboards" },
   { view: "dashboard",          label: "Client KPIs",           group: "Clients"      },
   { view: "kpi_simulator",      label: "Funnel Simulator",      group: "Clients"      },
   { view: "client_report_builder", label: "Client Reports",     group: "Clients"      },
@@ -280,17 +311,27 @@ export function resolveViewFromParams(
     return { view: "dashboard", tab: null };
   }
 
+  // Old Team Dashboards URLs → single Team Command hub + seat tab.
+  if (viewParam in TEAM_COMMAND_LEGACY_REDIRECTS) {
+    return {
+      view: "team_dashboard",
+      tab: TEAM_COMMAND_LEGACY_REDIRECTS[viewParam],
+    };
+  }
+
   if (viewParam in LEGACY_VIEW_REDIRECTS) {
     const redirect = LEGACY_VIEW_REDIRECTS[viewParam as LegacyView];
     return { view: redirect.view, tab: redirect.tab };
   }
 
-  if (ALL_VIEWS.includes(viewParam as View)) {
+  if (ALL_VIEWS.includes(viewParam as View) || viewParam === "team_dashboard") {
     const view = viewParam as View;
     if (isHubView(view)) {
       const tabs = HUB_TAB_LABELS[view];
-      const valid = tabs.some(t => t.key === tabParam);
-      return { view, tab: valid ? tabParam : defaultTabForHub(view) };
+      // Soft-map old Ops seat key → CS
+      const rawTab = tabParam === "ops" && view === "team_dashboard" ? "cs" : tabParam;
+      const valid = tabs.some(t => t.key === rawTab);
+      return { view, tab: valid ? rawTab : defaultTabForHub(view) };
     }
     return { view, tab: null };
   }

@@ -37,12 +37,16 @@ import {
   type AcquisitionKpiTab,
   type AgentsTab,
   type ClientSuccessTab,
+  type TeamDashboardTab,
+  TEAM_COMMAND_LEGACY_REDIRECTS,
+  TEAM_COMMAND_DEFAULT_SEAT,
   resolveViewFromParams,
 } from "@/lib/nav";
 import { hasPermission, canViewClientRevenue, canAccessAutomations, type AllowedPermissions } from "@/lib/permissions";
 import DateRangeFilter from "./DateRangeFilter";
 import { type DatePreset, getDateRange } from "@/lib/date-presets";
 import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
+import { hasTeamCommandPermission } from "@/lib/team-dashboards/access";
 
 function TabLoading({ label = "Loading…" }: { label?: string }) {
   return (
@@ -84,10 +88,9 @@ const RateTrendCharts = lazyTab(() => import("./RateTrendCharts"), "Loading rate
 const ClientConversionsView = lazyTab(() => import("./ClientConversionsView"));
 const FunnelSimulatorView = lazyTab(() => import("./FunnelSimulatorView"));
 const ClientReportBuilder = lazyTab(() => import("./ClientReportBuilder"));
-const OpsOverview = lazyTab(() => import("./OpsOverview"));
-const CcmCommandDashboard = lazyTab(() => import("./team-dashboards/CcmCommandDashboard"));
-const MediaBuyerCommandDashboard = lazyTab(
-  () => import("./team-dashboards/MediaBuyerCommandDashboard"),
+const TeamCommandDashboard = lazyTab(
+  () => import("./team-dashboards/TeamCommandDashboard"),
+  "Loading team command…",
 );
 const StateLooker = lazyTab(() => import("./StateLooker"));
 const DialAnalytics = lazyTab(() => import("./DialAnalytics"));
@@ -161,6 +164,8 @@ const NAV_ICONS: Record<View, string> = {
   dial_analytics:   "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
   media_buyer:      "M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z",
   client_health:    "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
+  team_dashboard:   "M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z",
+  // Legacy keys retained for Record<View, string> completeness (redirected → team_dashboard).
   ops_overview:     "M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z",
   team_dashboard_ccm: "M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2",
   team_dashboard_media: "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z",
@@ -205,6 +210,7 @@ function buildSparkMap(series: KpiTimelineBucket[]): SparkMap {
     no_shows: series.map(b => b.no_shows),
     show_pct: series.map(b => b.show_rate),
     net_show_pct: series.map(b => b.net_show_rate),
+    booked_to_conversation_rate: series.map(b => b.booked_to_conversation_rate),
     appt_booking_rate: series.map(b => b.booking_rate),
     hand_raise_rate: series.map(b => b.hand_raise_rate),
     lead_booking_rate: series.map(b => b.lead_booking_rate),
@@ -320,8 +326,10 @@ type DashboardViewProps = {
   isOwner?: boolean;
   isAdmin?: boolean;
   allowedPermissions?: AllowedPermissions;
-  /** Role home when URL has no view — e.g. CCM → team_dashboard_ccm */
+  /** Role home when URL has no view — e.g. CCM → team_dashboard */
   homeView?: View | null;
+  /** Role default seat inside Team Command (ccm | media | ops). */
+  homeSeat?: TeamDashboardTab | null;
   /** Server-prefetched client list so the dropdown is ready on first paint. */
   initialClients?: Client[];
 };
@@ -331,6 +339,7 @@ export default function DashboardView({
   isAdmin = false,
   allowedPermissions = null,
   homeView = null,
+  homeSeat = null,
   initialClients = [],
 }: DashboardViewProps) {
   const router = useRouter();
@@ -348,14 +357,18 @@ export default function DashboardView({
     if (v === "admin_automations") {
       return canAccessAutomations({ isOwner, allowedPermissions });
     }
-    if (v === "team_dashboard_ccm" && (isOwner || isAdmin || homeView === "team_dashboard_ccm")) {
-      return true;
+    // Unified Team Command — legacy seat keys grant access via permission aliases.
+    if (v === "team_dashboard") {
+      if (isOwner || isAdmin || homeView === "team_dashboard") return true;
+      return hasTeamCommandPermission({ isOwner, allowedPermissions });
     }
+    // Legacy view keys still resolve via URL redirects; keep permission symmetry.
     if (
-      v === "team_dashboard_media" &&
-      (isOwner || isAdmin || homeView === "team_dashboard_media")
+      v === "team_dashboard_ccm" ||
+      v === "team_dashboard_media" ||
+      v === "ops_overview"
     ) {
-      return true;
+      return canSee("team_dashboard");
     }
     return hasPermission(v, { isOwner, allowedPermissions });
   };
@@ -366,6 +379,9 @@ export default function DashboardView({
     visibleNav.find(item => item.group !== "Team Dashboards")?.view ?? visibleNav[0]?.view;
 
   const resolveAllowedView = (requested: View): View => {
+    if (requested in TEAM_COMMAND_LEGACY_REDIRECTS) {
+      return canSee("team_dashboard") ? "team_dashboard" : firstVisibleView ?? "team_dashboard";
+    }
     if (canSee(requested)) return requested;
     return firstVisibleView ?? requested;
   };
@@ -379,8 +395,23 @@ export default function DashboardView({
     return resolveAllowedView(parsed.view);
   };
 
+  const resolveInitialHubTab = (): string | null => {
+    const viewParam = searchParams.get("view");
+    if (!viewParam && homeView === "team_dashboard" && homeSeat) {
+      return homeSeat;
+    }
+    const parsed = parseUrlView(searchParams);
+    if (parsed.view === "team_dashboard" || (!viewParam && homeView === "team_dashboard")) {
+      if (parsed.tab && HUB_TAB_LABELS.team_dashboard.some(t => t.key === parsed.tab)) {
+        return parsed.tab;
+      }
+      return homeSeat ?? TEAM_COMMAND_DEFAULT_SEAT;
+    }
+    return parsed.tab;
+  };
+
   const [view, setView] = useState<View>(() => resolveInitialView());
-  const [hubTab, setHubTab] = useState<string | null>(() => parseUrlView(searchParams).tab);
+  const [hubTab, setHubTab] = useState<string | null>(() => resolveInitialHubTab());
   const [clients, setClients] = useState<Client[]>(initialClients);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [offerScope, setOfferScope] = useState("");
@@ -404,7 +435,15 @@ export default function DashboardView({
   const [renderDate] = useState(() => new Date());
 
   const goToView = (next: View, tab?: string | null) => {
-    const target = resolveAllowedView(next);
+    let target = resolveAllowedView(next);
+    let nextTab = tab;
+
+    // Normalize old Team Dashboard routes into the hub + seat tab.
+    if (next in TEAM_COMMAND_LEGACY_REDIRECTS) {
+      target = "team_dashboard";
+      nextTab = TEAM_COMMAND_LEGACY_REDIRECTS[next];
+    }
+
     setView(target);
     setSidebarOpen(false);
     const params = new URLSearchParams(searchParams.toString());
@@ -417,13 +456,15 @@ export default function DashboardView({
       if (isHubView(target)) {
         const hub = target as HubView;
         const tabs = HUB_TAB_LABELS[hub];
-        const candidate = tab ?? hubTab;
-        const nextTab =
+        const candidate = nextTab ?? hubTab;
+        const resolvedTab =
           candidate && tabs.some(t => t.key === candidate)
             ? candidate
-            : defaultTabForHub(hub);
-        setHubTab(nextTab);
-        params.set("tab", nextTab);
+            : hub === "team_dashboard"
+              ? homeSeat ?? TEAM_COMMAND_DEFAULT_SEAT
+              : defaultTabForHub(hub);
+        setHubTab(resolvedTab);
+        params.set("tab", resolvedTab);
       } else {
         setHubTab(null);
         params.delete("tab");
@@ -447,13 +488,16 @@ export default function DashboardView({
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
 
-  // CCM (and future role homes): sync URL when landing with no view param.
+  // Role homes: sync URL when landing with no view param.
   useEffect(() => {
     const viewParam = searchParams.get("view");
     if (viewParam || !homeView || !canSee(homeView)) return;
     if (view === homeView) {
       const params = new URLSearchParams(searchParams.toString());
       params.set("view", homeView);
+      if (homeView === "team_dashboard") {
+        params.set("tab", homeSeat ?? TEAM_COMMAND_DEFAULT_SEAT);
+      }
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -469,9 +513,22 @@ export default function DashboardView({
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
       return;
     }
+    // Soft-redirect old Team Dashboard URLs to the unified hub.
+    if (viewParam && viewParam in TEAM_COMMAND_LEGACY_REDIRECTS) {
+      const seat = TEAM_COMMAND_LEGACY_REDIRECTS[viewParam];
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("view", "team_dashboard");
+      params.set("tab", seat);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      return;
+    }
     if (!viewParam && homeView && canSee(homeView)) {
       setView(current => (current === homeView ? current : homeView));
-      setHubTab(null);
+      if (homeView === "team_dashboard") {
+        setHubTab(homeSeat ?? TEAM_COMMAND_DEFAULT_SEAT);
+      } else {
+        setHubTab(null);
+      }
       return;
     }
     const parsed = parseUrlView(searchParams);
@@ -1210,16 +1267,15 @@ export default function DashboardView({
             />
           )}
 
-          {view === "ops_overview" && <OpsOverview />}
-
-          {view === "team_dashboard_ccm" && (
-            <CcmCommandDashboard
-              onNavigate={(next: string, tab?: string) => goToView(next as View, tab)}
-            />
-          )}
-
-          {view === "team_dashboard_media" && (
-            <MediaBuyerCommandDashboard
+          {view === "team_dashboard" && (
+            <TeamCommandDashboard
+              seat={
+                hubTab && HUB_TAB_LABELS.team_dashboard.some(t => t.key === hubTab)
+                  ? (hubTab as TeamDashboardTab)
+                  : homeSeat ?? TEAM_COMMAND_DEFAULT_SEAT
+              }
+              homeSeat={homeSeat}
+              onSeatChange={(tab: TeamDashboardTab) => setHubTabAndUrl(tab)}
               onNavigate={(next: string, tab?: string) => goToView(next as View, tab)}
             />
           )}

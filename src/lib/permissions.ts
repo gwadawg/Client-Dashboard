@@ -57,12 +57,21 @@ const VIEW_ALIASES: Record<string, string[]> = {
   state_looker: ["dashboard"],
   ceo: ["ceo_raw"],
   ceo_raw: ["ceo"],
-  // Leadership (Laura-class / ops / CEO) can open CCM Command without a dedicated grant.
-  team_dashboard_ccm: ["ops_overview", "client_health", "ceo"],
-  // Ops / ads / CS / CEO can open Media Buyer Command without a dedicated grant.
-  team_dashboard_media: ["ops_overview", "media_buyer", "client_health", "ceo"],
-  // Lead seats with Call Library / CCM / Ops / CEO can open Team Meetings.
-  team_meetings: ["call_library", "team_dashboard_ccm", "ops_overview", "ceo"],
+  // Unified hub inherits any prior seat grant (and leadership surfaces).
+  team_dashboard: [
+    "team_dashboard_ccm",
+    "team_dashboard_media",
+    "ops_overview",
+    "client_health",
+    "media_buyer",
+    "ceo",
+  ],
+  // Keep legacy keys working so stored permissions still grant seat APIs / deep links.
+  team_dashboard_ccm: ["team_dashboard", "ops_overview", "client_health", "ceo"],
+  team_dashboard_media: ["team_dashboard", "ops_overview", "media_buyer", "client_health", "ceo"],
+  ops_overview: ["team_dashboard", "ceo"],
+  // Lead seats with Call Library / Team Command / CEO can open Team Meetings.
+  team_meetings: ["call_library", "team_dashboard", "team_dashboard_ccm", "ops_overview", "ceo"],
 };
 
 /** All keys that satisfy a permission check (hub ↔ legacy children). */

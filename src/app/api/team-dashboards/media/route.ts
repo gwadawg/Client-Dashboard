@@ -1,33 +1,48 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission, type AuthContext } from '@/lib/api-auth';
-import { hasPermission } from '@/lib/permissions';
+import { getAuthContext, isAuthError, type AuthContext } from '@/lib/api-auth';
+import { canAccessTeamCommandApi } from '@/lib/team-dashboards/access';
 import { buildMediaBuyerCommandPayload } from '@/lib/team-dashboards/media';
+import { createTtlCache } from '@/lib/ttl-cache';
 
-async function canAccessMediaCommand(ctx: AuthContext): Promise<boolean> {
-  const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
-  if (ctx.isAdmin || hasPermission('team_dashboard_media', subject)) return true;
+const mediaCommandCache = createTtlCache<unknown>(45_000);
 
+async function canAccess(ctx: AuthContext): Promise<boolean> {
   const { data: linked } = await ctx.service
     .from('agents')
     .select('pay_type')
     .eq('user_id', ctx.userId)
     .maybeSingle();
 
-  return linked?.pay_type === 'media_buyer' || linked?.pay_type === 'operations';
+  return canAccessTeamCommandApi({
+    isOwner: ctx.isOwner,
+    isAdmin: ctx.isAdmin,
+    allowedPermissions: ctx.allowedPermissions,
+    payType: linked?.pay_type,
+  });
 }
 
 export async function GET() {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
 
-  if (!(await canAccessMediaCommand(ctx))) {
-    const denied = requirePermission(ctx, 'team_dashboard_media');
-    if (denied) return denied;
+  if (!(await canAccess(ctx))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const cacheKey = 'media-command';
+  const cached = mediaCommandCache.get(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached, {
+      headers: { 'Cache-Control': 'private, max-age=20' },
+    });
   }
 
   try {
     const payload = await buildMediaBuyerCommandPayload(ctx.service);
-    return NextResponse.json(payload);
+    mediaCommandCache.set(cacheKey, payload);
+    return NextResponse.json(payload, {
+      headers: { 'Cache-Control': 'private, max-age=20' },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: message }, { status: 500 });

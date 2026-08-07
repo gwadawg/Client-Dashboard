@@ -2,8 +2,9 @@ import { redirect } from 'next/navigation';
 import { createAuthClient, createServiceClient } from '@/lib/supabase';
 import DashboardView from '@/components/DashboardView';
 import type { AllowedPermissions } from '@/lib/permissions';
-import type { View } from '@/lib/nav';
+import type { View, TeamDashboardTab } from '@/lib/nav';
 import type { ReportingType } from '@/lib/kpi-layouts';
+import { defaultSeatForPayType } from '@/lib/team-dashboards/access';
 
 export default async function DashboardPage() {
   const supabase = await createAuthClient();
@@ -32,12 +33,8 @@ export default async function DashboardPage() {
   const isAdmin = profile?.is_admin ?? false;
   const allowedPermissions = (profile?.allowed_permissions ?? null) as AllowedPermissions;
 
-  const homeView: View | null =
-    linkedAgent?.pay_type === 'ccm'
-      ? 'team_dashboard_ccm'
-      : linkedAgent?.pay_type === 'media_buyer'
-        ? 'team_dashboard_media'
-        : null;
+  const homeSeat = defaultSeatForPayType(linkedAgent?.pay_type) as TeamDashboardTab | null;
+  const homeView: View | null = homeSeat ? 'team_dashboard' : null;
 
   const initialClients = (clients ?? []).map(c => ({
     id: c.id as string,
@@ -52,6 +49,7 @@ export default async function DashboardPage() {
       isAdmin={isAdmin}
       allowedPermissions={allowedPermissions}
       homeView={homeView}
+      homeSeat={homeSeat}
       initialClients={initialClients}
     />
   );

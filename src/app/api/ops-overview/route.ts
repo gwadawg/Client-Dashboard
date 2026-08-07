@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { canAccessTeamCommandApi } from '@/lib/team-dashboards/access';
 import { fetchEnrichedBookingsInRange, summarizeOutcomesByAgent } from '@/lib/agent-appointment-stats';
 import { fetchAgentEventsInRange } from '@/lib/agent-event-fetch';
 import { buildRosterMatcher } from '@/lib/agent-roster';
@@ -14,6 +15,11 @@ import { isKickoffIncomplete } from '@/lib/kickoff';
 import { defaultHealthGradingRange, loadClientHealthBundle } from '@/lib/load-client-health';
 import { listUpcomingCsAppointments } from '@/lib/cs-appointments';
 import { createTtlCache } from '@/lib/ttl-cache';
+import {
+  CALL_CENTER_TIMEZONE,
+  todayYmdInCallCenterTz,
+  ymdInTimeZone,
+} from '@/lib/time';
 
 const opsOverviewCache = createTtlCache<unknown>(45_000);
 
@@ -69,10 +75,25 @@ function freshLeadingLabel(opts: {
 export async function GET() {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, 'ops_overview');
-  if (denied) return denied;
 
-  const today = new Date().toISOString().split('T')[0];
+  const { data: linked } = await ctx.service
+    .from('agents')
+    .select('pay_type')
+    .eq('user_id', ctx.userId)
+    .maybeSingle();
+
+  if (
+    !canAccessTeamCommandApi({
+      isOwner: ctx.isOwner,
+      isAdmin: ctx.isAdmin,
+      allowedPermissions: ctx.allowedPermissions,
+      payType: linked?.pay_type,
+    })
+  ) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const today = todayYmdInCallCenterTz();
   const todayLocal = ymdLocal(new Date());
   const healthRange = defaultHealthGradingRange();
   const weekRange = getDateRange('last_7');
@@ -286,7 +307,9 @@ export async function GET() {
       const name = resolveAgent(row.agent_name);
       if (!name || !callRepNames.has(name)) continue;
       const a = agentMap.get(name)!;
-      const isToday = row.occurred_at?.startsWith(today);
+      const isToday =
+        !!row.occurred_at &&
+        ymdInTimeZone(new Date(row.occurred_at), CALL_CENTER_TIMEZONE) === today;
       if (row.event_type === 'dial') {
         a.dials++;
         if (isToday) a.today_dials++;

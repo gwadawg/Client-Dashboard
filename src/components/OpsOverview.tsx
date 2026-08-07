@@ -188,10 +188,13 @@ function SectionHead({
   );
 }
 
-export default function OpsOverview() {
+export default function OpsOverview({ embedded = false }: { embedded?: boolean }) {
   const router = useRouter();
-  const [data, setData] = useState<OpsPayload | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<OpsPayload | null>(() => {
+    const peek = peekCachedJson<OpsPayload>("ops-overview");
+    return peek && !peek.error ? peek : null;
+  });
+  const [loading, setLoading] = useState(!data);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -274,15 +277,21 @@ export default function OpsOverview() {
   return (
     <div className="space-y-6 max-w-[1400px]">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>
-            Ops Dashboard
-          </h2>
-          <p className="text-sm mt-1 max-w-2xl" style={{ color: "#64748b" }}>
-            Portfolio pulse for Laura &amp; Christian — onboarding, fresh launches, Act Now accounts, and floor dials/bookings.
-            Health baseline {data.health_period.start} → {data.health_period.end}.
+        {!embedded ? (
+          <div>
+            <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>
+              Ops Dashboard
+            </h2>
+            <p className="text-sm mt-1 max-w-2xl" style={{ color: "#64748b" }}>
+              Portfolio pulse for Laura &amp; Christian — onboarding, fresh launches, Act Now accounts, and floor dials/bookings.
+              Health baseline {data.health_period.start} → {data.health_period.end}.
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs" style={{ color: "#64748b" }}>
+            Health baseline {data.health_period.start} → {data.health_period.end}
           </p>
-        </div>
+        )}
         <button
           type="button"
           onClick={() => void load()}
