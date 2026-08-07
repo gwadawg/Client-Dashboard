@@ -86,7 +86,7 @@ const UserManager = lazyTab(() => import("./UserManager"));
 const CostTrendCharts = lazyTab(() => import("./CostTrendCharts"), "Loading cost trends…");
 const RateTrendCharts = lazyTab(() => import("./RateTrendCharts"), "Loading rate trends…");
 const ClientConversionsView = lazyTab(() => import("./ClientConversionsView"));
-const FunnelSimulatorView = lazyTab(() => import("./FunnelSimulatorView"));
+const FunnelSimulatorHub = lazyTab(() => import("./FunnelSimulatorHub"));
 const ClientReportBuilder = lazyTab(() => import("./ClientReportBuilder"));
 const TeamCommandDashboard = lazyTab(
   () => import("./team-dashboards/TeamCommandDashboard"),
@@ -806,6 +806,21 @@ export default function DashboardView({
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [searchParams, pathname, router]);
 
+  const updateRoiUrl = useCallback((encoded: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "kpi_simulator");
+    params.set("simTab", "lead_source_roi");
+    params.set("roi", encoded);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [searchParams, pathname, router]);
+
+  const updateSimTabUrl = useCallback((tab: "funnel" | "lead_source_roi") => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "kpi_simulator");
+    params.set("simTab", tab);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [searchParams, pathname, router]);
+
   const goToConversionsActuals = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
@@ -1287,15 +1302,23 @@ export default function DashboardView({
           {view === "state_looker" && <StateLooker />}
 
           {firstVisibleView && view === "kpi_simulator" && (
-            <FunnelSimulatorView
+            <FunnelSimulatorHub
               metrics={metrics}
               metricsLoading={metricsLoading}
               clientLabel={dashboardClientLabel}
               clientIsRm={simulatorClientIsRm}
               dateRangeLabel={dateRangeLabel}
               onViewActuals={simulatorClientIsRm ? goToConversionsActuals : undefined}
-              initialEncoded={searchParams.get("sim")}
-              onStateChange={updateSimulatorUrl}
+              initialFunnelEncoded={searchParams.get("sim")}
+              onFunnelStateChange={updateSimulatorUrl}
+              initialRoiEncoded={searchParams.get("roi")}
+              onRoiStateChange={updateRoiUrl}
+              initialTab={
+                searchParams.get("simTab") === "lead_source_roi"
+                  ? "lead_source_roi"
+                  : "funnel"
+              }
+              onTabChange={updateSimTabUrl}
             />
           )}
 
