@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   FIELD_TOOLTIPS,
   PUBLIC_DISCLAIMER,
@@ -20,6 +21,20 @@ import {
 } from "@/lib/lead-source-roi/state";
 import type { CompareState, SideInputs, SideKey, SideOutcomes } from "@/lib/lead-source-roi/types";
 import ContactRateHelperModal from "@/components/ContactRateHelperModal";
+
+// Charts are heavy — keep them out of the first paint of the public link.
+const ScaleScenariosSection = dynamic(
+  () => import("@/components/ScaleScenariosSection"),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="rounded-2xl h-64 animate-pulse"
+        style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.07)" }}
+      />
+    ),
+  },
+);
 
 type Props = {
   variant: "internal" | "public";
@@ -749,6 +764,8 @@ export default function LeadSourceRoiCalculator({
           }
         />
       </div>
+
+      <ScaleScenariosSection state={state} />
 
       <p className="text-xs leading-relaxed" style={{ color: MUTED }}>
         {PUBLIC_DISCLAIMER}
