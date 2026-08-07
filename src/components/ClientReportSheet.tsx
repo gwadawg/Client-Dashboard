@@ -383,7 +383,7 @@ function LightShowQuality({ metrics }: { metrics: MetricsResult }) {
         <span className="text-xs tabular-nums font-medium" style={{ color: WAIZ.mid }}>{total} booked</span>
       </div>
       <p className="text-[12px] mb-4" style={{ color: WAIZ.mid }}>
-        Where every booked appointment ended up. Net show rate counts only Showed vs. No-showed.
+        Where every booked appointment ended up. True Show uses Showed ÷ (Showed + No-showed + LO bailed).
       </p>
       {total === 0 ? (
         <p className="text-xs py-6 text-center" style={{ color: WAIZ.mid }}>No appointments in this range.</p>

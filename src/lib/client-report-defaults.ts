@@ -35,7 +35,7 @@ const RM_DEFAULT_METRICS: Array<keyof MetricsResult> = [
   "no_shows",
   "booked_to_conversation_rate",
   "unique_booked_converted",
-  "net_show_pct",
+  "show_pct",
   "conversation_rate",
 ];
 
@@ -53,7 +53,7 @@ const HE_DEFAULT_METRICS: Array<keyof MetricsResult> = [
   "no_shows",
   "booked_to_conversation_rate",
   "unique_booked_converted",
-  "net_show_pct",
+  "show_pct",
 ];
 
 const BASE_CHARTS: ClientReportChartFlags = {

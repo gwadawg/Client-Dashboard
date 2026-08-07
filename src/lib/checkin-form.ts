@@ -36,7 +36,7 @@ export const CHECKIN_TOPIC_OPTIONS: { value: CheckinTopic; label: string }[] = [
   { value: 'leads_volume', label: 'Lead volume' },
   { value: 'lead_quality', label: 'Lead quality' },
   { value: 'appointments', label: 'Appointments / booking rate' },
-  { value: 'show_rate', label: 'Book→spoke (unique booked who spoke)' },
+  { value: 'show_rate', label: 'Show rate (unique booked who spoke)' },
   { value: 'ad_spend', label: 'Ad spend / budget' },
   { value: 'setter_performance', label: 'Setter / call team performance' },
   { value: 'billing_contract', label: 'Billing / contract' },

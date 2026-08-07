@@ -385,7 +385,7 @@ export function metricsToSimulatorInputs(metrics: MetricsResult): SimulatorInput
     total_leads: metrics.new_leads,
     lead_to_qual_pct: metrics.qualified_rate,
     booking_rate_pct: metrics.appt_booking_rate,
-    net_show_rate_pct: metrics.net_show_pct,
+    net_show_rate_pct: metrics.show_pct,
     live_transfer_pct: ltPct,
     claimed_pct: claimedPct,
     conversation_close_rate_pct: conversationCloseRate,
@@ -508,7 +508,7 @@ export function solveForTargetFunded(
 const CORE_LEVER_FIELDS: { field: keyof SimulatorInputs; label: string; kpiKey: KpiKey }[] = [
   { field: 'lead_to_qual_pct', label: 'Lead-to-Qualified %', kpiKey: 'lead_to_qualified' },
   { field: 'booking_rate_pct', label: 'Booking Rate', kpiKey: 'hand_raise_rate' },
-  { field: 'net_show_rate_pct', label: 'Net Show Rate', kpiKey: 'show_rate' },
+  { field: 'net_show_rate_pct', label: 'True Show', kpiKey: 'show_rate' },
   { field: 'conversation_close_rate_pct', label: 'Close Rate (÷ conversations)', kpiKey: 'close_rate' },
 ];
 

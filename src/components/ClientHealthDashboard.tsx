@@ -119,7 +119,7 @@ const TREND_ICONS: Record<ClientHealthRow["trend"], { symbol: string; color: str
   insufficient: { symbol: "—", color: "#475569", label: "Low volume" },
 };
 
-/** Client Success “show” grade = unique booked → spoke (not slot net show). */
+/** Client Success graded show = Show Rate (unique booked → spoke), not True Show. */
 function BookToSpokeCell({
   m,
   tier,
@@ -140,9 +140,9 @@ function BookToSpokeCell({
       <span
         className="text-[10px] tabular-nums pl-4"
         style={{ color: "#475569" }}
-        title="Unique booked leads who spoke (show ∪ claimed ∪ LT) ÷ unique booked"
+        title="Show Rate: unique booked who spoke (show ∪ claimed ∪ LT) ÷ unique booked"
       >
-        {m.unique_booked_converted}/{m.unique_booked_appointments} booked spoke
+        {m.unique_booked_converted}/{m.unique_booked_appointments} spoke / booked
       </span>
     </div>
   );
@@ -150,14 +150,14 @@ function BookToSpokeCell({
 
 const RM_CHART_METRICS: { key: SortKey; label: string }[] = [
   { key: "priority", label: "Attention score" },
-  { key: "show_rate", label: "Book→spoke % (unique)" },
+  { key: "show_rate", label: "Show rate %" },
   { key: "cps", label: "Cost per conversation" },
   { key: "leads", label: "Total leads" },
 ];
 
 const HE_CHART_METRICS: { key: SortKey; label: string }[] = [
   { key: "priority", label: "Attention score" },
-  { key: "show_rate", label: "Book→spoke % (unique)" },
+  { key: "show_rate", label: "Show rate %" },
   { key: "hand_raise", label: "Hand-raise % (÷ leads)" },
   { key: "dials", label: "Outbound dials" },
 ];
@@ -170,13 +170,13 @@ const MEDIA_CHART_METRICS: { key: SortKey; label: string }[] = [
 
 const CCM_CHART_METRICS_RM: { key: SortKey; label: string }[] = [
   { key: "hand_raise", label: "Hand-raise %" },
-  { key: "show_rate", label: "Book→spoke %" },
+  { key: "show_rate", label: "Show rate %" },
   { key: "conv_rate", label: "Conversation %" },
 ];
 
 const CCM_CHART_METRICS_HE: { key: SortKey; label: string }[] = [
   { key: "hand_raise", label: "Hand-raise % (÷ leads)" },
-  { key: "show_rate", label: "Book→spoke %" },
+  { key: "show_rate", label: "Show rate %" },
   { key: "dials", label: "Outbound dials" },
 ];
 
@@ -594,7 +594,7 @@ export default function ClientHealthDashboard(_props: Props) {
             "Client",
             "CCM status",
             `${baselineTag} hand-raise`,
-            `${baselineTag} book→spoke`,
+            `${baselineTag} Show rate`,
             `${leadingTag} hand-raise`,
             "Leads",
             "Dials",
@@ -605,7 +605,7 @@ export default function ClientHealthDashboard(_props: Props) {
             "Client",
             "CCM status",
             `${baselineTag} hand-raise`,
-            `${baselineTag} book→spoke`,
+            `${baselineTag} Show rate`,
             "Conv %",
             `${leadingTag} hand-raise`,
             "Follow-up",
@@ -622,7 +622,7 @@ export default function ClientHealthDashboard(_props: Props) {
           "Leads",
           "Dials",
           `${baselineTag} hand-raise`,
-          `${baselineTag} book→spoke`,
+          `${baselineTag} Show rate`,
           "",
         ]
       : [
@@ -633,7 +633,7 @@ export default function ClientHealthDashboard(_props: Props) {
           `${leadingTag} CPQL`,
           `${leadingTag} qual`,
           `${leadingTag} hand-raise`,
-          `${baselineTag} book→spoke`,
+          `${baselineTag} Show rate`,
           "Follow-up",
           "",
         ];
@@ -754,15 +754,15 @@ export default function ClientHealthDashboard(_props: Props) {
         ) : effectiveLens === "ccm" ? (
           <>
             <span style={{ color: "#38bdf8", fontWeight: 600 }}>CCM lens.</span>{" "}
-            Status = worst of unique hand-raise, <strong>book→spoke</strong> (unique booked who eventually spoke to LO — not slot net show), and conversation rate. Booking-only is not graded. Account CPConv lives on Overview — not your scorecard.
+            Status = worst of unique hand-raise, <strong>Show rate</strong> (unique booked who eventually spoke to LO — not True Show), and conversation rate. Booking-only is not graded. Account CPConv lives on Overview — not your scorecard.
           </>
         ) : (
           <>
             <span style={{ color: "#38bdf8", fontWeight: 600 }}>Two windows.</span>{" "}
-            <strong>Baseline</strong> ({startDate} → {endDate}) ends {MATURITY_DAYS} days before today so CPConv, book→spoke, and close reflect resolved cohorts.{" "}
+            <strong>Baseline</strong> ({startDate} → {endDate}) ends {MATURITY_DAYS} days before today so CPConv, Show rate, and close reflect resolved cohorts.{" "}
             <strong>Leading</strong> (
             {maturity?.leading_start ?? "…"} → {maturity?.leading_end ?? "today"}) is calendar-last {LEADING_WINDOW_DAYS} days through today. Act now = north-star 911 only.
-            Graded “show” = book→spoke (unique booked ∩ spoke), not event Shows÷(Shows+No-shows).
+            Graded “show” = Show rate (unique booked ∩ spoke), not True Show (appointments that took place).
           </>
         )}
       </div>
@@ -831,7 +831,7 @@ export default function ClientHealthDashboard(_props: Props) {
           {effectiveLens === "ccm" && (
             <>
               <option value="hand_raise">Sort: Hand-raise</option>
-              <option value="show_rate">Sort: Book→spoke</option>
+              <option value="show_rate">Sort: Show rate</option>
               {!isCallCenterSegment && <option value="conv_rate">Sort: Conversation %</option>}
               {isCallCenterSegment && <option value="dials">Sort: Outbound dials</option>}
             </>
@@ -839,7 +839,7 @@ export default function ClientHealthDashboard(_props: Props) {
           {effectiveLens === "overview" && (
             <>
               <option value="focus">Sort: Focus label</option>
-              <option value="show_rate">Sort: Book→spoke</option>
+              <option value="show_rate">Sort: Show rate</option>
               {isCallCenterSegment ? (
                 <>
                   <option value="hand_raise">Sort: Hand-raise (÷ leads)</option>
@@ -1315,7 +1315,7 @@ export default function ClientHealthDashboard(_props: Props) {
                                   </p>
                                   {g.key === "show_rate" ? (
                                     <p className="text-[10px] tabular-nums mt-0.5" style={{ color: "#64748b" }}>
-                                      {m.unique_booked_converted}/{m.unique_booked_appointments} unique booked spoke
+                                      {m.unique_booked_converted}/{m.unique_booked_appointments} spoke / booked
                                     </p>
                                   ) : null}
                                   <TierBadge tier={g.tier} />
@@ -1337,11 +1337,11 @@ export default function ClientHealthDashboard(_props: Props) {
                                       ? (row.prior.metrics.unique_hand_raises / row.prior.metrics.new_leads) * 100
                                       : 0
                                     ).toFixed(1)}
-                                    % hand-raise · {row.prior.metrics.booked_to_conversation_rate.toFixed(0)}% book→spoke
+                                    % hand-raise · {row.prior.metrics.booked_to_conversation_rate.toFixed(0)}% Show rate
                                   </>
                                 ) : (
                                   <>
-                                    {" "}· {row.prior.metrics.booked_to_conversation_rate.toFixed(0)}% book→spoke · $
+                                    {" "}· {row.prior.metrics.booked_to_conversation_rate.toFixed(0)}% Show rate · $
                                     {Math.round(row.prior.metrics.cp_conversation)} CPConv
                                   </>
                                 )}

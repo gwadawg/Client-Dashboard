@@ -133,14 +133,14 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
     variant: "grid",
     gridClassName: DEFAULT_GRID,
     footnote:
-      "Book-to-Conversation = unique booked leads who eventually spoke to the LO (show ∪ claimed ∪ live transfer) after reschedules/no-show recovery — not slot-level attendance. Net Show / Show of booked are event rates for disposition hygiene only.",
+      "Show Rate = unique booked leads who eventually spoke to the LO (show ∪ claimed ∪ live transfer) after reschedules/no-show recovery — graded quality. True Show = of appointments that took place (show + no-show + LO bailed), how many showed.",
     cards: [
       {
-        label: "Book-to-Conversation",
+        label: "Show Rate",
         metric: "booked_to_conversation_rate",
         format: "pct",
         accent: true,
-        hint: "Unique booked leads who spoke to LO (show, claimed, or live transfer) ÷ unique booked leads. Credits recovery after no-show/reschedule. One lead once.",
+        hint: "Unique booked → spoke (show, claimed, or live transfer) ÷ unique booked. Credits recovery after no-show/reschedule. One lead once. Graded Client Success show quality.",
       },
       {
         label: "Booked who spoke",
@@ -148,19 +148,13 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
         secondaryMetric: "unique_booked_appointments",
         format: "int",
         valueCaption: "spoke / unique booked",
-        hint: "Unique booked leads who eventually spoke ÷ unique booked leads (same numerator/denominator as Book-to-Conversation).",
+        hint: "Count form of Show Rate: unique booked who spoke ÷ unique booked.",
       },
       {
-        label: "Net Show Rate (slots)",
-        metric: "net_show_pct",
-        format: "pct",
-        hint: "Event Shows ÷ (Shows + No Shows). Slot attendance only — excludes cancellations and LO bails. Prefer Book-to-Conversation for account quality.",
-      },
-      {
-        label: "Show Rate (of booked)",
+        label: "True Show",
         metric: "show_pct",
         format: "pct",
-        hint: "Event Shows ÷ (Shows + No Shows + LO bailed). Disposition hygiene only.",
+        hint: "Shows ÷ (Shows + No Shows + LO bailed). Of appointments that took place (final attendance outcome), how many showed. Excludes pending, cancelled, rescheduled.",
       },
       {
         label: "Cancel Rate",
@@ -206,7 +200,7 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
     title: "Appointments",
     gridClassName: DEFAULT_GRID,
     footnote:
-      "Billable Conversations = unique leads with a live transfer or show (claimed is not billable). Book-to-Conversation = unique booked who eventually spoke (show ∪ claimed ∪ LT) ÷ unique booked — recovery-inclusive. Net Show is event/slot attendance only.",
+      "Billable Conversations = unique leads with a live transfer or show (claimed is not billable). Show Rate = unique booked who eventually spoke (show ∪ claimed ∪ LT) ÷ unique booked. True Show = of took-place appointments (show + no-show + LO bail), how many showed.",
     cards: [
       { label: "Total Leads", metric: "new_leads", format: "int", hint: "Every new lead/contact ingested in this date range." },
       {
@@ -259,11 +253,11 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
         hint: "Partner loan officer missed the appointment — not the lead's fault.",
       },
       {
-        label: "Book-to-Conversation",
+        label: "Show Rate",
         metric: "booked_to_conversation_rate",
         format: "pct",
         accent: true,
-        hint: "Unique booked leads who spoke to LO (show, claimed, or live transfer) ÷ unique booked. Credits recovery after no-show/reschedule.",
+        hint: "Unique booked → spoke (show, claimed, or live transfer) ÷ unique booked. Credits recovery after no-show/reschedule. Graded show quality.",
       },
       {
         label: "Booked who spoke",
@@ -271,19 +265,13 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
         secondaryMetric: "unique_booked_appointments",
         format: "int",
         valueCaption: "spoke / unique booked",
-        hint: "Count of unique booked leads who eventually spoke vs unique booked.",
+        hint: "Count form of Show Rate: unique booked who spoke vs unique booked.",
       },
       {
-        label: "Net Show Rate (slots)",
-        metric: "net_show_pct",
-        format: "pct",
-        hint: "Event Shows ÷ (Shows + No Shows). Slot attendance only — prefer Book-to-Conversation for overall booked→spoke quality.",
-      },
-      {
-        label: "Show Rate (of booked)",
+        label: "True Show",
         metric: "show_pct",
         format: "pct",
-        hint: "Event Shows ÷ (Shows + No Shows + LO bailed). Disposition hygiene only.",
+        hint: "Shows ÷ (Shows + No Shows + LO bailed). Of appointments that took place, how many showed.",
       },
       {
         label: "LO Bail Rate",

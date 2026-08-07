@@ -147,7 +147,7 @@ export const KPI_DEFINITIONS: Record<KpiKey, KpiDefinition> = {
   show_rate: {
     key: 'show_rate',
     meaning:
-      'Of unique people we booked, how many eventually spoke to the LO (show, claimed, or live transfer) — recovery-inclusive after no-show/reschedule.',
+      'Show Rate: of unique people we booked, how many eventually spoke to the LO (show, claimed, or live transfer) — recovery-inclusive after no-show/reschedule. Distinct from True Show (slot took-place attendance).',
     formula: 'Unique (booked ∩ show∪claimed∪LT) ÷ Unique booked × 100',
     owner: 'ccm',
     ownerLabel: 'CCM (+ confirmations / rebook)',
@@ -155,7 +155,7 @@ export const KPI_DEFINITIONS: Record<KpiKey, KpiDefinition> = {
     fixHints: [
       'Confirmation sequence (SMS / call) before the appointment',
       'No-show rebook path until they speak or close out',
-      'Claimed and live transfers count as spoke — not calendar show only',
+      'Claimed and live transfers count as spoke — not calendar True Show only',
     ],
     librarySlug: null,
   },

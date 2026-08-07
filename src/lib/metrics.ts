@@ -78,8 +78,16 @@ export type MetricsResult = {
   appts_to_take_place: number;
   shows: number;
   no_shows: number;
+  /**
+   * True Show: shows ÷ (shows + no-shows + LO bailed).
+   * Of appointments that took place (final attendance outcome).
+   * Excludes pending, cancelled, rescheduled.
+   */
   show_pct: number;
-  /** True show rate: shows ÷ (shows + no-shows). Excludes cancellations, LO bails, and pending. */
+  /**
+   * Lead-only slot attendance: shows ÷ (shows + no-shows).
+   * Excludes LO bails — prefer `show_pct` (True Show) on the board.
+   */
   net_show_pct: number;
   /** LO bailed ÷ appointments booked. */
   lo_bail_rate: number;
@@ -104,8 +112,8 @@ export type MetricsResult = {
    */
   unique_booked_converted: number;
   /**
-   * Unique booked leads who eventually spoke ÷ unique booked leads × 100.
-   * Primary calendar→conversation quality KPI (not slot-level net show).
+   * Show Rate: unique booked leads who eventually spoke ÷ unique booked × 100.
+   * Graded quality (recovery-inclusive). Not the same as True Show (`show_pct`).
    */
   booked_to_conversation_rate: number;
   /** Unique conversations ÷ qualified leads. */

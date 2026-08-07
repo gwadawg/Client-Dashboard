@@ -61,22 +61,24 @@ Run Monday Week Plan and Thursday Commitment Check so every under-KPI account le
 |------|------------------|
 | **Client Success** | Hosts; R/Y/G rollup; client/LO risk; captures commitments in the panel |
 | **Media Buyer** | Reds on CPL / CPQL / opt-in / lead quality |
-| **Call Center Manager** | Reds on unique hand-raise, **book→spoke** (unique booked → spoke to LO), dial coverage on under-KPI logos |
+| **Call Center Manager** | Reds on unique hand-raise, **Show Rate** (unique booked → spoke to LO), dial coverage on under-KPI logos |
 | **Founder** | Not required in Mon/Thu KPI room; batch-approves Needs Founder in Ops Planning |
 
-North star: RM/DSCR = **CPConv**; HE = **hand-raise and/or book→spoke**. Do not chase CPL alone when CPConv is healthy.
+North star: RM/DSCR = **CPConv**; HE = **hand-raise and/or Show Rate**. Do not chase CPL alone when CPConv is healthy.
 
-**Show quality grade (Mr. Waiz / Client Success):** use **Book-to-Conversation**, not slot net show.
+**Show quality grade (Mr. Waiz / Client Success):** use **Show Rate** (unique booked → spoke), not **True Show** alone.
 
 ```text
-Book→spoke = unique booked leads who eventually spoke (show ∪ claimed ∪ live transfer)
-           ÷ unique booked leads × 100
+Show Rate = unique booked leads who eventually spoke (show ∪ claimed ∪ live transfer)
+         ÷ unique booked leads × 100
+
+True Show = Shows ÷ (Shows + No-shows + LO bailed)   # appointments that took place
 ```
 
-- Counts on the board: `spoke / unique booked` (e.g. 47/80).
+- Counts on the board: `spoke / unique booked` (e.g. 47/80) under Show Rate.
 - Recovery-inclusive: no-show → rebook → show still counts as success for that lead once.
-- Slot Net Show Rate (events Shows÷(Shows+No-shows)) is ops disposition hygiene only — **not** the Mon/Thu graded show metric.
-- When “show” is red: confirmations, rebook process, LO prep — then check claimed / live-transfer path so speak outcomes are logged.
+- **True Show** is booking-process quality on took-place slots — secondary, not the Mon/Thu graded show metric.
+- When Show Rate is red: confirmations, rebook process, LO prep — then check claimed / live-transfer path so speak outcomes are logged.
 
 ---
 

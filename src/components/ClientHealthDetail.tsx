@@ -329,11 +329,12 @@ export default function ClientHealthDetail({
                       label: "Hand-raise (unique ÷ leads)",
                       value: `${m.lead_hand_raise_rate.toFixed(1)}%`,
                     },
-                    { label: "Book→spoke (graded show)", value: `${m.booked_to_conversation_rate.toFixed(0)}%` },
+                    { label: "Show rate", value: `${m.booked_to_conversation_rate.toFixed(0)}%` },
                     {
                       label: "Spoke / unique booked",
                       value: `${m.unique_booked_converted} / ${m.unique_booked_appointments}`,
                     },
+                    { label: "True Show", value: `${m.show_pct.toFixed(0)}%` },
                     { label: "Pickup rate", value: `${m.pickup_pct.toFixed(0)}%` },
                     { label: "Leads / hand-raises", value: `${m.new_leads} / ${m.unique_hand_raises}` },
                   ]
@@ -341,13 +342,14 @@ export default function ClientHealthDetail({
                     { label: "CPConv (cost / conv)", value: money(data.current.cpconv) },
                     { label: "Hand-raise rate", value: `${m.hand_raise_rate.toFixed(0)}%` },
                     {
-                      label: "Book→spoke (graded show)",
+                      label: "Show rate",
                       value: `${m.booked_to_conversation_rate.toFixed(0)}%`,
                     },
                     {
                       label: "Spoke / unique booked",
                       value: `${m.unique_booked_converted} / ${m.unique_booked_appointments}`,
                     },
+                    { label: "True Show", value: `${m.show_pct.toFixed(0)}%` },
                     { label: "CPQL", value: money(data.current.cpql) },
                     { label: "Leads / convs", value: `${m.new_leads} / ${m.unique_conversations}` },
                   ]

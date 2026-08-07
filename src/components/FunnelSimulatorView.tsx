@@ -100,7 +100,7 @@ type GoalTableRow = {
 const CORE_RATE_FIELDS: RateField[] = [
   { key: "lead_to_qual_pct", label: "Lead → Qualified", hint: "Qualified ÷ Total Leads", max: 100 },
   { key: "booking_rate_pct", label: "Booking Rate", hint: "Booked ÷ Qualified", max: 80 },
-  { key: "net_show_rate_pct", label: "Net Show Rate", hint: "Shows ÷ (Shows + No-Shows)", max: 95 },
+  { key: "net_show_rate_pct", label: "True Show", hint: "Shows ÷ (Shows + No-Shows + LO bailed)", max: 95 },
   { key: "live_transfer_pct", label: "Live Transfer Rate", hint: "Live transfers ÷ Qualified", max: 30 },
   { key: "claimed_pct", label: "Claimed Rate", hint: "Client-claimed ÷ Qualified", max: 20 },
 ];

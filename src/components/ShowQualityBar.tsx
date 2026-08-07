@@ -33,7 +33,7 @@ export default function ShowQualityBar({ metrics }: Props) {
         <span className="text-xs tabular-nums" style={{ color: "#64748b" }}>{total} booked</span>
       </div>
       <p className="text-[10px] mb-4" style={{ color: "#475569" }}>
-        Where every booked appointment ended up. Net show rate counts only Showed vs. No-showed.
+        Where every booked appointment ended up. True Show uses Showed ÷ (Showed + No-showed + LO bailed).
       </p>
 
       {total === 0 ? (

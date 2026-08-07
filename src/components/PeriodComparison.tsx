@@ -60,7 +60,7 @@ function verdictRows(
         : deltaNum(current.cpconv, prior.cpconv, true),
     },
     {
-      label: "Book-to-conversation",
+      label: "Show rate",
       current: `${cm.booked_to_conversation_rate.toFixed(0)}%`,
       prior: `${pm.booked_to_conversation_rate.toFixed(0)}%`,
       delta: `${(cm.booked_to_conversation_rate - pm.booked_to_conversation_rate).toFixed(0)} pts`,

@@ -76,9 +76,9 @@ export function mediaBuyerStatus(row: ClientHealthRow): HealthTier {
 }
 
 /**
- * CCM owns post-lead conversion — unique hand-raise, book→spoke (unique booked
- * who spoke via show∪claim∪LT), conversation rate. Not event-level net show
- * rate. Booking-only rate is not graded. Never CPL / CPQL / CPConv.
+ * CCM owns post-lead conversion — unique hand-raise, Show Rate (unique booked
+ * who spoke via show∪claim∪LT), conversation rate. Not True Show (slot
+ * took-place attendance). Booking-only rate is not graded. Never CPL / CPQL / CPConv.
  */
 export function ccmStatus(row: ClientHealthRow, isHe: boolean): HealthTier {
   const m = row.current.metrics;

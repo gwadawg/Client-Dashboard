@@ -27,10 +27,9 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **Shows** | Lead attended the appointment | `COUNT(show events)` or `Showed? = Y` | Appointments col J |
 | **No Shows** | Lead missed the appointment | `COUNT(no_show events)` or `Showed? = N` | Appointments col J |
 | **LO bailed** | Partner LO missed the appointment with the lead (not a lead no-show) | `COUNT(lo_bailed events)` or `Showed? = X` | Appointments col J |
-| **Book-to-Conversation** | **Primary quality grade** — unique booked people who eventually spoke to the LO (recovery-inclusive) | `Unique (booked ∩ show∪claimed∪live_transfer) ÷ Unique booked × 100` | Book + Show/Claim/LT |
-| **Booked who spoke** | Count form of the above | `unique_booked_converted` / `unique_booked` | same |
-| **Show Rate** (of booked) | Slot disposition: shows vs took place (excludes pending + cancelled) | `Shows ÷ (Shows + No Shows + LO bailed) × 100` | Appointments |
-| **Net Show Rate** (slots) | Slot lead-attendance only; ignores cancellations, LO bails, pending | `Shows ÷ (Shows + No Shows) × 100` | Appointments |
+| **Show Rate** | **Primary quality grade** — unique booked people who eventually spoke to the LO (recovery-inclusive). Metric key: `booked_to_conversation_rate` / graded as `show_rate`. | `Unique (booked ∩ show∪claimed∪live_transfer) ÷ Unique booked × 100` | Book + Show/Claim/LT |
+| **Booked who spoke** | Count form of Show Rate | `unique_booked_converted` / `unique_booked` | same |
+| **True Show** | Of appointments that took place (final attendance outcome), how many showed. Metric key: `show_pct`. | `Shows ÷ (Shows + No Shows + LO bailed) × 100` | Appointments |
 | **LO Bail Rate** | Share of bookings the partner LO missed | `LO bailed ÷ Appointments Booked × 100` | Appointments |
 | **Cancellations** | Appointments cancelled | `COUNT(appointment_cancelled)` | GHL cancel trigger |
 | **Cancel Rate** | Cancelled vs scheduled | `Cancellations ÷ (Appointments Booked + Cancellations) × 100` | Appointments |
@@ -48,9 +47,8 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 
 - **Booking rate:** Unique leads with at least one `appointment_booked` in the window ÷ Qualified leads. A lead who books three times still counts once. Use the same date window for both sides and filter by the same client. Absolute **Appointments Booked** remains an event count (rebooks included).
 - **Hand-raise rate:** Unique leads with any of `appointment_booked`, `live_transfer`, or `claimed` ÷ Qualified leads. A lead who books and is later tagged claimed counts once.
-- **Book-to-conversation (primary Client Success “show quality”):** Unique leads with ≥1 `appointment_booked` **and** any of `show`, `claimed`, or `live_transfer` ÷ unique booked leads. Rebooks, no-show rebooks, cancels, and reschedules do not multiply the lead: one person in the denominator once; if they eventually speak they count once in the numerator. Cancel-only booked leads lower the rate. Live-transfer-only or claim-only leads **without** a booking are not in this rate (they still appear in Unique Conversations). Do **not** use `unique_conversations ÷ unique_booked` without the intersection.
-- **Show rate (of booked) — slots only:** `Shows ÷ (Shows + No Shows + LO bailed)`. Event-level disposition hygiene. Pending, cancelled, and rescheduled slots are excluded from the denominator.
-- **Net show rate (slots) — secondary:** `Shows ÷ (Shows + No Shows)`. Event-level; excludes cancellations, LO bails, and pending. Prefer book-to-conversation for “of people we booked, how many spoke?”
+- **Show Rate (primary Client Success “show quality”):** Unique leads with ≥1 `appointment_booked` **and** any of `show`, `claimed`, or `live_transfer` ÷ unique booked leads. Rebooks, no-show rebooks, cancels, and reschedules do not multiply the lead: one person in the denominator once; if they eventually speak they count once in the numerator. Cancel-only booked leads lower the rate. Live-transfer-only or claim-only leads **without** a booking are not in this rate (they still appear in Unique Conversations). Do **not** use `unique_conversations ÷ unique_booked` without the intersection.
+- **True Show (appointments that took place):** `Shows ÷ (Shows + No Shows + LO bailed)`. Event-level booking-process quality. Pending, cancelled, and rescheduled slots are excluded from the denominator. Prefer **Show Rate** for graded “of people we booked, how many spoke?”
 - **LO bail rate:** `LO bailed ÷ Appointments Booked`. Surfaces partner loan-officer no-shows (Showed? = X) as their own KPI rather than burying them in slot show rates.
 - **Conversation rate:** Unique leads with any of `show`, `claimed`, or `live_transfer` ÷ Qualified leads. A lead who shows and was also live-transferred counts once. Same unique-conversation figure is the Cost per Conversation denominator.
 - **Cancel rate:** `Cancellations ÷ (Appointments Booked + Cancellations)`. Use the same GHL **appointment ID** (`external_id`) on book and cancel. Prefer `/api/webhooks/appointment-status` with `status: "cancelled"` so the original booking row is updated (see `ccm-appt-cancelled.blueprint.json`). Reschedules are **not** cancellations — they use `appointment_rescheduled`.
@@ -94,16 +92,16 @@ The main **Dashboard** view for RM clients shows these sections:
 
 1. **Leads & Pipeline** — Total Leads, Qualified, Hot, Out of State, Claimed, Live Transfers  
 2. **Appointments** — Booked, booking rate, appts to take place, shows, no-shows, LO bailed, cancellations  
-3. **Show Quality & Conversion** — **Book-to-Conversation** (primary), booked who spoke counts, Net Show (slots), Show of booked, Cancel Rate, LO Bail Rate, Conversation Rate  
+3. **Show Quality & Conversion** — **Show Rate** (primary), booked who spoke counts, **True Show**, Cancel Rate, LO Bail Rate, Conversation Rate  
 4. **Acquisition Costs** — Total Spend, CPL, CPQL, CPH, Cost per Appointment, Cost per Conversation  
 5. **Conversions** — Proposals Made, Submissions, Funded Loans, and per-stage cost  
 6. **Trends** — Line charts for CPL, CPQL, and Cost per Conversation over the selected date range  
 
 The **Funnel Simulator** tab (`?view=kpi_simulator`) is a forward-looking calculator for RM prospects and clients: plug in spend, CPL, and stage conversion rates (or load from a selected RM client’s date range) to see projected funnel counts, cost metrics, KPI tier badges, and goal back-solve (“N funded loans → required spend”).
 
-Rate cards carry an info tooltip with their formula. Show Quality leads with **Book-to-Conversation** (unique booked → spoke to LO); slot Net Show remains secondary.
+Rate cards carry an info tooltip with their formula. Show Quality leads with **Show Rate** (unique booked → spoke to LO); **True Show** (took-place slots) is secondary.
 
-HE / Call Center clients keep a minimal dashboard (leads, appointments + calling stats). **Booking Rate** on the HE overview uses **Total Leads** as the denominator (`Unique booked leads ÷ Total Leads`), not qualified leads. Other operational metrics (dials, book-to-conversation, etc.) remain in other nav views.
+HE / Call Center clients keep a minimal dashboard (leads, appointments + calling stats). **Booking Rate** on the HE overview uses **Total Leads** as the denominator (`Unique booked leads ÷ Total Leads`), not qualified leads. Other operational metrics (dials, Show Rate, etc.) remain in other nav views.
 
 **Call Center billable (not RM Unique Conversations):** **Billable Conversations** = unique leads with `live_transfer` ∪ `show` in the selected range — claimed never counts toward what we charge. **Claimed After Booked** = unique leads whose earliest `claimed` in range is strictly after their earliest `appointment_booked` in range (summary watch card; dated drill-down is a follow-up). RM **Unique Conversations** remains `show ∪ claimed ∪ live_transfer` and is unchanged.
 
@@ -113,18 +111,18 @@ The **Client Success** view (`client_health`) splits clients by `reporting_type`
 
 | Segment | Clients | Graded KPIs | Account (Overview) tier |
 |---------|---------|-------------|-------------------------|
-| **Paid Ads (RM + DSCR)** | paid-ads reporting types | Lead-to-qualified, **unique hand-raise**, **book→spoke** (unique booked→spoke), close, CPL, CPQL, CPConv | North star = **CPConv** only |
-| **Call Center (HE)** | appointment-only / HE | **Unique hand-raise** (÷ total leads), **book→spoke** | Worst of hand-raise + book→spoke |
+| **Paid Ads (RM + DSCR)** | paid-ads reporting types | Lead-to-qualified, **unique hand-raise**, **Show Rate** (unique booked→spoke), close, CPL, CPQL, CPConv | North star = **CPConv** only |
+| **Call Center (HE)** | appointment-only / HE | **Unique hand-raise** (÷ total leads), **Show Rate** | Worst of hand-raise + Show Rate |
 
 **Role lenses (same data, different 911):**
 
 | Lens | Status drivers | Does not grade |
 |------|----------------|----------------|
-| **Overview** | CPConv (RM) / hand-raise + **book→spoke** (HE). Focus **Act now** = north-star 911 only; leading cost/funnel reds → Monitor / Leading watch | — |
-| **Media Buyer** | Worst of CPL, CPQL, lead→qualified (leading 7d preferred) | CPConv, hand-raise, book→spoke |
-| **CCM** | Worst of **unique hand-raise**, **book→spoke**, conversation % | CPL, CPQL, CPConv, booking-only |
+| **Overview** | CPConv (RM) / hand-raise + **Show Rate** (HE). Focus **Act now** = north-star 911 only; leading cost/funnel reds → Monitor / Leading watch | — |
+| **Media Buyer** | Worst of CPL, CPQL, lead→qualified (leading 7d preferred) | CPConv, hand-raise, Show Rate |
+| **CCM** | Worst of **unique hand-raise**, **Show Rate**, conversation % | CPL, CPQL, CPConv, booking-only |
 
-**Conversion benchmark = unique hand-raise** (`Unique leads with booked ∪ claimed ∪ live_transfer`), not booking-only rate. **Graded show quality = book→spoke** (`unique booked ∩ spoke ÷ unique booked`). Multiple booking events for one lead count once. Slot Net Show is disposition hygiene only — not Client Success grades.
+**Conversion benchmark = unique hand-raise** (`Unique leads with booked ∪ claimed ∪ live_transfer`), not booking-only rate. **Graded show quality = Show Rate** (`unique booked ∩ spoke ÷ unique booked`). Multiple booking events for one lead count once. **True Show** (slot took-place) is booking-process secondary only — not Client Success grades.
 
 HE accounts have **no ad-cost grading** (CPL / CPQL / CPConv are omitted). **Outbound dials** are shown for volume context but are not tiered. Detail drill-down shows **Account** + **lane** badges when opened from Media / CCM so CPConv 911 is never mistaken for that seat’s scorecard. Per-client benchmark overrides in Admin → Client Roster allow CPL customization (CPQL / CPConv derive from CPL + global conversion bands).
 
@@ -302,10 +300,10 @@ Document your live Make scenario to match one approach:
 | Appointments Booked | Yes | `appointment_booked` |
 | Booking Rate | Yes | RM: unique booked ÷ Qualified; HE overview: unique booked ÷ Total Leads (`lead_booking_rate`) |
 | Shows / No Shows | Yes | Event counts |
-| **Book-to-Conversation** | Yes | Graded Client Success `show_rate`: unique (booked ∩ spoken) ÷ unique booked |
+| **Show Rate** | Yes | Graded Client Success `show_rate`: unique (booked ∩ spoken) ÷ unique booked |
 | Booked who spoke | Yes | `unique_booked_converted` count |
 | Show Rate (of booked) | Yes | Slot events — secondary |
-| Net Show Rate | Yes | Slot events — secondary |
+| True Show | Yes | Slot took-place — secondary |
 | LO Bail Rate | Yes | `lo_bailed ÷ appointments booked` |
 | Conversation Rate | Yes | unique (show ∪ claimed ∪ live_transfer) ÷ qualified_leads |
 | Cancellations / Cancel Rate | Yes | `appointment_cancelled`; rate = cancel ÷ (booked + cancel) |
@@ -421,7 +419,7 @@ The **Media Buyer** view (Overview group) ranks Facebook ads **globally across a
 | **Cost per Show** | `Spend ÷ Shows` |
 | **Cost per Close** | `Spend ÷ Closes` |
 | **Booking Rate** | `Unique booked leads ÷ Qualified × 100` |
-| **Show Rate** (Media Buyer ad board) | Often slot/event `Shows ÷ (Shows + No Shows) × 100` — **not** Client Success graded book→spoke |
+| **Show Rate** (Media Buyer ad board) | Often slot/event attendance — align to **True Show** (`Shows ÷ (Shows + No Shows + LO bailed)`) when using outcomes that took place. **Not** Client Success graded **Show Rate** (unique booked → spoke) |
 
 Each ad can also have an **Ad Library** entry (`ad_library` table): a Google Drive link to the creative plus a summary and visual notes. This is curated manually and is the structured input a future "AI recreate this winning ad" feature will use.
 

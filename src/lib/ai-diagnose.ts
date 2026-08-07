@@ -104,30 +104,30 @@ CPConv bands: ${formatBandLine(cpconv)}.
 Upstream bands (W14):
 - CPQL: ${formatBandLine(cpql)}
 - CY: Above >0.20 | At 0.13-0.20 | Below 0.085-0.13 | 911 <0.085
-- Book→spoke (graded show_rate = unique booked leads who spoke via show∪claimed∪live_transfer ÷ unique booked): ${formatBandLine(showRate)}
+- Show Rate (graded show_rate = unique booked leads who spoke via show∪claimed∪live_transfer ÷ unique booked): ${formatBandLine(showRate)}
 - Booked/QL: ${formatBandLine(booking)}
 - Lead-to-Qual: ${formatBandLine(leadToQual)}
 - CPL, CTR, frequency, opt-in: DIAGNOSTIC ONLY, never convict an account alone.
 
 CLIENT-SIDE (report, never grade the team on these): LO bail rate (lo_bailed / booked) and any LO no-show are the client's loan officer, not the team. A high lo_bailed count explains a weak gross show/close without being a team failure — flag it as client-side context, not a constraint.
 
-Layer order (fix earliest first): L1 Ads (CPQL) -> L2 Landing (lead-to-qual) -> L3 Call center (hand-raise/booking) -> L4 Book→spoke / LO (confirmations, rebook, close).
+Layer order (fix earliest first): L1 Ads (CPQL) -> L2 Landing (lead-to-qual) -> L3 Call center (hand-raise/booking) -> L4 Show Rate / LO (confirmations, rebook, close).
 
 Relational override rules (first match wins, tie-break to earliest layer):
 R1 CPL Below + CPQL At/Above + CPConv At/Above -> GREEN, ignore CPL.
 R2 CPL cheap + CPQL Below -> Lead Quality.
 R3 CPQL Below + Lead-to-Qual Below -> Lead Quality.
 R4 CPQL Below + Lead-to-Qual At + CPL Below -> Lead Cost.
-R5 CPQL At + CY Below -> Downstream conversion (too few conversations per qualified lead; split across booking, book→spoke, and live-transfer paths).
-R6 CPQL At + Booked/QL At + book→spoke Below -> Book→spoke (L4 confirmations / rebook).
+R5 CPQL At + CY Below -> Downstream conversion (too few conversations per qualified lead; split across booking, Show Rate, and live-transfer paths).
+R6 CPQL At + Booked/QL At + Show Rate Below -> Show Rate (L4 confirmations / rebook).
 R9 All layers At + CPConv Below/911 -> DATA_HOLD (attribution; no ops changes, escalate).
-R10 Book→spoke At + Close Below (lead quality verified) -> LO Consultation.
+R10 Show Rate At + Close Below (lead quality verified) -> LO Consultation.
 
 Account states: GREEN (W14 CPConv At/Above, no flag) | WATCH | RED (W14 Below/911 confirmed by W30 or W7 not improving) | RECOVERING (W14 Below but W7 At/improving) | DATA_HOLD.
 
-GUARDRAILS: If CPConv is At/Above, do NOT chase CPL or pause for one upstream metric. No single upstream metric (CPL/CTR/freq/opt-in) triggers RED alone. Do NOT use slot net show (shows/(shows+no_shows) events) as the graded show metric.
+GUARDRAILS: If CPConv is At/Above, do NOT chase CPL or pause for one upstream metric. No single upstream metric (CPL/CTR/freq/opt-in) triggers RED alone. Do NOT use True Show (shows/(shows+no_shows+lo_bailed) events) as the graded show metric — grade Show Rate (unique booked → spoke).
 
-Compute rates yourself from raw counts when provided (conversations = unique or sum of live_transfers + shows + claimed per product definition; book→spoke = unique booked who also spoke ÷ unique booked). Show the CPConv arithmetic (spend / conversations) in cpconv_explanation. One PRIMARY constraint only.
+Compute rates yourself from raw counts when provided (conversations = unique or sum of live_transfers + shows + claimed per product definition; Show Rate = unique booked who also spoke ÷ unique booked). Show the CPConv arithmetic (spend / conversations) in cpconv_explanation. One PRIMARY constraint only.
 
 Return ONLY valid minified JSON (no markdown, no prose) matching exactly:
 {"account_status":string,"primary_constraint":string,"cpconv_w14":number|null,"cpconv_explanation":string,"summary":string[],"layer_scorecard":[{"metric":string,"w14":string,"tier":string,"owner":string}],"action_plan":[{"owner":string,"action":string,"timebox":string,"success_metric":string,"do_not_do":string}],"open_questions":string[]}`;
