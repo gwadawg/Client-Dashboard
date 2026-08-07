@@ -34,7 +34,7 @@ export const DEFAULT_COMPARE_STATE: CompareState = {
   current: { ...DEMO_CURRENT },
   waiz: { ...DEMO_WAIZ },
   link_spend: true,
-  /** Default off so Waiz can model higher DSCR commissions independently. */
+  /** Always treat as independent; value ignored by UI. */
   link_commission: false,
   include_fees: false,
 };

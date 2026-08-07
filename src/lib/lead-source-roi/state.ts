@@ -29,21 +29,17 @@ export function normalizeSide(raw: SideInputs): SideInputs {
 }
 
 export function createDefaultState(): CompareState {
-  const linkCommission = DEFAULT_COMPARE_STATE.link_commission;
   const waizBase = { ...DEFAULT_COMPARE_STATE.waiz };
   // Same-budget story: spend still tracks Current by default.
   if (DEFAULT_COMPARE_STATE.link_spend) {
     waizBase.ad_spend = DEFAULT_COMPARE_STATE.current.ad_spend;
   }
-  // Commission stays independent unless link_commission is on (DSCR often pays more).
-  if (linkCommission) {
-    waizBase.avg_commission = DEFAULT_COMPARE_STATE.current.avg_commission;
-  }
+  // Waiz keeps its own avg_commission seed — never forced to Current.
   return {
     current: normalizeSide(DEFAULT_COMPARE_STATE.current),
     waiz: normalizeSide(waizBase),
     link_spend: DEFAULT_COMPARE_STATE.link_spend,
-    link_commission: linkCommission,
+    link_commission: false,
     include_fees: DEFAULT_COMPARE_STATE.include_fees,
   };
 }
@@ -57,16 +53,12 @@ export function setLinkSpend(state: CompareState, on: boolean): CompareState {
   return { ...state, link_spend: true, waiz };
 }
 
+/** No-op for commission link — commissions stay independent (DSCR product story). */
 export function setLinkCommission(
   state: CompareState,
-  on: boolean,
+  _on: boolean,
 ): CompareState {
-  if (!on) return { ...state, link_commission: false };
-  const waiz = normalizeSide({
-    ...state.waiz,
-    avg_commission: state.current.avg_commission,
-  });
-  return { ...state, link_commission: true, waiz };
+  return { ...state, link_commission: false };
 }
 
 export function setIncludeFees(state: CompareState, on: boolean): CompareState {
@@ -127,19 +119,7 @@ export function patchSide(
       waiz: normalizeSide({ ...out.waiz, ad_spend: out.current.ad_spend }),
     };
   }
-  if (
-    key === "current" &&
-    out.link_commission &&
-    patch.avg_commission !== undefined
-  ) {
-    out = {
-      ...out,
-      waiz: normalizeSide({
-        ...out.waiz,
-        avg_commission: out.current.avg_commission,
-      }),
-    };
-  }
+  // Intentionally do NOT sync avg_commission Current → Waiz.
 
   return out;
 }
@@ -151,7 +131,8 @@ export function encodeCompareState(state: CompareState): string {
     c: state.current,
     w: state.waiz,
     ls: state.link_spend,
-    lc: state.link_commission,
+    // Always write false so old clients don't re-lock Waiz commission.
+    lc: false,
     f: state.include_fees,
   };
   if (typeof btoa === "function") {
@@ -179,8 +160,8 @@ export function decodeCompareState(encoded: string): CompareState | null {
       current: normalizeSide(parsed.c),
       waiz: normalizeSide(parsed.w),
       link_spend: parsed.ls !== false,
-      // Default unlinked: missing/false = independent Waiz commission (DSCR product story).
-      link_commission: parsed.lc === true,
+      // Never re-lock Waiz avg commission from shared URLs.
+      link_commission: false,
       include_fees: !!parsed.f,
     };
   } catch {

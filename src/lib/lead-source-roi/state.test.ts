@@ -58,10 +58,29 @@ describe("lead-source-roi state", () => {
     assert.equal(s.current.cpl, s.current.ad_spend / 250);
   });
 
-  it("link_commission mirrors avg_commission when turned on", () => {
+  it("link_commission no longer syncs Waiz commission to Current", () => {
     let s = setLinkCommission(createDefaultState(), true);
+    assert.equal(s.link_commission, false);
     s = patchSide(s, "current", { avg_commission: 6_000 });
-    assert.equal(s.waiz.avg_commission, 6_000);
+    s = patchSide(s, "waiz", { avg_commission: 9_000 });
+    assert.equal(s.current.avg_commission, 6_000);
+    assert.equal(s.waiz.avg_commission, 9_000);
+  });
+
+  it("decode forces commission unlinked even when payload had lc true", () => {
+    const payload = {
+      v: 1,
+      c: createDefaultState().current,
+      w: { ...createDefaultState().waiz, avg_commission: 8_000 },
+      ls: true,
+      lc: true,
+      f: false,
+    };
+    const enc = Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
+    const dec = decodeCompareState(enc);
+    assert.ok(dec);
+    assert.equal(dec!.link_commission, false);
+    assert.equal(dec!.waiz.avg_commission, 8_000);
   });
 
   it("encode/decode round-trips", () => {

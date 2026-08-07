@@ -15,7 +15,6 @@ import {
   encodeCompareState,
   patchSide,
   setIncludeFees,
-  setLinkCommission,
   setLinkSpend,
   type SidePatch,
 } from "@/lib/lead-source-roi/state";
@@ -181,7 +180,6 @@ function SideColumn({
   inputs,
   isWaiz,
   linkSpend,
-  linkCommission,
   includeFees,
   costPerConversation,
   contacts,
@@ -193,7 +191,6 @@ function SideColumn({
   inputs: SideInputs;
   isWaiz: boolean;
   linkSpend: boolean;
-  linkCommission: boolean;
   includeFees: boolean;
   /** Derived: ad spend ÷ contacts (not loaded fees). */
   costPerConversation: number | null;
@@ -201,7 +198,6 @@ function SideColumn({
   onPatch: (key: SideKey, patch: SidePatch) => void;
 }) {
   const spendLocked = isWaiz && linkSpend;
-  const commissionLocked = isWaiz && linkCommission;
 
   return (
     <div className="rounded-xl p-4 space-y-3" style={{ background: PANEL, border: BORDER }}>
@@ -302,13 +298,10 @@ function SideColumn({
         fieldKey="avg_commission"
         value={inputs.avg_commission}
         prefix="$"
-        disabled={commissionLocked}
         caption={
-          commissionLocked
-            ? "Linked to Current"
-            : isWaiz
-              ? "Edit freely — e.g. higher DSCR pay vs their current product"
-              : "What they make per close on their current product mix"
+          isWaiz
+            ? "Set DSCR / target product pay — independent from Current"
+            : "What they make per close on their current product mix"
         }
         onChange={(v) => onPatch(sideKey, { avg_commission: v })}
       />
@@ -543,15 +536,9 @@ export default function LeadSourceRoiCalculator({
             />
             Spend linked
           </label>
-          <label className="flex items-center gap-1.5 cursor-pointer" style={{ color: TEXT }}>
-            <input
-              type="checkbox"
-              checked={state.link_commission}
-              onChange={(e) => setState((s) => setLinkCommission(s, e.target.checked))}
-            />
-            Commission linked
-            <span style={{ color: MUTED }}>(off = set each product separately)</span>
-          </label>
+          <span style={{ color: MUTED }}>
+            Avg commission is always independent (set Current vs Waiz separately)
+          </span>
         </div>
       </div>
 
@@ -637,7 +624,6 @@ export default function LeadSourceRoiCalculator({
           inputs={state.current}
           isWaiz={false}
           linkSpend={state.link_spend}
-          linkCommission={state.link_commission}
           includeFees={state.include_fees}
           costPerConversation={result.current.cost_per_conversation}
           contacts={result.current.contacts}
@@ -650,7 +636,6 @@ export default function LeadSourceRoiCalculator({
           inputs={state.waiz}
           isWaiz
           linkSpend={state.link_spend}
-          linkCommission={state.link_commission}
           includeFees={state.include_fees}
           costPerConversation={result.waiz.cost_per_conversation}
           contacts={result.waiz.contacts}

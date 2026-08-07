@@ -21,6 +21,10 @@ export type CompareState = {
   current: SideInputs;
   waiz: SideInputs;
   link_spend: boolean;
+  /**
+   * @deprecated Always independent — keep for URL decode of old `lc` flag only.
+   * Commission is never forced equal between columns.
+   */
   link_commission: boolean;
   include_fees: boolean;
 };
