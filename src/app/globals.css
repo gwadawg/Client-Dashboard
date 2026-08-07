@@ -24,3 +24,50 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── Lead source ROI tool ──────────────────────────────────────────────
+   Terminal treatment scoped to `.lsr` so the rest of the dashboard is
+   untouched. Numerals use IBM Plex Mono; chrome uses Archivo. */
+
+.lsr {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-feature-settings: "ss01";
+}
+
+.lsr-data {
+  font-family: var(--font-data), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Spinner arrows invite mis-clicks during a live screen share. */
+.lsr input[type="number"]::-webkit-outer-spin-button,
+.lsr input[type="number"]::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.lsr input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+/* Draws the eye to whichever number just moved when a field is edited. */
+@keyframes lsr-flash {
+  0% {
+    background-color: rgba(245, 165, 36, 0.22);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.lsr-flash {
+  animation: lsr-flash 620ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lsr-flash {
+    animation: none;
+  }
+}

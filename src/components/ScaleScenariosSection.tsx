@@ -16,18 +16,12 @@ import {
 } from "recharts";
 import { buildContactRateCurve, buildSpendLadder } from "@/lib/lead-source-roi/scale";
 import type { CompareState } from "@/lib/lead-source-roi/types";
+import { BORDER, R, T } from "@/lib/lead-source-roi/theme";
 
-const PANEL_BG = "linear-gradient(140deg, #0f2040 0%, #0b1830 60%, #0a1628 100%)";
-const MUTED = "#64748b";
-const LABEL = "#94a3b8";
-const TEXT = "#e2e8f0";
-const AMBER = "#f59e0b";
-const SLATE_LINE = "#64748b";
-const GOOD = "#22c55e";
-const BORDER = "1px solid rgba(255,255,255,0.07)";
-const GRID = "rgba(148,163,184,0.12)";
+const GRID = "rgba(148,163,184,0.09)";
 /** Recharts defaults to -1×-1 and warns on first measure — seed a real size instead. */
 const CHART_INITIAL = { width: 640, height: 288 };
+const MONO = "var(--font-data), ui-monospace, monospace";
 
 function money(n: number | null | undefined, digits = 0): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -61,32 +55,33 @@ function Panel({
   title,
   blurb,
   children,
-  right,
 }: {
   eyebrow: string;
   title: string;
   blurb: string;
   children: React.ReactNode;
-  right?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl p-5" style={{ background: PANEL_BG, border: BORDER }}>
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: AMBER }}>
-            {eyebrow}
-          </p>
-          <h3 className="text-base font-semibold mt-1" style={{ color: TEXT }}>
-            {title}
-          </h3>
-          <p className="text-xs mt-1 max-w-xl leading-relaxed" style={{ color: MUTED }}>
-            {blurb}
-          </p>
-        </div>
-        {right}
-      </div>
-      {children}
-    </div>
+    <section style={{ background: T.panel, border: BORDER, borderRadius: R }}>
+      <header className="px-5 py-4" style={{ borderBottom: `1px solid ${T.ruleSoft}` }}>
+        <span
+          className="text-[10px] font-semibold uppercase"
+          style={{ color: T.amber, letterSpacing: "0.13em" }}
+        >
+          {eyebrow}
+        </span>
+        <h3
+          className="text-[15px] font-bold mt-1.5"
+          style={{ color: T.hi, letterSpacing: "-0.005em" }}
+        >
+          {title}
+        </h3>
+        <p className="text-[12px] mt-1.5 max-w-2xl leading-relaxed" style={{ color: T.mid }}>
+          {blurb}
+        </p>
+      </header>
+      <div className="p-5">{children}</div>
+    </section>
   );
 }
 
@@ -103,24 +98,24 @@ function StatChip({
 }) {
   return (
     <div
-      className="rounded-xl px-3 py-2.5 min-w-0 flex flex-col"
-      style={{ background: "rgba(10,22,40,0.7)", border: BORDER }}
+      className="px-3.5 py-3 min-w-0 flex flex-col"
+      style={{ background: T.base, border: BORDER, borderRadius: R }}
     >
       {/* Two-line floor keeps values aligned across a row when a label wraps. */}
       <p
-        className="text-[10px] uppercase tracking-wide leading-snug min-h-[2.75em]"
-        style={{ color: MUTED }}
+        className="text-[9px] font-semibold uppercase leading-snug min-h-[2.75em]"
+        style={{ color: T.low, letterSpacing: "0.1em" }}
       >
         {label}
       </p>
       <p
-        className="text-xl font-semibold tabular-nums mt-0.5 truncate"
-        style={{ color: accent || TEXT }}
+        className="lsr-data text-xl font-semibold mt-0.5 truncate"
+        style={{ color: accent || T.hi }}
       >
         {value}
       </p>
       {sub && (
-        <p className="text-[10px] mt-auto pt-0.5 leading-snug" style={{ color: MUTED }}>
+        <p className="text-[10px] mt-auto pt-1 leading-snug" style={{ color: T.low }}>
           {sub}
         </p>
       )}
@@ -144,16 +139,22 @@ function ChartTooltip({
   if (!active || !payload?.length) return null;
   return (
     <div
-      className="rounded-lg px-3 py-2 text-xs shadow-xl"
-      style={{ background: "#132038", border: "1px solid rgba(255,255,255,0.14)" }}
+      className="px-3 py-2 text-xs shadow-2xl"
+      style={{ background: T.raised, border: `1px solid ${T.ruleStrong}`, borderRadius: R }}
     >
-      <p className="font-medium mb-1" style={{ color: TEXT }}>
+      <p
+        className="text-[10px] font-semibold uppercase mb-1.5"
+        style={{ color: T.mid, letterSpacing: "0.1em" }}
+      >
         {label}
         {labelSuffix?.(String(label ?? ""))}
       </p>
       {payload.map((p, i) => (
-        <p key={i} className="tabular-nums" style={{ color: p.color || LABEL }}>
-          {p.name}: {formatter(Number(p.value), String(p.name))}
+        <p key={i} className="flex items-center gap-2 text-[12px]">
+          <span style={{ color: T.mid }}>{p.name}</span>
+          <span className="lsr-data font-semibold ml-auto" style={{ color: p.color || T.hi }}>
+            {formatter(Number(p.value), String(p.name))}
+          </span>
         </p>
       ))}
     </div>
@@ -175,15 +176,24 @@ function SpendTick({
   const label = String(payload?.value ?? "");
   return (
     <g transform={`translate(${x ?? 0},${y ?? 0})`}>
-      <text textAnchor="middle" dy={12} fontSize={11} fill={LABEL} fontWeight={600}>
+      <text
+        textAnchor="middle"
+        dy={13}
+        fontSize={12}
+        fontFamily={MONO}
+        fill={T.hi}
+        fontWeight={600}
+      >
         {label}
       </text>
-      <text textAnchor="middle" dy={26} fontSize={10} fill={MUTED}>
+      <text textAnchor="middle" dy={27} fontSize={10} fontFamily={MONO} fill={T.low}>
         {spendByLabel[label] ?? ""}
       </text>
     </g>
   );
 }
+
+const AXIS_TICK = { fill: T.low, fontSize: 11, fontFamily: MONO };
 
 export default function ScaleScenariosSection({ state }: { state: CompareState }) {
   const ladder = useMemo(() => buildSpendLadder(state), [state]);
@@ -192,7 +202,7 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
       ladder.map((r) => ({
         label: r.label,
         spendLabel: compactMoney(r.spend),
-        Current: Math.round(r.currentNet),
+        Theirs: Math.round(r.currentNet),
         "With Waiz": Math.round(r.waizNet),
         Gain: Math.round(r.deltaNet),
       })),
@@ -229,19 +239,19 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
       <Panel
         eyebrow="Scale scenarios"
         title="What happens when you put more budget through a better engine"
-        blurb="Same CPL and rates on each side — only the media budget moves. The gap is not fixed: every dollar you add compounds the difference between the two lead sources."
+        blurb="Same CPL and rates on each side — only the media budget moves. The gap is not fixed: every dollar added compounds the difference between the two lead sources."
       >
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%" initialDimension={CHART_INITIAL}>
             <ComposedChart data={ladderData} margin={{ top: 8, right: 8, left: 4, bottom: 18 }}>
               <defs>
                 <linearGradient id="waizBar" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#fbbf24" stopOpacity={0.95} />
-                  <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.55} />
+                  <stop offset="0%" stopColor="#FBBF24" stopOpacity={1} />
+                  <stop offset="100%" stopColor={T.amber} stopOpacity={0.42} />
                 </linearGradient>
                 <linearGradient id="currentBar" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#475569" stopOpacity={0.9} />
-                  <stop offset="100%" stopColor="#334155" stopOpacity={0.5} />
+                  <stop offset="0%" stopColor="#3E4C63" stopOpacity={0.95} />
+                  <stop offset="100%" stopColor="#2A3648" stopOpacity={0.45} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke={GRID} vertical={false} />
@@ -250,18 +260,18 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
                 interval={0}
                 height={38}
                 tick={<SpendTick spendByLabel={spendByLabel} />}
-                axisLine={{ stroke: GRID }}
+                axisLine={{ stroke: T.rule }}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fill: MUTED, fontSize: 11 }}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) => compactMoney(Number(v))}
-                width={54}
+                width={56}
               />
               <Tooltip
-                cursor={{ fill: "rgba(148,163,184,0.08)" }}
+                cursor={{ fill: "rgba(148,163,184,0.06)" }}
                 content={
                   <ChartTooltip
                     formatter={(v) => money(v)}
@@ -272,18 +282,19 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
               <Legend
                 verticalAlign="top"
                 align="right"
-                wrapperStyle={{ fontSize: 11, color: LABEL, paddingBottom: 8 }}
-                iconType="circle"
+                wrapperStyle={{ fontSize: 11, color: T.mid, paddingBottom: 10 }}
+                iconType="square"
+                iconSize={9}
               />
-              <Bar dataKey="Current" fill="url(#currentBar)" radius={[6, 6, 0, 0]} maxBarSize={44} />
-              <Bar dataKey="With Waiz" fill="url(#waizBar)" radius={[6, 6, 0, 0]} maxBarSize={44} />
+              <Bar dataKey="Theirs" fill="url(#currentBar)" radius={[2, 2, 0, 0]} maxBarSize={46} />
+              <Bar dataKey="With Waiz" fill="url(#waizBar)" radius={[2, 2, 0, 0]} maxBarSize={46} />
               <Line
                 type="monotone"
                 dataKey="Gain"
-                stroke={GOOD}
-                strokeWidth={2.5}
-                dot={{ r: 3, fill: GOOD, strokeWidth: 0 }}
-                activeDot={{ r: 5 }}
+                stroke={T.good}
+                strokeWidth={2}
+                dot={{ r: 2.5, fill: T.good, strokeWidth: 0 }}
+                activeDot={{ r: 4.5 }}
               />
             </ComposedChart>
           </ResponsiveContainer>
@@ -293,19 +304,19 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
           <StatChip
             label="Gain at today's spend"
             value={money(baseRung?.deltaNet ?? 0)}
-            accent={GOOD}
+            accent={T.good}
             sub={`at ${compactMoney(baseRung?.spend ?? 0)} / mo`}
           />
           <StatChip
             label={`Gain at ${topRung?.label ?? "3×"} spend`}
             value={money(topRung?.deltaNet ?? 0)}
-            accent={GOOD}
+            accent={T.good}
             sub={`at ${compactMoney(topRung?.spend ?? 0)} / mo`}
           />
           <StatChip
             label={`Extra deals at ${topRung?.label ?? "3×"}`}
             value={num((topRung?.waizDeals ?? 0) - (topRung?.currentDeals ?? 0))}
-            accent={AMBER}
+            accent={T.amber}
             sub="vs their source, same budget"
           />
           <StatChip
@@ -330,48 +341,50 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
             <ComposedChart data={curve} margin={{ top: 8, right: 8, left: 4, bottom: 18 }}>
               <defs>
                 <linearGradient id="costArea" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#ef4444" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#ef4444" stopOpacity={0.02} />
+                  <stop offset="0%" stopColor={T.bad} stopOpacity={0.32} />
+                  <stop offset="100%" stopColor={T.bad} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke={GRID} vertical={false} />
               <XAxis
                 dataKey="label"
-                tick={{ fill: MUTED, fontSize: 11 }}
-                axisLine={{ stroke: GRID }}
+                tick={AXIS_TICK}
+                axisLine={{ stroke: T.rule }}
                 tickLine={false}
                 label={{
-                  value: "Contact rate",
+                  value: "CONTACT RATE",
                   position: "insideBottom",
                   offset: -14,
-                  fill: MUTED,
-                  fontSize: 10,
+                  fill: T.low,
+                  fontSize: 9,
+                  letterSpacing: "0.13em",
                 }}
               />
               <YAxis
                 yAxisId="cost"
-                tick={{ fill: MUTED, fontSize: 11 }}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) => compactMoney(Number(v))}
-                width={54}
+                width={56}
               />
               <Tooltip
-                cursor={{ stroke: GRID }}
+                cursor={{ stroke: T.rule }}
                 content={<ChartTooltip formatter={(v) => money(v)} />}
               />
               <Legend
                 verticalAlign="top"
                 align="right"
-                wrapperStyle={{ fontSize: 11, color: LABEL, paddingBottom: 8 }}
-                iconType="circle"
+                wrapperStyle={{ fontSize: 11, color: T.mid, paddingBottom: 10 }}
+                iconType="square"
+                iconSize={9}
               />
               <Area
                 yAxisId="cost"
                 type="monotone"
                 dataKey="Cost / conversation"
-                stroke="#ef4444"
-                strokeWidth={2.5}
+                stroke={T.bad}
+                strokeWidth={2}
                 fill="url(#costArea)"
               />
               <ReferenceDot
@@ -382,9 +395,9 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
                     (p) => p.pct === Math.round(state.current.contact_rate_pct / 5) * 5,
                   )?.["Cost / conversation"] ?? undefined
                 }
-                r={6}
-                fill={SLATE_LINE}
-                stroke="#e2e8f0"
+                r={5}
+                fill={T.panel}
+                stroke={T.mid}
                 strokeWidth={2}
               />
               <ReferenceDot
@@ -395,15 +408,15 @@ export default function ScaleScenariosSection({ state }: { state: CompareState }
                     (p) => p.pct === Math.round(state.waiz.contact_rate_pct / 5) * 5,
                   )?.["Cost / conversation"] ?? undefined
                 }
-                r={6}
-                fill={AMBER}
-                stroke="#fff7ed"
+                r={5.5}
+                fill={T.amber}
+                stroke={T.base}
                 strokeWidth={2}
               />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-        <p className="text-[11px] mt-2" style={{ color: MUTED }}>
+        <p className="text-[11px] mt-3" style={{ color: T.low }}>
           Dots mark where each side sits today — grey is their source, amber is Waiz.
         </p>
       </Panel>
