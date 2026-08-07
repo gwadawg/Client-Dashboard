@@ -19,6 +19,7 @@ import {
   type SidePatch,
 } from "@/lib/lead-source-roi/state";
 import type { CompareState, SideInputs, SideKey, SideOutcomes } from "@/lib/lead-source-roi/types";
+import ContactRateHelperModal from "@/components/ContactRateHelperModal";
 
 type Props = {
   variant: "internal" | "public";
@@ -184,6 +185,7 @@ function SideColumn({
   costPerConversation,
   contacts,
   onPatch,
+  onOpenContactRateHelper,
 }: {
   title: string;
   subtitle: string;
@@ -196,6 +198,8 @@ function SideColumn({
   costPerConversation: number | null;
   contacts: number;
   onPatch: (key: SideKey, patch: SidePatch) => void;
+  /** Current stack only — educational contact-rate helper. */
+  onOpenContactRateHelper?: () => void;
 }) {
   const spendLocked = isWaiz && linkSpend;
 
@@ -237,15 +241,31 @@ function SideColumn({
           onChange={(v) => onPatch(sideKey, { leads: v })}
         />
       </div>
-      <NumField
-        label="Contact rate"
-        fieldKey="contact_rate_pct"
-        value={inputs.contact_rate_pct}
-        suffix="%"
-        step={0.5}
-        caption={isWaiz ? rangeCaption("contact_rate_pct") : "Of leads that became a conversation"}
-        onChange={(v) => onPatch(sideKey, { contact_rate_pct: v })}
-      />
+      <div>
+        <NumField
+          label="Contact rate"
+          fieldKey="contact_rate_pct"
+          value={inputs.contact_rate_pct}
+          suffix="%"
+          step={0.5}
+          caption={
+            isWaiz
+              ? rangeCaption("contact_rate_pct")
+              : "Of leads that became a real phone conversation"
+          }
+          onChange={(v) => onPatch(sideKey, { contact_rate_pct: v })}
+        />
+        {!isWaiz && onOpenContactRateHelper && (
+          <button
+            type="button"
+            onClick={onOpenContactRateHelper}
+            className="mt-2 text-left text-[12px] font-medium underline-offset-2 hover:underline"
+            style={{ color: AMBER }}
+          >
+            Calculate my contact rate →
+          </button>
+        )}
+      </div>
 
       {/* Derived — not editable; live from spend ÷ contacts */}
       <div
@@ -405,6 +425,7 @@ export default function LeadSourceRoiCalculator({
 }: Props) {
   const [loadError, setLoadError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [contactHelperOpen, setContactHelperOpen] = useState(false);
   const [state, setState] = useState<CompareState>(() => {
     if (initialEncoded) {
       const decoded = decodeCompareState(initialEncoded);
@@ -628,6 +649,7 @@ export default function LeadSourceRoiCalculator({
           costPerConversation={result.current.cost_per_conversation}
           contacts={result.current.contacts}
           onPatch={onPatch}
+          onOpenContactRateHelper={() => setContactHelperOpen(true)}
         />
         <SideColumn
           title="With Waiz"
@@ -642,6 +664,15 @@ export default function LeadSourceRoiCalculator({
           onPatch={onPatch}
         />
       </div>
+
+      <ContactRateHelperModal
+        open={contactHelperOpen}
+        onClose={() => setContactHelperOpen(false)}
+        initialLeads={state.current.leads}
+        onApply={(pct) => {
+          setState((s) => patchSide(s, "current", { contact_rate_pct: pct }));
+        }}
+      />
 
       {/* Outcomes */}
       <div className="rounded-xl p-4" style={{ background: PANEL, border: BORDER }}>

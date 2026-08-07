@@ -67,8 +67,9 @@ export const FIELD_TOOLTIPS: Record<
     why: "Top of the contact → close → commission chain.",
   },
   contact_rate_pct: {
-    definition: "Share of leads that became a real conversation.",
-    why: "Pickup and answer quality drive cost per conversation.",
+    definition:
+      "Share of leads that resulted in a live phone conversation — not texts or opt-outs.",
+    why: "Only people you speak with can close. Cheap leads without contact waste spend.",
   },
   cost_per_conversation: {
     definition: "Ad spend ÷ conversations (contacts). Not editable.",
