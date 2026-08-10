@@ -38,6 +38,10 @@ function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
+function fmtMoney(n: number): string {
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
+}
+
 function normPersonName(s: string): string {
   return s
     .toLowerCase()
