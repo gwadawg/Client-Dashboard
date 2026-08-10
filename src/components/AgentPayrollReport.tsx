@@ -653,7 +653,8 @@ export default function AgentPayrollReport({
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Team Payroll</h2>
           <p className="text-sm mt-0.5 max-w-2xl" style={{ color: "#475569" }}>
-            Tables below are the live commission calculator (bookings / shows). Cash actually paid via Wise / HR lives in the Paid section and under Finance → Expenses.
+            Month filter = <span style={{ color: "#94a3b8" }}>work period earned</span> (bookings / shows / transfers that month).
+            Cash is often paid the <span style={{ color: "#94a3b8" }}>following month</span> (e.g. August payout for July work) — see cash rows by transfer date in the ledger below and Finance → Expenses.
           </p>
           {report && (
             <p className="text-xs mt-1" style={{ color: "#64748b" }}>
@@ -753,7 +754,9 @@ export default function AgentPayrollReport({
                 Cash paid this period (expense ledger)
               </p>
               <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
-                Wise / HR / sheet cash and posts from this screen (fulfillment / call-center COGS by default). Calculator submit locks are separate — reverse them here when locked, or use Unlock on the employee detail.
+                Wise / HR / sheet cash by <span style={{ color: "#94a3b8" }}>transfer date</span> (when money left), plus posts from this screen
+                (fulfillment / call-center COGS by default). That is not the same as calculator pay for this work month — e.g. July work is often paid in early August.
+                Calculator submit locks are separate — reverse them here when locked, or use Unlock on the employee detail.
               </p>
             </div>
             {ledgerExpenses && ledgerExpenses.count > 0 && (
