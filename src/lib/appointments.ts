@@ -1,8 +1,29 @@
 import type { createServiceClient } from './supabase';
 import { needsAgentCredit } from './credit-queue-eligibility';
 import { liveClientFilter } from './db-helpers';
+import {
+  CALL_CENTER_TIMEZONE,
+  todayYmdInCallCenterTz,
+  zonedWallTimeToUtc,
+} from './time';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
+
+/**
+ * Cutoff for "past-due / awaiting disposition": start of the local calendar day
+ * in the call-center timezone. An appointment is overdue only when its
+ * `scheduled_at` is strictly before this instant — same-day bookings (even if
+ * the wall-clock slot has already passed) stay out of the pending queue until
+ * tomorrow.
+ */
+export function overdueAppointmentAsOfIso(
+  now: Date = new Date(),
+  timeZone: string = CALL_CENTER_TIMEZONE,
+): string {
+  const ymd = todayYmdInCallCenterTz(now, timeZone);
+  const [y, m, d] = ymd.split('-').map(Number);
+  return zonedWallTimeToUtc(y, m, d, 0, 0, 0, timeZone).toISOString();
+}
 
 // Outcome event types recorded for an appointment after it is booked.
 export const OUTCOME_EVENT_TYPES = [
@@ -696,10 +717,10 @@ export async function supersedePriorPendingBookings(
   return { superseded_ids };
 }
 
-// Count appointments whose scheduled date has already passed but still have no
-// outcome (show / no_show / appointment_cancelled / lo_bailed / rescheduled).
-// These are the "past due, not dispositioned" appointments that silently drag
-// down show rate.
+// Count appointments whose scheduled *calendar date* is before today (call-center
+// TZ) but still have no outcome (show / no_show / appointment_cancelled /
+// lo_bailed / rescheduled). Same-day undipositioned appts are excluded so the
+// dashboard banner only flags true backlog.
 //
 // Deliberately NOT time-window scoped: it always reflects the full backlog,
 // independent of any dashboard date filter. Scoped only by client (or live set).
@@ -713,9 +734,12 @@ export async function countOverdueUndispositioned(
       ? liveClientFilter(opts.liveClientIds)
       : null;
 
+  // Start of local "today" — not wall-clock now — so today's slots never count.
+  const asOfIso = overdueAppointmentAsOfIso();
+
   const { data: rpcCount, error: rpcError } = await service.rpc('count_overdue_undispositioned', {
     p_client_ids: clientIds,
-    p_as_of: new Date().toISOString(),
+    p_as_of: asOfIso,
   });
 
   if (!rpcError && (typeof rpcCount === 'number' || typeof rpcCount === 'string')) {
@@ -729,8 +753,6 @@ export async function countOverdueUndispositioned(
   }
 
   // Fallback when RPC is not deployed yet.
-  const nowIso = new Date().toISOString();
-
   const scopeClient = <T extends {
     eq: (c: string, v: string) => T;
     in: (c: string, v: string[]) => T;
@@ -746,7 +768,7 @@ export async function countOverdueUndispositioned(
       .select('id, external_id, ghl_contact_id, scheduled_at')
       .eq('event_type', 'appointment_booked')
       .not('scheduled_at', 'is', null)
-      .lt('scheduled_at', nowIso);
+      .lt('scheduled_at', asOfIso);
     q = scopeClient(q);
     return q.range(from, to);
   });

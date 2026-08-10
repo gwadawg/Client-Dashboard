@@ -1060,7 +1060,7 @@ export default function DashboardView({
                     {overduePending} past-due appointment{overduePending === 1 ? "" : "s"} awaiting disposition
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: "#a16207" }}>
-                    Their scheduled date has passed but they aren&apos;t marked show, no-show, cancelled, or LO bailed — this drags down show rate. Click to review. (All-time total, ignores the date filter.)
+                    Their scheduled day has passed but they aren&apos;t marked show, no-show, cancelled, or LO bailed — this drags down show rate. Same-day appointments are excluded until tomorrow. Click to review. (All-time total, ignores the date filter.)
                   </p>
                 </div>
                 <span className="ml-auto text-sm font-medium shrink-0 hidden sm:inline" style={{ color: "#fbbf24" }}>Review →</span>

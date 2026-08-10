@@ -2,10 +2,29 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeAppointmentStatus,
+  overdueAppointmentAsOfIso,
   shouldAutoSupersedePrior,
   shouldSyncOutcomeAgent,
 } from './appointments';
 import { calculateMetrics, type EventRow } from './metrics';
+
+describe('overdue appointment day cutoff', () => {
+  it('uses start of calendar day in call-center TZ, not wall-clock now', () => {
+    // 2026-08-10 20:00 America/Sao_Paulo = 2026-08-10T23:00:00Z
+    const evening = new Date('2026-08-10T23:00:00.000Z');
+    const asOf = overdueAppointmentAsOfIso(evening, 'America/Sao_Paulo');
+    // Midnight SP on Aug 10 is 03:00 UTC
+    assert.equal(asOf, '2026-08-10T03:00:00.000Z');
+
+    // Same-day slot (afternoon SP) is NOT overdue at evening SP
+    const todaySlot = new Date('2026-08-10T18:00:00.000Z'); // 15:00 SP
+    assert.equal(todaySlot.getTime() < new Date(asOf).getTime(), false);
+
+    // Prior calendar day IS overdue
+    const yesterdaySlot = new Date('2026-08-09T18:00:00.000Z');
+    assert.equal(yesterdaySlot.getTime() < new Date(asOf).getTime(), true);
+  });
+});
 
 describe('appointments agent propagation', () => {
   it('shouldSyncOutcomeAgent syncs when booking is credited and outcome is null', () => {
