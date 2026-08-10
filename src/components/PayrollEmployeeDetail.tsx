@@ -646,10 +646,10 @@ export default function PayrollEmployeeDetail({
               style={{ background: "rgba(56,189,248,0.08)", border: "1px solid rgba(56,189,248,0.25)", color: "#7dd3fc" }}
             >
               <p className="font-semibold" style={{ color: "#38bdf8" }}>
-                {nonShowCount} appointment{nonShowCount === 1 ? "" : "s"} in this period not marked Show
+                {nonShowCount} appointment{nonShowCount === 1 ? "" : "s"} in this period still pending disposition
               </p>
               <p className="text-xs" style={{ color: "#64748b" }}>
-                Filtered by appointment date (not booking date). Informational only — does not change pay.
+                Filtered by appointment date (not booking date). Only open/pending outcomes — cancellations, no-shows, and LO bails are excluded. Informational only — does not change pay.
               </p>
               <ul className="text-xs space-y-0.5" style={{ color: "#94a3b8" }}>
                 {nonShowItems.map(item => (

@@ -49,7 +49,7 @@ export type AgentCommissionRow = {
   };
   line_items: CommissionLineItem[];
   pending_disposition: PendingDisposition;
-  /** Appointments taking place in period not marked Show (by scheduled_at). Informational only. */
+  /** Appointments taking place in period still pending disposition (by scheduled_at). Informational only. */
   non_show_appointments: NonShowAppointments;
 };
 

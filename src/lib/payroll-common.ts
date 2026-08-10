@@ -12,13 +12,8 @@ export type PendingDisposition = {
   items: PendingDispositionItem[];
 };
 
-/** Appointment scheduled in period that is not dispositioned as show (call-rep payroll UI). */
-export type NonShowAppointmentStatus =
-  | 'pending'
-  | 'no_show'
-  | 'appointment_cancelled'
-  | 'appointment_rescheduled'
-  | 'lo_bailed';
+/** Appointment scheduled in period with no outcome yet (call-rep payroll UI). */
+export type NonShowAppointmentStatus = 'pending';
 
 export type NonShowAppointmentItem = {
   id: string;

@@ -26,29 +26,21 @@ describe('bucketCallRepNonShowAppointments', () => {
   const startDate = '2026-08-01';
   const endDate = '2026-08-31';
 
-  it('includes in-month appointments not marked show (by scheduled_at)', () => {
+  it('includes only pending appointments by scheduled_at (excludes terminal dispositions)', () => {
     const enriched: EnrichedAgentBooking[] = [
       booking({ id: 'b1', status: 'pending', scheduled_at: '2026-08-29T12:00:00.000Z' }),
       booking({ id: 'b2', status: 'no_show', scheduled_at: '2026-08-15T12:00:00.000Z' }),
       booking({ id: 'b3', status: 'appointment_cancelled', scheduled_at: '2026-08-20T12:00:00.000Z' }),
       booking({ id: 'b4', status: 'appointment_rescheduled', scheduled_at: '2026-08-22T12:00:00.000Z' }),
       booking({ id: 'b5', status: 'lo_bailed', scheduled_at: '2026-08-10T12:00:00.000Z' }),
+      booking({ id: 'b6', status: 'show', scheduled_at: '2026-08-12T12:00:00.000Z' }),
     ];
 
-    const map = bucketCallRepNonShowAppointments(roster, enriched, startDate, endDate);
-    const items = map.get('a1') ?? [];
-    assert.equal(items.length, 5);
-    assert.deepEqual(
-      items.map(i => i.status).sort(),
-      [
-        'appointment_cancelled',
-        'appointment_rescheduled',
-        'lo_bailed',
-        'no_show',
-        'pending',
-      ].sort(),
-    );
-    assert.ok(items.every(i => i.date >= startDate && i.date <= endDate));
+    const items = bucketCallRepNonShowAppointments(roster, enriched, startDate, endDate).get('a1') ?? [];
+    assert.equal(items.length, 1);
+    assert.equal(items[0].id, 'b1');
+    assert.equal(items[0].status, 'pending');
+    assert.equal(items[0].date, '2026-08-29');
   });
 
   it('excludes show dispositions', () => {
@@ -64,14 +56,12 @@ describe('bucketCallRepNonShowAppointments', () => {
   });
 
   it('uses appointment date not booking date for period filter', () => {
-    // Booked in August, appointment next month → not this payroll period
     const nextMonth = booking({
       id: 'next',
       status: 'pending',
       occurred_at: '2026-08-25T15:00:00.000Z',
       scheduled_at: '2026-09-02T15:00:00.000Z',
     });
-    // Booked prior month, appointment this month → included
     const thisMonth = booking({
       id: 'this',
       status: 'pending',
@@ -100,12 +90,13 @@ describe('bucketCallRepNonShowAppointments', () => {
     ];
     const enriched: EnrichedAgentBooking[] = [
       booking({ id: '1', agent_name: 'Alex Setter', status: 'pending' }),
-      booking({ id: '2', agent_name: 'Blake Closer', status: 'no_show', lead_name: 'B Lead' }),
+      booking({ id: '2', agent_name: 'Blake Closer', status: 'pending', lead_name: 'B Lead' }),
+      booking({ id: '3', agent_name: 'Blake Closer', status: 'no_show', lead_name: 'C Lead' }),
     ];
 
     const map = bucketCallRepNonShowAppointments(otherRoster, enriched, startDate, endDate);
     assert.equal((map.get('a1') ?? []).length, 1);
     assert.equal((map.get('a2') ?? []).length, 1);
-    assert.equal(map.get('a2')![0].type, 'No show');
+    assert.equal(map.get('a2')![0].lead_name, 'B Lead');
   });
 });

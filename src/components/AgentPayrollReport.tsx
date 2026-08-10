@@ -97,10 +97,10 @@ function NonShowBadge({ count }: { count: number }) {
     <span
       className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
       style={{ background: "rgba(56,189,248,0.12)", color: "#38bdf8", border: "1px solid rgba(56,189,248,0.3)" }}
-      title={`${count} appointment${count === 1 ? "" : "s"} in this period not marked Show (by appointment date)`}
+      title={`${count} appointment${count === 1 ? "" : "s"} in this period still pending disposition (by appointment date)`}
     >
       <span aria-hidden className="opacity-90">◷</span>
-      {count} not shown
+      {count} pending
     </span>
   );
 }
@@ -1533,7 +1533,7 @@ function NonShowItemsRow({
     <tr>
       <td colSpan={colSpan} className="px-4 py-2" style={{ background: "rgba(56,189,248,0.05)" }}>
         <p className="text-xs font-semibold mb-1" style={{ color: "#38bdf8" }}>
-          Not marked Show — by appointment date
+          Pending disposition — by appointment date
         </p>
         <ul className="text-xs space-y-0.5" style={{ color: "#94a3b8" }}>
           {items.map(item => (
