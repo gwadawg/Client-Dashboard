@@ -36,6 +36,13 @@ export function previousPeriodMonth(periodMonth: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+/** Following calendar month (YYYY-MM). Use for cash payout window after a work period. */
+export function nextPeriodMonth(periodMonth: string): string {
+  const [y, m] = periodMonth.split('-').map(Number);
+  const d = new Date(y, m, 1); // month is 1-based in period; Date uses 0-based so m is already next
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 /** Recent months newest-first for picker (includes current month). */
 export function listRecentPayrollMonths(count = 24): PayrollMonthBounds[] {
   const out: PayrollMonthBounds[] = [];

@@ -9,6 +9,7 @@ import {
   currentPeriodMonth,
   listRecentPayrollMonths,
   monthBounds,
+  nextPeriodMonth,
 } from "@/lib/payroll-period";
 import type { PayrollRunListItem, PayrollSubmittedEmployee } from "@/lib/payroll-runs";
 import PayrollEmployeeDetail, { type EmployeePayrollView } from "./PayrollEmployeeDetail";
@@ -180,6 +181,17 @@ export default function AgentPayrollReport({
   const monthOptions = useMemo(() => listRecentPayrollMonths(36), []);
   const [periodMonth, setPeriodMonth] = useState(currentPeriodMonth);
   const bounds = useMemo(() => monthBounds(periodMonth), [periodMonth]);
+  /** Cash ledger transfer month — default is the month after work (July work → August paid). */
+  const [cashPeriodMonth, setCashPeriodMonth] = useState(() => nextPeriodMonth(currentPeriodMonth()));
+  const cashBounds = useMemo(() => monthBounds(cashPeriodMonth), [cashPeriodMonth]);
+  /** History months + next payout month(s) so August→September cash stays selectable. */
+  const cashMonthOptions = useMemo(() => {
+    const map = new Map(monthOptions.map(m => [m.periodMonth, m]));
+    for (const pm of [nextPeriodMonth(periodMonth), nextPeriodMonth(currentPeriodMonth())]) {
+      if (!map.has(pm)) map.set(pm, monthBounds(pm));
+    }
+    return [...map.values()].sort((a, b) => b.periodMonth.localeCompare(a.periodMonth));
+  }, [monthOptions, periodMonth]);
 
   const [pageTab, setPageTab] = useState<PageTab>("month");
   const [report, setReport] = useState<UnifiedPayrollReport | null>(null);
@@ -414,7 +426,7 @@ export default function AgentPayrollReport({
       }
 
       const ledgerRes = await fetch(
-        `/api/expenses/payroll?startDate=${bounds.startDate}&endDate=${bounds.endDate}`,
+        `/api/expenses/payroll?startDate=${cashBounds.startDate}&endDate=${cashBounds.endDate}`,
       );
       if (ledgerRes.ok) {
         const ledgerData = await ledgerRes.json();
@@ -435,7 +447,7 @@ export default function AgentPayrollReport({
     } finally {
       setLoading(false);
     }
-  }, [periodMonth, bounds.startDate, bounds.endDate]);
+  }, [periodMonth, cashBounds.startDate, cashBounds.endDate]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -653,12 +665,15 @@ export default function AgentPayrollReport({
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Team Payroll</h2>
           <p className="text-sm mt-0.5 max-w-2xl" style={{ color: "#475569" }}>
-            Month filter = <span style={{ color: "#94a3b8" }}>work period earned</span> (bookings / shows / transfers that month).
-            Cash is often paid the <span style={{ color: "#94a3b8" }}>following month</span> (e.g. August payout for July work) — see cash rows by transfer date in the ledger below and Finance → Expenses.
+            Header month = <span style={{ color: "#94a3b8" }}>work earned</span>. Cash ledger defaults to the{" "}
+            <span style={{ color: "#94a3b8" }}>following month’s transfers</span> (e.g. worked July → paid August).
           </p>
           {report && (
             <p className="text-xs mt-1" style={{ color: "#64748b" }}>
-              {bounds.startDate} → {bounds.endDate}
+              Worked {bounds.startDate} → {bounds.endDate}
+              <span style={{ color: "#64748b" }}>
+                {" · "}Cash {cashBounds.startDate} → {cashBounds.endDate}
+              </span>
               {isPeriodClosed && finalizedMeta && (
                 <span style={{ color: "#fbbf24" }}>
                   {" · "}Finalized {new Date(finalizedMeta.at).toLocaleString()}
@@ -673,13 +688,18 @@ export default function AgentPayrollReport({
             <>
               <select
                 value={periodMonth}
-                onChange={e => { setPeriodMonth(e.target.value); setPageTab("month"); }}
+                onChange={e => {
+                  const next = e.target.value;
+                  setPeriodMonth(next);
+                  setCashPeriodMonth(nextPeriodMonth(next));
+                  setPageTab("month");
+                }}
                 className="px-3 py-2 rounded-lg text-sm font-medium"
                 style={{ background: "#0f2040", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.12)" }}
               >
                 {monthOptions.map(m => (
                   <option key={m.periodMonth} value={m.periodMonth}>
-                    {m.label}{finalizedRuns.some(r => r.period_month.startsWith(m.periodMonth) && (r.status ?? "closed") === "closed") ? " ✓" : ""}
+                    Worked {m.label}{finalizedRuns.some(r => r.period_month.startsWith(m.periodMonth) && (r.status ?? "closed") === "closed") ? " ✓" : ""}
                   </option>
                 ))}
               </select>
@@ -748,25 +768,45 @@ export default function AgentPayrollReport({
           className="rounded-xl px-4 py-3 space-y-3"
           style={{ background: "rgba(15,32,64,0.85)", border: "1px solid rgba(56,189,248,0.2)" }}
         >
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold" style={{ color: "#38bdf8" }}>
-                Cash paid this period (expense ledger)
+                Cash paid (expense ledger)
               </p>
               <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
-                Wise / HR / sheet cash by <span style={{ color: "#94a3b8" }}>transfer date</span> (when money left), plus posts from this screen
-                (fulfillment / call-center COGS by default). That is not the same as calculator pay for this work month — e.g. July work is often paid in early August.
-                Calculator submit locks are separate — reverse them here when locked, or use Unlock on the employee detail.
+                Work month: <span style={{ color: "#e2e8f0" }}>{bounds.label}</span>
+                {" · "}
+                Cash window defaults to the <span style={{ color: "#94a3b8" }}>next month</span> (when Wise usually pays prior-month work).
+                Rows are by transfer date · fulfillment / call-center COGS from this screen. Calculator locks are separate (Unlock below).
               </p>
             </div>
-            {ledgerExpenses && ledgerExpenses.count > 0 && (
-              <p className="text-sm font-semibold tabular-nums" style={{ color: "#e2e8f0" }}>
-                {fmtMoney(ledgerExpenses.grand_total)}
-                <span className="text-xs font-normal ml-2" style={{ color: "#64748b" }}>
-                  {ledgerExpenses.count} rows
-                </span>
-              </p>
-            )}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <label className="flex items-center gap-2 text-xs" style={{ color: "#94a3b8" }}>
+                <span className="whitespace-nowrap">Paid in</span>
+                <select
+                  value={cashPeriodMonth}
+                  onChange={e => setCashPeriodMonth(e.target.value)}
+                  className="px-2 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ background: "#0f2040", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.12)" }}
+                >
+                  {cashMonthOptions.map(m => (
+                    <option key={m.periodMonth} value={m.periodMonth}>
+                      {m.label}
+                      {m.periodMonth === nextPeriodMonth(periodMonth) ? " (typical)" : ""}
+                      {m.periodMonth === periodMonth ? " (same as work)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {ledgerExpenses && ledgerExpenses.count > 0 && (
+                <p className="text-sm font-semibold tabular-nums" style={{ color: "#e2e8f0" }}>
+                  {fmtMoney(ledgerExpenses.grand_total)}
+                  <span className="text-xs font-normal ml-2" style={{ color: "#64748b" }}>
+                    {ledgerExpenses.count} rows
+                  </span>
+                </p>
+              )}
+            </div>
           </div>
 
           {ledgerError && (
@@ -777,7 +817,7 @@ export default function AgentPayrollReport({
             <p className="text-xs" style={{ color: "#64748b" }}>Loading paid rows…</p>
           ) : ledgerExpenses.count === 0 ? (
             <p className="text-xs" style={{ color: "#64748b" }}>
-              No payroll expense rows for {bounds.label}. Check Finance → Expenses, or pick another month in the dropdown (Apr–Jul 2026 have Wise backfill for active reps).
+              No payroll expense rows for {cashBounds.label} (transfer dates). Try “Paid in” same as work month, or check Finance → Expenses.
             </p>
           ) : (
             <>
@@ -948,7 +988,11 @@ export default function AgentPayrollReport({
       {pageTab === "runs" && (
         <PayRunsTable
           runs={finalizedRuns}
-          onSelectMonth={pm => { setPeriodMonth(pm); setPageTab("month"); }}
+          onSelectMonth={pm => {
+            setPeriodMonth(pm);
+            setCashPeriodMonth(nextPeriodMonth(pm));
+            setPageTab("month");
+          }}
         />
       )}
 
