@@ -327,7 +327,7 @@ export default function AgentPayrollReport({
       `Unlock calculator submit for ${agentName} (${bounds.label})?`,
       "",
       "This unlocks their commission snapshot so you can re-review and re-submit.",
-      "Wise / HR cash in the ledger is not changed. Posted CAC rows (from this screen) stay until you reverse them here.",
+      "Wise / HR cash in the ledger is not changed. Expense posts from this screen stay until you reverse them on a line item.",
     ].join("\n");
     if (!confirm(msg)) return;
 
@@ -350,9 +350,9 @@ export default function AgentPayrollReport({
 
   async function reversePostedExpense(expenseId: string, personLabel: string, amount: number) {
     const msg = [
-      `Reverse CAC post for ${personLabel} (${fmtMoney(amount)})?`,
+      `Reverse expense post for ${personLabel} (${fmtMoney(amount)})?`,
       "",
-      "Removes this expense ledger row that was created by Post to Expenses on this screen.",
+      "Removes this ledger row created by Post to Expenses on this screen (fulfillment / call center by default).",
       "Does not reverse Wise payouts or calculator submit locks.",
     ].join("\n");
     if (!confirm(msg)) return;
@@ -599,13 +599,14 @@ export default function AgentPayrollReport({
     setPostingPayroll(true);
     setPayrollMsg("");
     setError("");
+    // B2C call-rep team payroll = fulfillment / call_center COGS (not CAC).
     const res = await fetch("/api/expenses/payroll", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         startDate: bounds.startDate,
         endDate: bounds.endDate,
-        role_bucket: "setter",
+        role_bucket: "fulfillment",
         dryRun,
       }),
     });
@@ -615,13 +616,19 @@ export default function AgentPayrollReport({
       setError(d.error ?? "Failed to post payroll to expenses");
       return;
     }
+    const bucketLabel =
+      d.ceo_bucket === "fulfillment"
+        ? "fulfillment / call center COGS"
+        : d.ceo_bucket === "cac"
+          ? "CAC / acquisition labor"
+          : String(d.ceo_bucket ?? "expenses");
     if (dryRun) {
       setPayrollMsg(
-        `Preview: ${d.would_insert} expense rows · ${fmtMoney(d.grand_total ?? 0)} as ${d.ceo_bucket} (CAC). ${d.skipped_duplicate ?? 0} already posted.`,
+        `Preview: ${d.would_insert} expense rows · ${fmtMoney(d.grand_total ?? 0)} as ${bucketLabel}. ${d.skipped_duplicate ?? 0} already posted.`,
       );
     } else {
       setPayrollMsg(
-        `Posted ${d.inserted} payroll expenses (${fmtMoney(d.grand_total ?? 0)}) as ${d.ceo_bucket}. Dashboard KPIs for that month update automatically.`,
+        `Posted ${d.inserted} payroll expenses (${fmtMoney(d.grand_total ?? 0)}) as ${bucketLabel}. Dashboard KPIs for that month update automatically.`,
       );
       load();
     }
@@ -718,7 +725,7 @@ export default function AgentPayrollReport({
                 className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
                 style={{ background: "rgba(56,189,248,0.15)", color: "#38bdf8" }}
               >
-                Post to Expenses (CAC)
+                Post to Expenses (fulfillment)
               </button>
             </>
           )}
@@ -742,7 +749,7 @@ export default function AgentPayrollReport({
                 Cash paid this period (expense ledger)
               </p>
               <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
-                Wise / HR / sheet cash and CAC posts from this screen. Calculator submit locks are separate — reverse them here when locked, or use Unlock on the employee detail.
+                Wise / HR / sheet cash and posts from this screen (fulfillment / call-center COGS by default). Calculator submit locks are separate — reverse them here when locked, or use Unlock on the employee detail.
               </p>
             </div>
             {ledgerExpenses && ledgerExpenses.count > 0 && (

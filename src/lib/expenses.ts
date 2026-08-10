@@ -147,19 +147,32 @@ export function resolveAcquisitionCostChannel(input: {
   return "creative_production";
 }
 
-/** Default CEO bucket when posting setter / call-center payroll. */
+/**
+ * Role → P&L bucket when posting Team Payroll to expenses.
+ * B2C call reps (default) land in fulfillment / call_center COGS — not CAC.
+ * B2B acquisition setters can still post with role_bucket=setter → cac labor.
+ */
 export const PAYROLL_ROLE_BUCKETS = {
+  /** B2B / acquisition setter labor (true CAC channel). */
   setter: "cac" as CeoBucket,
+  /** Call center / booking delivery — Team Payroll default. */
   fulfillment: "fulfillment" as CeoBucket,
   ops: "overhead" as CeoBucket,
   founder: "owner_draw" as CeoBucket,
 };
 
-/** Default acquisition channel when posting setter payroll to CAC. */
+/** Default acquisition channel when posting payroll with role_bucket=setter (CAC). */
 export const PAYROLL_ROLE_ACQUISITION_CHANNELS: Partial<
   Record<keyof typeof PAYROLL_ROLE_BUCKETS, AcquisitionCostChannel>
 > = {
   setter: "acquisition_labor",
+};
+
+/** Default COGS line when posting team / call-rep payroll as fulfillment. */
+export const PAYROLL_ROLE_FULFILLMENT_LINES: Partial<
+  Record<keyof typeof PAYROLL_ROLE_BUCKETS, FulfillmentLine>
+> = {
+  fulfillment: "call_center",
 };
 
 // ── Row shapes ───────────────────────────────────────────────────────────────

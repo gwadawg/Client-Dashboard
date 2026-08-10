@@ -79,7 +79,7 @@ Company expense ledger lives under **Finance → Expenses** (`business_expenses`
 
 **Admin → Agent Payroll**
 
-- Live commission calculator + **Post to Expenses (CAC)** for the selected period (`source=payroll`)
+- Live commission calculator + **Post to Expenses (fulfillment)** for the selected period (`source=payroll`, call-center COGS by default — not CAC)
 - Shows **Expense ledger — payroll this period** (sheet backfill + posted runs)
 - Historical labeled payroll from Total Costs: `npx tsx scripts/import-sheet-payroll.mjs --apply`
 - HR Reporting payroll (salary / commissions / bonus): `npx tsx scripts/import-hr-payroll.mjs --apply`

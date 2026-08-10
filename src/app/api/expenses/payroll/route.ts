@@ -4,10 +4,12 @@ import { requireExpenseAccess } from '@/lib/expense-auth';
 import { buildCommissionReport, type RosterAgentWithPay } from '@/lib/agent-commissions';
 import {
   PAYROLL_ROLE_BUCKETS,
+  PAYROLL_ROLE_FULFILLMENT_LINES,
   expenseDedupeHash,
   normalizeMerchant,
   resolveAcquisitionCostChannel,
   type CeoBucket,
+  type FulfillmentLine,
 } from '@/lib/expenses';
 import { rollupExpenseDates } from '@/lib/expense-rollup';
 
@@ -15,7 +17,10 @@ const EVENT_FIELDS =
   'id, client_id, event_type, agent_name, occurred_at, scheduled_at, lead_name, lead_phone, raw';
 
 const EXPENSE_FIELDS =
-  'id, occurred_on, amount, merchant_raw, ceo_bucket, subcategory, payroll_run_id, exclude_from_pnl, source';
+  'id, occurred_on, amount, merchant_raw, ceo_bucket, subcategory, fulfillment_line, payroll_run_id, exclude_from_pnl, source';
+
+/** Team Payroll posts call-rep pay; default to fulfillment COGS (not CAC). */
+const DEFAULT_PAYROLL_ROLE_BUCKET: keyof typeof PAYROLL_ROLE_BUCKETS = 'fulfillment';
 
 /**
  * GET /api/expenses/payroll?startDate=&endDate=&month=YYYY-MM
@@ -69,7 +74,8 @@ export async function GET(req: Request) {
  * Body: { startDate, endDate, account_id?, role_bucket?: "setter"|"fulfillment"|"ops"|"founder", dryRun? }
  *
  * Posts each agent's total pay for the period as a business_expenses row
- * (source=payroll, default bucket=cac for setters).
+ * (source=payroll). Default role_bucket=fulfillment → call_center COGS for B2C team payroll.
+ * Use role_bucket=setter only for acquisition / B2B labor into CAC.
  */
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
@@ -87,13 +93,16 @@ export async function POST(req: Request) {
   const endDate = typeof body?.endDate === 'string' ? body.endDate : null;
   const dryRun = body?.dryRun !== false;
   const accountId = typeof body?.account_id === 'string' && body.account_id ? body.account_id : null;
-  const roleKey =
+  const roleKey: keyof typeof PAYROLL_ROLE_BUCKETS =
+    body?.role_bucket === 'setter' ||
     body?.role_bucket === 'fulfillment' ||
     body?.role_bucket === 'ops' ||
     body?.role_bucket === 'founder'
       ? body.role_bucket
-      : 'setter';
-  const ceoBucket: CeoBucket = PAYROLL_ROLE_BUCKETS[roleKey as keyof typeof PAYROLL_ROLE_BUCKETS];
+      : DEFAULT_PAYROLL_ROLE_BUCKET;
+  const ceoBucket: CeoBucket = PAYROLL_ROLE_BUCKETS[roleKey];
+  const fulfillmentLine: FulfillmentLine | null =
+    ceoBucket === 'fulfillment' ? (PAYROLL_ROLE_FULFILLMENT_LINES[roleKey] ?? 'call_center') : null;
   const excludeFromPnl = ceoBucket === 'owner_draw';
 
   if (!startDate || !endDate) {
@@ -180,10 +189,14 @@ export async function POST(req: Request) {
       source: 'payroll' as const,
       merchant_raw: merchant,
       merchant_normalized: normalizeMerchant(merchant),
-      memo: `Agent payroll ${startDate} → ${endDate} (base + commissions)`,
+      memo:
+        ceoBucket === 'fulfillment'
+          ? `Team payroll ${startDate} → ${endDate} (call center / booking COGS)`
+          : `Agent payroll ${startDate} → ${endDate} (base + commissions)`,
       external_id: externalId,
       ceo_bucket: ceoBucket,
       subcategory: 'payroll',
+      fulfillment_line: fulfillmentLine,
       acquisition_cost_channel:
         ceoBucket === 'cac'
           ? resolveAcquisitionCostChannel({
@@ -210,11 +223,14 @@ export async function POST(req: Request) {
       skipped_zero: skippedZero,
       skipped_duplicate: skippedDuplicate,
       ceo_bucket: ceoBucket,
+      fulfillment_line: fulfillmentLine,
+      role_bucket: roleKey,
       period: { startDate, endDate },
       sample: rows.slice(0, 10).map(r => ({
         merchant_raw: r.merchant_raw,
         amount: r.amount,
         ceo_bucket: r.ceo_bucket,
+        fulfillment_line: r.fulfillment_line,
         payroll_run_id: r.payroll_run_id,
       })),
       grand_total: rows.reduce((s, r) => s + r.amount, 0),
@@ -252,6 +268,8 @@ export async function POST(req: Request) {
     skipped_zero: skippedZero,
     skipped_duplicate: skippedDuplicate,
     ceo_bucket: ceoBucket,
+    fulfillment_line: fulfillmentLine,
+    role_bucket: roleKey,
     expenses: data,
     grand_total: rows.reduce((s, r) => s + r.amount, 0),
     rollups,
@@ -263,7 +281,7 @@ export async function POST(req: Request) {
  * DELETE /api/expenses/payroll
  * Body: { id: string }
  *
- * Reverses a row posted from Team Payroll → Post to Expenses (CAC).
+ * Reverses a row posted from Team Payroll → Post to Expenses.
  * Only allows source=payroll rows whose payroll_run_id is the app post pattern
  * `{start}_to_{end}:{agent_id}`. Wise / HR / sheet backfill are never deleted here.
  */
@@ -307,7 +325,7 @@ export async function DELETE(req: Request) {
     return NextResponse.json(
       {
         error:
-          'This row is Wise/HR/sheet cash backfill, not a CAC post from this screen. Reverse the calculator submit instead (or edit Finance → Expenses).',
+          'This row is Wise/HR/sheet cash backfill, not a post from this screen. Reverse the calculator submit instead (or edit Finance → Expenses).',
       },
       { status: 400 },
     );
