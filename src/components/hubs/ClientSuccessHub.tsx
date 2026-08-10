@@ -2,6 +2,7 @@
 
 import ClientHealthDashboard from "@/components/ClientHealthDashboard";
 import CsTouchpointsQueue from "@/components/CsTouchpointsQueue";
+import PaymentStreakTimeline from "@/components/PaymentStreakTimeline";
 import ViewHub from "@/components/nav/ViewHub";
 import {
   CLIENT_SUCCESS_TABS,
@@ -27,6 +28,9 @@ export default function ClientSuccessHub({
     >
       {tab === "health" && <ClientHealthDashboard />}
       {tab === "followups" && <CsTouchpointsQueue onOpenClient={onOpenClient} />}
+      {tab === "stickiness" && (
+        <PaymentStreakTimeline onOpenClient={onOpenClient} />
+      )}
     </ViewHub>
   );
 }
