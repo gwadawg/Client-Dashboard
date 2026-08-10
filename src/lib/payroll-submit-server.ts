@@ -31,6 +31,7 @@ type DbEmployeeRow = {
   line_items: unknown[];
   line_item_exclusions?: import('@/lib/payroll-line-item-duplicates').LineItemExclusion[];
   pending_disposition: { count: number; items: unknown[] } | null;
+  non_show_appointments?: { count: number; items: unknown[] } | null;
   submitted_at: string | null;
   submitted_by: string | null;
 };
@@ -127,7 +128,7 @@ export async function loadSubmittedEmployees(
   const { data, error } = await service
     .from('payroll_run_employees')
     .select(
-      'agent_id, agent_name, pay_type, section, total_pay, amounts, counts, rates, line_items, line_item_exclusions, pending_disposition, submitted_at, submitted_by',
+      'agent_id, agent_name, pay_type, section, total_pay, amounts, counts, rates, line_items, line_item_exclusions, pending_disposition, non_show_appointments, submitted_at, submitted_by',
     )
     .eq('payroll_run_id', payrollRunId)
     .not('submitted_at', 'is', null)
@@ -151,6 +152,7 @@ export async function loadSubmittedEmployees(
       line_items: row.line_items ?? [],
       line_item_exclusions: (row.line_item_exclusions ?? []) as import('@/lib/payroll-line-item-duplicates').LineItemExclusion[],
       pending_disposition: row.pending_disposition as PayrollSubmittedEmployee['pending_disposition'],
+      non_show_appointments: (row as DbEmployeeRow).non_show_appointments ?? null,
       row: employeeRow,
     };
   });
@@ -242,6 +244,10 @@ export async function submitEmployeePayroll(
     line_items: 'line_items' in row ? row.line_items : [],
     line_item_exclusions: lineItemExclusions,
     pending_disposition: row.pending_disposition ?? null,
+    non_show_appointments:
+      section === 'call_rep' && 'non_show_appointments' in row
+        ? (row as AgentCommissionRow).non_show_appointments ?? null
+        : null,
     submitted_at: new Date().toISOString(),
     submitted_by: userId,
   };
@@ -287,6 +293,88 @@ export async function submitEmployeePayroll(
 
   return {
     closed: runStatus === 'closed',
+    submitted_count: submitted.length,
+    employee_count: employeeCount,
+  };
+}
+
+/**
+ * Unlock a previously submitted employee so pay can be re-reviewed and re-submitted.
+ * Reopens a closed month if necessary. Does not touch business_expenses cash ledger.
+ */
+export async function unsubmitEmployeePayroll(
+  service: ServiceClient,
+  periodMonth: string,
+  agentId: string,
+  userId: string,
+): Promise<{ reopened: boolean; submitted_count: number; employee_count: number }> {
+  const { startDate, endDate } = monthBounds(periodMonth);
+
+  const { data: existingRun } = await service
+    .from('payroll_runs')
+    .select('id, status')
+    .eq('period_month', `${periodMonth}-01`)
+    .maybeSingle();
+
+  if (!existingRun) {
+    throw new Error('No payroll run exists for this month');
+  }
+
+  const { data: existingEmployee } = await service
+    .from('payroll_run_employees')
+    .select('id, submitted_at, agent_name')
+    .eq('payroll_run_id', existingRun.id)
+    .eq('agent_id', agentId)
+    .maybeSingle();
+
+  if (!existingEmployee?.submitted_at) {
+    throw new Error('This employee is not submitted for this month');
+  }
+
+  const { error: clearError } = await service
+    .from('payroll_run_employees')
+    .update({
+      submitted_at: null,
+      submitted_by: null,
+    })
+    .eq('id', existingEmployee.id);
+
+  if (clearError) throw new Error(clearError.message);
+
+  const submitted = await loadSubmittedEmployees(service, existingRun.id);
+  const built = await buildUnifiedPayrollReport(service, startDate, endDate);
+  if ('error' in built) throw new Error(built.error);
+
+  const live = built.report;
+  const employeeCount =
+    live.summary.call_rep_count + live.summary.b2b_setter_count + live.summary.salaried_count;
+
+  const wasClosed = existingRun.status === 'closed';
+  // Stored run report stays submission-only (or live when none left). Open period UI merges live + submitted on read.
+  const reportForRun =
+    submitted.length > 0 ? rebuildReportFromSubmissions(submitted, startDate, endDate) : live;
+  const summary = buildRunSummary(reportForRun, submitted.length);
+
+  const { error: runError } = await service
+    .from('payroll_runs')
+    .update({
+      status: 'open',
+      summary,
+      report: reportForRun,
+      ...(wasClosed
+        ? {
+            finalized_at: new Date().toISOString(),
+            finalized_by: userId,
+            notes: `Reopened: unlocked ${existingEmployee.agent_name ?? agentId}`,
+          }
+        : {}),
+    })
+    .eq('id', existingRun.id);
+
+  if (runError) throw new Error(runError.message);
+
+  return {
+    reopened: wasClosed,
     submitted_count: submitted.length,
     employee_count: employeeCount,
   };

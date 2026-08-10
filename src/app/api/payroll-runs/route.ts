@@ -117,6 +117,10 @@ export async function POST(req: Request) {
     rates: row.rates,
     line_items: 'line_items' in row ? row.line_items : [],
     pending_disposition: row.pending_disposition ?? null,
+    non_show_appointments:
+      section === 'call_rep' && 'non_show_appointments' in row
+        ? (row as import('@/lib/agent-commissions').AgentCommissionRow).non_show_appointments ?? null
+        : null,
   }));
 
   if (employeeRows.length > 0) {

@@ -1,5 +1,10 @@
 import { buildRosterMatcher } from '@/lib/agent-roster';
-import { computeFixedPay, type PendingDisposition } from '@/lib/payroll-common';
+import {
+  computeFixedPay,
+  EMPTY_NON_SHOW_APPOINTMENTS,
+  type NonShowAppointments,
+  type PendingDisposition,
+} from '@/lib/payroll-common';
 
 export type AgentPayRates = {
   base_salary: number;
@@ -44,6 +49,8 @@ export type AgentCommissionRow = {
   };
   line_items: CommissionLineItem[];
   pending_disposition: PendingDisposition;
+  /** Appointments taking place in period not marked Show (by scheduled_at). Informational only. */
+  non_show_appointments: NonShowAppointments;
 };
 
 export type CommissionReport = {
@@ -131,6 +138,7 @@ function emptyAccumulator(agent: RosterAgentWithPay, periodStart: string): Agent
     },
     line_items: [],
     pending_disposition: { count: 0, items: [] },
+    non_show_appointments: { ...EMPTY_NON_SHOW_APPOINTMENTS },
   };
 }
 
@@ -160,6 +168,19 @@ export function attachCallRepPendingDisposition(
     return {
       ...row,
       pending_disposition: { count: items.length, items },
+    };
+  });
+}
+
+export function attachCallRepNonShowAppointments(
+  rows: AgentCommissionRow[],
+  nonShowByAgentId: Map<string, import('@/lib/payroll-common').NonShowAppointmentItem[]>,
+): AgentCommissionRow[] {
+  return rows.map(row => {
+    const items = nonShowByAgentId.get(row.agent_id) ?? [];
+    return {
+      ...row,
+      non_show_appointments: { count: items.length, items },
     };
   });
 }

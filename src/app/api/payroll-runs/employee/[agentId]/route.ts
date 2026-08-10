@@ -14,7 +14,7 @@ export async function GET(_req: Request, { params }: Params) {
   const { data, error } = await ctx.service
     .from('payroll_run_employees')
     .select(
-      'payroll_run_id, period_month, agent_id, agent_name, pay_type, section, total_pay, amounts, counts, rates, line_items, pending_disposition, payroll_runs!inner(start_date, end_date, finalized_at)',
+      'payroll_run_id, period_month, agent_id, agent_name, pay_type, section, total_pay, amounts, counts, rates, line_items, pending_disposition, non_show_appointments, payroll_runs!inner(start_date, end_date, finalized_at)',
     )
     .eq('agent_id', agentId)
     .order('period_month', { ascending: false });
@@ -48,6 +48,7 @@ export async function GET(_req: Request, { params }: Params) {
       rates: row.rates,
       line_items: row.line_items,
       pending_disposition: row.pending_disposition,
+      non_show_appointments: row.non_show_appointments ?? null,
       finalized_at: run.finalized_at,
     };
   }).filter((row): row is NonNullable<typeof row> => row !== null);

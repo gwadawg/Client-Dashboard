@@ -49,6 +49,11 @@ export type AgentAppointmentOutcomeCounts = {
 export type FetchBookingsOptions = {
   startDate: string | null;
   endDate: string | null;
+  /**
+   * Which timestamp to filter the period window on.
+   * Default `occurred_at` (booking created). Use `scheduled_at` for appointment-slot windows (e.g. payroll non-show).
+   */
+  dateField?: 'occurred_at' | 'scheduled_at';
   /** Narrow bookings at the DB layer (roster name + phone). In-memory roster match still applied downstream. */
   agentNameAliases?: string[];
   hardCap?: number;
@@ -158,6 +163,7 @@ async function fetchAllBookings(
   options: FetchBookingsOptions,
 ): Promise<AgentBookingRow[]> {
   const hardCap = options.hardCap ?? DEFAULT_HARD_CAP;
+  const dateField = options.dateField ?? 'occurred_at';
   const rows: AgentBookingRow[] = [];
 
   for (let offset = 0; offset < hardCap; offset += BOOKING_PAGE) {
@@ -165,11 +171,11 @@ async function fetchAllBookings(
       .from('events')
       .select(AGENT_BOOKING_SELECT)
       .eq('event_type', 'appointment_booked')
-      .order('occurred_at', { ascending: false })
+      .order(dateField, { ascending: false })
       .range(offset, offset + BOOKING_PAGE - 1);
 
-    if (options.startDate) q = q.gte('occurred_at', `${options.startDate}T00:00:00.000Z`);
-    if (options.endDate) q = q.lte('occurred_at', `${options.endDate}T23:59:59.999Z`);
+    if (options.startDate) q = q.gte(dateField, `${options.startDate}T00:00:00.000Z`);
+    if (options.endDate) q = q.lte(dateField, `${options.endDate}T23:59:59.999Z`);
 
     if (options.agentNameAliases?.length) {
       q = q.in('agent_name', options.agentNameAliases);

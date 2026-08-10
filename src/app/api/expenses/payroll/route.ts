@@ -258,3 +258,80 @@ export async function POST(req: Request) {
     ...(warning ? { warning } : {}),
   });
 }
+
+/**
+ * DELETE /api/expenses/payroll
+ * Body: { id: string }
+ *
+ * Reverses a row posted from Team Payroll → Post to Expenses (CAC).
+ * Only allows source=payroll rows whose payroll_run_id is the app post pattern
+ * `{start}_to_{end}:{agent_id}`. Wise / HR / sheet backfill are never deleted here.
+ */
+export async function DELETE(req: Request) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const payrollDenied = requirePermission(ctx, 'admin_agent_payroll');
+  const expenseDenied = requireExpenseAccess(ctx);
+  if (payrollDenied && expenseDenied) return payrollDenied;
+
+  const body = await req.json().catch(() => null);
+  const id = typeof body?.id === 'string' ? body.id.trim() : '';
+  if (!id) {
+    return NextResponse.json({ error: 'id is required' }, { status: 400 });
+  }
+
+  const { data: row, error: findErr } = await ctx.service
+    .from('business_expenses')
+    .select('id, amount, merchant_raw, source, payroll_run_id, external_id, occurred_on')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (findErr) return NextResponse.json({ error: findErr.message }, { status: 500 });
+  if (!row) return NextResponse.json({ error: 'Expense not found' }, { status: 404 });
+  if (row.source !== 'payroll') {
+    return NextResponse.json({ error: 'Only payroll expense rows can be reversed here' }, { status: 400 });
+  }
+
+  const runId = String(row.payroll_run_id ?? '');
+  // App posts: "2026-07-01_to_2026-07-31:{uuid}"
+  const isAppPost = /^\d{4}-\d{2}-\d{2}_to_\d{4}-\d{2}-\d{2}:/.test(runId);
+  const isBackfill =
+    String(row.external_id ?? '').startsWith('wise-payroll:') ||
+    String(row.external_id ?? '').startsWith('hr-payroll:') ||
+    String(row.external_id ?? '').startsWith('sheet-payroll:') ||
+    runId.startsWith('wise:') ||
+    runId.startsWith('hr:') ||
+    runId.startsWith('sheet:');
+
+  if (!isAppPost || isBackfill) {
+    return NextResponse.json(
+      {
+        error:
+          'This row is Wise/HR/sheet cash backfill, not a CAC post from this screen. Reverse the calculator submit instead (or edit Finance → Expenses).',
+      },
+      { status: 400 },
+    );
+  }
+
+  const { error: delErr } = await ctx.service.from('business_expenses').delete().eq('id', id);
+  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+
+  let rollups = null;
+  let warning: string | undefined;
+  try {
+    if (row.occurred_on) {
+      rollups = await rollupExpenseDates(ctx.service, [String(row.occurred_on).slice(0, 10)], ctx.userId);
+    }
+  } catch (e) {
+    warning = e instanceof Error ? e.message : 'Row removed but KPI rollup failed';
+  }
+
+  return NextResponse.json({
+    ok: true,
+    deleted_id: id,
+    amount: Number(row.amount) || 0,
+    merchant_raw: row.merchant_raw,
+    rollups,
+    ...(warning ? { warning } : {}),
+  });
+}

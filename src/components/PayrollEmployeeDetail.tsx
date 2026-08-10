@@ -406,12 +406,16 @@ export default function PayrollEmployeeDetail({
   view,
   onClose,
   onSubmitted,
+  onUnsubmitted,
 }: {
   view: EmployeePayrollView | null;
   onClose: () => void;
   onSubmitted?: () => void;
+  /** Called after reverse-submit unlocks pay (parent should reload live totals). */
+  onUnsubmitted?: () => void;
 }) {
   const [submitting, setSubmitting] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitted, setSubmitted] = useState(view?.isSubmitted ?? false);
   const [exclusions, setExclusions] = useState<LineItemExclusion[]>(view?.lineItemExclusions ?? []);
@@ -447,7 +451,13 @@ export default function PayrollEmployeeDetail({
   if (!view) return null;
 
   const pendingCount = view.row.pending_disposition?.count ?? 0;
+  const nonShowItems =
+    view.section === "call_rep" && "non_show_appointments" in view.row
+      ? (view.row as AgentCommissionRow).non_show_appointments?.items ?? []
+      : [];
+  const nonShowCount = nonShowItems.length;
   const canSubmit = !submitted && !view.readOnly;
+  const canUnlock = submitted;
   const canEditExclusions = canSubmit;
   const hasExclusions = exclusions.length > 0;
 
@@ -496,6 +506,39 @@ export default function PayrollEmployeeDetail({
       setSubmitError(e instanceof Error ? e.message : "Failed to submit payroll");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleUnlock() {
+    if (!canUnlock) return;
+    const msg = [
+      `Unlock payroll for ${view!.agent_name} (${view!.periodLabel})?`,
+      "",
+      "This reverses the submission so you can re-review line items, exclusions, and re-submit.",
+      "Cash already paid (Wise / expense ledger) is not changed.",
+      view!.readOnly
+        ? "If this month is closed, it will reopen so remaining employees can still be processed."
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    if (!confirm(msg)) return;
+
+    setUnlocking(true);
+    setSubmitError("");
+    try {
+      const res = await fetch(
+        `/api/payroll-runs/${view!.periodMonth}/employees/${view!.agent_id}`,
+        { method: "DELETE" },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to unlock payroll");
+      setSubmitted(false);
+      onUnsubmitted?.();
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : "Failed to unlock payroll");
+    } finally {
+      setUnlocking(false);
     }
   }
 
@@ -597,6 +640,27 @@ export default function PayrollEmployeeDetail({
             </div>
           )}
 
+          {nonShowCount > 0 && (
+            <div
+              className="rounded-lg px-4 py-3 text-sm space-y-2"
+              style={{ background: "rgba(56,189,248,0.08)", border: "1px solid rgba(56,189,248,0.25)", color: "#7dd3fc" }}
+            >
+              <p className="font-semibold" style={{ color: "#38bdf8" }}>
+                {nonShowCount} appointment{nonShowCount === 1 ? "" : "s"} in this period not marked Show
+              </p>
+              <p className="text-xs" style={{ color: "#64748b" }}>
+                Filtered by appointment date (not booking date). Informational only — does not change pay.
+              </p>
+              <ul className="text-xs space-y-0.5" style={{ color: "#94a3b8" }}>
+                {nonShowItems.map(item => (
+                  <li key={item.id}>
+                    {item.date} · {item.type} · {item.lead_name ?? "Unknown lead"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {submitError && (
             <div className="rounded-lg px-4 py-3 text-sm" style={{ background: "rgba(239,68,68,0.12)", color: "#f87171" }}>
               {submitError}
@@ -616,18 +680,34 @@ export default function PayrollEmployeeDetail({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || unlocking}
                 className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
                 style={{ background: "#22c55e", color: "#fff" }}
               >
                 {submitting ? "Submitting…" : "Submit payroll"}
               </button>
             )}
+            {canUnlock && (
+              <button
+                type="button"
+                onClick={handleUnlock}
+                disabled={unlocking || submitting}
+                className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
+                style={{
+                  background: "rgba(245,158,11,0.15)",
+                  color: "#fbbf24",
+                  border: "1px solid rgba(245,158,11,0.35)",
+                }}
+              >
+                {unlocking ? "Unlocking…" : "Unlock & edit"}
+              </button>
+            )}
           </div>
 
           <p className="text-xs" style={{ color: "#64748b" }}>
-            Download the PDF to send to the rep, then submit to lock this employee&apos;s pay for the month.
-            Duplicate exclusions appear on the PDF with reasons. Past pay runs live under Team Roster → employee file → Pay history.
+            {submitted
+              ? "This pay is locked. Use Unlock & edit if it was submitted early or by mistake — then re-review line items and submit again. Cash already paid (Wise / ledger) is unaffected."
+              : "Download the PDF to send to the rep, then submit to lock this employee's pay for the month. Duplicate exclusions appear on the PDF with reasons. Past pay runs live under Team Roster → employee file → Pay history."}
           </p>
         </div>
       </div>

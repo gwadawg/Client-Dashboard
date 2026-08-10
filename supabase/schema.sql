@@ -1505,6 +1505,7 @@ create table if not exists payroll_run_employees (
   rates               jsonb not null default '{}',
   line_items          jsonb not null default '[]',
   pending_disposition jsonb,
+  non_show_appointments jsonb,
   submitted_at        timestamptz,
   submitted_by        uuid references auth.users(id) on delete set null,
   line_item_exclusions jsonb not null default '[]'::jsonb,

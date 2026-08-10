@@ -12,6 +12,30 @@ export type PendingDisposition = {
   items: PendingDispositionItem[];
 };
 
+/** Appointment scheduled in period that is not dispositioned as show (call-rep payroll UI). */
+export type NonShowAppointmentStatus =
+  | 'pending'
+  | 'no_show'
+  | 'appointment_cancelled'
+  | 'appointment_rescheduled'
+  | 'lo_bailed';
+
+export type NonShowAppointmentItem = {
+  id: string;
+  /** Appointment slot date (scheduled_at), not booking date. */
+  date: string;
+  lead_name: string | null;
+  status: NonShowAppointmentStatus;
+  type: string;
+};
+
+export type NonShowAppointments = {
+  count: number;
+  items: NonShowAppointmentItem[];
+};
+
+export const EMPTY_NON_SHOW_APPOINTMENTS: NonShowAppointments = { count: 0, items: [] };
+
 export function normalizePayrollKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
 }

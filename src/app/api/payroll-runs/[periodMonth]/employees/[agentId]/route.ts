@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { isValidPeriodMonth } from '@/lib/payroll-period';
-import { loadPeriodPayrollState, submitEmployeePayroll } from '@/lib/payroll-submit-server';
+import {
+  loadPeriodPayrollState,
+  submitEmployeePayroll,
+  unsubmitEmployeePayroll,
+} from '@/lib/payroll-submit-server';
 
 type Params = { params: Promise<{ periodMonth: string; agentId: string }> };
 
@@ -44,6 +48,30 @@ export async function POST(req: Request, { params }: Params) {
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to submit employee payroll';
     const status = message.includes('already') ? 409 : 500;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+/** Reverse a submit: unlock employee pay so it can be re-reviewed and re-submitted. */
+export async function DELETE(_req: Request, { params }: Params) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'admin_agent_payroll');
+  if (denied) return denied;
+
+  const { periodMonth: rawPeriod, agentId } = await params;
+  const periodMonth = decodeURIComponent(rawPeriod);
+  if (!isValidPeriodMonth(periodMonth)) {
+    return NextResponse.json({ error: 'periodMonth must be YYYY-MM' }, { status: 400 });
+  }
+
+  try {
+    const result = await unsubmitEmployeePayroll(ctx.service, periodMonth, agentId, ctx.userId);
+    return NextResponse.json({ ok: true, ...result });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to unlock employee payroll';
+    const status =
+      message.includes('not submitted') || message.includes('No payroll run') ? 409 : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

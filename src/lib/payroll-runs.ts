@@ -45,6 +45,7 @@ export type PayrollSubmittedEmployee = {
   line_items: unknown[];
   line_item_exclusions?: import('@/lib/payroll-line-item-duplicates').LineItemExclusion[];
   pending_disposition: { count: number; items: unknown[] } | null;
+  non_show_appointments?: { count: number; items: unknown[] } | null;
   row: AgentCommissionRow | B2BSetterCommissionRow | SalariedCommissionRow;
 };
 
@@ -63,6 +64,7 @@ export type PayrollEmployeeHistoryRow = {
   rates: Record<string, number>;
   line_items: unknown[];
   pending_disposition: { count: number; items: unknown[] } | null;
+  non_show_appointments?: { count: number; items: unknown[] } | null;
   line_item_exclusions?: import('@/lib/payroll-line-item-duplicates').LineItemExclusion[];
   finalized_at: string;
   submitted_at?: string | null;
@@ -114,6 +116,7 @@ export function employeeRowFromDb(
     rates: Record<string, number>;
     line_items: unknown[];
     pending_disposition: { count: number; items: unknown[] } | null;
+    non_show_appointments?: { count: number; items: unknown[] } | null;
     total_pay: number;
   },
   payType?: string,
@@ -134,6 +137,10 @@ export function employeeRowFromDb(
       amounts: row.amounts as AgentCommissionRow['amounts'],
       line_items: (row.line_items ?? []) as AgentCommissionRow['line_items'],
       pending_disposition: (row.pending_disposition ?? { count: 0, items: [] }) as AgentCommissionRow['pending_disposition'],
+      non_show_appointments: (row.non_show_appointments ?? {
+        count: 0,
+        items: [],
+      }) as AgentCommissionRow['non_show_appointments'],
     };
   }
 

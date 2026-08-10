@@ -1,5 +1,6 @@
 import type { createServiceClient } from '@/lib/supabase';
 import {
+  attachCallRepNonShowAppointments,
   attachCallRepPendingDisposition,
   buildCommissionReport,
   type AgentCommissionRow,
@@ -17,7 +18,12 @@ import {
   normalizeEmployeePosition,
   type EmployeePosition,
 } from '@/lib/employee-positions';
-import { computeFixedPay, type PendingDispositionItem } from '@/lib/payroll-common';
+import {
+  computeFixedPay,
+  EMPTY_NON_SHOW_APPOINTMENTS,
+  type NonShowAppointmentItem,
+  type PendingDispositionItem,
+} from '@/lib/payroll-common';
 import {
   attachSalariedPending,
   buildSalariedCommissionReport,
@@ -29,6 +35,8 @@ import {
   CREDIT_QUEUE_OR_FILTER,
   CREDIT_QUEUE_UNCREDITED_FILTER,
 } from '@/lib/payroll-pending-disposition';
+import { bucketCallRepNonShowAppointments } from '@/lib/payroll-non-show-appointments';
+import { fetchEnrichedBookingsInRange } from '@/lib/agent-appointment-stats';
 import { DISMISSED_CLOSE_STATUS } from '@/lib/acquisition-close-filter';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
@@ -53,6 +61,7 @@ export async function buildUnifiedPayrollReport(
     { data: b2bDemos, error: b2bDemosError },
     { data: b2bCloses, error: b2bClosesError },
     { data: pendingB2BDemos, error: pendingB2BError },
+    scheduledBookingsResult,
   ] = await Promise.all([
     service.from('agents').select(ROSTER_FIELDS).eq('active', true).order('name'),
     service.from('clients').select('id, name'),
@@ -98,6 +107,13 @@ export async function buildUnifiedPayrollReport(
       .or(
         `and(scheduled_at.gte.${startDate}T00:00:00.000Z,scheduled_at.lte.${endDate}T23:59:59.999Z),scheduled_at.is.null`,
       ),
+    fetchEnrichedBookingsInRange(service, startDate, endDate, { dateField: 'scheduled_at' }).then(
+      data => ({ data, error: null as string | null }),
+      (e: unknown) => ({
+        data: null as Awaited<ReturnType<typeof fetchEnrichedBookingsInRange>> | null,
+        error: e instanceof Error ? e.message : 'Failed to load scheduled bookings',
+      }),
+    ),
   ]);
 
   const err =
@@ -108,7 +124,8 @@ export async function buildUnifiedPayrollReport(
     uncreditedError?.message ??
     b2bDemosError?.message ??
     b2bClosesError?.message ??
-    pendingB2BError?.message;
+    pendingB2BError?.message ??
+    scheduledBookingsResult.error;
   if (err) return { error: err };
 
   const allRoster = (roster ?? []) as RosterAgentWithPay[];
@@ -145,6 +162,13 @@ export async function buildUnifiedPayrollReport(
     endDate,
   );
 
+  const callRepNonShow = bucketCallRepNonShowAppointments(
+    callRepRoster,
+    scheduledBookingsResult.data ?? [],
+    startDate,
+    endDate,
+  );
+
   let callReps = buildCommissionReport(
     callRepRoster,
     clients ?? [],
@@ -156,9 +180,13 @@ export async function buildUnifiedPayrollReport(
   callReps = {
     ...callReps,
     agents: mergePendingOnlyRows(
-      attachCallRepPendingDisposition(callReps.agents, callRepPending),
+      attachCallRepNonShowAppointments(
+        attachCallRepPendingDisposition(callReps.agents, callRepPending),
+        callRepNonShow,
+      ),
       callRepRoster,
       callRepPending,
+      callRepNonShow,
       startDate,
     ),
   };
@@ -229,14 +257,17 @@ function mergePendingOnlyRows(
   agents: AgentCommissionRow[],
   roster: RosterAgentWithPay[],
   pendingByAgentId: Map<string, PendingDispositionItem[]>,
+  nonShowByAgentId: Map<string, NonShowAppointmentItem[]>,
   periodStart: string,
 ): AgentCommissionRow[] {
   const existing = new Set(agents.map(a => a.agent_id));
   const extra: AgentCommissionRow[] = [];
 
   for (const agent of roster) {
-    const items = pendingByAgentId.get(agent.id) ?? [];
-    if (items.length === 0 || existing.has(agent.id)) continue;
+    const pendingItems = pendingByAgentId.get(agent.id) ?? [];
+    const nonShowItems = nonShowByAgentId.get(agent.id) ?? [];
+    if ((pendingItems.length === 0 && nonShowItems.length === 0) || existing.has(agent.id)) continue;
+
     const fixed = computeFixedPay(
       Number(agent.base_salary) || 0,
       Number(agent.monthly_bonus) || 0,
@@ -263,7 +294,11 @@ function mergePendingOnlyRows(
         total: fixed.base + fixed.bonus,
       },
       line_items: [],
-      pending_disposition: { count: items.length, items },
+      pending_disposition: { count: pendingItems.length, items: pendingItems },
+      non_show_appointments:
+        nonShowItems.length > 0
+          ? { count: nonShowItems.length, items: nonShowItems }
+          : { ...EMPTY_NON_SHOW_APPOINTMENTS },
     });
   }
 

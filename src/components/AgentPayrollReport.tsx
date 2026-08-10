@@ -38,8 +38,13 @@ function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
-function fmtMoney(n: number): string {
-  return n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
+function normPersonName(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 const CALL_REP_TYPE_LABELS: Record<string, string> = {
@@ -77,6 +82,20 @@ function PendingBadge({ count }: { count: number }) {
     >
       <span aria-hidden>⚠</span>
       {count} unclaimed
+    </span>
+  );
+}
+
+function NonShowBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide"
+      style={{ background: "rgba(56,189,248,0.12)", color: "#38bdf8", border: "1px solid rgba(56,189,248,0.3)" }}
+      title={`${count} appointment${count === 1 ? "" : "s"} in this period not marked Show (by appointment date)`}
+    >
+      <span aria-hidden className="opacity-90">◷</span>
+      {count} not shown
     </span>
   );
 }
@@ -120,7 +139,7 @@ function EmployeeRowActions({
       className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded whitespace-nowrap"
       style={{ background: `${accent}22`, color: accent }}
     >
-      {submitted || periodClosed ? "View" : "Review & Submit"}
+      {submitted || periodClosed ? "View / Unlock" : "Review & Submit"}
     </button>
   );
 }
@@ -170,6 +189,7 @@ export default function AgentPayrollReport({
   const [employeeView, setEmployeeView] = useState<EmployeePayrollView | null>(null);
   const [postingPayroll, setPostingPayroll] = useState(false);
   const [payrollMsg, setPayrollMsg] = useState("");
+  const [ledgerActionBusy, setLedgerActionBusy] = useState<string | null>(null);
   const [ledgerExpenses, setLedgerExpenses] = useState<{
     count: number;
     grand_total: number;
@@ -199,10 +219,36 @@ export default function AgentPayrollReport({
       const name = (e.merchant_raw ?? "Unknown").replace(/^Payroll —\s*/i, "").trim() || "Unknown";
       const cur = map.get(name) ?? { salary: 0, commissions: 0, other: 0, rows: 0 };
       const amt = Number(e.amount) || 0;
-      const sub = (e.subcategory ?? "payroll").toLowerCase();
-      if (sub === "commissions" || sub === "commission") cur.commissions += amt;
-      else if (sub === "payroll" || sub === "salary" || sub === "bonus") cur.salary += amt;
-      else cur.other += amt;
+      const sub = (e.subcategory ?? "").toLowerCase();
+      const ext = (e.external_id ?? "").toLowerCase();
+      const memo = (e.memo ?? "").toLowerCase();
+      // Prefer subcategory; fall back to Wise external_id path / memo (some imports stored salary under commissions).
+      const kindFromExt =
+        ext.includes(":payroll:") || ext.endsWith(":payroll")
+          ? "salary"
+          : ext.includes(":commissions:") || ext.includes(":commission:")
+            ? "commissions"
+            : null;
+      const kindFromMemo =
+        memo.includes(" · salary") || memo.endsWith("salary") || memo.includes("flat salary")
+          ? "salary"
+          : memo.includes(" · commissions") || memo.includes("commission")
+            ? "commissions"
+            : null;
+
+      if (sub === "commissions" || sub === "commission") {
+        // Override mis-tagged salary slices when memo/external_id is unambiguous
+        if (kindFromExt === "salary" || kindFromMemo === "salary") cur.salary += amt;
+        else cur.commissions += amt;
+      } else if (sub === "payroll" || sub === "salary" || sub === "bonus") {
+        cur.salary += amt;
+      } else if (kindFromExt === "salary" || kindFromMemo === "salary") {
+        cur.salary += amt;
+      } else if (kindFromExt === "commissions" || kindFromMemo === "commissions") {
+        cur.commissions += amt;
+      } else {
+        cur.other += amt;
+      }
       cur.rows += 1;
       map.set(name, cur);
     }
@@ -219,7 +265,7 @@ export default function AgentPayrollReport({
     external_id?: string | null;
     memo?: string | null;
     payroll_run_id?: string | null;
-  }): string {
+  }): "Wise" | "HR" | "Sheet" | "Posted" | "Ledger" {
     const ext = e.external_id ?? "";
     if (ext.startsWith("wise-payroll:")) return "Wise";
     if (ext.startsWith("hr-payroll:")) return "HR";
@@ -227,6 +273,107 @@ export default function AgentPayrollReport({
     if ((e.memo ?? "").toLowerCase().includes("wise")) return "Wise";
     if (e.payroll_run_id?.includes("_to_")) return "Posted";
     return "Ledger";
+  }
+
+  /** Agents in the current month report, keyed by normalized name. */
+  const agentsByNormName = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        agent_id: string;
+        agent_name: string;
+        section: EmployeePayrollView["section"];
+        row: AgentCommissionRow | B2BSetterCommissionRow | SalariedCommissionRow;
+      }
+    >();
+    if (!report) return map;
+    for (const row of report.call_reps.agents) {
+      map.set(normPersonName(row.agent_name), {
+        agent_id: row.agent_id,
+        agent_name: row.agent_name,
+        section: "call_rep",
+        row,
+      });
+    }
+    for (const row of report.b2b_setters.agents) {
+      map.set(normPersonName(row.agent_name), {
+        agent_id: row.agent_id,
+        agent_name: row.agent_name,
+        section: "b2b_setter",
+        row,
+      });
+    }
+    for (const row of report.salaried.agents) {
+      map.set(normPersonName(row.agent_name), {
+        agent_id: row.agent_id,
+        agent_name: row.agent_name,
+        section: "salaried",
+        row,
+      });
+    }
+    return map;
+  }, [report]);
+
+  const submittedByNormName = useMemo(() => {
+    const map = new Map<string, PayrollSubmittedEmployee>();
+    for (const s of submittedEmployees) {
+      map.set(normPersonName(s.agent_name), s);
+    }
+    return map;
+  }, [submittedEmployees]);
+
+  async function unlockSubmit(agentId: string, agentName: string) {
+    const msg = [
+      `Unlock calculator submit for ${agentName} (${bounds.label})?`,
+      "",
+      "This unlocks their commission snapshot so you can re-review and re-submit.",
+      "Wise / HR cash in the ledger is not changed. Posted CAC rows (from this screen) stay until you reverse them here.",
+    ].join("\n");
+    if (!confirm(msg)) return;
+
+    setLedgerActionBusy(`unlock:${agentId}`);
+    setPayrollMsg("");
+    try {
+      const res = await fetch(`/api/payroll-runs/${periodMonth}/employees/${agentId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to unlock");
+      setPayrollMsg(`Unlocked ${agentName}. Review & re-submit when ready.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to unlock submit");
+    } finally {
+      setLedgerActionBusy(null);
+    }
+  }
+
+  async function reversePostedExpense(expenseId: string, personLabel: string, amount: number) {
+    const msg = [
+      `Reverse CAC post for ${personLabel} (${fmtMoney(amount)})?`,
+      "",
+      "Removes this expense ledger row that was created by Post to Expenses on this screen.",
+      "Does not reverse Wise payouts or calculator submit locks.",
+    ].join("\n");
+    if (!confirm(msg)) return;
+
+    setLedgerActionBusy(`post:${expenseId}`);
+    setPayrollMsg("");
+    try {
+      const res = await fetch("/api/expenses/payroll", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: expenseId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to reverse post");
+      setPayrollMsg(`Reversed posted expense for ${personLabel} (${fmtMoney(amount)}).`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reverse posted expense");
+    } finally {
+      setLedgerActionBusy(null);
+    }
   }
 
   const isPeriodClosed = periodStatus === "closed";
@@ -595,7 +742,7 @@ export default function AgentPayrollReport({
                 Cash paid this period (expense ledger)
               </p>
               <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
-                Wise / HR / sheet backfill + anything posted from this screen. Not the same as the commission calculator below.
+                Wise / HR / sheet cash and CAC posts from this screen. Calculator submit locks are separate — reverse them here when locked, or use Unlock on the employee detail.
               </p>
             </div>
             {ledgerExpenses && ledgerExpenses.count > 0 && (
@@ -628,19 +775,55 @@ export default function AgentPayrollReport({
                       <th className="px-2 py-1.5 font-medium text-right">Salary</th>
                       <th className="px-2 py-1.5 font-medium text-right">Commissions</th>
                       <th className="px-2 py-1.5 font-medium text-right">Total paid</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paidByPerson.map(p => (
-                      <tr key={p.name} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", color: "#94a3b8" }}>
-                        <td className="px-2 py-1.5" style={{ color: "#e2e8f0" }}>{p.name}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(p.salary)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(p.commissions)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums font-semibold" style={{ color: "#e2e8f0" }}>
-                          {fmtMoney(p.total)}
-                        </td>
-                      </tr>
-                    ))}
+                    {paidByPerson.map(p => {
+                      const submitted = submittedByNormName.get(normPersonName(p.name));
+                      const agentMatch = agentsByNormName.get(normPersonName(p.name));
+                      const unlockId = submitted?.agent_id ?? agentMatch?.agent_id;
+                      const busy = unlockId ? ledgerActionBusy === `unlock:${unlockId}` : false;
+                      return (
+                        <tr key={p.name} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", color: "#94a3b8" }}>
+                          <td className="px-2 py-1.5" style={{ color: "#e2e8f0" }}>
+                            {p.name}
+                            {submitted && (
+                              <span
+                                className="ml-2 inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+                                style={{ background: "rgba(34,197,94,0.12)", color: "#86efac" }}
+                              >
+                                Calc locked
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(p.salary)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{fmtMoney(p.commissions)}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums font-semibold" style={{ color: "#e2e8f0" }}>
+                            {fmtMoney(p.total)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right">
+                            {submitted && unlockId ? (
+                              <button
+                                type="button"
+                                disabled={!!ledgerActionBusy}
+                                onClick={() => unlockSubmit(unlockId, p.name)}
+                                className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded disabled:opacity-40"
+                                style={{
+                                  background: "rgba(245,158,11,0.15)",
+                                  color: "#fbbf24",
+                                  border: "1px solid rgba(245,158,11,0.35)",
+                                }}
+                              >
+                                {busy ? "Unlocking…" : "Unlock submit"}
+                              </button>
+                            ) : (
+                              <span style={{ color: "#475569" }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -657,32 +840,69 @@ export default function AgentPayrollReport({
                         <th className="px-2 py-1.5 font-medium">Origin</th>
                         <th className="px-2 py-1.5 font-medium">Type</th>
                         <th className="px-2 py-1.5 font-medium text-right">Amount</th>
+                        <th className="px-2 py-1.5 font-medium text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {ledgerExpenses.expenses.map(e => (
-                        <tr key={e.id} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", color: "#94a3b8" }}>
-                          <td className="px-2 py-1.5 whitespace-nowrap">{e.occurred_on}</td>
-                          <td className="px-2 py-1.5" style={{ color: "#e2e8f0" }}>
-                            {(e.merchant_raw ?? "—").replace(/^Payroll — /, "")}
-                          </td>
-                          <td className="px-2 py-1.5">
-                            <span
-                              className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase"
-                              style={{
-                                background: ledgerOrigin(e) === "Wise" ? "rgba(56,189,248,0.15)" : "rgba(148,163,184,0.12)",
-                                color: ledgerOrigin(e) === "Wise" ? "#38bdf8" : "#94a3b8",
-                              }}
-                            >
-                              {ledgerOrigin(e)}
-                            </span>
-                          </td>
-                          <td className="px-2 py-1.5">{e.subcategory ?? "payroll"}</td>
-                          <td className="px-2 py-1.5 text-right" style={{ color: "#e2e8f0" }}>
-                            {fmtMoney(Number(e.amount))}
-                          </td>
-                        </tr>
-                      ))}
+                      {ledgerExpenses.expenses.map(e => {
+                        const origin = ledgerOrigin(e);
+                        const person = (e.merchant_raw ?? "—").replace(/^Payroll — /, "");
+                        const busy = ledgerActionBusy === `post:${e.id}`;
+                        return (
+                          <tr key={e.id} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", color: "#94a3b8" }}>
+                            <td className="px-2 py-1.5 whitespace-nowrap">{e.occurred_on}</td>
+                            <td className="px-2 py-1.5" style={{ color: "#e2e8f0" }}>
+                              {person}
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase"
+                                style={{
+                                  background:
+                                    origin === "Wise"
+                                      ? "rgba(56,189,248,0.15)"
+                                      : origin === "Posted"
+                                        ? "rgba(167,139,250,0.15)"
+                                        : "rgba(148,163,184,0.12)",
+                                  color:
+                                    origin === "Wise"
+                                      ? "#38bdf8"
+                                      : origin === "Posted"
+                                        ? "#c4b5fd"
+                                        : "#94a3b8",
+                                }}
+                              >
+                                {origin}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1.5">{e.subcategory ?? "payroll"}</td>
+                            <td className="px-2 py-1.5 text-right" style={{ color: "#e2e8f0" }}>
+                              {fmtMoney(Number(e.amount))}
+                            </td>
+                            <td className="px-2 py-1.5 text-right">
+                              {origin === "Posted" ? (
+                                <button
+                                  type="button"
+                                  disabled={!!ledgerActionBusy}
+                                  onClick={() => reversePostedExpense(e.id, person, Number(e.amount) || 0)}
+                                  className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded disabled:opacity-40"
+                                  style={{
+                                    background: "rgba(248,113,113,0.12)",
+                                    color: "#f87171",
+                                    border: "1px solid rgba(248,113,113,0.3)",
+                                  }}
+                                >
+                                  {busy ? "Reversing…" : "Reverse post"}
+                                </button>
+                              ) : (
+                                <span style={{ color: "#475569" }} title="Cash backfill is not deleted from payroll">
+                                  —
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -736,7 +956,7 @@ export default function AgentPayrollReport({
 
       {!isPeriodClosed && (
         <div className="rounded-xl px-4 py-3 text-xs" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)", color: "#94a3b8" }}>
-          Open each employee with Review &amp; Submit, download their PDF, then submit to lock their pay. The month closes automatically when everyone is submitted.
+          Open each employee with Review &amp; Submit, download their PDF, then submit to lock their pay. The month closes automatically when everyone is submitted. Submitted rows can be unlocked with <strong style={{ color: "#fbbf24" }}>Unlock &amp; edit</strong> if needed.
         </div>
       )}
 
@@ -793,6 +1013,7 @@ export default function AgentPayrollReport({
                         {agent.agent_name}
                         <SubmittedBadge submitted={submitted} />
                         {!isPeriodClosed && <PendingBadge count={agent.pending_disposition.count} />}
+                        <NonShowBadge count={agent.non_show_appointments?.count ?? 0} />
                       </td>
                       <RateCell value={r.base_salary} />
                       <RateCell value={r.monthly_bonus} />
@@ -822,6 +1043,9 @@ export default function AgentPayrollReport({
                     )}
                     {isOpen && !isPeriodClosed && agent.pending_disposition.count > 0 && (
                       <PendingItemsRow colSpan={17} items={agent.pending_disposition.items} />
+                    )}
+                    {isOpen && (agent.non_show_appointments?.count ?? 0) > 0 && (
+                      <NonShowItemsRow colSpan={17} items={agent.non_show_appointments?.items ?? []} />
                     )}
                   </Fragment>
                 );
@@ -1034,6 +1258,10 @@ export default function AgentPayrollReport({
           setEmployeeView(null);
           load();
         }}
+        onUnsubmitted={() => {
+          setEmployeeView(null);
+          load();
+        }}
       />
     </div>
   );
@@ -1226,6 +1454,29 @@ function PendingItemsRow({
     <tr>
       <td colSpan={colSpan} className="px-4 py-2" style={{ background: "rgba(245,158,11,0.05)" }}>
         <p className="text-xs font-semibold mb-1" style={{ color: "#fbbf24" }}>Unclaimed — needs disposition</p>
+        <ul className="text-xs space-y-0.5" style={{ color: "#94a3b8" }}>
+          {items.map(item => (
+            <li key={item.id}>{item.date} · {item.type} · {item.lead_name ?? "Unknown lead"}</li>
+          ))}
+        </ul>
+      </td>
+    </tr>
+  );
+}
+
+function NonShowItemsRow({
+  colSpan,
+  items,
+}: {
+  colSpan: number;
+  items: { id: string; date: string; type: string; lead_name: string | null }[];
+}) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-4 py-2" style={{ background: "rgba(56,189,248,0.05)" }}>
+        <p className="text-xs font-semibold mb-1" style={{ color: "#38bdf8" }}>
+          Not marked Show — by appointment date
+        </p>
         <ul className="text-xs space-y-0.5" style={{ color: "#94a3b8" }}>
           {items.map(item => (
             <li key={item.id}>{item.date} · {item.type} · {item.lead_name ?? "Unknown lead"}</li>
