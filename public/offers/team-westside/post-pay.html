@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Team Westside · You’re Paid · Onboarding Timeline · Waiz Media</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #061A4A;
+    --royal: #0E2F73;
+    --accent: #4FA3FF;
+    --accent-deep: #2B7DE0;
+    --green: #7CFF7A;
+    --gold: #F5C842;
+    --white: #FFFFFF;
+    --light: #F4F7FC;
+    --dark: #0B1220;
+    --mid: #5B6475;
+    --soft: #8B93A7;
+    --divider: #D1D9F0;
+    --line: rgba(255, 255, 255, 0.12);
+    --shadow: 0 18px 50px rgba(6, 26, 74, 0.12);
+    --radius: 6px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--light);
+    color: var(--dark);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  a { color: inherit; }
+
+  .banner {
+    background: #0d7a3e;
+    color: rgba(255, 255, 255, 0.95);
+    text-align: center;
+    padding: 11px 20px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .banner strong { color: var(--white); font-weight: 600; }
+
+  .hero {
+    background:
+      radial-gradient(ellipse 70% 80% at 100% 0%, rgba(124, 255, 122, 0.12), transparent 55%),
+      radial-gradient(ellipse 50% 60% at 0% 100%, rgba(79, 163, 255, 0.18), transparent 50%),
+      var(--navy);
+    color: var(--white);
+    padding: 52px 28px 60px;
+  }
+
+  .hero-inner {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 14px;
+  }
+
+  .hero h1 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(42px, 6vw, 68px);
+    font-weight: 900;
+    line-height: 0.95;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .hero h1 span { color: var(--accent); }
+
+  .hero-sub {
+    font-size: 17px;
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.78);
+    max-width: 36em;
+    line-height: 1.65;
+  }
+  .hero-sub strong { color: var(--white); font-weight: 500; }
+
+  .total-window {
+    margin-top: 24px;
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .total-window dt {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+  }
+  .total-window dd {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--white);
+    line-height: 1;
+  }
+
+  .wrap {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 40px 28px 72px;
+  }
+
+  .label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 10px;
+  }
+
+  .section-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(32px, 4vw, 44px);
+    font-weight: 800;
+    color: var(--navy);
+    text-transform: uppercase;
+    line-height: 1.05;
+    margin-bottom: 10px;
+  }
+
+  .section-lead {
+    font-size: 16px;
+    color: var(--mid);
+    line-height: 1.6;
+    margin-bottom: 28px;
+    max-width: 40em;
+  }
+
+  .timeline {
+    display: grid;
+    gap: 14px;
+  }
+
+  .tl-card {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 24px 24px 22px;
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 8px 20px;
+    align-items: start;
+  }
+
+  .tl-card.launch {
+    background: var(--navy);
+    border-color: transparent;
+    box-shadow: var(--shadow);
+    color: var(--white);
+  }
+
+  .tl-num {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 40px;
+    font-weight: 900;
+    color: var(--accent);
+    line-height: 0.9;
+  }
+  .tl-card.launch .tl-num { color: var(--gold); }
+
+  .tl-duration {
+    grid-column: 1;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    line-height: 1.3;
+  }
+  .tl-card.launch .tl-duration { color: var(--gold); }
+
+  .tl-body { grid-column: 2; grid-row: 1 / 3; }
+
+  .tl-body h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(24px, 3vw, 30px);
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    line-height: 1.05;
+    margin-bottom: 8px;
+  }
+  .tl-card.launch .tl-body h3 { color: var(--white); }
+
+  .tl-body p {
+    font-size: 15px;
+    color: var(--mid);
+    line-height: 1.6;
+  }
+  .tl-card.launch .tl-body p { color: rgba(255, 255, 255, 0.75); }
+
+  .tl-body p strong {
+    color: var(--navy);
+    font-weight: 600;
+  }
+  .tl-card.launch .tl-body p strong { color: var(--white); }
+
+  .asap {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #b45309;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    padding: 6px 10px;
+    border-radius: 3px;
+  }
+
+  .next-box {
+    margin-top: 28px;
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-left: 4px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+  }
+  .next-box h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    margin-bottom: 8px;
+  }
+  .next-box p {
+    font-size: 15px;
+    color: var(--mid);
+    line-height: 1.55;
+  }
+  .next-box p strong { color: var(--navy); }
+
+  .doc-footer {
+    background: var(--dark);
+    padding: 28px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 12px;
+  }
+  .doc-footer .inner {
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .doc-footer .brand {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: 0.06em;
+  }
+
+  @media (max-width: 560px) {
+    .hero, .wrap { padding-left: 20px; padding-right: 20px; }
+    .tl-card {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .tl-duration { grid-column: 1; }
+    .tl-body { grid-column: 1; grid-row: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="banner">
+  Payment received · <strong>Team Westside</strong> · Here’s what happens next
+</div>
+
+<header class="hero">
+  <div class="hero-inner">
+    <p class="eyebrow">You’re locked in</p>
+    <h1>Thanks — <span>onboarding is next</span></h1>
+    <p class="hero-sub">
+      Your exclusive inbound DSCR pilot is paid. Below is the full path from paperwork
+      to live leads — with how long each step usually takes.
+    </p>
+    <dl class="total-window">
+      <div>
+        <dt>Typical total</dt>
+        <dd>1.5–2.5 weeks</dd>
+      </div>
+      <div>
+        <dt>Go-live</dt>
+        <dd>Leads same day</dd>
+      </div>
+    </dl>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="label">Your onboarding timeline</p>
+  <h2 class="section-title">From paid → first leads</h2>
+  <p class="section-lead">
+    We’ll text and email you the links for anything you need to complete.
+    Stay responsive on step 1 — that keeps the whole window tight.
+  </p>
+
+  <div class="timeline">
+    <article class="tl-card">
+      <div class="tl-num">01</div>
+      <p class="tl-duration">Do ASAP</p>
+      <div class="tl-body">
+        <h3>Onboarding form</h3>
+        <p>
+          Fill this out <strong>as soon as you can</strong> so we can start build-out.
+          We’ll also text and email you the link — watch both.
+        </p>
+        <span class="asap">Try to complete today if possible</span>
+      </div>
+    </article>
+
+    <article class="tl-card">
+      <div class="tl-num">02</div>
+      <p class="tl-duration">30–40 min</p>
+      <div class="tl-body">
+        <h3>Onboarding call</h3>
+        <p>
+          Live call with your <strong>project manager</strong> (~30–40 minutes).
+          Get logged in, confirm access, and make sure we have everything we need
+          (page, CRM, branding, markets).
+        </p>
+      </div>
+    </article>
+
+    <article class="tl-card">
+      <div class="tl-num">03</div>
+      <p class="tl-duration">Up to 1–2 weeks</p>
+      <div class="tl-body">
+        <h3>Tech · ads · funnel build-out</h3>
+        <p>
+          Our team builds your campaigns, landing page, and drip.
+          This step can take <strong>up to 1–2 weeks</strong> depending on access and review turnaround.
+        </p>
+      </div>
+    </article>
+
+    <article class="tl-card">
+      <div class="tl-num">04</div>
+      <p class="tl-duration">Training call</p>
+      <div class="tl-body">
+        <h3>Launch call</h3>
+        <p>
+          Training call to lock best practices, walk the dial path, and make sure
+          you’re fully caught up before spend goes live.
+        </p>
+      </div>
+    </article>
+
+    <article class="tl-card launch">
+      <div class="tl-num">05</div>
+      <p class="tl-duration">Same day</p>
+      <div class="tl-body">
+        <h3>Launch · leads on</h3>
+        <p>
+          You can start receiving exclusive inbound DSCR leads <strong>as soon as that day</strong>.
+          After go-live, <strong>you control volume</strong> — we throttle pace to match how hard you want the desk working.
+        </p>
+      </div>
+    </article>
+  </div>
+
+  <div class="next-box">
+    <h3>What you should do now</h3>
+    <p>
+      Watch for our text/email with the <strong>onboarding form</strong> and agreement if not already sent.
+      Complete the form ASAP. We’ll schedule your <strong>30–40 min onboarding call</strong> with your project manager once that’s in.
+    </p>
+  </div>
+</main>
+
+<footer class="doc-footer">
+  <div class="inner">
+    <div class="brand">WAIZ MEDIA</div>
+    <div>Team Westside · Post-payment onboarding timeline</div>
+  </div>
+</footer>
+
+</body>
+</html>

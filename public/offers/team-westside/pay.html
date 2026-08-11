@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Team Westside · Pay &amp; Next Steps · Waiz Media</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #061A4A;
+    --royal: #0E2F73;
+    --accent: #4FA3FF;
+    --accent-deep: #2B7DE0;
+    --green: #7CFF7A;
+    --gold: #F5C842;
+    --white: #FFFFFF;
+    --light: #F4F7FC;
+    --dark: #0B1220;
+    --mid: #5B6475;
+    --soft: #8B93A7;
+    --divider: #D1D9F0;
+    --line: rgba(255, 255, 255, 0.12);
+    --shadow: 0 18px 50px rgba(6, 26, 74, 0.12);
+    --radius: 6px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--light);
+    color: var(--dark);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  a { color: inherit; }
+
+  .banner {
+    background: var(--royal);
+    color: rgba(255, 255, 255, 0.9);
+    text-align: center;
+    padding: 11px 20px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .banner strong { color: var(--white); font-weight: 600; }
+
+  .hero {
+    background:
+      radial-gradient(ellipse 70% 80% at 100% 0%, rgba(79, 163, 255, 0.22), transparent 55%),
+      var(--navy);
+    color: var(--white);
+    padding: 44px 28px 52px;
+  }
+
+  .hero-inner {
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    margin-bottom: 22px;
+  }
+  .back-link:hover { color: var(--white); }
+
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+
+  .hero h1 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(40px, 5.5vw, 64px);
+    font-weight: 900;
+    line-height: 0.95;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .hero h1 span { color: var(--accent); }
+
+  .hero-sub {
+    font-size: 17px;
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.75);
+    max-width: 36em;
+    line-height: 1.6;
+  }
+  .hero-sub strong { color: var(--white); font-weight: 500; }
+
+  .wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 28px;
+    align-items: start;
+    padding: 40px 0 72px;
+  }
+
+  .panel {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 28px;
+    margin-bottom: 18px;
+  }
+
+  .label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 10px;
+  }
+
+  .panel h2 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(28px, 3.2vw, 36px);
+    font-weight: 800;
+    color: var(--navy);
+    text-transform: uppercase;
+    line-height: 1.05;
+    margin-bottom: 8px;
+  }
+
+  .panel .help {
+    font-size: 15px;
+    color: var(--mid);
+    line-height: 1.55;
+    margin-bottom: 22px;
+    max-width: 42em;
+  }
+
+  .ob-time {
+    display: inline-block;
+    margin-bottom: 22px;
+    padding: 10px 14px;
+    background: #eef4ff;
+    border: 1px solid rgba(14, 47, 115, 0.12);
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--navy);
+    line-height: 1.4;
+  }
+  .ob-time span {
+    font-weight: 500;
+    color: var(--mid);
+  }
+
+  .next-steps {
+    list-style: none;
+    display: grid;
+    gap: 0;
+  }
+
+  .next-steps li {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 14px;
+    padding: 16px 0;
+    border-top: 1px solid var(--divider);
+    align-items: start;
+  }
+  .next-steps li:first-child { border-top: none; padding-top: 0; }
+
+  .step-num {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--navy);
+    color: var(--white);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .next-steps li:nth-child(2) .step-num { background: var(--royal); }
+  .next-steps li:nth-child(3) .step-num { background: var(--accent-deep); }
+  .next-steps li:nth-child(4) .step-num {
+    background: var(--gold);
+    color: var(--navy);
+  }
+
+  .next-steps h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    line-height: 1.1;
+    margin-bottom: 4px;
+  }
+
+  .next-steps p {
+    font-size: 14px;
+    color: var(--mid);
+    line-height: 1.5;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: 600;
+    transition: background 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--navy);
+    padding: 18px 24px;
+    font-size: 17px;
+    width: 100%;
+  }
+  .btn-primary:hover {
+    background: #6ab3ff;
+    box-shadow: 0 8px 24px rgba(79, 163, 255, 0.35);
+  }
+  .btn-primary.is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
+    cursor: not-allowed;
+  }
+
+  .pay-note {
+    margin-top: 12px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    text-align: center;
+    line-height: 1.45;
+  }
+
+  .summary {
+    position: sticky;
+    top: 20px;
+    background: var(--navy);
+    color: var(--white);
+    border-radius: var(--radius);
+    padding: 26px 24px;
+    box-shadow: var(--shadow);
+  }
+
+  .summary h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+
+  .sum-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 14px;
+  }
+  .sum-line span { color: rgba(255, 255, 255, 0.6); }
+  .sum-line strong {
+    color: var(--white);
+    text-align: right;
+    font-weight: 600;
+  }
+  .sum-line .ot {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.4);
+    margin-top: 2px;
+  }
+
+  .sum-total { margin-top: 16px; }
+  .sum-total .label-total {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 4px;
+  }
+  .sum-total .amount {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 48px;
+    font-weight: 900;
+    line-height: 0.95;
+  }
+  .sum-total .sub {
+    margin-top: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.4;
+  }
+
+  .summary .edit {
+    display: block;
+    margin-top: 14px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 13px;
+    text-decoration: none;
+  }
+  .summary .edit:hover { color: var(--white); }
+
+  .empty-warn {
+    display: none;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 18px;
+    font-size: 14px;
+    color: #9a3412;
+    line-height: 1.5;
+  }
+  .empty-warn a { color: var(--navy); font-weight: 600; }
+  .empty-warn.is-visible { display: block; }
+
+  .stripe-missing {
+    display: none;
+    margin-top: 10px;
+    font-size: 12px;
+    color: #fca5a5;
+    text-align: center;
+    line-height: 1.4;
+  }
+  .stripe-missing.is-visible { display: block; }
+
+  .doc-footer {
+    background: var(--dark);
+    padding: 28px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 12px;
+  }
+  .doc-footer .inner {
+    max-width: 1120px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .doc-footer .brand {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: 0.06em;
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .summary { position: static; }
+  }
+  @media (max-width: 560px) {
+    .hero, .wrap { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="banner">
+  Exclusive inbound DSCR · <strong>Team Westside</strong> · Step 2 · Pay &amp; next steps
+</div>
+
+<header class="hero">
+  <div class="hero-inner">
+    <a class="back-link" href="/offers/team-westside">← Back to pack selection</a>
+    <p class="eyebrow">Step to start onboarding</p>
+    <h1>Pay now · <span>then we onboard</span></h1>
+    <p class="hero-sub">
+      Confirm payment for your exclusive inbound DSCR pack.
+      After you pay, you’ll finish the agreement and onboarding form — then we schedule your call.
+      <strong>Onboarding to go-live typically takes 1.5–2.5 weeks.</strong>
+    </p>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="empty-warn" id="empty-warn">
+    No pack selection found on this device.
+    <a href="/offers/team-westside">Choose your lead pack first →</a>
+  </div>
+
+  <div class="layout">
+    <div class="main-col">
+      <div class="panel">
+        <p class="label">After you pay</p>
+        <h2>Your next steps</h2>
+        <p class="help">
+          Simple sequence. You handle payment and paperwork; we handle setup and scheduling.
+        </p>
+        <p class="ob-time">
+          Full onboarding window: 1.5–2.5 weeks
+          <span> · from paid + docs to live leads</span>
+        </p>
+
+        <ol class="next-steps">
+          <li>
+            <div class="step-num">01</div>
+            <div>
+              <h3>Pay invoice</h3>
+              <p>
+                Pay your all-in total now (early bird setup
+                <em>one-time payment</em> + prepaid lead pack) to lock your pilot slot.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div class="step-num">02</div>
+            <div>
+              <h3>Review agreement</h3>
+              <p>
+                We’ll send the pilot agreement after payment. Read it through and sign when ready.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div class="step-num">03</div>
+            <div>
+              <h3>Fill out onboarding form</h3>
+              <p>
+                Short form we send (Facebook page access, CRM, branding, licensing basics)
+                so build-out is clean.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div class="step-num">04</div>
+            <div>
+              <h3>Schedule onboarding call</h3>
+              <p>
+                Book your onboarding call. From there we build, then launch —
+                full path usually <strong>1.5–2.5 weeks</strong>.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <aside class="summary" aria-label="Your selected pack">
+      <h3>Your selection</h3>
+      <div class="sum-line">
+        <span>Product</span>
+        <strong>Exclusive inbound DSCR</strong>
+      </div>
+      <div class="sum-line">
+        <span>Lead pack</span>
+        <strong id="sum-pack">—</strong>
+      </div>
+      <div class="sum-line">
+        <span>Cost per lead</span>
+        <strong id="sum-cpl">—</strong>
+      </div>
+      <div class="sum-line">
+        <span>Pack total</span>
+        <strong id="sum-pack-total">—</strong>
+      </div>
+      <div class="sum-line">
+        <span>Early bird setup</span>
+        <strong id="sum-setup">
+          $900
+          <span class="ot">one-time payment</span>
+        </strong>
+      </div>
+      <div class="sum-total">
+        <p class="label-total">All-in due today</p>
+        <p class="amount" id="sum-grand">—</p>
+        <p class="sub" id="sum-sub">Setup (one-time) + prepaid lead pack</p>
+      </div>
+
+      <a class="btn btn-primary" id="pay-now" href="#" target="_blank" rel="noopener noreferrer">
+        Pay now →
+      </a>
+      <p class="pay-note">
+        Secure checkout via Stripe. After payment you’ll go to the onboarding intake form.
+      </p>
+      <p class="stripe-missing" id="stripe-missing">
+        Payment link for this pack size isn’t set yet. Go back and re-select a pack.
+      </p>
+      <a class="edit" href="/offers/team-westside">← Change pack selection</a>
+      <a class="edit" href="/offers/team-westside/post-pay" style="margin-top:8px;opacity:0.75;">
+        Already paid? View onboarding timeline →
+      </a>
+    </aside>
+  </div>
+</div>
+
+<footer class="doc-footer">
+  <div class="inner">
+    <div class="brand">WAIZ MEDIA</div>
+    <div>Team Westside · Exclusive inbound DSCR pilot · Pay &amp; next steps</div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // ── Stripe Payment Links by pack size (leads + setup) ─────────────
+  // After payment, Stripe redirects to GHL/onboarding form (set in Stripe dashboard).
+  const STRIPE_LINKS = {
+    100: 'https://buy.stripe.com/28EcN6f84frH2584fSbwk00',
+    200: 'https://buy.stripe.com/3cI4gA6BydjzdNQ5jWbwk01',
+    300: 'https://buy.stripe.com/7sYeVe3pmgvLeRU5jWbwk02',
+  };
+  // ───────────────────────────────────────────────────────────────────
+
+  const ORDER_KEY = 'westside-pilot-order';
+
+  const els = {
+    empty: document.getElementById('empty-warn'),
+    payNow: document.getElementById('pay-now'),
+    stripeMissing: document.getElementById('stripe-missing'),
+    sumPack: document.getElementById('sum-pack'),
+    sumCpl: document.getElementById('sum-cpl'),
+    sumPackTotal: document.getElementById('sum-pack-total'),
+    sumSetup: document.getElementById('sum-setup'),
+    sumGrand: document.getElementById('sum-grand'),
+    sumSub: document.getElementById('sum-sub'),
+  };
+
+  function money(n) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    return '$' + Math.round(n).toLocaleString('en-US');
+  }
+
+  function loadOrder() {
+    try {
+      const raw =
+        sessionStorage.getItem(ORDER_KEY) ||
+        localStorage.getItem('westside-pilot-order-last');
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function renderOrder(order) {
+    if (!order) {
+      els.empty.classList.add('is-visible');
+      els.sumPack.textContent = 'Not selected';
+      els.sumCpl.textContent = '—';
+      els.sumPackTotal.textContent = '—';
+      els.sumSetup.innerHTML =
+        money(900) + '<span class="ot">one-time payment</span>';
+      els.sumGrand.textContent = '—';
+      els.sumSub.textContent = 'Pick a pack first, then return here';
+      els.payNow.classList.add('is-disabled');
+      els.payNow.setAttribute('aria-disabled', 'true');
+      return;
+    }
+
+    els.sumPack.textContent = order.packQty + ' leads';
+    els.sumCpl.textContent = money(order.unitPrice);
+    els.sumPackTotal.textContent = money(order.packTotal);
+    els.sumSetup.innerHTML =
+      money(order.setup || 900) +
+      '<span class="ot">one-time payment</span>';
+    els.sumGrand.textContent = money(order.grandTotal);
+    els.sumSub.textContent =
+      'Setup ' +
+      money(order.setup || 900) +
+      ' (one-time) + pack ' +
+      money(order.packTotal);
+  }
+
+  function wirePay(order) {
+    const qty = order && order.packQty;
+    const link = qty != null ? (STRIPE_LINKS[qty] || '').trim() : '';
+
+    if (!link) {
+      els.payNow.classList.add('is-disabled');
+      els.payNow.removeAttribute('href');
+      els.payNow.setAttribute('aria-disabled', 'true');
+      els.stripeMissing.classList.add('is-visible');
+      if (qty && !STRIPE_LINKS[qty]) {
+        els.stripeMissing.textContent =
+          'No payment link for the ' +
+          qty +
+          '-lead pack. Go back and re-select a pack option.';
+      } else {
+        els.stripeMissing.textContent =
+          'Payment link not configured for this selection. Go back and re-select a pack.';
+      }
+      return;
+    }
+
+    els.payNow.href = link;
+    els.payNow.classList.remove('is-disabled');
+    els.payNow.removeAttribute('aria-disabled');
+    els.stripeMissing.classList.remove('is-visible');
+  }
+
+  const order = loadOrder();
+  renderOrder(order);
+  wirePay(order);
+})();
+</script>
+</body>
+</html>

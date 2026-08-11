@@ -1,0 +1,1810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Team Westside · Exclusive Inbound DSCR Leads · Waiz Media</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #061A4A;
+    --royal: #0E2F73;
+    --accent: #4FA3FF;
+    --accent-deep: #2B7DE0;
+    --green: #7CFF7A;
+    --gold: #F5C842;
+    --white: #FFFFFF;
+    --light: #F4F7FC;
+    --dark: #0B1220;
+    --mid: #5B6475;
+    --soft: #8B93A7;
+    --divider: #D1D9F0;
+    --line: rgba(255, 255, 255, 0.12);
+    --shadow: 0 18px 50px rgba(6, 26, 74, 0.12);
+    --radius: 6px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--light);
+    color: var(--dark);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  button, input, select { font: inherit; }
+
+  .banner {
+    background: var(--royal);
+    color: rgba(255, 255, 255, 0.9);
+    text-align: center;
+    padding: 11px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  .banner strong { color: var(--white); font-weight: 600; }
+
+  .hero {
+    background:
+      radial-gradient(ellipse 70% 80% at 100% 0%, rgba(79, 163, 255, 0.22), transparent 55%),
+      radial-gradient(ellipse 50% 60% at 0% 100%, rgba(245, 200, 66, 0.08), transparent 50%),
+      var(--navy);
+    color: var(--white);
+    padding: 56px 28px 72px;
+    overflow: hidden;
+  }
+
+  .hero-inner {
+    max-width: 1120px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1.25fr 0.85fr;
+    gap: 48px;
+    align-items: end;
+  }
+
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 18px;
+  }
+
+  .hero h1 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(48px, 7vw, 84px);
+    font-weight: 900;
+    line-height: 0.95;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    margin-bottom: 22px;
+  }
+
+  .hero h1 span {
+    color: var(--accent);
+    display: block;
+  }
+
+  .hero-sub {
+    font-size: clamp(17px, 2vw, 20px);
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.78);
+    max-width: 32em;
+    line-height: 1.6;
+    margin-bottom: 32px;
+  }
+
+  .hero-sub strong { color: var(--white); font-weight: 500; }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: center;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: 600;
+    transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .btn:active { transform: translateY(1px); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--navy);
+    padding: 16px 28px;
+    font-size: 16px;
+  }
+
+  .btn-primary:hover {
+    background: #6ab3ff;
+    box-shadow: 0 8px 24px rgba(79, 163, 255, 0.35);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.85);
+    padding: 16px 20px;
+    font-size: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+  }
+
+  .btn-ghost:hover { border-color: rgba(255, 255, 255, 0.5); color: var(--white); }
+
+  .hero-snapshot {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 28px 28px 24px;
+    backdrop-filter: blur(8px);
+  }
+
+  .hero-snapshot h2 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 18px;
+  }
+
+  .snap-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 16px;
+  }
+
+  .snap-item dt {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+    margin-bottom: 4px;
+  }
+
+  .snap-item dd {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--white);
+    line-height: 1;
+  }
+
+  .snap-item dd small {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.55);
+    margin-left: 4px;
+  }
+
+  .wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  section.block { padding: 72px 0; }
+
+  .label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 14px;
+  }
+
+  .block h2 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(36px, 4.5vw, 52px);
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1.05;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    margin-bottom: 14px;
+    max-width: 18ch;
+  }
+
+  .block .lead {
+    font-size: 18px;
+    color: var(--mid);
+    max-width: 40em;
+    line-height: 1.65;
+    margin-bottom: 36px;
+  }
+
+  .block .lead strong { color: var(--navy); font-weight: 600; }
+
+  /* Deliverables */
+  .deliver { background: var(--white); border-bottom: 1px solid var(--divider); }
+
+  .deliver-stack {
+    display: grid;
+    gap: 18px;
+  }
+
+  .deliver-card {
+    display: grid;
+    grid-template-columns: 88px 1fr;
+    gap: 8px 28px;
+    background: var(--light);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 32px 32px 30px;
+    align-items: start;
+  }
+
+  .deliver-card:first-child {
+    background: var(--navy);
+    border-color: transparent;
+    color: var(--white);
+    box-shadow: var(--shadow);
+  }
+
+  .deliver-num {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 56px;
+    font-weight: 900;
+    line-height: 0.9;
+    color: var(--accent);
+  }
+
+  .deliver-card:first-child .deliver-num { color: var(--gold); }
+
+  .deliver-card:nth-child(2) .deliver-num,
+  .deliver-card:nth-child(3) .deliver-num { color: var(--royal); }
+
+  .deliver-card h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(28px, 3.2vw, 36px);
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: 1.05;
+    margin-bottom: 10px;
+    color: var(--navy);
+  }
+
+  .deliver-card:first-child h3 { color: var(--white); }
+
+  .deliver-card p {
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--mid);
+    max-width: 52em;
+  }
+
+  .deliver-card:first-child p { color: rgba(255, 255, 255, 0.78); }
+
+  .deliver-card p strong {
+    color: var(--navy);
+    font-weight: 600;
+  }
+
+  .deliver-card:first-child p strong { color: var(--white); }
+
+  .fine-print {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--soft);
+    line-height: 1.5;
+    max-width: 52em;
+  }
+
+  .deliver-card:first-child .fine-print { color: rgba(255, 255, 255, 0.45); }
+
+  /* Pricing */
+  .pricing { background: var(--light); }
+
+  .fields-panel {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 28px 28px 24px;
+    margin-bottom: 28px;
+  }
+
+  .fields-panel h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--navy);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .fields-panel > p {
+    font-size: 15px;
+    color: var(--mid);
+    margin-bottom: 18px;
+    line-height: 1.5;
+  }
+
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .field-chip {
+    background: var(--light);
+    border: 1px solid var(--divider);
+    border-radius: 4px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--navy);
+  }
+
+  .field-chip span {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 4px;
+  }
+
+  .builder-layout {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 28px;
+    align-items: start;
+  }
+
+  .panel {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 28px;
+  }
+
+  .panel + .panel { margin-top: 18px; }
+
+  .panel-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--navy);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    line-height: 1;
+  }
+
+  .panel-help {
+    font-size: 14px;
+    color: var(--mid);
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  .setup-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px;
+    background: var(--navy);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+  }
+
+  .setup-row .setup-label {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 14px;
+  }
+
+  .setup-row .setup-label strong {
+    display: block;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--white);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+
+  .setup-row .setup-amt {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 42px;
+    font-weight: 900;
+    color: var(--gold);
+    line-height: 1;
+  }
+
+  .setup-note {
+    font-size: 13px;
+    color: var(--soft);
+    line-height: 1.45;
+    margin-bottom: 8px;
+  }
+
+  .pack-grid { display: grid; gap: 10px; }
+
+  .pack-btn {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px 16px;
+    align-items: center;
+    background: var(--light);
+    border: 2px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+
+  .pack-btn:hover { border-color: var(--accent); }
+
+  .pack-btn[aria-pressed="true"] {
+    border-color: var(--navy);
+    background: #eef4ff;
+  }
+
+  .pack-btn .pack-qty {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 32px;
+    font-weight: 900;
+    color: var(--navy);
+    line-height: 1;
+  }
+
+  .pack-btn .pack-qty span {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--mid);
+    margin-left: 6px;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+
+  .pack-btn .pack-rate {
+    font-size: 14px;
+    color: var(--mid);
+    grid-column: 1;
+  }
+
+  .pack-btn .pack-total {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1;
+    text-align: right;
+  }
+
+  .pack-btn .pack-save {
+    font-size: 12px;
+    font-weight: 600;
+    color: #1a7a32;
+    text-align: right;
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .pack-btn .badge {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: var(--gold);
+    color: var(--navy);
+    padding: 3px 7px;
+    border-radius: 2px;
+    vertical-align: middle;
+  }
+
+  .field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--mid);
+    margin-bottom: 6px;
+  }
+
+  .field input {
+    width: 100%;
+    border: 1px solid var(--divider);
+    background: var(--light);
+    border-radius: 4px;
+    padding: 12px 14px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--navy);
+  }
+
+  .field input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .field .suffix {
+    font-size: 12px;
+    color: var(--soft);
+    margin-top: 4px;
+  }
+
+  /* Contact-rate education + bake-off */
+  .pickup-section { margin-top: 0; }
+
+  .pickup-intro {
+    font-size: 16px;
+    color: var(--mid);
+    line-height: 1.6;
+    margin-bottom: 22px;
+    max-width: 42em;
+  }
+
+  .pickup-intro strong { color: var(--navy); font-weight: 600; }
+
+  .grid-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+
+  .grid-card {
+    background: var(--light);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 18px 16px 16px;
+  }
+
+  .grid-card.pilot {
+    background: #eef4ff;
+    border-color: rgba(14, 47, 115, 0.25);
+  }
+
+  .grid-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .grid-card-head h4 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    line-height: 1.1;
+  }
+
+  .grid-card-head .grid-rate {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--soft);
+    line-height: 1;
+  }
+
+  .grid-card.pilot .grid-rate { color: var(--royal); }
+
+  .lead-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 4px;
+  }
+
+  .lead-cell {
+    aspect-ratio: 1;
+    border-radius: 2px;
+    background: #d9dee9;
+  }
+
+  .lead-cell.lit-store { background: #9aa3b5; }
+  .lead-cell.lit-pilot { background: var(--accent); }
+
+  .grid-caption {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--mid);
+    line-height: 1.4;
+  }
+
+  .grid-caption strong { color: var(--navy); }
+
+  .why-list {
+    list-style: none;
+    display: grid;
+    gap: 10px;
+    margin: 0 0 8px;
+  }
+
+  .why-list li {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    gap: 10px;
+    font-size: 14px;
+    color: var(--mid);
+    line-height: 1.45;
+  }
+
+  .why-list li::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 5px;
+    background: var(--accent);
+  }
+
+  .why-list li strong { color: var(--navy); font-weight: 600; }
+
+  .yield-note {
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: rgba(245, 200, 66, 0.12);
+    border-left: 3px solid var(--gold);
+    font-size: 14px;
+    color: var(--mid);
+    line-height: 1.5;
+  }
+
+  .yield-note strong { color: var(--navy); font-weight: 600; }
+
+  .shared-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+
+  .compare-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .compare-col {
+    background: var(--light);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 18px 16px;
+  }
+
+  .compare-col.pilot {
+    background: var(--navy);
+    border-color: transparent;
+    color: var(--white);
+  }
+
+  .compare-col h4 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    margin-bottom: 4px;
+    line-height: 1.1;
+  }
+
+  .compare-col.pilot h4 { color: var(--white); }
+
+  .compare-sub {
+    font-size: 12px;
+    color: var(--soft);
+    margin-bottom: 14px;
+    line-height: 1.4;
+  }
+
+  .compare-col.pilot .compare-sub { color: rgba(255, 255, 255, 0.5); }
+
+  .compare-field {
+    margin-bottom: 14px;
+  }
+
+  .compare-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--soft);
+    margin-bottom: 5px;
+  }
+
+  .compare-col.pilot .compare-field label { color: rgba(255, 255, 255, 0.45); }
+
+  .compare-field input {
+    width: 100%;
+    border: 1px solid var(--divider);
+    background: var(--white);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--navy);
+  }
+
+  .compare-col.pilot .compare-field input {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--line);
+    color: var(--white);
+  }
+
+  .compare-field input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .compare-field .hint {
+    font-size: 11px;
+    color: var(--soft);
+    margin-top: 4px;
+    line-height: 1.35;
+  }
+
+  .compare-col.pilot .compare-field .hint { color: rgba(255, 255, 255, 0.4); }
+
+  .metric-list {
+    list-style: none;
+    display: grid;
+    gap: 0;
+  }
+
+  .metric-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    padding: 9px 0;
+    border-top: 1px solid var(--divider);
+    font-size: 13px;
+    color: var(--mid);
+  }
+
+  .compare-col.pilot .metric-list li {
+    border-top-color: var(--line);
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .metric-list li strong {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1;
+  }
+
+  .compare-col.pilot .metric-list li strong { color: var(--white); }
+
+  .metric-list li.hero strong {
+    font-size: 28px;
+    color: #1a7a32;
+  }
+
+  .compare-col.pilot .metric-list li.hero strong { color: var(--green); }
+
+  .metric-list li.cost strong { color: var(--royal); }
+  .compare-col.pilot .metric-list li.cost strong { color: var(--accent); }
+
+  .delta-strip {
+    margin-top: 14px;
+    background: linear-gradient(90deg, #ecfdf3, #eef4ff);
+    border: 1px solid #a7f3c4;
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  .delta-strip dt {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--soft);
+    margin-bottom: 4px;
+  }
+
+  .delta-strip dd {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    color: #1a7a32;
+    line-height: 1;
+  }
+
+  .planning-note {
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--soft);
+    line-height: 1.45;
+  }
+
+  .summary {
+    position: sticky;
+    top: 20px;
+    background: var(--navy);
+    color: var(--white);
+    border-radius: var(--radius);
+    padding: 28px 26px;
+    box-shadow: var(--shadow);
+  }
+
+  .summary h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 18px;
+  }
+
+  .sum-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 14px;
+  }
+
+  .sum-line span { color: rgba(255, 255, 255, 0.6); }
+  .sum-line strong {
+    font-weight: 600;
+    color: var(--white);
+    text-align: right;
+  }
+
+  .sum-total { margin-top: 18px; padding-top: 8px; }
+
+  .sum-total .label-total {
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 6px;
+  }
+
+  .sum-total .amount {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(48px, 6vw, 64px);
+    font-weight: 900;
+    line-height: 0.95;
+    color: var(--white);
+  }
+
+  .sum-total .amount-sub {
+    margin-top: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.55);
+    line-height: 1.4;
+  }
+
+  .sum-total .save-pill {
+    display: inline-block;
+    margin-top: 12px;
+    background: rgba(124, 255, 122, 0.14);
+    color: var(--green);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 3px;
+  }
+
+  .summary .btn-primary {
+    width: 100%;
+    margin-top: 22px;
+    padding: 18px 20px;
+    font-size: 17px;
+  }
+
+  .summary .next-note {
+    margin-top: 14px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.45;
+    text-align: center;
+  }
+
+  .confirm {
+    display: none;
+    margin-top: 28px;
+    background: #ecfdf3;
+    border: 1px solid #a7f3c4;
+    border-radius: var(--radius);
+    padding: 28px;
+  }
+
+  .confirm.is-visible { display: block; }
+
+  .confirm h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--navy);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .confirm p {
+    font-size: 16px;
+    color: var(--mid);
+    line-height: 1.55;
+    max-width: 42em;
+    margin-bottom: 16px;
+  }
+
+  .confirm-box {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-radius: 4px;
+    padding: 18px 20px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    color: var(--dark);
+    white-space: pre-wrap;
+    line-height: 1.55;
+  }
+
+  .confirm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .btn-secondary {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    color: var(--navy);
+    padding: 12px 18px;
+    font-size: 14px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .btn-secondary:hover { border-color: var(--navy); }
+
+  .pricing.is-locked .builder-controls > .panel,
+  .pricing.is-locked .summary {
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  .doc-footer {
+    background: var(--dark);
+    padding: 28px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 12px;
+  }
+
+  .doc-footer .inner {
+    max-width: 1120px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .doc-footer .brand {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: 0.06em;
+  }
+
+  @media (max-width: 960px) {
+    .hero-inner,
+    .builder-layout { grid-template-columns: 1fr; }
+
+    .field-grid { grid-template-columns: 1fr 1fr; }
+
+    .deliver-card {
+      grid-template-columns: 64px 1fr;
+      padding: 24px;
+    }
+
+    .summary { position: static; }
+  }
+
+  @media (max-width: 560px) {
+    .hero { padding: 40px 20px 52px; }
+    .wrap { padding: 0 20px; }
+    section.block { padding: 52px 0; }
+    .snap-grid,
+    .shared-inputs,
+    .grid-pair,
+    .compare-cols,
+    .delta-strip,
+    .field-grid { grid-template-columns: 1fr; }
+    .deliver-card { grid-template-columns: 1fr; }
+    .pack-btn { grid-template-columns: 1fr; }
+    .pack-btn .pack-total,
+    .pack-btn .pack-save { text-align: left; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .btn { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="banner">
+  Exclusive DSCR leads · Prepared for <strong>Team Westside</strong> · Early bird pilot · Confidential
+</div>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div>
+      <p class="eyebrow">Exclusive · Inbound · DSCR only</p>
+      <h1>Exclusive DSCR leads <span>asking for you</span></h1>
+      <p class="hero-sub">
+        Not shopped lead-store names. <strong>Inbound investors</strong> opt in on
+        <strong>your brand</strong> — ads and pages that educate on DSCR and route every inquiry
+        to you. Early bird pilot pricing for Team Westside only.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#pricing">Choose your pack →</a>
+        <a class="btn btn-ghost" href="#deliverables">What you get</a>
+      </div>
+    </div>
+    <aside class="hero-snapshot" aria-label="Pilot snapshot">
+      <h2>Pilot highlights</h2>
+      <dl class="snap-grid">
+        <div class="snap-item">
+          <dt>Lead type</dt>
+          <dd>Inbound</dd>
+        </div>
+        <div class="snap-item">
+          <dt>Access</dt>
+          <dd>Exclusive</dd>
+        </div>
+        <div class="snap-item">
+          <dt>Early bird setup</dt>
+          <dd>$900<small>one-time</small></dd>
+        </div>
+        <div class="snap-item">
+          <dt>Cost per lead</dt>
+          <dd>from $52</dd>
+        </div>
+      </dl>
+    </aside>
+  </div>
+</header>
+
+<!-- SECTION 1: What we deliver -->
+<section class="block deliver" id="deliverables">
+  <div class="wrap">
+    <p class="label">What we’re delivering</p>
+    <h2>Inbound exclusive DSCR</h2>
+    <p class="lead">
+      Prospects who already inquired to talk about DSCR with <strong>you</strong> —
+      from campaigns and pages under your brand. Not shared inventory. Not outbound lists.
+    </p>
+
+    <div class="deliver-stack">
+      <article class="deliver-card">
+        <div class="deliver-num">01</div>
+        <div>
+          <h3>Custom ad campaigns on your Facebook page</h3>
+          <p>
+            We build and run Meta campaigns under <strong>your team’s Facebook presence</strong> —
+            so investors see <strong>your name</strong>, not a lead seller. They engage because
+            they want DSCR help. Ad spend is included in cost per lead. You buy exclusive inbound inquiries.
+          </p>
+        </div>
+      </article>
+
+      <article class="deliver-card">
+        <div class="deliver-num">02</div>
+        <div>
+          <h3>Custom landing page built for you</h3>
+          <p>
+            A purpose-built DSCR page that positions <strong>you as the expert</strong> and educates
+            on the product. When they submit, they’re asking <strong>you</strong> to follow up —
+            not a generic form. Higher intent. Cleaner first calls.
+          </p>
+        </div>
+      </article>
+
+      <article class="deliver-card">
+        <div class="deliver-num">03</div>
+        <div>
+          <h3>Tested follow-up drip — ready day one</h3>
+          <p>
+            A proven SMS + email sequence for inbound DSCR leads — run it in
+            <strong>your Bonzo</strong> or <strong>our CRM</strong>. Already built. Plug in and
+            nurture every inquiry without writing sequences from scratch.
+          </p>
+          <p class="fine-print">
+            Fine print: SMS usage is billed at platform token cost only (Bonzo / CRM). The sequence
+            itself is included.
+          </p>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 2: Pricing / packs -->
+<section class="block pricing" id="pricing">
+  <div class="wrap">
+    <p class="label">Early bird pricing</p>
+    <h2>Exclusive inbound packs</h2>
+    <p class="lead">
+      Prepaid exclusive DSCR leads — inbound inquiries routed to you.
+      Setup once (one-time payment). Bigger pack = lower cost per lead. Ad spend is inside the pack price.
+    </p>
+
+    <div class="fields-panel">
+      <h3>What we ask each lead</h3>
+      <p>Every opt-in is structured so you know it’s worth your time before you dial.</p>
+      <div class="field-grid">
+        <div class="field-chip"><span>01</span>Contact information</div>
+        <div class="field-chip"><span>02</span>FICO</div>
+        <div class="field-chip"><span>03</span>Location</div>
+        <div class="field-chip"><span>04</span>LTV</div>
+        <div class="field-chip"><span>05</span>Property use</div>
+        <div class="field-chip"><span>06</span>Cash reserves</div>
+      </div>
+    </div>
+
+    <div class="builder-layout" id="builder">
+      <div class="builder-controls">
+        <div class="panel">
+          <h3 class="panel-title">Early bird setup</h3>
+          <p class="panel-help">One-time payment — campaigns, landing page, and drip install.</p>
+          <div class="setup-row">
+            <div class="setup-label">
+              <strong>Pilot setup</strong>
+              One-time payment · exclusive early bird for Team Westside
+            </div>
+            <div class="setup-amt">$900</div>
+          </div>
+          <p class="setup-note">One-time payment. Locked for this pilot group. Not our standard list rate.</p>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Lead pack</h3>
+          <p class="panel-help">Prepaid exclusive inbound DSCR leads. Pick the volume you want for the pilot.</p>
+          <div class="pack-grid" id="pack-options" role="group" aria-label="Lead pack size"></div>
+        </div>
+
+        <div class="panel pickup-section">
+          <h3 class="panel-title">Why contact rate is everything</h3>
+          <p class="pickup-intro">
+            These are <strong>inbound exclusive DSCR leads</strong> — people who already asked
+            to hear from you. Same dial skill. Same close skill. The difference vs shopped inventory
+            is <strong>how many of those inquiries become a real contact</strong>.
+            Lead-store (WestCap-style) samples often sit near a <strong>~9% contact band</strong>.
+            On exclusive owned DSCR leads we <strong>nurture</strong>, we typically see
+            <strong>28–45% contact</strong> — not a guarantee, but a very different contact load
+            from the same lead count.
+          </p>
+
+          <div class="grid-pair" aria-hidden="false">
+            <div class="grid-card">
+              <div class="grid-card-head">
+                <h4>Lead store</h4>
+                <span class="grid-rate" id="grid-rate-store">9%</span>
+              </div>
+              <div class="lead-grid" id="grid-store" aria-label="100 leads · store contact rate"></div>
+              <p class="grid-caption">
+                Out of 100 leads, about <strong id="grid-lit-store">9</strong> become a real contact.
+              </p>
+            </div>
+            <div class="grid-card pilot">
+              <div class="grid-card-head">
+                <h4>Exclusive pilot</h4>
+                <span class="grid-rate" id="grid-rate-pilot">30%</span>
+              </div>
+              <div class="lead-grid" id="grid-pilot" aria-label="100 leads · pilot contact rate"></div>
+              <p class="grid-caption">
+                Out of 100 leads, about <strong id="grid-lit-pilot">30</strong> become a real contact
+                (planning midpoint of our 28–45% nurtured band).
+              </p>
+            </div>
+          </div>
+
+          <ul class="why-list">
+            <li><span><strong>Inbound inquiry</strong> — they raised their hand to talk DSCR with you.</span></li>
+            <li><span><strong>Exclusive to you</strong> — not shopped across five LOs first.</span></li>
+            <li><span><strong>Your brand + education</strong> — they opted in on your page knowing the product.</span></li>
+          </ul>
+
+          <p class="yield-note">
+            <strong>Why DSCR for this pilot:</strong> compared with a lot of forward / small HELOC volume,
+            DSCR deals typically support stronger commissions (more points room on larger loan amounts).
+            You already know the product side — contact rate is what unlocks more of those talks.
+          </p>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">Return on this pack</h3>
+          <p class="panel-help">
+            Pack volume is locked above. Same close rate and commission both sides —
+            <strong>contact rate</strong> is the lever. Defaults use ~9% store vs a
+            <strong>30% planning midpoint</strong> inside our 28–45% nurtured contact band.
+            Not promised performance.
+          </p>
+
+          <div class="shared-inputs">
+            <div class="field">
+              <label for="aov">Commission / funded deal</label>
+              <input type="number" id="aov" min="500" step="100" value="5000">
+              <p class="suffix">Shared · DSCR often nets more than small HELOC volume — plug yours</p>
+            </div>
+            <div class="field">
+              <label for="close-rate">Close rate of contacts</label>
+              <input type="number" id="close-rate" min="0" max="100" step="0.5" value="12">
+              <p class="suffix">Shared · funds ÷ live contacts (not raw leads)</p>
+            </div>
+          </div>
+
+          <div class="compare-cols">
+            <div class="compare-col">
+              <h4>Lead store</h4>
+              <p class="compare-sub">WestCap-style shopped inventory baseline</p>
+              <div class="compare-field">
+                <label for="store-contact">Contact rate</label>
+                <input type="number" id="store-contact" min="0" max="100" step="0.5" value="9">
+                <p class="hint">Typical store sample band ~9%</p>
+              </div>
+              <div class="compare-field">
+                <label for="store-cpl">CPL (for same lead count)</label>
+                <input type="number" id="store-cpl" min="1" step="1" value="60">
+                <p class="hint">Invest = leads × this CPL · no pilot setup</p>
+              </div>
+              <ul class="metric-list">
+                <li><span>Leads</span><strong id="store-leads">—</strong></li>
+                <li><span>Contacts</span><strong id="store-contacts">—</strong></li>
+                <li class="cost"><span>Cost per contact</span><strong id="store-cpc">—</strong></li>
+                <li><span>Expected funds</span><strong id="store-deals">—</strong></li>
+                <li class="hero"><span>Commission $</span><strong id="store-gross">—</strong></li>
+                <li><span>ROAS</span><strong id="store-roas">—</strong></li>
+              </ul>
+            </div>
+
+            <div class="compare-col pilot">
+              <h4>Your exclusive pilot</h4>
+              <p class="compare-sub">Waiz owned path · CPL from your pack · setup included</p>
+              <div class="compare-field">
+                <label for="pilot-contact">Contact rate</label>
+                <input type="number" id="pilot-contact" min="0" max="100" step="0.5" value="30">
+                <p class="hint">Planning midpoint · we see ~28–45% when nurtured · not guaranteed</p>
+              </div>
+              <div class="compare-field">
+                <label>CPL (from pack)</label>
+                <input type="text" id="pilot-cpl" value="$55" readonly tabindex="-1" style="opacity:0.9;cursor:default;">
+                <p class="hint">Locked to selected pack · ad spend inside</p>
+              </div>
+              <ul class="metric-list">
+                <li><span>Leads</span><strong id="pilot-leads">—</strong></li>
+                <li><span>Contacts</span><strong id="pilot-contacts">—</strong></li>
+                <li class="cost"><span>Cost per contact</span><strong id="pilot-cpc">—</strong></li>
+                <li><span>Expected funds</span><strong id="pilot-deals">—</strong></li>
+                <li class="hero"><span>Commission $</span><strong id="pilot-gross">—</strong></li>
+                <li><span>ROAS</span><strong id="pilot-roas">—</strong></li>
+              </ul>
+            </div>
+          </div>
+
+          <dl class="delta-strip">
+            <div>
+              <dt>Extra contacts</dt>
+              <dd id="delta-contacts">—</dd>
+            </div>
+            <div>
+              <dt>Extra commission</dt>
+              <dd id="delta-gross">—</dd>
+            </div>
+            <div>
+              <dt>Cheaper per contact</dt>
+              <dd id="delta-cpc">—</dd>
+            </div>
+          </dl>
+          <p class="planning-note">
+            Planning model only. The 30% field is a midpoint for sizing — live exclusive books we
+            nurture often land roughly <strong>28–45% contact</strong>. Store ~9% is a sample band
+            on shopped inventory. Neither side is a guarantee of contact, close, or funded loans.
+            Dial + nurture still win. DSCR commission assumptions are yours to edit.
+          </p>
+        </div>
+
+        <div class="confirm" id="confirm" aria-live="polite" hidden>
+          <!-- Kept for backwards compatibility; selection navigates to contact page -->
+        </div>
+      </div>
+
+      <aside class="summary" aria-label="Live order total">
+        <h3>Your pilot total</h3>
+        <div class="sum-line">
+          <span>Early bird setup</span>
+          <strong id="sum-setup">$900 <span style="display:block;font-size:11px;font-weight:500;color:rgba(255,255,255,0.45);margin-top:2px;">one-time payment</span></strong>
+        </div>
+        <div class="sum-line">
+          <span>Lead pack</span>
+          <strong id="sum-pack">100 × $60</strong>
+        </div>
+        <div class="sum-line">
+          <span>Pack total</span>
+          <strong id="sum-pack-total">$6,000</strong>
+        </div>
+        <div class="sum-line">
+          <span>Cost per lead</span>
+          <strong id="sum-cpl">$60</strong>
+        </div>
+
+        <div class="sum-total">
+          <p class="label-total">All-in to start</p>
+          <p class="amount" id="sum-grand">$6,900</p>
+          <p class="amount-sub" id="sum-breakdown">Setup $900 + pack $6,000 · ads inside units</p>
+          <p class="save-pill" id="sum-save" hidden></p>
+        </div>
+
+        <button type="button" class="btn btn-primary" id="submit-order">
+          Continue to payment →
+        </button>
+        <p class="next-note">
+          Next: pay invoice · review agreement · onboarding form · schedule call. OB takes 1.5–2.5 weeks.
+        </p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<footer class="doc-footer">
+  <div class="inner">
+    <div class="brand">WAIZ MEDIA</div>
+    <div>Team Westside DSCR Pilot · Exclusive early bird · Not a contract</div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  const NOTIFY_EMAIL = 'hello@waizmedia.com';
+  const NOTIFY_WEBHOOK = '';
+
+  const SETUP = 900;
+  const LIST_UNIT = 60;
+  const DEFAULT_STORE_CONTACT = 9;
+  const DEFAULT_PILOT_CONTACT = 30;
+  const DEFAULT_CLOSE = 12;
+  const DEFAULT_COMMISSION = 5000;
+
+  const PACKS = [
+    { qty: 100, unit: 60, label: 'minimum', featured: false },
+    { qty: 200, unit: 55, label: '', featured: true },
+    { qty: 300, unit: 52, label: '', featured: false },
+  ];
+
+  const state = { packIndex: 0 }; // default 100-lead pack (has Stripe link)
+
+  const els = {
+    packOptions: document.getElementById('pack-options'),
+    sumSetup: document.getElementById('sum-setup'),
+    sumPack: document.getElementById('sum-pack'),
+    sumPackTotal: document.getElementById('sum-pack-total'),
+    sumCpl: document.getElementById('sum-cpl'),
+    sumGrand: document.getElementById('sum-grand'),
+    sumBreakdown: document.getElementById('sum-breakdown'),
+    sumSave: document.getElementById('sum-save'),
+    aov: document.getElementById('aov'),
+    closeRate: document.getElementById('close-rate'),
+    storeContact: document.getElementById('store-contact'),
+    storeCpl: document.getElementById('store-cpl'),
+    pilotContact: document.getElementById('pilot-contact'),
+    pilotCpl: document.getElementById('pilot-cpl'),
+    storeLeads: document.getElementById('store-leads'),
+    storeContacts: document.getElementById('store-contacts'),
+    storeCpc: document.getElementById('store-cpc'),
+    storeDeals: document.getElementById('store-deals'),
+    storeGross: document.getElementById('store-gross'),
+    storeRoas: document.getElementById('store-roas'),
+    pilotLeads: document.getElementById('pilot-leads'),
+    pilotContacts: document.getElementById('pilot-contacts'),
+    pilotCpc: document.getElementById('pilot-cpc'),
+    pilotDeals: document.getElementById('pilot-deals'),
+    pilotGross: document.getElementById('pilot-gross'),
+    pilotRoas: document.getElementById('pilot-roas'),
+    deltaContacts: document.getElementById('delta-contacts'),
+    deltaGross: document.getElementById('delta-gross'),
+    deltaCpc: document.getElementById('delta-cpc'),
+    gridStore: document.getElementById('grid-store'),
+    gridPilot: document.getElementById('grid-pilot'),
+    gridRateStore: document.getElementById('grid-rate-store'),
+    gridRatePilot: document.getElementById('grid-rate-pilot'),
+    gridLitStore: document.getElementById('grid-lit-store'),
+    gridLitPilot: document.getElementById('grid-lit-pilot'),
+    submit: document.getElementById('submit-order'),
+    pricingSection: document.querySelector('.pricing'),
+  };
+
+  function money(n) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    return '$' + Math.round(n).toLocaleString('en-US');
+  }
+
+  function moneySigned(n) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    const prefix = n > 0 ? '+' : '';
+    return prefix + money(n);
+  }
+
+  function mult(n) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    return n.toFixed(2) + '×';
+  }
+
+  function num(n, digits) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    return n.toLocaleString('en-US', {
+      maximumFractionDigits: digits == null ? 1 : digits,
+      minimumFractionDigits: 0,
+    });
+  }
+
+  function clampPct(n) {
+    if (!Number.isFinite(n)) return 0;
+    return Math.min(100, Math.max(0, n));
+  }
+
+  function currentPack() {
+    return PACKS[state.packIndex];
+  }
+
+  function packTotal(pack) {
+    return pack.qty * pack.unit;
+  }
+
+  function savings(pack) {
+    return Math.max(0, LIST_UNIT * pack.qty - packTotal(pack));
+  }
+
+  function grandTotal(pack) {
+    return SETUP + packTotal(pack);
+  }
+
+  /** Mr. Waiz-style side outcomes: contact rate → close of contacts. */
+  function simulateSide(opts) {
+    const leads = Math.max(0, opts.leads || 0);
+    const contact = clampPct(opts.contactPct) / 100;
+    const close = clampPct(opts.closePct) / 100;
+    const commission = Math.max(0, opts.commission || 0);
+    const investment = Math.max(0, opts.investment || 0);
+    const unitCost = Math.max(0, opts.unitCost != null ? opts.unitCost : investment);
+
+    const contacts = leads * contact;
+    const deals = contacts * close;
+    const gross = deals * commission;
+    const cpc = contacts > 0 ? unitCost / contacts : null;
+    const roas = investment > 0 ? gross / investment : null;
+
+    return {
+      leads: leads,
+      contacts: contacts,
+      deals: deals,
+      gross: gross,
+      investment: investment,
+      cpc: cpc,
+      roas: roas,
+    };
+  }
+
+  function readShared() {
+    return {
+      commission: Math.max(0, Number(els.aov.value) || 0),
+      closePct: clampPct(Number(els.closeRate.value) || 0),
+      storeContact: clampPct(Number(els.storeContact.value) || 0),
+      storeCpl: Math.max(0, Number(els.storeCpl.value) || 0),
+      pilotContact: clampPct(Number(els.pilotContact.value) || 0),
+    };
+  }
+
+  function runCompare() {
+    const pack = currentPack();
+    const shared = readShared();
+    const leads = pack.qty;
+    const pack$ = packTotal(pack);
+    const pilotInvest = SETUP + pack$;
+
+    const store = simulateSide({
+      leads: leads,
+      contactPct: shared.storeContact,
+      closePct: shared.closePct,
+      commission: shared.commission,
+      investment: leads * shared.storeCpl,
+      unitCost: leads * shared.storeCpl,
+    });
+
+    const pilot = simulateSide({
+      leads: leads,
+      contactPct: shared.pilotContact,
+      closePct: shared.closePct,
+      commission: shared.commission,
+      investment: pilotInvest,
+      unitCost: pack$, // cost-to-talk from unit pack $ (ads inside), consistent with plan alt
+    });
+
+    // Also show all-in CPC when useful: investment includes setup — store uses pure spend.
+    // Plan: cost/talk = investment_on_units ÷ contacts. Pilot units = pack $. Store = full invest.
+    // Re-run pilot cpc on pack $ as unitCost above. For ROAS use full pilot invest (with setup).
+
+    return { pack: pack, shared: shared, store: store, pilot: pilot, pack$: pack$, pilotInvest: pilotInvest };
+  }
+
+  function buildLeadGrid(container, litCount, litClass) {
+    const cells = [];
+    const lit = Math.max(0, Math.min(100, Math.round(litCount)));
+    for (let i = 0; i < 100; i++) {
+      cells.push(
+        '<span class="lead-cell' + (i < lit ? ' ' + litClass : '') + '"></span>'
+      );
+    }
+    container.innerHTML = cells.join('');
+  }
+
+  function renderGrids(storeContact, pilotContact) {
+    const storeLit = Math.round(clampPct(storeContact));
+    const pilotLit = Math.round(clampPct(pilotContact));
+    buildLeadGrid(els.gridStore, storeLit, 'lit-store');
+    buildLeadGrid(els.gridPilot, pilotLit, 'lit-pilot');
+    els.gridRateStore.textContent = storeLit + '%';
+    els.gridRatePilot.textContent = pilotLit + '%';
+    els.gridLitStore.textContent = String(storeLit);
+    els.gridLitPilot.textContent = String(pilotLit);
+  }
+
+  function fillSide(prefix, side) {
+    document.getElementById(prefix + '-leads').textContent = num(side.leads, 0);
+    document.getElementById(prefix + '-contacts').textContent = num(side.contacts, 1);
+    document.getElementById(prefix + '-cpc').textContent =
+      side.cpc != null ? money(side.cpc) : '—';
+    document.getElementById(prefix + '-deals').textContent = num(side.deals, 1);
+    document.getElementById(prefix + '-gross').textContent = money(side.gross);
+    document.getElementById(prefix + '-roas').textContent = mult(side.roas);
+  }
+
+  function renderCompare() {
+    const result = runCompare();
+    const { store, pilot, shared, pack } = result;
+
+    els.pilotCpl.value = money(pack.unit);
+
+    fillSide('store', store);
+    fillSide('pilot', pilot);
+
+    const dContacts = pilot.contacts - store.contacts;
+    const dGross = pilot.gross - store.gross;
+    const dCpc =
+      store.cpc != null && pilot.cpc != null ? store.cpc - pilot.cpc : null;
+
+    els.deltaContacts.textContent =
+      dContacts > 0 ? '+' + num(dContacts, 1) : num(dContacts, 1);
+    els.deltaGross.textContent = moneySigned(dGross);
+    els.deltaCpc.textContent =
+      dCpc != null && dCpc > 0
+        ? money(dCpc) + ' less'
+        : dCpc != null
+          ? money(Math.abs(dCpc)) + (dCpc < 0 ? ' more' : '')
+          : '—';
+
+    renderGrids(shared.storeContact, shared.pilotContact);
+
+    return result;
+  }
+
+  function buildPackButtons() {
+    els.packOptions.innerHTML = PACKS.map((pack, i) => {
+      const save = savings(pack);
+      const pressed = i === state.packIndex;
+      const badge = pack.featured
+        ? '<span class="badge">Most popular</span>'
+        : pack.label === 'minimum'
+          ? '<span class="badge" style="background:#e5e9f2;color:#5B6475">Min</span>'
+          : '';
+      return `
+        <button type="button" class="pack-btn" data-pack-index="${i}" aria-pressed="${pressed}">
+          <div class="pack-qty">${pack.qty}<span>leads</span>${badge}</div>
+          <div class="pack-total">${money(packTotal(pack))}</div>
+          <div class="pack-rate">${money(pack.unit)} per lead</div>
+          <div class="pack-save">${save > 0 ? 'Save ' + money(save) + ' vs $60 list' : 'Early bird rate'}</div>
+        </button>
+      `;
+    }).join('');
+
+    els.packOptions.querySelectorAll('.pack-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.packIndex = Number(btn.dataset.packIndex);
+        // Keep store CPL at list fairness default so same lead count story stays clean
+        if (!els.storeCpl.dataset.touched) {
+          els.storeCpl.value = String(LIST_UNIT);
+        }
+        render();
+      });
+    });
+  }
+
+  function renderSummary() {
+    const pack = currentPack();
+    const pTotal = packTotal(pack);
+    const grand = grandTotal(pack);
+    const save = savings(pack);
+
+    els.sumSetup.innerHTML =
+      money(SETUP) +
+      ' <span style="display:block;font-size:11px;font-weight:500;color:rgba(255,255,255,0.45);margin-top:2px;">one-time payment</span>';
+    els.sumPack.textContent = pack.qty + ' × ' + money(pack.unit);
+    els.sumPackTotal.textContent = money(pTotal);
+    els.sumCpl.textContent = money(pack.unit);
+    els.sumGrand.textContent = money(grand);
+    els.sumBreakdown.textContent =
+      'Setup ' + money(SETUP) + ' (one-time) + pack ' + money(pTotal) + ' · ads inside units';
+
+    if (save > 0) {
+      els.sumSave.hidden = false;
+      els.sumSave.textContent = 'Volume savings: ' + money(save);
+    } else {
+      els.sumSave.hidden = true;
+    }
+  }
+
+  function orderPayload() {
+    const result = runCompare();
+    const pack = result.pack;
+    const pTotal = packTotal(pack);
+    const grand = grandTotal(pack);
+    const save = savings(pack);
+
+    return {
+      client: 'Team Westside',
+      product: 'DSCR exclusive leads',
+      phase: 'Exclusive early bird pilot',
+      path: 'leads',
+      setup: SETUP,
+      packQty: pack.qty,
+      unitPrice: pack.unit,
+      packTotal: pTotal,
+      unitSavings: save,
+      grandTotal: grand,
+      planning: {
+        commissionPerFund: result.shared.commission,
+        closeOfContactsPct: result.shared.closePct,
+        storeContactPct: result.shared.storeContact,
+        pilotContactPct: result.shared.pilotContact,
+        storeCpl: result.shared.storeCpl,
+        store: {
+          contacts: Number(result.store.contacts.toFixed(2)),
+          deals: Number(result.store.deals.toFixed(2)),
+          gross: Math.round(result.store.gross),
+          cpc: result.store.cpc != null ? Math.round(result.store.cpc) : null,
+          roas: result.store.roas != null ? Number(result.store.roas.toFixed(2)) : null,
+        },
+        pilot: {
+          contacts: Number(result.pilot.contacts.toFixed(2)),
+          deals: Number(result.pilot.deals.toFixed(2)),
+          gross: Math.round(result.pilot.gross),
+          cpc: result.pilot.cpc != null ? Math.round(result.pilot.cpc) : null,
+          roas: result.pilot.roas != null ? Number(result.pilot.roas.toFixed(2)) : null,
+        },
+      },
+      submittedAt: new Date().toISOString(),
+    };
+  }
+
+  function formatSummaryText(order) {
+    const p = order.planning;
+    return [
+      'TEAM WESTSIDE · DSCR EXCLUSIVE PILOT',
+      '────────────────────────────────────',
+      'Setup:    ' + money(order.setup) + ' (early bird · one-time payment)',
+      'Pack:     ' + order.packQty + ' leads @ ' + money(order.unitPrice) + ' CPL',
+      'Pack $:   ' + money(order.packTotal),
+      order.unitSavings > 0 ? 'Savings:  ' + money(order.unitSavings) + ' vs $60 list' : null,
+      'ALL-IN:   ' + money(order.grandTotal),
+      '────────────────────────────────────',
+      'BAKE-OFF (planning, not a guarantee)',
+      'Commission: ' + money(p.commissionPerFund) + ' (edit for your DSCR vs HELOC mix)',
+      'Close of contacts: ' + p.closeOfContactsPct + '%',
+      'Pilot contact field is a midpoint; nurtured exclusive band often ~28–45%',
+      '',
+      'Lead store ~' + p.storeContactPct + '% contact · CPL $' + p.storeCpl,
+      '  Contacts: ' + p.store.contacts + ' · Funds: ' + p.store.deals +
+        ' · $: ' + money(p.store.gross) + ' · ROAS: ' + (p.store.roas != null ? p.store.roas + '×' : '—'),
+      '',
+      'Exclusive pilot ~' + p.pilotContactPct + '% contact · CPL ' + money(order.unitPrice),
+      '  Contacts: ' + p.pilot.contacts + ' · Funds: ' + p.pilot.deals +
+        ' · $: ' + money(p.pilot.gross) + ' · ROAS: ' + (p.pilot.roas != null ? p.pilot.roas + '×' : '—'),
+      '',
+      'Submitted: ' + new Date(order.submittedAt).toLocaleString(),
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  function mailHref(order) {
+    const subject = encodeURIComponent(
+      'Team Westside pilot · ' + order.packQty + ' leads · ' + money(order.grandTotal)
+    );
+    const body = encodeURIComponent(formatSummaryText(order));
+    return 'mailto:' + NOTIFY_EMAIL + '?subject=' + subject + '&body=' + body;
+  }
+
+  function render() {
+    buildPackButtons();
+    renderSummary();
+    renderCompare();
+  }
+
+  ['aov', 'closeRate', 'storeContact', 'storeCpl', 'pilotContact'].forEach((key) => {
+    const el = els[key];
+    if (!el) return;
+    el.addEventListener('input', function () {
+      if (key === 'storeCpl') els.storeCpl.dataset.touched = '1';
+      renderCompare();
+    });
+  });
+
+  els.submit.addEventListener('click', () => {
+    const order = orderPayload();
+    try {
+      sessionStorage.setItem('westside-pilot-order', JSON.stringify(order));
+      localStorage.setItem('westside-pilot-order-last', JSON.stringify(order));
+    } catch (_) {}
+
+    if (NOTIFY_WEBHOOK) {
+      fetch(NOTIFY_WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(order),
+      }).catch(function () {});
+    }
+
+    console.info('[westside-pilot-order]', order);
+
+    // Step 2: contact form + what happens next
+    window.location.href = '/offers/team-westside/pay';
+  });
+
+  // Seed defaults if DOM was emptied
+  if (!els.aov.value) els.aov.value = String(DEFAULT_COMMISSION);
+  if (!els.closeRate.value) els.closeRate.value = String(DEFAULT_CLOSE);
+  if (!els.storeContact.value) els.storeContact.value = String(DEFAULT_STORE_CONTACT);
+  if (!els.pilotContact.value) els.pilotContact.value = String(DEFAULT_PILOT_CONTACT);
+  if (!els.storeCpl.value) els.storeCpl.value = String(LIST_UNIT);
+
+  render();
+})();
+</script>
+</body>
+</html>

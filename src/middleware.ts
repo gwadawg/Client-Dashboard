@@ -22,6 +22,7 @@ const BYPASS_ROUTES = [
   '/forms/acquisition',
   '/forms/eod',
   '/tools/lead-source-roi',
+  '/offers/',
   '/api/acquisition/forms',
   '/api/eod',
   '/api/acquisition/webhooks',
