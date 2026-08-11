@@ -3,7 +3,15 @@ import {
   normalizeEmailForMatch,
   normalizePhoneForMatch,
 } from '@/lib/form-submissions';
-import type { AccountManagement, CompanyAddress, MemberDraft, ObRole } from '@/lib/onboarding-steps';
+import type {
+  AccountManagement,
+  CompanyAddress,
+  CrmChoice,
+  MemberDraft,
+  ObRole,
+  OnboardingFormVariant,
+  PerformanceUnit,
+} from '@/lib/onboarding-steps';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 import { isKnownUsClientTimezone } from '@/lib/us-timezones';
 
@@ -17,6 +25,9 @@ export type OnboardingMemberInput = {
 };
 
 export type OnboardingFormInput = {
+  form_variant: OnboardingFormVariant;
+  first_name: string | null;
+  last_name: string | null;
   account_management: AccountManagement;
   ob_role: ObRole;
   email: string;
@@ -36,6 +47,8 @@ export type OnboardingFormInput = {
   state: string;
   zip_code: string;
   timezone: string;
+  performance_unit: PerformanceUnit | null;
+  crm_choice: CrmChoice | null;
   headshot_url?: string | null;
   additional_members: OnboardingMemberInput[];
 };
@@ -100,7 +113,36 @@ function parseAccountManagement(body: Record<string, unknown>): AccountManagemen
   throw new Error('Account management style is required');
 }
 
+function parseFormVariant(body: Record<string, unknown>): OnboardingFormVariant {
+  const v = trim(body.form_variant);
+  if (v === 'dscr_performance') return 'dscr_performance';
+  return 'core';
+}
+
+function parsePerformanceUnit(body: Record<string, unknown>, variant: OnboardingFormVariant): PerformanceUnit | null {
+  const raw = trim(body.performance_unit).toLowerCase();
+  if (raw === 'leads' || raw === 'conversations') return raw;
+  if (variant === 'dscr_performance') {
+    throw new Error('Please choose Leads or Conversations');
+  }
+  return null;
+}
+
+function parseCrmChoice(
+  body: Record<string, unknown>,
+  variant: OnboardingFormVariant,
+  unit: PerformanceUnit | null,
+): CrmChoice | null {
+  const raw = trim(body.crm_choice).toLowerCase();
+  if (raw === 'waiz' || raw === 'client') return raw;
+  if (variant === 'dscr_performance' && unit === 'leads') {
+    throw new Error('Please choose whose CRM you will use');
+  }
+  return null;
+}
+
 export function parseOnboardingFormFields(body: Record<string, unknown>): OnboardingFormInput {
+  const form_variant = parseFormVariant(body);
   const account_management = parseAccountManagement(body);
   const ob_role = parseObRole(body);
   const email = trim(body.email);
@@ -110,6 +152,16 @@ export function parseOnboardingFormFields(body: Record<string, unknown>): Onboar
   }
   if (!email) throw new Error('Email is required');
   if (!phone) throw new Error('Phone is required');
+
+  const first_name = trim(body.first_name) || null;
+  const last_name = trim(body.last_name) || null;
+  if (form_variant === 'dscr_performance') {
+    if (!first_name) throw new Error('First name is required');
+    if (!last_name) throw new Error('Last name is required');
+  }
+
+  const performance_unit = parsePerformanceUnit(body, form_variant);
+  const crm_choice = parseCrmChoice(body, form_variant, performance_unit);
 
   const nmls = trim(body.nmls);
   if (!nmls) throw new Error('NMLS is required');
@@ -163,6 +215,9 @@ export function parseOnboardingFormFields(body: Record<string, unknown>): Onboar
   const additional_members = parseMembers(body);
 
   return {
+    form_variant,
+    first_name,
+    last_name,
     account_management,
     ob_role,
     email,
@@ -182,6 +237,8 @@ export function parseOnboardingFormFields(body: Record<string, unknown>): Onboar
     state,
     zip_code: trim(body.zip_code),
     timezone,
+    performance_unit,
+    crm_choice,
     headshot_url: trim(body.headshot_url) || null,
     additional_members,
   };
@@ -189,6 +246,11 @@ export function parseOnboardingFormFields(body: Record<string, unknown>): Onboar
 
 export function obRoleToContactRole(ob_role: ObRole): string {
   return ob_role === 'owner' ? 'Broker Owner' : 'MLO';
+}
+
+export function primaryContactNameFromInput(input: OnboardingFormInput): string | null {
+  const name = [input.first_name, input.last_name].filter(Boolean).join(' ').trim();
+  return name || null;
 }
 
 export function onboardingToClientPatch(input: OnboardingFormInput): Record<string, unknown> {
@@ -207,6 +269,12 @@ export function onboardingToClientPatch(input: OnboardingFormInput): Record<stri
     contact_role: obRoleToContactRole(input.ob_role),
   };
 
+  const fullName = primaryContactNameFromInput(input);
+  if (fullName) {
+    patch.primary_contact_name = fullName;
+    patch.primary_contact = fullName;
+  }
+
   if (input.brokerage_name) patch.brokerage_name = input.brokerage_name;
   if (input.legal_business_name) patch.legal_business_name = input.legal_business_name;
   if (input.website) patch.website = input.website;
@@ -217,6 +285,9 @@ export function onboardingToClientPatch(input: OnboardingFormInput): Record<stri
 
 export function onboardingResponsesFromInput(input: OnboardingFormInput): Record<string, unknown> {
   return {
+    form_variant: input.form_variant,
+    first_name: input.first_name,
+    last_name: input.last_name,
     account_management: input.account_management,
     ob_role: input.ob_role,
     email: input.email,
@@ -236,6 +307,8 @@ export function onboardingResponsesFromInput(input: OnboardingFormInput): Record
     state: input.state,
     zip_code: input.zip_code,
     timezone: input.timezone,
+    performance_unit: input.performance_unit,
+    crm_choice: input.crm_choice,
     headshot_url: input.headshot_url ?? null,
     additional_members: input.additional_members,
     match_email: normalizeEmailForMatch(input.email),
@@ -244,6 +317,9 @@ export function onboardingResponsesFromInput(input: OnboardingFormInput): Record
 }
 
 export const ONBOARDING_FIELD_LABELS: Record<string, string> = {
+  form_variant: 'Form variant',
+  first_name: 'First name',
+  last_name: 'Last name',
   account_management: 'Account management',
   ob_role: 'Role',
   email: 'Email',
@@ -263,33 +339,42 @@ export const ONBOARDING_FIELD_LABELS: Record<string, string> = {
   state: 'State',
   zip_code: 'ZIP code',
   timezone: 'Timezone',
+  performance_unit: 'Leads or Conversations',
+  crm_choice: 'CRM',
   headshot_url: 'Headshot',
   additional_members: 'Team members',
 };
 
 /** Build multipart body fields from wizard draft for API submit. */
-export function draftToSubmitBody(draft: {
-  account_management: string;
-  ob_role: string;
-  brokerage_name: string;
-  company_name: string;
-  website: string;
-  company_nmls: string;
-  company_address: CompanyAddress;
-  company_states_licensed: string[];
-  nmls: string;
-  phone: string;
-  email: string;
-  states_licensed: string[];
-  street_address: string;
-  city: string;
-  state: string;
-  zip_code: string;
-  timezone: string;
-  review_url: string;
-  biography: string;
-  additional_members: MemberDraft[];
-}): Record<string, string> {
+export function draftToSubmitBody(
+  draft: {
+    first_name: string;
+    last_name: string;
+    account_management: string;
+    ob_role: string;
+    brokerage_name: string;
+    company_name: string;
+    website: string;
+    company_nmls: string;
+    company_address: CompanyAddress;
+    company_states_licensed: string[];
+    nmls: string;
+    phone: string;
+    email: string;
+    states_licensed: string[];
+    street_address: string;
+    city: string;
+    state: string;
+    zip_code: string;
+    timezone: string;
+    performance_unit: string;
+    crm_choice: string;
+    review_url: string;
+    biography: string;
+    additional_members: MemberDraft[];
+  },
+  formVariant: OnboardingFormVariant = 'core',
+): Record<string, string> {
   const members = draft.additional_members
     .filter(m => m.contact_type && m.name.trim())
     .map(m => ({
@@ -303,6 +388,9 @@ export function draftToSubmitBody(draft: {
     }));
 
   return {
+    form_variant: formVariant,
+    first_name: draft.first_name,
+    last_name: draft.last_name,
     account_management: draft.account_management,
     ob_role: draft.ob_role,
     brokerage_name: draft.brokerage_name,
@@ -324,6 +412,8 @@ export function draftToSubmitBody(draft: {
     state: draft.state,
     zip_code: draft.zip_code,
     timezone: draft.timezone,
+    performance_unit: draft.performance_unit,
+    crm_choice: draft.crm_choice,
     review_url: draft.review_url,
     biography: draft.biography,
     additional_members: JSON.stringify(members),

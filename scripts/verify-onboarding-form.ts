@@ -84,6 +84,8 @@ function testOwnerPath() {
 
 function testDraftToSubmitBody() {
   const body = draftToSubmitBody({
+    first_name: '',
+    last_name: '',
     account_management: 'solo',
     ob_role: 'mlo',
     brokerage_name: 'Test Co',
@@ -101,6 +103,8 @@ function testDraftToSubmitBody() {
     state: 'TX',
     zip_code: '',
     timezone: 'America/Chicago',
+    performance_unit: '',
+    crm_choice: '',
     review_url: '',
     biography: 'Bio',
     additional_members: [],
@@ -108,10 +112,60 @@ function testDraftToSubmitBody() {
   assert.equal(body.ob_role, 'mlo');
   assert.equal(body.brokerage_name, 'Test Co');
   assert.ok(body.states_licensed.includes('TX'));
+  assert.equal(body.form_variant, 'core');
+}
+
+function testDscrPath() {
+  const input = parseOnboardingFormFields({
+    form_variant: 'dscr_performance',
+    first_name: 'Alex',
+    last_name: 'Rivera',
+    account_management: 'solo',
+    ob_role: 'mlo',
+    email: 'alex@example.com',
+    phone: '5551234567',
+    nmls: '123456',
+    states_licensed: ['TX'],
+    brokerage_name: 'Acme Lending',
+    city: 'Dallas',
+    state: 'TX',
+    timezone: 'America/Chicago',
+    biography: 'DSCR LO.',
+    performance_unit: 'leads',
+    crm_choice: 'waiz',
+    additional_members: [],
+  });
+  assert.equal(input.form_variant, 'dscr_performance');
+  assert.equal(input.performance_unit, 'leads');
+  assert.equal(input.crm_choice, 'waiz');
+  const patch = onboardingToClientPatch(input);
+  assert.equal(patch.primary_contact_name, 'Alex Rivera');
+
+  const conv = parseOnboardingFormFields({
+    form_variant: 'dscr_performance',
+    first_name: 'Sam',
+    last_name: 'Lee',
+    account_management: 'solo',
+    ob_role: 'mlo',
+    email: 'sam@example.com',
+    phone: '5559998888',
+    nmls: '999',
+    states_licensed: ['CA'],
+    brokerage_name: 'West Co',
+    city: 'LA',
+    state: 'CA',
+    timezone: 'America/Los_Angeles',
+    biography: 'Bio',
+    performance_unit: 'conversations',
+    additional_members: [],
+  });
+  assert.equal(conv.crm_choice, null);
 }
 
 function testStepValidation() {
   const draft = {
+    first_name: '',
+    last_name: '',
     account_management: '' as const,
     ob_role: '' as const,
     brokerage_name: '',
@@ -129,6 +183,8 @@ function testStepValidation() {
     state: '',
     zip_code: '',
     timezone: '',
+    performance_unit: '' as const,
+    crm_choice: '' as const,
     review_url: '',
     biography: '',
     headshot: null,
@@ -159,6 +215,7 @@ function testOwnerRequiresCompanyFields() {
 testMloPath();
 testOwnerPath();
 testDraftToSubmitBody();
+testDscrPath();
 testStepValidation();
 testOwnerRequiresCompanyFields();
 

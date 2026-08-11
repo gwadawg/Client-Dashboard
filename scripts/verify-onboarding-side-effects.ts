@@ -7,6 +7,11 @@ import type { OnboardingFormInput } from '../src/lib/onboarding-form';
 import { formatOnboardingUnmappedSlackMessage } from '../src/lib/slack-notify';
 
 const sample: OnboardingFormInput = {
+  form_variant: 'core',
+  first_name: null,
+  last_name: null,
+  performance_unit: null,
+  crm_choice: null,
   ob_role: 'mlo',
   account_management: 'solo',
   email: 'jane@example.com',

@@ -15,6 +15,40 @@ export const OB_ROLE_OPTIONS = [
 export type AccountManagement = (typeof ACCOUNT_MANAGEMENT_OPTIONS)[number]['value'];
 export type ObRole = (typeof OB_ROLE_OPTIONS)[number]['value'];
 
+/** Core = RM / default `/onboard`. dscr_performance = `/onboard/dscr`. */
+export type OnboardingFormVariant = 'core' | 'dscr_performance';
+
+export const PERFORMANCE_UNIT_OPTIONS = [
+  {
+    value: 'leads' as const,
+    label: 'Leads',
+    description: 'We deliver exclusive opt-ins. Your team owns dial and booking.',
+  },
+  {
+    value: 'conversations' as const,
+    label: 'Conversations',
+    description: 'We handle the setter path through to a real LO-spoke conversation.',
+  },
+] as const;
+
+export const CRM_CHOICE_OPTIONS = [
+  {
+    value: 'waiz' as const,
+    label: 'Ours (Waiz CRM)',
+    description: 'We run lead flow in Waiz GHL.',
+    finePrint:
+      'Only additional costs are your own SMS / dials — approximately $0.0083 per SMS.',
+  },
+  {
+    value: 'client' as const,
+    label: 'Yours (my CRM)',
+    description: 'Leads hand off into the CRM you already use.',
+  },
+] as const;
+
+export type PerformanceUnit = (typeof PERFORMANCE_UNIT_OPTIONS)[number]['value'];
+export type CrmChoice = (typeof CRM_CHOICE_OPTIONS)[number]['value'];
+
 export type MemberDraft = {
   contact_type: ContactType | '';
   name: string;
@@ -32,6 +66,8 @@ export type CompanyAddress = {
 };
 
 export type OnboardingDraft = {
+  first_name: string;
+  last_name: string;
   account_management: AccountManagement | '';
   ob_role: ObRole | '';
   brokerage_name: string;
@@ -49,6 +85,8 @@ export type OnboardingDraft = {
   state: string;
   zip_code: string;
   timezone: string;
+  performance_unit: PerformanceUnit | '';
+  crm_choice: CrmChoice | '';
   review_url: string;
   biography: string;
   headshot: File | null;
@@ -56,6 +94,8 @@ export type OnboardingDraft = {
 };
 
 export const EMPTY_ONBOARDING_DRAFT: OnboardingDraft = {
+  first_name: '',
+  last_name: '',
   account_management: '',
   ob_role: '',
   brokerage_name: '',
@@ -73,6 +113,8 @@ export const EMPTY_ONBOARDING_DRAFT: OnboardingDraft = {
   state: '',
   zip_code: '',
   timezone: '',
+  performance_unit: '',
+  crm_choice: '',
   review_url: '',
   biography: '',
   headshot: null,
@@ -90,6 +132,7 @@ export const EMPTY_MEMBER_DRAFT: MemberDraft = {
 
 export type MainStepId =
   | 'welcome'
+  | 'contact_name'
   | 'management'
   | 'role'
   | 'mlo_company_name'
@@ -104,6 +147,8 @@ export type MainStepId =
   | 'person_states'
   | 'person_location'
   | 'person_timezone'
+  | 'performance_unit'
+  | 'crm_choice'
   | 'review_url'
   | 'bio'
   | 'headshot'
@@ -123,6 +168,7 @@ export type StepContext = {
   draft: OnboardingDraft;
   memberDraft: MemberDraft;
   inMemberFlow: boolean;
+  variant?: OnboardingFormVariant;
 };
 
 function companySteps(role: ObRole | ''): MainStepId[] {
@@ -139,7 +185,7 @@ function companySteps(role: ObRole | ''): MainStepId[] {
   return [];
 }
 
-const PERSONAL_STEPS: MainStepId[] = [
+const PERSONAL_STEPS_CORE: MainStepId[] = [
   'person_nmls',
   'person_phone',
   'person_email',
@@ -148,15 +194,44 @@ const PERSONAL_STEPS: MainStepId[] = [
   'person_timezone',
 ];
 
+/** DSCR collects email/phone in the early contact block. */
+const PERSONAL_STEPS_DSCR: MainStepId[] = [
+  'person_nmls',
+  'person_states',
+  'person_location',
+  'person_timezone',
+];
+
 const CREATIVE_STEPS: MainStepId[] = ['review_url', 'bio', 'headshot'];
 
-export function getMainStepSequence(draft: OnboardingDraft): MainStepId[] {
+export function getMainStepSequence(
+  draft: OnboardingDraft,
+  variant: OnboardingFormVariant = 'core',
+): MainStepId[] {
+  if (variant === 'dscr_performance') {
+    const unitSteps: MainStepId[] = ['performance_unit'];
+    if (draft.performance_unit === 'leads') unitSteps.push('crm_choice');
+    return [
+      'welcome',
+      'contact_name',
+      'person_email',
+      'person_phone',
+      'management',
+      'role',
+      ...companySteps(draft.ob_role),
+      ...PERSONAL_STEPS_DSCR,
+      ...unitSteps,
+      ...CREATIVE_STEPS,
+      'add_members',
+    ];
+  }
+
   return [
     'welcome',
     'management',
     'role',
     ...companySteps(draft.ob_role),
-    ...PERSONAL_STEPS,
+    ...PERSONAL_STEPS_CORE,
     ...CREATIVE_STEPS,
     'add_members',
   ];
@@ -180,7 +255,7 @@ export function getMemberStepSequence(member: MemberDraft): MemberStepId[] {
 
 export function getActiveStepSequence(ctx: StepContext): StepId[] {
   if (ctx.inMemberFlow) return getMemberStepSequence(ctx.memberDraft);
-  return getMainStepSequence(ctx.draft);
+  return getMainStepSequence(ctx.draft, ctx.variant ?? 'core');
 }
 
 export function emphasizesAddMembers(accountManagement: AccountManagement | ''): boolean {
@@ -198,6 +273,10 @@ export function validateStep(step: StepId, ctx: StepContext): string | null {
 
   switch (step) {
     case 'welcome':
+      return null;
+    case 'contact_name':
+      if (!trim(draft.first_name)) return 'First name is required';
+      if (!trim(draft.last_name)) return 'Last name is required';
       return null;
     case 'management':
       if (!draft.account_management) return 'Please select how your account will be managed';
@@ -248,6 +327,16 @@ export function validateStep(step: StepId, ctx: StepContext): string | null {
     case 'person_timezone':
       if (!trim(draft.timezone)) return 'Timezone is required';
       return null;
+    case 'performance_unit':
+      if (draft.performance_unit !== 'leads' && draft.performance_unit !== 'conversations') {
+        return 'Please choose Leads or Conversations';
+      }
+      return null;
+    case 'crm_choice':
+      if (draft.performance_unit === 'leads' && draft.crm_choice !== 'waiz' && draft.crm_choice !== 'client') {
+        return 'Please choose whose CRM you will use';
+      }
+      return null;
     case 'review_url':
       if (draft.review_url.trim() && !/^https?:\/\/.+/i.test(draft.review_url.trim())) {
         return 'Enter a valid URL starting with http:// or https://';
@@ -285,6 +374,7 @@ export function validateStep(step: StepId, ctx: StepContext): string | null {
 export function stepQuestion(step: StepId): string {
   const questions: Record<StepId, string> = {
     welcome: '',
+    contact_name: "What's your name?",
     management: 'Before we begin, how will this account be managed day-to-day?',
     role: 'What position best describes your role?',
     mlo_company_name: 'What company do you work for?',
@@ -299,6 +389,8 @@ export function stepQuestion(step: StepId): string {
     person_states: 'Which states are you licensed in?',
     person_location: 'Where are you located?',
     person_timezone: 'What timezone are you in?',
+    performance_unit: 'Are you buying Leads or Conversations?',
+    crm_choice: 'Are you using your CRM or ours?',
     review_url: 'Do you have a link to your reviews? (optional)',
     bio: 'Share a short bio or anything we should know for your landing page',
     headshot: 'Upload a professional headshot (optional)',
@@ -316,7 +408,7 @@ export function stepQuestion(step: StepId): string {
 export function stepProgressIndex(step: StepId, ctx: StepContext): { current: number; total: number } {
   const sequence = getActiveStepSequence(ctx);
   const idx = sequence.indexOf(step);
-  const mainTotal = getMainStepSequence(ctx.draft).length;
+  const mainTotal = getMainStepSequence(ctx.draft, ctx.variant ?? 'core').length;
   if (ctx.inMemberFlow) {
     const memberTotal = getMemberStepSequence(ctx.memberDraft).length;
     return { current: idx + 1, total: mainTotal + memberTotal };

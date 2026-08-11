@@ -46,20 +46,50 @@ export function formatOnboardingClickUpComment(
     '',
     line('Client (Mr. Waiz)', client.name),
     line('Mr. Waiz ID', client.id),
+    line('Form', input.form_variant === 'dscr_performance' ? 'DSCR performance' : 'Core'),
     line('Role', obRoleToContactRole(input.ob_role)),
     line('Account management', input.account_management),
     '',
     '— Contact —',
+    line('Name', [input.first_name, input.last_name].filter(Boolean).join(' ') || null),
     line('Email', input.email),
     line('Phone', input.phone),
     line('NMLS', input.nmls),
     line('States licensed', formatStatesLicensed(input.states_licensed)),
     line('Location', [input.city, input.state, input.zip_code].filter(Boolean).join(', ') || input.street_address),
     line('Timezone', timezoneLabel(input.timezone)),
+  ];
+
+  if (input.form_variant === 'dscr_performance') {
+    lines.push(
+      '',
+      '— DSCR performance —',
+      line(
+        'Buying',
+        input.performance_unit === 'leads'
+          ? 'Leads'
+          : input.performance_unit === 'conversations'
+            ? 'Conversations'
+            : null,
+      ),
+      line(
+        'CRM',
+        input.performance_unit === 'conversations'
+          ? 'N/A (Conversations — Waiz path)'
+          : input.crm_choice === 'waiz'
+            ? 'Ours (Waiz)'
+            : input.crm_choice === 'client'
+              ? 'Client CRM'
+              : null,
+      ),
+    );
+  }
+
+  lines.push(
     '',
     '— Company —',
     line('Brokerage / company', input.brokerage_name || input.legal_business_name),
-  ];
+  );
 
   if (input.ob_role === 'owner') {
     lines.push(

@@ -1,20 +1,21 @@
 "use client";
 
-import { FONT_DISPLAY, WAIZ } from "@/components/onboarding/brand";
+import { FONT_BODY, FONT_DISPLAY, WAIZ } from "@/components/onboarding/brand";
 
 type Props = {
   label: string;
+  description?: string;
   icon: React.ReactNode;
   selected?: boolean;
   onClick: () => void;
 };
 
-export default function OnboardingChoiceCard({ label, icon, selected, onClick }: Props) {
+export default function OnboardingChoiceCard({ label, description, icon, selected, onClick }: Props) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="ob-card group flex flex-col items-center justify-center gap-4 p-6 sm:p-7 text-center min-h-[150px] w-full"
+      className="ob-card group flex flex-col items-center justify-center gap-3 p-6 sm:p-7 text-center min-h-[150px] w-full"
       data-selected={selected ? "true" : undefined}
       style={{
         borderRadius: 18,
@@ -46,6 +47,19 @@ export default function OnboardingChoiceCard({ label, icon, selected, onClick }:
       >
         {label}
       </span>
+      {description ? (
+        <span
+          style={{
+            fontFamily: FONT_BODY,
+            fontSize: ".78rem",
+            color: WAIZ.muted,
+            lineHeight: 1.4,
+            maxWidth: "28ch",
+          }}
+        >
+          {description}
+        </span>
+      ) : null}
     </button>
   );
 }

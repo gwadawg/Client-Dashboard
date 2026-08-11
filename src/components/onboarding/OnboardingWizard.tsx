@@ -15,9 +15,11 @@ import { CONTACT_TYPE_OPTIONS } from "@/lib/client-contacts";
 import { draftToSubmitBody } from "@/lib/onboarding-form";
 import {
   ACCOUNT_MANAGEMENT_OPTIONS,
+  CRM_CHOICE_OPTIONS,
   EMPTY_MEMBER_DRAFT,
   EMPTY_ONBOARDING_DRAFT,
   OB_ROLE_OPTIONS,
+  PERFORMANCE_UNIT_OPTIONS,
   emphasizesAddMembers,
   getActiveStepSequence,
   getMemberStepSequence,
@@ -26,6 +28,8 @@ import {
   type MemberDraft,
   type MemberStepId,
   type OnboardingDraft,
+  type OnboardingFormVariant,
+  type PerformanceUnit,
   type StepId,
 } from "@/lib/onboarding-steps";
 import { US_STATES } from "@/lib/us-states";
@@ -33,7 +37,12 @@ import { US_CLIENT_TIMEZONES } from "@/lib/us-timezones";
 
 const INPUT = "ob-input w-full px-4 py-3 text-sm outline-none";
 
-export default function OnboardingWizard() {
+type Props = {
+  variant?: OnboardingFormVariant;
+};
+
+export default function OnboardingWizard({ variant = "core" }: Props) {
+  const isDscr = variant === "dscr_performance";
   const [draft, setDraft] = useState<OnboardingDraft>(EMPTY_ONBOARDING_DRAFT);
   const [memberDraft, setMemberDraft] = useState<MemberDraft>(EMPTY_MEMBER_DRAFT);
   const [step, setStep] = useState<StepId>("welcome");
@@ -43,8 +52,8 @@ export default function OnboardingWizard() {
   const [thankYou, setThankYou] = useState<{ message: string; matched: boolean } | null>(null);
 
   const ctx = useMemo(
-    () => ({ draft, memberDraft, inMemberFlow }),
-    [draft, memberDraft, inMemberFlow],
+    () => ({ draft, memberDraft, inMemberFlow, variant }),
+    [draft, memberDraft, inMemberFlow, variant],
   );
 
   const sequence = useMemo(() => getActiveStepSequence(ctx), [ctx]);
@@ -118,9 +127,13 @@ export default function OnboardingWizard() {
   const selectAndAdvance = useCallback(
     (patch: Partial<OnboardingDraft>, next?: StepId) => {
       const nextDraft = { ...draft, ...patch };
+      // Switching unit away from leads clears CRM so sequence stays valid.
+      if ("performance_unit" in patch && patch.performance_unit !== "leads") {
+        nextDraft.crm_choice = "";
+      }
       setDraft(nextDraft);
       setError(null);
-      const err = validateStep(step, { draft: nextDraft, memberDraft, inMemberFlow });
+      const err = validateStep(step, { draft: nextDraft, memberDraft, inMemberFlow, variant });
       if (err) {
         setError(err);
         return;
@@ -129,11 +142,11 @@ export default function OnboardingWizard() {
         goToStep(next);
         return;
       }
-      const mainSteps = getActiveStepSequence({ draft: nextDraft, memberDraft, inMemberFlow });
+      const mainSteps = getActiveStepSequence({ draft: nextDraft, memberDraft, inMemberFlow, variant });
       const idx = mainSteps.indexOf(step);
       if (idx < mainSteps.length - 1) goToStep(mainSteps[idx + 1]);
     },
-    [draft, goToStep, inMemberFlow, memberDraft, step],
+    [draft, goToStep, inMemberFlow, memberDraft, step, variant],
   );
 
   const selectMemberAndAdvance = useCallback(
@@ -151,10 +164,10 @@ export default function OnboardingWizard() {
   );
 
   async function handleSubmit() {
-    const mainSteps = getActiveStepSequence({ draft, memberDraft: EMPTY_MEMBER_DRAFT, inMemberFlow: false });
+    const mainSteps = getActiveStepSequence({ draft, memberDraft: EMPTY_MEMBER_DRAFT, inMemberFlow: false, variant });
     for (const s of mainSteps) {
       if (s === "add_members") continue;
-      const err = validateStep(s, { draft, memberDraft: EMPTY_MEMBER_DRAFT, inMemberFlow: false });
+      const err = validateStep(s, { draft, memberDraft: EMPTY_MEMBER_DRAFT, inMemberFlow: false, variant });
       if (err) {
         setError(err);
         goToStep(s);
@@ -164,7 +177,7 @@ export default function OnboardingWizard() {
 
     setSubmitting(true);
     setError(null);
-    const body = draftToSubmitBody(draft);
+    const body = draftToSubmitBody(draft, variant);
     const form = new FormData();
     for (const [key, value] of Object.entries(body)) {
       form.set(key, value);
@@ -185,7 +198,14 @@ export default function OnboardingWizard() {
   }
 
   if (thankYou) {
-    return <OnboardingThankYou message={thankYou.message} matched={thankYou.matched} />;
+    return (
+      <OnboardingThankYou
+        message={thankYou.message}
+        matched={thankYou.matched}
+        firstName={draft.first_name}
+        variant={variant}
+      />
+    );
   }
 
   const showBack = step !== "welcome";
@@ -251,7 +271,7 @@ export default function OnboardingWizard() {
                 }}
               >
                 <span style={{ width: 18, height: 1, background: "currentColor", opacity: 0.45 }} />
-                Glad you&apos;re here
+                {isDscr ? "DSCR performance" : "Glad you're here"}
               </span>
               <h1
                 className="mb-5 mx-auto"
@@ -262,21 +282,40 @@ export default function OnboardingWizard() {
                   lineHeight: 1.08,
                   letterSpacing: "-0.03em",
                   color: WAIZ.ink,
-                  maxWidth: "14ch",
+                  maxWidth: isDscr ? "16ch" : "14ch",
                 }}
               >
-                The 6-Minute{" "}
-                <span
-                  style={{
-                    background: `linear-gradient(105deg, ${WAIZ.royal}, ${WAIZ.accent700})`,
-                    WebkitBackgroundClip: "text",
-                    backgroundClip: "text",
-                    color: "transparent",
-                  }}
-                >
-                  Fast-Track
-                </span>{" "}
-                Onboarding
+                {isDscr ? (
+                  <>
+                    DSCR{" "}
+                    <span
+                      style={{
+                        background: `linear-gradient(105deg, ${WAIZ.royal}, ${WAIZ.accent700})`,
+                        WebkitBackgroundClip: "text",
+                        backgroundClip: "text",
+                        color: "transparent",
+                      }}
+                    >
+                      Performance
+                    </span>{" "}
+                    Onboarding
+                  </>
+                ) : (
+                  <>
+                    The 6-Minute{" "}
+                    <span
+                      style={{
+                        background: `linear-gradient(105deg, ${WAIZ.royal}, ${WAIZ.accent700})`,
+                        WebkitBackgroundClip: "text",
+                        backgroundClip: "text",
+                        color: "transparent",
+                      }}
+                    >
+                      Fast-Track
+                    </span>{" "}
+                    Onboarding
+                  </>
+                )}
               </h1>
               <p
                 className="mb-10 mx-auto"
@@ -285,13 +324,83 @@ export default function OnboardingWizard() {
                   color: WAIZ.muted,
                   fontSize: "1.02rem",
                   lineHeight: 1.6,
-                  maxWidth: "40ch",
+                  maxWidth: "42ch",
                 }}
               >
-                A few quick questions so we can build your ads, landing page, and booking system —
-                before your first appointment lands.
+                {isDscr
+                  ? "A few quick questions so we can stand up your DSCR performance engine — leads or conversations, CRM path, and landing assets."
+                  : "A few quick questions so we can build your ads, landing page, and booking system — before your first appointment lands."}
               </p>
-              <ContinueButton onClick={() => goToStep("management")} label="Get started" />
+              <ContinueButton
+                onClick={() => {
+                  const next = sequence.find(s => s !== "welcome");
+                  goToStep(next ?? "management");
+                }}
+                label="Get started"
+              />
+            </div>
+          )}
+
+          {step === "contact_name" && (
+            <div className="space-y-3 max-w-md mx-auto">
+              <input
+                className={INPUT}
+                placeholder="First name"
+                value={draft.first_name}
+                onChange={e => patchDraft({ first_name: e.target.value })}
+                autoFocus
+              />
+              <input
+                className={INPUT}
+                placeholder="Last name"
+                value={draft.last_name}
+                onChange={e => patchDraft({ last_name: e.target.value })}
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    goNext();
+                  }
+                }}
+              />
+              <ContinueButton onClick={goNext} />
+            </div>
+          )}
+
+          {step === "performance_unit" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto">
+              {PERFORMANCE_UNIT_OPTIONS.map(opt => (
+                <OnboardingChoiceCard
+                  key={opt.value}
+                  label={opt.label}
+                  description={opt.description}
+                  icon={opt.value === "leads" ? <LeadsIcon /> : <ConvIcon />}
+                  selected={draft.performance_unit === opt.value}
+                  onClick={() => selectAndAdvance({ performance_unit: opt.value as PerformanceUnit })}
+                />
+              ))}
+            </div>
+          )}
+
+          {step === "crm_choice" && (
+            <div className="space-y-4 max-w-xl mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {CRM_CHOICE_OPTIONS.map(opt => (
+                  <OnboardingChoiceCard
+                    key={opt.value}
+                    label={opt.label}
+                    description={opt.description}
+                    icon={opt.value === "waiz" ? <CrmOursIcon /> : <CrmTheirsIcon />}
+                    selected={draft.crm_choice === opt.value}
+                    onClick={() => selectAndAdvance({ crm_choice: opt.value })}
+                  />
+                ))}
+              </div>
+              <p
+                className="text-center px-3"
+                style={{ fontFamily: FONT_BODY, fontSize: ".78rem", color: WAIZ.muted, lineHeight: 1.5 }}
+              >
+                {CRM_CHOICE_OPTIONS.find(o => o.value === "waiz")?.finePrint}
+              </p>
             </div>
           )}
 
@@ -1011,3 +1120,43 @@ function UploadIcon() {
     </svg>
   );
 }
+
+function LeadsIcon() {
+  return (
+    <svg {...ICON}>
+      <path d="M4 19h16" />
+      <path d="M7 16V9" />
+      <path d="M12 16V5" />
+      <path d="M17 16v-4" />
+    </svg>
+  );
+}
+
+function ConvIcon() {
+  return (
+    <svg {...ICON}>
+      <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+    </svg>
+  );
+}
+
+function CrmOursIcon() {
+  return (
+    <svg {...ICON}>
+      <rect x="3" y="4" width="18" height="14" rx="2" />
+      <path d="M3 10h18" />
+      <path d="M8 14h3" />
+    </svg>
+  );
+}
+
+function CrmTheirsIcon() {
+  return (
+    <svg {...ICON}>
+      <path d="M4 7h10v10H4z" />
+      <path d="M14 10h6v7h-6" />
+      <path d="M7 11h4" />
+    </svg>
+  );
+}
+
