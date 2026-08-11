@@ -172,6 +172,78 @@ export function contactTimeKey(
   return `${ghlContactId}|${t}`;
 }
 
+/** Calendar-day key: tolerates scheduled_at ISO/tz serialization drift on the same day. */
+export function contactDayKey(
+  ghlContactId: string | null | undefined,
+  scheduledAt: string | null | undefined,
+): string | null {
+  if (!ghlContactId?.trim() || !scheduledAt) return null;
+  const day = scheduledAt.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  return `${ghlContactId.trim()}|${day}`;
+}
+
+/** How close outcome scheduled_at is to a booking's scheduled_at. Higher is better; -1 = reject. */
+export function scheduleProximityScore(
+  outcomeScheduledAt: string | null | undefined,
+  bookingScheduledAt: string | null | undefined,
+): number {
+  if (!outcomeScheduledAt || !bookingScheduledAt) return 0;
+  const o = new Date(outcomeScheduledAt).getTime();
+  const b = new Date(bookingScheduledAt).getTime();
+  if (Number.isNaN(o) || Number.isNaN(b)) return 0;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.abs(o - b) / dayMs;
+  // Show webhooks sometimes land a few days off the original slot; keep a hard bound.
+  if (days > 14) return -1;
+  const sameDay =
+    outcomeScheduledAt.slice(0, 10) === bookingScheduledAt.slice(0, 10) ? 1000 : 0;
+  return sameDay + (14 - days);
+}
+
+/**
+ * Pick a single credited booking to inherit agent from for an uncredited outcome.
+ * Refuses when multiple bookings share the best score with different agents.
+ */
+export function pickCreditedBookingForOutcome<
+  T extends { id: string; agent_name: string | null; scheduled_at?: string | null },
+>(
+  outcome: { scheduled_at?: string | null },
+  bookings: T[],
+): T | null {
+  const credited = bookings.filter(b => {
+    const name = textField(b.agent_name);
+    return Boolean(name && !needsAgentCredit(name));
+  });
+  if (credited.length === 0) return null;
+  if (credited.length === 1) {
+    const only = credited[0];
+    if (
+      scheduleProximityScore(outcome.scheduled_at, only.scheduled_at) < 0 &&
+      outcome.scheduled_at &&
+      only.scheduled_at
+    ) {
+      return null;
+    }
+    return only;
+  }
+
+  const scored = credited
+    .map(b => ({ b, score: scheduleProximityScore(outcome.scheduled_at, b.scheduled_at) }))
+    .filter(row => row.score >= 0)
+    .sort((a, b) => b.score - a.score || a.b.id.localeCompare(b.b.id));
+
+  if (scored.length === 0) return null;
+  const top = scored[0];
+  const ambiguous = scored.some(
+    row =>
+      row.score === top.score &&
+      textField(row.b.agent_name) !== textField(top.b.agent_name),
+  );
+  if (ambiguous) return null;
+  return top.b;
+}
+
 export type OutcomeRecord = {
   id?: string | null;
   event_type?: string | null;
@@ -192,20 +264,25 @@ export type OutcomeIndex = {
   byExternal: Map<string, OutcomeRecord>;
   byApptEventId: Map<string, OutcomeRecord>;
   byContactTime: Map<string, OutcomeRecord>;
+  byContactDay: Map<string, OutcomeRecord>;
 };
 
 export function buildOutcomeIndex(outcomes: OutcomeRecord[]): OutcomeIndex {
   const byExternal = new Map<string, OutcomeRecord>();
   const byApptEventId = new Map<string, OutcomeRecord>();
   const byContactTime = new Map<string, OutcomeRecord>();
+  const byContactDay = new Map<string, OutcomeRecord>();
   for (const o of outcomes) {
     if (o.external_id) byExternal.set(o.external_id, o);
     const linked = rawAppointmentEventId(o.raw);
     if (linked) byApptEventId.set(linked, o);
     const key = contactTimeKey(o.ghl_contact_id, o.scheduled_at);
     if (key) byContactTime.set(key, o);
+    const dayKey = contactDayKey(o.ghl_contact_id, o.scheduled_at);
+    // Prefer first / keep exact-time winner if already stored via exact iso later
+    if (dayKey && !byContactDay.has(dayKey)) byContactDay.set(dayKey, o);
   }
-  return { byExternal, byApptEventId, byContactTime };
+  return { byExternal, byApptEventId, byContactTime, byContactDay };
 }
 
 // Find the outcome that resolves a booking, or undefined when it is still
@@ -222,6 +299,11 @@ export function matchOutcome(booking: BookingKey, index: OutcomeIndex): OutcomeR
     const m = index.byContactTime.get(key);
     if (m) return m;
   }
+  const dayKey = contactDayKey(booking.ghl_contact_id, booking.scheduled_at);
+  if (dayKey) {
+    const m = index.byContactDay.get(dayKey);
+    if (m) return m;
+  }
   return undefined;
 }
 
@@ -231,6 +313,19 @@ export type BookingAgentSource = {
   external_id?: string | null;
   ghl_contact_id?: string | null;
   scheduled_at?: string | null;
+  client_id?: string | null;
+  lead_phone?: string | null;
+};
+
+export type OutcomeAgentSource = {
+  id?: string | null;
+  agent_name?: string | null;
+  external_id?: string | null;
+  ghl_contact_id?: string | null;
+  scheduled_at?: string | null;
+  client_id?: string | null;
+  lead_phone?: string | null;
+  raw?: unknown;
 };
 
 /** True when a credited booking agent should be copied onto an outcome row. */
@@ -243,14 +338,31 @@ export function shouldSyncOutcomeAgent(
   return needsAgentCredit(outcomeAgent);
 }
 
+type LinkedOutcomeRow = {
+  id: string;
+  agent_name: string | null;
+  scheduled_at?: string | null;
+  ghl_contact_id?: string | null;
+  external_id?: string | null;
+  lead_phone?: string | null;
+  client_id?: string | null;
+};
+
+function normalizePhoneDigits(phone: string | null | undefined): string {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
+  if (digits.length >= 10) return digits.slice(-10);
+  return digits;
+}
+
 async function findLinkedOutcomes(
   service: ServiceClient,
   booking: BookingAgentSource,
-): Promise<Array<{ id: string; agent_name: string | null }>> {
-  const outcomes: Array<{ id: string; agent_name: string | null }> = [];
+): Promise<LinkedOutcomeRow[]> {
+  const outcomes: LinkedOutcomeRow[] = [];
   const seen = new Set<string>();
 
-  const addRows = (rows: Array<{ id: string; agent_name: string | null }> | null) => {
+  const addRows = (rows: LinkedOutcomeRow[] | null | undefined) => {
     for (const row of rows ?? []) {
       if (seen.has(row.id)) continue;
       seen.add(row.id);
@@ -261,32 +373,66 @@ async function findLinkedOutcomes(
   {
     const { data, error } = await service
       .from('events')
-      .select('id, agent_name')
+      .select('id, agent_name, scheduled_at, ghl_contact_id, external_id')
       .in('event_type', [...OUTCOME_EVENT_TYPES])
       .filter('raw->>appointment_event_id', 'eq', booking.id);
     if (error) throw new Error(error.message);
-    addRows(data);
+    addRows(data as LinkedOutcomeRow[] | null);
   }
 
   if (booking.external_id) {
     const { data, error } = await service
       .from('events')
-      .select('id, agent_name')
+      .select('id, agent_name, scheduled_at, ghl_contact_id, external_id')
       .in('event_type', [...OUTCOME_EVENT_TYPES])
       .eq('external_id', booking.external_id);
     if (error) throw new Error(error.message);
-    addRows(data);
+    addRows(data as LinkedOutcomeRow[] | null);
   }
 
   if (booking.ghl_contact_id && booking.scheduled_at) {
     const { data, error } = await service
       .from('events')
-      .select('id, agent_name')
+      .select('id, agent_name, scheduled_at, ghl_contact_id, external_id')
       .in('event_type', [...OUTCOME_EVENT_TYPES])
       .eq('ghl_contact_id', booking.ghl_contact_id)
       .eq('scheduled_at', booking.scheduled_at);
     if (error) throw new Error(error.message);
-    addRows(data);
+    addRows(data as LinkedOutcomeRow[] | null);
+  }
+
+  // Same contact, nearby slot — covers webhook scheduled_at drift.
+  if (booking.ghl_contact_id) {
+    const { data, error } = await service
+      .from('events')
+      .select('id, agent_name, scheduled_at, ghl_contact_id, external_id')
+      .in('event_type', [...OUTCOME_EVENT_TYPES])
+      .eq('ghl_contact_id', booking.ghl_contact_id)
+      .order('occurred_at', { ascending: false })
+      .limit(25);
+    if (error) throw new Error(error.message);
+    const nearby = ((data as LinkedOutcomeRow[] | null) ?? []).filter(
+      row => scheduleProximityScore(row.scheduled_at, booking.scheduled_at) >= 0,
+    );
+    addRows(nearby);
+  }
+
+  const phone = normalizePhoneDigits(booking.lead_phone);
+  if (phone.length >= 10 && booking.client_id) {
+    const { data, error } = await service
+      .from('events')
+      .select('id, agent_name, scheduled_at, ghl_contact_id, external_id, lead_phone, client_id')
+      .in('event_type', [...OUTCOME_EVENT_TYPES])
+      .eq('client_id', booking.client_id)
+      .order('occurred_at', { ascending: false })
+      .limit(40);
+    if (error) throw new Error(error.message);
+    const phoneMatches = ((data as LinkedOutcomeRow[] | null) ?? []).filter(
+      row =>
+        normalizePhoneDigits(row.lead_phone) === phone &&
+        scheduleProximityScore(row.scheduled_at, booking.scheduled_at) >= 0,
+    );
+    addRows(phoneMatches);
   }
 
   return outcomes;
@@ -323,6 +469,268 @@ export async function propagateBookingAgentToOutcomes(
   }
 
   return { updated: outcome_ids.length, outcome_ids };
+}
+
+const BOOKING_AGENT_LOOKUP_SELECT =
+  'id, client_id, agent_name, external_id, ghl_contact_id, scheduled_at, lead_phone';
+
+/**
+ * Find the credited booking that should own this uncredited outcome.
+ * Used on webhook ingest and payroll hydration.
+ */
+export async function findCreditedBookingForOutcome(
+  service: ServiceClient,
+  outcome: OutcomeAgentSource,
+): Promise<BookingAgentSource | null> {
+  if (!needsAgentCredit(outcome.agent_name)) return null;
+
+  const linkedBookingId = rawAppointmentEventId(outcome.raw);
+  if (linkedBookingId) {
+    const { data, error } = await service
+      .from('events')
+      .select(BOOKING_AGENT_LOOKUP_SELECT)
+      .eq('id', linkedBookingId)
+      .eq('event_type', 'appointment_booked')
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data && !needsAgentCredit(data.agent_name)) {
+      return data as BookingAgentSource;
+    }
+  }
+
+  if (outcome.external_id) {
+    const { data, error } = await service
+      .from('events')
+      .select(BOOKING_AGENT_LOOKUP_SELECT)
+      .eq('event_type', 'appointment_booked')
+      .eq('external_id', outcome.external_id)
+      .order('occurred_at', { ascending: false })
+      .limit(5);
+    if (error) throw new Error(error.message);
+    const picked = pickCreditedBookingForOutcome(outcome, (data ?? []) as BookingAgentSource[]);
+    if (picked) return picked;
+  }
+
+  if (outcome.ghl_contact_id) {
+    const { data, error } = await service
+      .from('events')
+      .select(BOOKING_AGENT_LOOKUP_SELECT)
+      .eq('event_type', 'appointment_booked')
+      .eq('ghl_contact_id', outcome.ghl_contact_id)
+      .order('occurred_at', { ascending: false })
+      .limit(15);
+    if (error) throw new Error(error.message);
+    const picked = pickCreditedBookingForOutcome(outcome, (data ?? []) as BookingAgentSource[]);
+    if (picked) return picked;
+  }
+
+  const phone = normalizePhoneDigits(outcome.lead_phone);
+  if (phone.length >= 10) {
+    let q = service
+      .from('events')
+      .select(BOOKING_AGENT_LOOKUP_SELECT)
+      .eq('event_type', 'appointment_booked')
+      .order('occurred_at', { ascending: false })
+      .limit(40);
+    if (outcome.client_id) q = q.eq('client_id', outcome.client_id);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    const phoneMatches = ((data ?? []) as BookingAgentSource[]).filter(
+      row => normalizePhoneDigits(row.lead_phone) === phone,
+    );
+    const picked = pickCreditedBookingForOutcome(outcome, phoneMatches);
+    if (picked) return picked;
+  }
+
+  return null;
+}
+
+/**
+ * If outcome lacks agent_name, resolve from linked booking.
+ * When outcome has an id and persist=true, write agent_name back to the row.
+ */
+export async function resolveOutcomeAgentFromBooking(
+  service: ServiceClient,
+  outcome: OutcomeAgentSource,
+  opts?: { persist?: boolean },
+): Promise<{ agent_name: string | null; booking_id: string | null; persisted: boolean }> {
+  if (!needsAgentCredit(outcome.agent_name)) {
+    return {
+      agent_name: textField(outcome.agent_name),
+      booking_id: null,
+      persisted: false,
+    };
+  }
+
+  const booking = await findCreditedBookingForOutcome(service, outcome);
+  const agentName = textField(booking?.agent_name);
+  if (!agentName || !booking) {
+    return { agent_name: null, booking_id: null, persisted: false };
+  }
+
+  let persisted = false;
+  if (opts?.persist && outcome.id) {
+    const { error } = await service
+      .from('events')
+      .update({ agent_name: agentName })
+      .eq('id', outcome.id);
+    if (error) throw new Error(error.message);
+    persisted = true;
+  }
+
+  return { agent_name: agentName, booking_id: booking.id, persisted };
+}
+
+/**
+ * Hydrate uncredited outcome rows (typically shows) with booking agents.
+ * Mutates the in-memory list; optionally persists so KPIs and export stay consistent.
+ */
+export async function hydrateOutcomeAgentsFromBookings<
+  T extends OutcomeAgentSource & { id: string; agent_name: string | null },
+>(
+  service: ServiceClient,
+  outcomes: T[],
+  opts?: { persist?: boolean },
+): Promise<{ rows: T[]; filled: number; persisted: number }> {
+  const rows = [...outcomes];
+  const uncreditedIdx: number[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (needsAgentCredit(rows[i].agent_name)) uncreditedIdx.push(i);
+  }
+  if (uncreditedIdx.length === 0) {
+    return { rows, filled: 0, persisted: 0 };
+  }
+
+  const contactIds = [
+    ...new Set(
+      uncreditedIdx
+        .map(i => rows[i].ghl_contact_id?.trim())
+        .filter((v): v is string => Boolean(v)),
+    ),
+  ];
+  const externalIds = [
+    ...new Set(
+      uncreditedIdx
+        .map(i => rows[i].external_id?.trim())
+        .filter((v): v is string => Boolean(v)),
+    ),
+  ];
+
+  const bookingsByContact = new Map<string, BookingAgentSource[]>();
+  const bookingsByExternal = new Map<string, BookingAgentSource[]>();
+  const bookingsById = new Map<string, BookingAgentSource>();
+
+  const pushBooking = (b: BookingAgentSource) => {
+    bookingsById.set(b.id, b);
+    if (b.external_id) {
+      const list = bookingsByExternal.get(b.external_id) ?? [];
+      list.push(b);
+      bookingsByExternal.set(b.external_id, list);
+    }
+    if (b.ghl_contact_id) {
+      const list = bookingsByContact.get(b.ghl_contact_id) ?? [];
+      list.push(b);
+      bookingsByContact.set(b.ghl_contact_id, list);
+    }
+  };
+
+  for (let i = 0; i < contactIds.length; i += 100) {
+    const chunk = contactIds.slice(i, i + 100);
+    const { data, error } = await service
+      .from('events')
+      .select(BOOKING_AGENT_LOOKUP_SELECT)
+      .eq('event_type', 'appointment_booked')
+      .in('ghl_contact_id', chunk);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as BookingAgentSource[]) pushBooking(row);
+  }
+
+  for (let i = 0; i < externalIds.length; i += 100) {
+    const chunk = externalIds.slice(i, i + 100);
+    const { data, error } = await service
+      .from('events')
+      .select(BOOKING_AGENT_LOOKUP_SELECT)
+      .eq('event_type', 'appointment_booked')
+      .in('external_id', chunk);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as BookingAgentSource[]) pushBooking(row);
+  }
+
+  // Linked appointment_event_id on raw
+  const linkedIds = [
+    ...new Set(
+      uncreditedIdx
+        .map(i => rawAppointmentEventId(rows[i].raw))
+        .filter((v): v is string => Boolean(v)),
+    ),
+  ].filter(id => !bookingsById.has(id));
+  for (let i = 0; i < linkedIds.length; i += 100) {
+    const chunk = linkedIds.slice(i, i + 100);
+    const { data, error } = await service
+      .from('events')
+      .select(BOOKING_AGENT_LOOKUP_SELECT)
+      .eq('event_type', 'appointment_booked')
+      .in('id', chunk);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as BookingAgentSource[]) pushBooking(row);
+  }
+
+  let filled = 0;
+  let persisted = 0;
+  const toPersist: { id: string; agent_name: string }[] = [];
+
+  for (const i of uncreditedIdx) {
+    const row = rows[i];
+    let booking: BookingAgentSource | null = null;
+
+    const linkedId = rawAppointmentEventId(row.raw);
+    if (linkedId && bookingsById.has(linkedId)) {
+      const b = bookingsById.get(linkedId)!;
+      if (!needsAgentCredit(b.agent_name)) booking = b;
+    }
+
+    if (!booking && row.external_id) {
+      booking = pickCreditedBookingForOutcome(
+        row,
+        bookingsByExternal.get(row.external_id) ?? [],
+      );
+    }
+
+    if (!booking && row.ghl_contact_id) {
+      booking = pickCreditedBookingForOutcome(
+        row,
+        bookingsByContact.get(row.ghl_contact_id) ?? [],
+      );
+    }
+
+    // Phone-only rows: resolve once via shared finder (uncommon after contact batch).
+    if (!booking && normalizePhoneDigits(row.lead_phone).length >= 10) {
+      booking = await findCreditedBookingForOutcome(service, row);
+    }
+
+    const agentName = textField(booking?.agent_name);
+    if (!agentName || !booking) continue;
+
+    rows[i] = { ...row, agent_name: agentName };
+    filled++;
+    if (opts?.persist) toPersist.push({ id: row.id, agent_name: agentName });
+  }
+
+  if (opts?.persist && toPersist.length > 0) {
+    for (const item of toPersist) {
+      const { data, error } = await service
+        .from('events')
+        .update({ agent_name: item.agent_name })
+        .eq('id', item.id)
+        .or('agent_name.is.null,agent_name.eq.,agent_name.eq.#N/A')
+        .select('id')
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (data) persisted++;
+    }
+  }
+
+  return { rows, filled, persisted };
 }
 
 function findBookedByExternalId(service: ServiceClient, external_id: string) {

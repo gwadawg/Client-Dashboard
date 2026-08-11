@@ -9,6 +9,14 @@ import {
   type LineItemExclusion,
 } from '@/lib/payroll-line-item-duplicates';
 import {
+  autoExcludeBannedShowPays,
+  claimShowPayLeads,
+  fetchPaidShowLeadKeys,
+  payingShowLines,
+  releaseShowPayClaimsForEvents,
+  SHOW_CLAIM_LOST_REASON,
+} from '@/lib/payroll-show-once';
+import {
   buildRunSummary,
   employeeRowFromDb,
   extractEmployeeSnapshots,
@@ -177,10 +185,52 @@ export async function submitEmployeePayroll(
   }
 
   const row = snapshot.row;
-  const adjusted =
+  let effectiveExclusions = [...lineItemExclusions];
+
+  if (section === 'call_rep' && 'line_items' in row) {
+    const paidLeadKeys = await fetchPaidShowLeadKeys(service);
+    effectiveExclusions = autoExcludeBannedShowPays(
+      row.line_items,
+      effectiveExclusions,
+      paidLeadKeys,
+    );
+  }
+
+  let adjusted =
     section === 'salaried'
-      ? { counts: {}, amounts: row.amounts, total_pay: row.amounts.total }
-      : applyPayrollExclusions(section, row as AgentCommissionRow | B2BSetterCommissionRow, lineItemExclusions);
+      ? { counts: {} as Record<string, number>, amounts: row.amounts, total_pay: row.amounts.total }
+      : applyPayrollExclusions(
+          section,
+          row as AgentCommissionRow | B2BSetterCommissionRow,
+          effectiveExclusions,
+        );
+
+  // Race guard: claim lead keys before writing the submit row
+  if (section === 'call_rep' && 'line_items' in row) {
+    const paying = payingShowLines(row.line_items, effectiveExclusions);
+    const { lostEventIds } = await claimShowPayLeads(
+      service,
+      paying.map(p => ({
+        lead_key: p.lead_key,
+        agent_id: row.agent_id,
+        agent_name: row.agent_name,
+        event_id: p.event_id,
+        period_month: `${periodMonth}-01`,
+      })),
+    );
+    if (lostEventIds.length > 0) {
+      for (const event_id of lostEventIds) {
+        if (!effectiveExclusions.some(e => e.event_id === event_id)) {
+          effectiveExclusions.push({ event_id, reason: SHOW_CLAIM_LOST_REASON });
+        }
+      }
+      adjusted = applyPayrollExclusions(
+        section,
+        row as AgentCommissionRow | B2BSetterCommissionRow,
+        effectiveExclusions,
+      );
+    }
+  }
 
   let runId: string;
   let runStatus: 'open' | 'closed' = 'open';
@@ -242,7 +292,7 @@ export async function submitEmployeePayroll(
     counts: adjusted.counts,
     rates: row.rates,
     line_items: 'line_items' in row ? row.line_items : [],
-    line_item_exclusions: lineItemExclusions,
+    line_item_exclusions: effectiveExclusions,
     pending_disposition: row.pending_disposition ?? null,
     non_show_appointments:
       section === 'call_rep' && 'non_show_appointments' in row
@@ -322,7 +372,7 @@ export async function unsubmitEmployeePayroll(
 
   const { data: existingEmployee } = await service
     .from('payroll_run_employees')
-    .select('id, submitted_at, agent_name')
+    .select('id, submitted_at, agent_name, line_items, line_item_exclusions')
     .eq('payroll_run_id', existingRun.id)
     .eq('agent_id', agentId)
     .maybeSingle();
@@ -330,6 +380,13 @@ export async function unsubmitEmployeePayroll(
   if (!existingEmployee?.submitted_at) {
     throw new Error('This employee is not submitted for this month');
   }
+
+  // Free lifetime show claims from this locked snapshot so re-submit can re-claim.
+  const releaseEvents = payingShowLines(
+    existingEmployee.line_items as unknown[],
+    (existingEmployee.line_item_exclusions ?? []) as LineItemExclusion[],
+  ).map(p => p.event_id);
+  await releaseShowPayClaimsForEvents(service, releaseEvents);
 
   const { error: clearError } = await service
     .from('payroll_run_employees')

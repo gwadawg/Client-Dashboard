@@ -1,8 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  contactDayKey,
   normalizeAppointmentStatus,
   overdueAppointmentAsOfIso,
+  pickCreditedBookingForOutcome,
+  scheduleProximityScore,
   shouldAutoSupersedePrior,
   shouldSyncOutcomeAgent,
 } from './appointments';
@@ -41,6 +44,35 @@ describe('appointments agent propagation', () => {
 
   it('shouldSyncOutcomeAgent skips when outcome already has a real agent', () => {
     assert.equal(shouldSyncOutcomeAgent('Bernardo Fabris', 'Rick Hostetler'), false);
+  });
+
+  it('pickCreditedBookingForOutcome prefers same-day and refuses ambiguous agents', () => {
+    assert.ok(scheduleProximityScore('2026-07-20T15:00:00Z', '2026-07-20T18:00:00Z') > 100);
+    assert.equal(contactDayKey('c1', '2026-07-20T15:00:00.000Z'), 'c1|2026-07-20');
+
+    const single = pickCreditedBookingForOutcome(
+      { scheduled_at: '2026-07-20T12:00:00.000Z' },
+      [{ id: 'b1', agent_name: 'Bernardo Fabris', scheduled_at: '2026-07-20T15:00:00.000Z' }],
+    );
+    assert.equal(single?.id, 'b1');
+
+    const ambiguous = pickCreditedBookingForOutcome(
+      { scheduled_at: '2026-07-20T12:00:00.000Z' },
+      [
+        { id: 'b1', agent_name: 'Bernardo Fabris', scheduled_at: '2026-07-20T15:00:00.000Z' },
+        { id: 'b2', agent_name: 'Luka Faccini', scheduled_at: '2026-07-20T15:00:00.000Z' },
+      ],
+    );
+    assert.equal(ambiguous, null);
+
+    const nearest = pickCreditedBookingForOutcome(
+      { scheduled_at: '2026-07-22T12:00:00.000Z' },
+      [
+        { id: 'b1', agent_name: 'Bernardo Fabris', scheduled_at: '2026-07-20T15:00:00.000Z' },
+        { id: 'b2', agent_name: 'Bernardo Fabris', scheduled_at: '2026-07-22T09:00:00.000Z' },
+      ],
+    );
+    assert.equal(nearest?.id, 'b2');
   });
 });
 

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeStoredAgentName } from '@/lib/agent-name-aliases';
-import { isAiBookedFromPayload } from '@/lib/credit-queue-eligibility';
+import { isAiBookedFromPayload, needsAgentCredit } from '@/lib/credit-queue-eligibility';
 import { parseYnFlag } from '@/lib/metrics';
 import { resolveClientId } from '@/lib/resolve-client';
 import { recordingUrlField } from '@/lib/recording-url';
@@ -11,7 +11,12 @@ import {
   INGEST_SOURCE_TIMEZONE,
 } from '@/lib/time';
 import { onEventTouchpointHooks } from '@/lib/cs-touchpoint-rules';
-import { supersedePriorPendingBookings } from '@/lib/appointments';
+import {
+  OUTCOME_EVENT_TYPES,
+  propagateBookingAgentToOutcomes,
+  resolveOutcomeAgentFromBooking,
+  supersedePriorPendingBookings,
+} from '@/lib/appointments';
 
 export const VALID_EVENT_TYPES = [
   'dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked',
@@ -321,6 +326,31 @@ export async function ingestWebhookEvent(
     payload.previous_external_id ?? payload.previous_appointment_id ?? payload.prior_external_id,
   );
 
+  // Outcomes (show / no_show / …) often arrive from GHL with blank agent_name.
+  // Inherit the booking agent so payroll + KPIs credit the setter who booked.
+  const isOutcomeEvent = (OUTCOME_EVENT_TYPES as readonly string[]).includes(normalizedEventType);
+  let resolvedAgentName = agentName;
+  let inheritedBookingId: string | null = null;
+  if (isOutcomeEvent && needsAgentCredit(agentName)) {
+    try {
+      const resolved = await resolveOutcomeAgentFromBooking(service, {
+        agent_name: agentName,
+        external_id,
+        ghl_contact_id,
+        scheduled_at,
+        client_id,
+        lead_phone,
+        raw: payload,
+      });
+      if (resolved.agent_name) {
+        resolvedAgentName = resolved.agent_name;
+        inheritedBookingId = resolved.booking_id;
+      }
+    } catch (err) {
+      console.error('[webhook-ingest] resolve outcome agent from booking failed', err);
+    }
+  }
+
   const eventRow = {
     client_id,
     event_type: normalizedEventType,
@@ -343,7 +373,7 @@ export async function ingestWebhookEvent(
     lead_name,
     lead_phone,
     lead_email,
-    agent_name: agentName,
+    agent_name: resolvedAgentName,
     direction: jsonStringField(payload.direction),
     call_status: jsonStringField(payload.call_status),
     recording_url: resolveRecordingUrl(payload),
@@ -359,7 +389,14 @@ export async function ingestWebhookEvent(
     utm_content,
     lead_source: isLead ? lead_source : null,
     is_ai_booked,
-    raw: payload,
+    raw:
+      inheritedBookingId && typeof payload === 'object' && payload
+        ? {
+            ...payload,
+            appointment_event_id: inheritedBookingId,
+            agent_inherited_from_booking: true,
+          }
+        : payload,
   };
 
   // Same GHL appointment id → update scheduled time / metadata in place (reschedule
@@ -394,6 +431,23 @@ export async function ingestWebhookEvent(
         })
         .eq('id', existing.id);
       if (updErr) return { error: updErr.message, status: 500 };
+
+      // Booking agent may now be set — backfill linked null-agent outcomes.
+      if (agentName && !needsAgentCredit(agentName)) {
+        try {
+          await propagateBookingAgentToOutcomes(service, {
+            id: existing.id,
+            agent_name: agentName,
+            external_id,
+            ghl_contact_id,
+            scheduled_at,
+            client_id,
+            lead_phone,
+          });
+        } catch (err) {
+          console.error('[webhook-ingest] propagate booking agent on update failed', err);
+        }
+      }
 
       return {
         ok: true,
@@ -439,6 +493,23 @@ export async function ingestWebhookEvent(
       superseded_ids = superseded.superseded_ids;
     } catch (err) {
       console.error('[appointments] supersede prior bookings failed', err);
+    }
+
+    // Outcome rows (show) may already exist with null agent from an earlier webhook.
+    if (agentName && !needsAgentCredit(agentName)) {
+      try {
+        await propagateBookingAgentToOutcomes(service, {
+          id: inserted.id,
+          agent_name: agentName,
+          external_id,
+          ghl_contact_id,
+          scheduled_at,
+          client_id,
+          lead_phone,
+        });
+      } catch (err) {
+        console.error('[webhook-ingest] propagate booking agent on insert failed', err);
+      }
     }
   }
 

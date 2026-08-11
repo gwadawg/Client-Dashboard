@@ -38,6 +38,13 @@ import {
 import { bucketCallRepNonShowAppointments } from '@/lib/payroll-non-show-appointments';
 import { fetchEnrichedBookingsInRange } from '@/lib/agent-appointment-stats';
 import { DISMISSED_CLOSE_STATUS } from '@/lib/acquisition-close-filter';
+import { hydrateOutcomeAgentsFromBookings } from '@/lib/appointments';
+import { needsAgentCredit } from '@/lib/credit-queue-eligibility';
+import { buildRosterMatcher } from '@/lib/agent-roster';
+import {
+  fetchPaidShowLeadKeys,
+  filterShowsOncePerLead,
+} from '@/lib/payroll-show-once';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
@@ -128,8 +135,46 @@ export async function buildUnifiedPayrollReport(
     scheduledBookingsResult.error;
   if (err) return { error: err };
 
+  // Fix uncredited show agents from the linked appointment_booked (persists so KPIs stay aligned).
+  const showRows = showEvents ?? [];
+  let hydratedShows = showRows;
+  if (showRows.some(row => needsAgentCredit(row.agent_name))) {
+    try {
+      const hydrated = await hydrateOutcomeAgentsFromBookings(
+        service,
+        showRows as Array<(typeof showRows)[number] & { id: string; agent_name: string | null }>,
+        { persist: true },
+      );
+      hydratedShows = hydrated.rows;
+    } catch (e) {
+      console.error('[payroll] hydrate show agents from bookings failed', e);
+    }
+  }
+
   const allRoster = (roster ?? []) as RosterAgentWithPay[];
   const callRepRoster = allRoster.filter(a => normalizeEmployeePosition(a.pay_type) === 'call_rep');
+
+  // One show pay per lead lifetime (prior submitted pay + one winner within period).
+  let payEligibleShows = hydratedShows;
+  try {
+    const paidLeadKeys = await fetchPaidShowLeadKeys(service);
+    const resolveAgent = buildRosterMatcher(callRepRoster);
+    const filtered = filterShowsOncePerLead(hydratedShows, {
+      resolveAgent,
+      startDate,
+      endDate,
+      paidLeadKeys,
+    });
+    payEligibleShows = filtered.allowed;
+    if (filtered.suppressed.length > 0) {
+      console.info(
+        `[payroll] suppressed ${filtered.suppressed.length} show pay(s) (prior-paid or in-period duplicate)`,
+      );
+    }
+  } catch (e) {
+    console.error('[payroll] show once-per-lead guard failed', e);
+  }
+
   const b2bRoster: RosterB2BSetterWithPay[] = allRoster
     .filter(a => normalizeEmployeePosition(a.pay_type) === 'b2b_setter')
     .map(a => ({
@@ -173,7 +218,7 @@ export async function buildUnifiedPayrollReport(
     callRepRoster,
     clients ?? [],
     bookingTransferEvents ?? [],
-    showEvents ?? [],
+    payEligibleShows,
     startDate,
     endDate,
   );
