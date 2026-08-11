@@ -230,11 +230,21 @@ export async function GET(req: Request) {
       shows: acc.shows + a.shows,
       no_shows: acc.no_shows + a.no_shows,
       lo_bailed: acc.lo_bailed + a.lo_bailed,
+      cancelled: acc.cancelled + a.cancelled,
       dials: acc.dials + a.dials,
       pickups: acc.pickups + a.pickups,
       live_transfers: acc.live_transfers + a.live_transfers,
     }),
-    { appointments: 0, shows: 0, no_shows: 0, lo_bailed: 0, dials: 0, pickups: 0, live_transfers: 0 },
+    {
+      appointments: 0,
+      shows: 0,
+      no_shows: 0,
+      lo_bailed: 0,
+      cancelled: 0,
+      dials: 0,
+      pickups: 0,
+      live_transfers: 0,
+    },
   );
 
   const team_averages = {
@@ -247,14 +257,15 @@ export async function GET(req: Request) {
       teamOutcomeTotals.dials > 0
         ? Math.round((teamOutcomeTotals.pickups / teamOutcomeTotals.dials) * 100)
         : 0,
-    show_rate:
-      teamOutcomeTotals.shows + teamOutcomeTotals.no_shows + teamOutcomeTotals.lo_bailed > 0
-        ? Math.round(
-            (teamOutcomeTotals.shows /
-              (teamOutcomeTotals.shows + teamOutcomeTotals.no_shows + teamOutcomeTotals.lo_bailed)) *
-              100,
-          )
-        : 0,
+    show_rate: grossShowRate({
+      appointments: teamOutcomeTotals.appointments,
+      shows: teamOutcomeTotals.shows,
+      no_shows: teamOutcomeTotals.no_shows,
+      lo_bailed: teamOutcomeTotals.lo_bailed,
+      cancelled: teamOutcomeTotals.cancelled,
+      rescheduled: 0,
+      pending: 0,
+    }),
   };
 
   const payload = {

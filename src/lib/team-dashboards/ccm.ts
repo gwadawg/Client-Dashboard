@@ -230,7 +230,7 @@ export async function buildCcmCommandPayload(
         dayContext.day_elapsed_pct,
       );
       const show_rate =
-        outcomes.shows + outcomes.no_shows + outcomes.lo_bailed > 0
+        outcomes.shows + outcomes.no_shows + outcomes.lo_bailed + outcomes.cancelled > 0
           ? grossShowRate(outcomes)
           : null;
       return {
@@ -274,15 +274,26 @@ export async function buildCcmCommandPayload(
   let teamShows = 0;
   let teamNoShows = 0;
   let teamLoBailed = 0;
+  let teamCancelled = 0;
   for (const a of agents) {
     const o = outcomeByAgent.get(a.agent_name) ?? emptyOutcomeCounts();
     teamShows += o.shows;
     teamNoShows += o.no_shows;
     teamLoBailed += o.lo_bailed;
+    teamCancelled += o.cancelled;
   }
-  const showDenom = teamShows + teamNoShows + teamLoBailed;
-  const weekShowRate =
-    showDenom > 0 ? Math.round((teamShows / showDenom) * 100) : null;
+  const weekShowRate = grossShowRate({
+    appointments: teamWeekBookings,
+    shows: teamShows,
+    no_shows: teamNoShows,
+    lo_bailed: teamLoBailed,
+    cancelled: teamCancelled,
+    rescheduled: 0,
+    pending: 0,
+  });
+  // grossShowRate returns 0 when empty; floor UI treats null as no data
+  const weekShowRateOrNull =
+    teamShows + teamNoShows + teamLoBailed + teamCancelled > 0 ? weekShowRate : null;
 
   const dial_goal_today = teamDialGoalCount > 0 ? teamDialGoal : null;
   const floorPace = paceStatus(
@@ -336,7 +347,7 @@ export async function buildCcmCommandPayload(
       bookings: teamWeekBookings,
       shows: teamShows,
       no_shows: teamNoShows,
-      show_rate: weekShowRate,
+      show_rate: weekShowRateOrNull,
     },
     dial_goal_today,
     dial_pace_pct: floorPace.pace_pct,

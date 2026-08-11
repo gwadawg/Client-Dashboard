@@ -104,9 +104,13 @@ export function incrementOutcomeCount(
   }
 }
 
-/** Gross show rate: shows ÷ (shows + no-shows + LO bailed) for dispositioned appts. */
+/**
+ * Gross show rate: shows ÷ (shows + no-shows + LO bailed + cancelled).
+ * Pending and rescheduled stay out of the denominator.
+ */
 export function grossShowRate(counts: AgentAppointmentOutcomeCounts): number {
-  const dispositioned = counts.shows + counts.no_shows + counts.lo_bailed;
+  const dispositioned =
+    counts.shows + counts.no_shows + counts.lo_bailed + counts.cancelled;
   return dispositioned > 0 ? Math.round((counts.shows / dispositioned) * 100) : 0;
 }
 
