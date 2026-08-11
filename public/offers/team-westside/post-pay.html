@@ -24,6 +24,7 @@
     --line: rgba(255, 255, 255, 0.12);
     --shadow: 0 18px 50px rgba(6, 26, 74, 0.12);
     --radius: 6px;
+    --spine: #4FA3FF;
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -55,11 +56,11 @@
       radial-gradient(ellipse 50% 60% at 0% 100%, rgba(79, 163, 255, 0.18), transparent 50%),
       var(--navy);
     color: var(--white);
-    padding: 52px 28px 60px;
+    padding: 48px 28px 56px;
   }
 
   .hero-inner {
-    max-width: 800px;
+    max-width: 880px;
     margin: 0 auto;
   }
 
@@ -74,11 +75,11 @@
 
   .hero h1 {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: clamp(42px, 6vw, 68px);
+    font-size: clamp(40px, 5.5vw, 64px);
     font-weight: 900;
     line-height: 0.95;
     text-transform: uppercase;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
   }
   .hero h1 span { color: var(--accent); }
 
@@ -88,14 +89,14 @@
     color: rgba(255, 255, 255, 0.78);
     max-width: 36em;
     line-height: 1.65;
+    margin-bottom: 22px;
   }
   .hero-sub strong { color: var(--white); font-weight: 500; }
 
   .total-window {
-    margin-top: 24px;
     display: inline-flex;
     flex-wrap: wrap;
-    gap: 8px 20px;
+    gap: 8px 24px;
     padding: 14px 18px;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid var(--line);
@@ -106,17 +107,18 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: rgba(255, 255, 255, 0.45);
+    margin-bottom: 2px;
   }
   .total-window dd {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 800;
     color: var(--white);
     line-height: 1;
   }
 
   .wrap {
-    max-width: 800px;
+    max-width: 880px;
     margin: 0 auto;
     padding: 40px 28px 72px;
   }
@@ -137,7 +139,7 @@
     color: var(--navy);
     text-transform: uppercase;
     line-height: 1.05;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
 
   .section-lead {
@@ -145,81 +147,273 @@
     color: var(--mid);
     line-height: 1.6;
     margin-bottom: 28px;
-    max-width: 40em;
+    max-width: 42em;
   }
 
-  .timeline {
+  /* ── Roadmap strip (maps the sequence upfront) ── */
+  .roadmap {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 22px 20px 20px;
+    margin-bottom: 36px;
+  }
+
+  .roadmap-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+
+  .roadmap-head h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    letter-spacing: 0.04em;
+  }
+
+  .roadmap-head span {
+    font-size: 13px;
+    color: var(--soft);
+    font-weight: 500;
+  }
+
+  .roadmap-track {
     display: grid;
-    gap: 14px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0;
+    position: relative;
+  }
+
+  .roadmap-track::before {
+    content: '';
+    position: absolute;
+    top: 18px;
+    left: 10%;
+    right: 10%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--navy));
+    opacity: 0.35;
+    z-index: 0;
+  }
+
+  .rm-step {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 0 4px;
+  }
+
+  .rm-dot {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--navy);
+    color: var(--white);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 8px;
+    box-shadow: 0 0 0 4px var(--white);
+  }
+
+  .rm-step.is-now .rm-dot {
+    background: var(--accent);
+    color: var(--navy);
+    box-shadow: 0 0 0 4px var(--white), 0 0 0 7px rgba(79, 163, 255, 0.35);
+  }
+
+  .rm-step.is-goal .rm-dot {
+    background: var(--gold);
+    color: var(--navy);
+  }
+
+  .rm-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--navy);
+    line-height: 1.25;
+  }
+
+  .rm-sub {
+    font-size: 11px;
+    color: var(--soft);
+    margin-top: 2px;
+    line-height: 1.3;
+  }
+
+  .rm-step.is-now .rm-label { color: var(--accent-deep); }
+
+  /* ── Vertical spine timeline ── */
+  .timeline {
+    list-style: none;
+    position: relative;
+    margin: 0;
+    padding: 0;
+  }
+
+  .timeline-rail {
+    position: absolute;
+    left: 27px;
+    top: 28px;
+    bottom: 28px;
+    width: 3px;
+    background: linear-gradient(
+      180deg,
+      var(--accent) 0%,
+      var(--royal) 70%,
+      var(--gold) 100%
+    );
+    border-radius: 2px;
+    opacity: 0.55;
+  }
+
+  .tl-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 0 20px;
+    padding-bottom: 8px;
+  }
+
+  .tl-item:last-child { padding-bottom: 0; }
+
+  .tl-marker {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 4px;
+  }
+
+  .tl-node {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--navy);
+    color: var(--white);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 0 5px var(--light);
+    flex-shrink: 0;
+  }
+
+  .tl-item:nth-child(1) .tl-node {
+    background: var(--accent);
+    color: var(--navy);
+    box-shadow: 0 0 0 5px var(--light), 0 0 0 8px rgba(79, 163, 255, 0.25);
+  }
+
+  .tl-item:nth-child(2) .tl-node { background: var(--royal); }
+  .tl-item:nth-child(3) .tl-node { background: var(--accent-deep); }
+  .tl-item:nth-child(4) .tl-node { background: #1a4a9e; }
+  .tl-item.is-finish .tl-node {
+    background: var(--gold);
+    color: var(--navy);
+    box-shadow: 0 0 0 5px var(--light), 0 0 0 8px rgba(245, 200, 66, 0.3);
   }
 
   .tl-card {
     background: var(--white);
     border: 1px solid var(--divider);
     border-radius: var(--radius);
-    padding: 24px 24px 22px;
-    display: grid;
-    grid-template-columns: 64px 1fr;
-    gap: 8px 20px;
-    align-items: start;
+    padding: 20px 22px 18px;
+    margin-bottom: 4px;
   }
 
-  .tl-card.launch {
+  .tl-item.is-now .tl-card {
+    border-color: var(--accent);
+    box-shadow: 0 8px 28px rgba(79, 163, 255, 0.12);
+  }
+
+  .tl-item.is-finish .tl-card {
     background: var(--navy);
     border-color: transparent;
     box-shadow: var(--shadow);
-    color: var(--white);
   }
 
-  .tl-num {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 40px;
-    font-weight: 900;
-    color: var(--accent);
-    line-height: 0.9;
+  .tl-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 10px;
   }
-  .tl-card.launch .tl-num { color: var(--gold); }
 
-  .tl-duration {
-    grid-column: 1;
+  .tl-badge {
     font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--accent-deep);
-    line-height: 1.3;
+    background: #eef4ff;
+    padding: 4px 9px;
+    border-radius: 3px;
   }
-  .tl-card.launch .tl-duration { color: var(--gold); }
 
-  .tl-body { grid-column: 2; grid-row: 1 / 3; }
+  .tl-item.is-now .tl-badge {
+    background: rgba(79, 163, 255, 0.2);
+    color: var(--royal);
+  }
 
-  .tl-body h3 {
+  .tl-item.is-finish .tl-badge {
+    background: rgba(245, 200, 66, 0.18);
+    color: var(--gold);
+  }
+
+  .tl-duration {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--mid);
+  }
+
+  .tl-item.is-finish .tl-duration { color: rgba(255, 255, 255, 0.65); }
+
+  .tl-card h3 {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: clamp(24px, 3vw, 30px);
+    font-size: clamp(24px, 3vw, 32px);
     font-weight: 800;
     text-transform: uppercase;
     color: var(--navy);
     line-height: 1.05;
     margin-bottom: 8px;
   }
-  .tl-card.launch .tl-body h3 { color: var(--white); }
 
-  .tl-body p {
+  .tl-item.is-finish .tl-card h3 { color: var(--white); }
+
+  .tl-card p {
     font-size: 15px;
     color: var(--mid);
     line-height: 1.6;
   }
-  .tl-card.launch .tl-body p { color: rgba(255, 255, 255, 0.75); }
 
-  .tl-body p strong {
+  .tl-item.is-finish .tl-card p { color: rgba(255, 255, 255, 0.75); }
+
+  .tl-card p strong {
     color: var(--navy);
     font-weight: 600;
   }
-  .tl-card.launch .tl-body p strong { color: var(--white); }
+
+  .tl-item.is-finish .tl-card p strong { color: var(--white); }
 
   .asap {
     display: inline-block;
-    margin-top: 10px;
+    margin-top: 12px;
     font-size: 13px;
     font-weight: 600;
     color: #b45309;
@@ -229,27 +423,65 @@
     border-radius: 3px;
   }
 
+  /* Connector between steps */
+  .tl-connector {
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0 14px 4px;
+    color: var(--soft);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .tl-connector::before {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 8px solid var(--accent);
+    opacity: 0.7;
+  }
+
+  .tl-item:last-child .tl-connector { display: none; }
+
   .next-box {
-    margin-top: 28px;
+    margin-top: 32px;
     background: var(--white);
     border: 1px solid var(--divider);
-    border-left: 4px solid var(--accent);
+    border-left: 4px solid var(--gold);
     border-radius: var(--radius);
     padding: 22px 24px;
   }
+
+  .next-box .now-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #b45309;
+    margin-bottom: 6px;
+  }
+
   .next-box h3 {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 22px;
+    font-size: 24px;
     font-weight: 800;
     text-transform: uppercase;
     color: var(--navy);
     margin-bottom: 8px;
   }
+
   .next-box p {
     font-size: 15px;
     color: var(--mid);
     line-height: 1.55;
   }
+
   .next-box p strong { color: var(--navy); }
 
   .doc-footer {
@@ -258,14 +490,16 @@
     color: rgba(255, 255, 255, 0.4);
     font-size: 12px;
   }
+
   .doc-footer .inner {
-    max-width: 800px;
+    max-width: 880px;
     margin: 0 auto;
     display: flex;
     justify-content: space-between;
     gap: 16px;
     flex-wrap: wrap;
   }
+
   .doc-footer .brand {
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 18px;
@@ -274,38 +508,44 @@
     letter-spacing: 0.06em;
   }
 
+  @media (max-width: 720px) {
+    .roadmap-track {
+      grid-template-columns: 1fr 1fr;
+      gap: 16px 8px;
+    }
+    .roadmap-track::before { display: none; }
+  }
+
   @media (max-width: 560px) {
     .hero, .wrap { padding-left: 20px; padding-right: 20px; }
-    .tl-card {
-      grid-template-columns: 1fr;
-      gap: 6px;
-    }
-    .tl-duration { grid-column: 1; }
-    .tl-body { grid-column: 1; grid-row: auto; }
+    .timeline-rail { left: 21px; }
+    .tl-node { width: 44px; height: 44px; font-size: 18px; }
+    .tl-item { grid-template-columns: 44px 1fr; gap: 0 14px; }
+    .tl-marker { width: 44px; }
   }
 </style>
 </head>
 <body>
 
 <div class="banner">
-  Payment received · <strong>Team Westside</strong> · Here’s what happens next
+  Payment received · <strong>Team Westside</strong> · Your onboarding path
 </div>
 
 <header class="hero">
   <div class="hero-inner">
     <p class="eyebrow">You’re locked in</p>
-    <h1>Thanks — <span>onboarding is next</span></h1>
+    <h1>Thanks — <span>here’s the path</span></h1>
     <p class="hero-sub">
-      Your exclusive inbound DSCR pilot is paid. Below is the full path from paperwork
-      to live leads — with how long each step usually takes.
+      Paid is step zero. Below is the <strong>order of events</strong> from paperwork to live exclusive DSCR leads —
+      each stop has how long it usually takes.
     </p>
     <dl class="total-window">
       <div>
-        <dt>Typical total</dt>
+        <dt>Full path</dt>
         <dd>1.5–2.5 weeks</dd>
       </div>
       <div>
-        <dt>Go-live</dt>
+        <dt>Finish line</dt>
         <dd>Leads same day</dd>
       </div>
     </dl>
@@ -313,82 +553,164 @@
 </header>
 
 <main class="wrap">
-  <p class="label">Your onboarding timeline</p>
-  <h2 class="section-title">From paid → first leads</h2>
+  <p class="label">Onboarding sequence</p>
+  <h2 class="section-title">Paid → form → build → launch</h2>
   <p class="section-lead">
-    We’ll text and email you the links for anything you need to complete.
-    Stay responsive on step 1 — that keeps the whole window tight.
+    Read this as a timeline: <strong>step 1 happens first</strong>, then 2, then 3…
+    We text and email every link you need. Stay fast on step 1 so the whole path stays short.
   </p>
 
-  <div class="timeline">
-    <article class="tl-card">
-      <div class="tl-num">01</div>
-      <p class="tl-duration">Do ASAP</p>
-      <div class="tl-body">
-        <h3>Onboarding form</h3>
-        <p>
-          Fill this out <strong>as soon as you can</strong> so we can start build-out.
-          We’ll also text and email you the link — watch both.
-        </p>
-        <span class="asap">Try to complete today if possible</span>
+  <!-- At-a-glance horizontal roadmap -->
+  <div class="roadmap" aria-label="Five-step overview">
+    <div class="roadmap-head">
+      <h3>At a glance · 5 stops</h3>
+      <span>Start left → finish right</span>
+    </div>
+    <div class="roadmap-track">
+      <div class="rm-step is-now">
+        <div class="rm-dot">1</div>
+        <div class="rm-label">Form</div>
+        <div class="rm-sub">Do ASAP</div>
       </div>
-    </article>
-
-    <article class="tl-card">
-      <div class="tl-num">02</div>
-      <p class="tl-duration">30–40 min</p>
-      <div class="tl-body">
-        <h3>Onboarding call</h3>
-        <p>
-          Live call with your <strong>project manager</strong> (~30–40 minutes).
-          Get logged in, confirm access, and make sure we have everything we need
-          (page, CRM, branding, markets).
-        </p>
+      <div class="rm-step">
+        <div class="rm-dot">2</div>
+        <div class="rm-label">OB call</div>
+        <div class="rm-sub">30–40 min</div>
       </div>
-    </article>
-
-    <article class="tl-card">
-      <div class="tl-num">03</div>
-      <p class="tl-duration">Up to 1–2 weeks</p>
-      <div class="tl-body">
-        <h3>Tech · ads · funnel build-out</h3>
-        <p>
-          Our team builds your campaigns, landing page, and drip.
-          This step can take <strong>up to 1–2 weeks</strong> depending on access and review turnaround.
-        </p>
+      <div class="rm-step">
+        <div class="rm-dot">3</div>
+        <div class="rm-label">Build</div>
+        <div class="rm-sub">1–2 weeks</div>
       </div>
-    </article>
-
-    <article class="tl-card">
-      <div class="tl-num">04</div>
-      <p class="tl-duration">Training call</p>
-      <div class="tl-body">
-        <h3>Launch call</h3>
-        <p>
-          Training call to lock best practices, walk the dial path, and make sure
-          you’re fully caught up before spend goes live.
-        </p>
+      <div class="rm-step">
+        <div class="rm-dot">4</div>
+        <div class="rm-label">Launch call</div>
+        <div class="rm-sub">Training</div>
       </div>
-    </article>
-
-    <article class="tl-card launch">
-      <div class="tl-num">05</div>
-      <p class="tl-duration">Same day</p>
-      <div class="tl-body">
-        <h3>Launch · leads on</h3>
-        <p>
-          You can start receiving exclusive inbound DSCR leads <strong>as soon as that day</strong>.
-          After go-live, <strong>you control volume</strong> — we throttle pace to match how hard you want the desk working.
-        </p>
+      <div class="rm-step is-goal">
+        <div class="rm-dot">5</div>
+        <div class="rm-label">Leads on</div>
+        <div class="rm-sub">Same day</div>
       </div>
-    </article>
+    </div>
   </div>
 
+  <!-- Detailed vertical timeline -->
+  <ol class="timeline">
+    <div class="timeline-rail" aria-hidden="true"></div>
+
+    <li class="tl-item is-now">
+      <div class="tl-marker">
+        <div class="tl-node">01</div>
+      </div>
+      <div>
+        <article class="tl-card">
+          <div class="tl-meta">
+            <span class="tl-badge">Start here · you</span>
+            <span class="tl-duration">Duration: do ASAP</span>
+          </div>
+          <h3>Onboarding form</h3>
+          <p>
+            Fill this out <strong>as soon as you can</strong> so we can start build-out.
+            We’ll also text and email you the link — watch both.
+          </p>
+          <span class="asap">Try to complete today if possible</span>
+        </article>
+        <div class="tl-connector">Then</div>
+      </div>
+    </li>
+
+    <li class="tl-item">
+      <div class="tl-marker">
+        <div class="tl-node">02</div>
+      </div>
+      <div>
+        <article class="tl-card">
+          <div class="tl-meta">
+            <span class="tl-badge">Step 2 · with PM</span>
+            <span class="tl-duration">Duration: 30–40 minutes</span>
+          </div>
+          <h3>Onboarding call</h3>
+          <p>
+            Live call with your <strong>project manager</strong>.
+            Get logged in, confirm access, and make sure we have everything we need
+            (page, CRM, branding, markets).
+          </p>
+        </article>
+        <div class="tl-connector">Then</div>
+      </div>
+    </li>
+
+    <li class="tl-item">
+      <div class="tl-marker">
+        <div class="tl-node">03</div>
+      </div>
+      <div>
+        <article class="tl-card">
+          <div class="tl-meta">
+            <span class="tl-badge">Step 3 · our team</span>
+            <span class="tl-duration">Duration: up to 1–2 weeks</span>
+          </div>
+          <h3>Tech · ads · funnel build-out</h3>
+          <p>
+            We build your campaigns, landing page, and drip.
+            Timing depends on access and how fast reviews turn around —
+            this is usually the longest stop on the path.
+          </p>
+        </article>
+        <div class="tl-connector">Then</div>
+      </div>
+    </li>
+
+    <li class="tl-item">
+      <div class="tl-marker">
+        <div class="tl-node">04</div>
+      </div>
+      <div>
+        <article class="tl-card">
+          <div class="tl-meta">
+            <span class="tl-badge">Step 4 · together</span>
+            <span class="tl-duration">Duration: training call</span>
+          </div>
+          <h3>Launch call</h3>
+          <p>
+            Training on best practices, dial path, and readiness check
+            so you’re caught up before spend goes live.
+          </p>
+        </article>
+        <div class="tl-connector">Then</div>
+      </div>
+    </li>
+
+    <li class="tl-item is-finish">
+      <div class="tl-marker">
+        <div class="tl-node">05</div>
+      </div>
+      <div>
+        <article class="tl-card">
+          <div class="tl-meta">
+            <span class="tl-badge">Finish · go-live</span>
+            <span class="tl-duration">Duration: leads same day</span>
+          </div>
+          <h3>Launch · leads on</h3>
+          <p>
+            You can start receiving exclusive inbound DSCR leads
+            <strong>as soon as that day</strong>.
+            After go-live, <strong>you control volume</strong> — we throttle pace
+            to match how hard you want the desk working.
+          </p>
+        </article>
+      </div>
+    </li>
+  </ol>
+
   <div class="next-box">
-    <h3>What you should do now</h3>
+    <p class="now-label">Your only action right now</p>
+    <h3>Complete step 1 — the form</h3>
     <p>
-      Watch for our text/email with the <strong>onboarding form</strong> and agreement if not already sent.
-      Complete the form ASAP. We’ll schedule your <strong>30–40 min onboarding call</strong> with your project manager once that’s in.
+      Watch for our text/email with the <strong>onboarding form</strong> (and agreement if not already sent).
+      Finish that ASAP. Once it’s in, we book your <strong>30–40 min onboarding call</strong>
+      and move down the timeline.
     </p>
   </div>
 </main>
@@ -396,7 +718,7 @@
 <footer class="doc-footer">
   <div class="inner">
     <div class="brand">WAIZ MEDIA</div>
-    <div>Team Westside · Post-payment onboarding timeline</div>
+    <div>Team Westside · Post-payment · 5-step onboarding path</div>
   </div>
 </footer>
 
