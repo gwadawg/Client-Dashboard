@@ -63,7 +63,7 @@
   }
 
   .hero-inner {
-    max-width: 1120px;
+    max-width: 1360px;
     margin: 0 auto;
     display: grid;
     grid-template-columns: 1.25fr 0.85fr;
@@ -199,7 +199,7 @@
   }
 
   .wrap {
-    max-width: 1120px;
+    max-width: 1360px;
     margin: 0 auto;
     padding: 0 28px;
   }
@@ -369,8 +369,8 @@
 
   .builder-layout {
     display: grid;
-    grid-template-columns: 1fr 360px;
-    gap: 28px;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 24px;
     align-items: start;
   }
 
@@ -379,6 +379,10 @@
     border: 1px solid var(--divider);
     border-radius: var(--radius);
     padding: 28px;
+  }
+
+  .panel.panel-calc {
+    padding: 32px 32px 28px;
   }
 
   .panel + .panel { margin-top: 18px; }
@@ -674,22 +678,65 @@
 
   .shared-inputs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-    margin-bottom: 18px;
+    grid-template-columns: 1.1fr 1.1fr 0.85fr;
+    gap: 16px;
+    margin-bottom: 22px;
+  }
+
+  .field.commission-store {
+    background: var(--light);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 14px 14px 12px;
+  }
+
+  .field.commission-dscr {
+    background: #eef4ff;
+    border: 1px solid rgba(14, 47, 115, 0.2);
+    border-radius: var(--radius);
+    padding: 14px 14px 12px;
+  }
+
+  .field .field-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    padding: 3px 7px;
+    border-radius: 2px;
+  }
+
+  .commission-store .field-tag {
+    background: #e5e9f2;
+    color: var(--mid);
+  }
+
+  .commission-dscr .field-tag {
+    background: var(--gold);
+    color: var(--navy);
+  }
+
+  .commission-lift {
+    margin: -6px 0 18px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a7a32;
+    line-height: 1.4;
   }
 
   .compare-cols {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: 18px;
   }
 
   .compare-col {
     background: var(--light);
     border: 1px solid var(--divider);
     border-radius: var(--radius);
-    padding: 18px 16px;
+    padding: 22px 20px;
   }
 
   .compare-col.pilot {
@@ -1004,7 +1051,7 @@
   }
 
   .doc-footer .inner {
-    max-width: 1120px;
+    max-width: 1360px;
     margin: 0 auto;
     display: flex;
     justify-content: space-between;
@@ -1039,7 +1086,6 @@
     .hero { padding: 40px 20px 52px; }
     .wrap { padding: 0 20px; }
     section.block { padding: 52px 0; }
-    .snap-grid,
     .shared-inputs,
     .grid-pair,
     .compare-cols,
@@ -1249,32 +1295,42 @@
           </p>
         </div>
 
-        <div class="panel">
+        <div class="panel panel-calc">
           <h3 class="panel-title">Return on this pack</h3>
           <p class="panel-help">
-            Pack volume is locked above. Same close rate and commission both sides —
-            <strong>contact rate</strong> is the lever. Defaults use ~9% store vs a
-            <strong>30% planning midpoint</strong> inside our 28–45% nurtured contact band.
-            Not promised performance.
+            Pack volume is locked above. Close rate of contacts is shared.
+            Commissions are <strong>not</strong> the same product: lead-store math usually
+            reflects <strong>HELOC / small refi</strong> volume; this pilot is
+            <strong>average DSCR commission</strong> — typically higher per fund.
+            Contact rate defaults ~9% store vs <strong>30% planning midpoint</strong>
+            (28–45% nurtured band). Not promised performance.
           </p>
 
           <div class="shared-inputs">
-            <div class="field">
-              <label for="aov">Commission / funded deal</label>
-              <input type="number" id="aov" min="500" step="100" value="5000">
-              <p class="suffix">Shared · DSCR often nets more than small HELOC volume — plug yours</p>
+            <div class="field commission-store">
+              <span class="field-tag">Lead store side</span>
+              <label for="store-commission">Avg HELOC / refi commission</label>
+              <input type="number" id="store-commission" min="0" step="100" value="2500">
+              <p class="suffix">What you typically net on store / HELOC / small refi funds</p>
+            </div>
+            <div class="field commission-dscr">
+              <span class="field-tag">Exclusive DSCR side</span>
+              <label for="dscr-commission">Average DSCR commission</label>
+              <input type="number" id="dscr-commission" min="0" step="100" value="5000">
+              <p class="suffix">What you typically net when a DSCR deal funds (usually more)</p>
             </div>
             <div class="field">
               <label for="close-rate">Close rate of contacts</label>
               <input type="number" id="close-rate" min="0" max="100" step="0.5" value="12">
-              <p class="suffix">Shared · funds ÷ live contacts (not raw leads)</p>
+              <p class="suffix">Shared · funds ÷ live contacts</p>
             </div>
           </div>
+          <p class="commission-lift" id="commission-lift"></p>
 
           <div class="compare-cols">
             <div class="compare-col">
               <h4>Lead store</h4>
-              <p class="compare-sub">WestCap-style shopped inventory baseline</p>
+              <p class="compare-sub">Shopped inventory · HELOC / refi commission math</p>
               <div class="compare-field">
                 <label for="store-contact">Contact rate</label>
                 <input type="number" id="store-contact" min="0" max="100" step="0.5" value="9">
@@ -1286,18 +1342,19 @@
                 <p class="hint">Invest = leads × this CPL · no pilot setup</p>
               </div>
               <ul class="metric-list">
+                <li><span>Per-fund commission</span><strong id="store-unit-comm">—</strong></li>
                 <li><span>Leads</span><strong id="store-leads">—</strong></li>
                 <li><span>Contacts</span><strong id="store-contacts">—</strong></li>
                 <li class="cost"><span>Cost per contact</span><strong id="store-cpc">—</strong></li>
                 <li><span>Expected funds</span><strong id="store-deals">—</strong></li>
-                <li class="hero"><span>Commission $</span><strong id="store-gross">—</strong></li>
+                <li class="hero"><span>Total commission $</span><strong id="store-gross">—</strong></li>
                 <li><span>ROAS</span><strong id="store-roas">—</strong></li>
               </ul>
             </div>
 
             <div class="compare-col pilot">
               <h4>Your exclusive pilot</h4>
-              <p class="compare-sub">Waiz owned path · CPL from your pack · setup included</p>
+              <p class="compare-sub">Inbound DSCR · average DSCR commission · CPL from pack</p>
               <div class="compare-field">
                 <label for="pilot-contact">Contact rate</label>
                 <input type="number" id="pilot-contact" min="0" max="100" step="0.5" value="30">
@@ -1309,11 +1366,12 @@
                 <p class="hint">Locked to selected pack · ad spend inside</p>
               </div>
               <ul class="metric-list">
+                <li><span>Per-fund commission</span><strong id="pilot-unit-comm">—</strong></li>
                 <li><span>Leads</span><strong id="pilot-leads">—</strong></li>
                 <li><span>Contacts</span><strong id="pilot-contacts">—</strong></li>
                 <li class="cost"><span>Cost per contact</span><strong id="pilot-cpc">—</strong></li>
                 <li><span>Expected funds</span><strong id="pilot-deals">—</strong></li>
-                <li class="hero"><span>Commission $</span><strong id="pilot-gross">—</strong></li>
+                <li class="hero"><span>Total commission $</span><strong id="pilot-gross">—</strong></li>
                 <li><span>ROAS</span><strong id="pilot-roas">—</strong></li>
               </ul>
             </div>
@@ -1325,7 +1383,7 @@
               <dd id="delta-contacts">—</dd>
             </div>
             <div>
-              <dt>Extra commission</dt>
+              <dt>Extra commission $</dt>
               <dd id="delta-gross">—</dd>
             </div>
             <div>
@@ -1334,10 +1392,10 @@
             </div>
           </dl>
           <p class="planning-note">
-            Planning model only. The 30% field is a midpoint for sizing — live exclusive books we
-            nurture often land roughly <strong>28–45% contact</strong>. Store ~9% is a sample band
-            on shopped inventory. Neither side is a guarantee of contact, close, or funded loans.
-            Dial + nurture still win. DSCR commission assumptions are yours to edit.
+            Planning model only. Lead-store dollars use your HELOC / refi commission;
+            pilot dollars use average DSCR commission — edit both to match your book.
+            Contact 30% is a midpoint (nurtured exclusive often ~28–45%). Not a guarantee
+            of contact, close, or funded loans.
           </p>
         </div>
 
@@ -1400,7 +1458,8 @@
   const DEFAULT_STORE_CONTACT = 9;
   const DEFAULT_PILOT_CONTACT = 30;
   const DEFAULT_CLOSE = 12;
-  const DEFAULT_COMMISSION = 5000;
+  const DEFAULT_STORE_COMMISSION = 2500; // HELOC / small refi style
+  const DEFAULT_DSCR_COMMISSION = 5000;
 
   const PACKS = [
     { qty: 100, unit: 60, label: 'minimum', featured: false },
@@ -1419,18 +1478,22 @@
     sumGrand: document.getElementById('sum-grand'),
     sumBreakdown: document.getElementById('sum-breakdown'),
     sumSave: document.getElementById('sum-save'),
-    aov: document.getElementById('aov'),
+    storeCommission: document.getElementById('store-commission'),
+    dscrCommission: document.getElementById('dscr-commission'),
+    commissionLift: document.getElementById('commission-lift'),
     closeRate: document.getElementById('close-rate'),
     storeContact: document.getElementById('store-contact'),
     storeCpl: document.getElementById('store-cpl'),
     pilotContact: document.getElementById('pilot-contact'),
     pilotCpl: document.getElementById('pilot-cpl'),
+    storeUnitComm: document.getElementById('store-unit-comm'),
     storeLeads: document.getElementById('store-leads'),
     storeContacts: document.getElementById('store-contacts'),
     storeCpc: document.getElementById('store-cpc'),
     storeDeals: document.getElementById('store-deals'),
     storeGross: document.getElementById('store-gross'),
     storeRoas: document.getElementById('store-roas'),
+    pilotUnitComm: document.getElementById('pilot-unit-comm'),
     pilotLeads: document.getElementById('pilot-leads'),
     pilotContacts: document.getElementById('pilot-contacts'),
     pilotCpc: document.getElementById('pilot-cpc'),
@@ -1523,7 +1586,8 @@
 
   function readShared() {
     return {
-      commission: Math.max(0, Number(els.aov.value) || 0),
+      storeCommission: Math.max(0, Number(els.storeCommission.value) || 0),
+      dscrCommission: Math.max(0, Number(els.dscrCommission.value) || 0),
       closePct: clampPct(Number(els.closeRate.value) || 0),
       storeContact: clampPct(Number(els.storeContact.value) || 0),
       storeCpl: Math.max(0, Number(els.storeCpl.value) || 0),
@@ -1542,7 +1606,7 @@
       leads: leads,
       contactPct: shared.storeContact,
       closePct: shared.closePct,
-      commission: shared.commission,
+      commission: shared.storeCommission,
       investment: leads * shared.storeCpl,
       unitCost: leads * shared.storeCpl,
     });
@@ -1551,14 +1615,10 @@
       leads: leads,
       contactPct: shared.pilotContact,
       closePct: shared.closePct,
-      commission: shared.commission,
+      commission: shared.dscrCommission,
       investment: pilotInvest,
-      unitCost: pack$, // cost-to-talk from unit pack $ (ads inside), consistent with plan alt
+      unitCost: pack$,
     });
-
-    // Also show all-in CPC when useful: investment includes setup — store uses pure spend.
-    // Plan: cost/talk = investment_on_units ÷ contacts. Pilot units = pack $. Store = full invest.
-    // Re-run pilot cpc on pack $ as unitCost above. For ROAS use full pilot invest (with setup).
 
     return { pack: pack, shared: shared, store: store, pilot: pilot, pack$: pack$, pilotInvest: pilotInvest };
   }
@@ -1600,6 +1660,24 @@
     const { store, pilot, shared, pack } = result;
 
     els.pilotCpl.value = money(pack.unit);
+    els.storeUnitComm.textContent = money(shared.storeCommission);
+    els.pilotUnitComm.textContent = money(shared.dscrCommission);
+
+    const lift = shared.dscrCommission - shared.storeCommission;
+    if (els.commissionLift) {
+      if (lift > 0) {
+        els.commissionLift.textContent =
+          'DSCR nets ' +
+          money(lift) +
+          ' more per funded deal than your HELOC / refi average — plus higher contact rate on exclusive inbound.';
+      } else if (lift < 0) {
+        els.commissionLift.textContent =
+          'Your DSCR commission field is below HELOC / refi — edit both so the compare matches your book.';
+      } else {
+        els.commissionLift.textContent =
+          'Same per-fund commission both sides — contact rate is still the volume lever. Raise average DSCR commission if DSCR pays more in your shop.';
+      }
+    }
 
     fillSide('store', store);
     fillSide('pilot', pilot);
@@ -1698,7 +1776,8 @@
       unitSavings: save,
       grandTotal: grand,
       planning: {
-        commissionPerFund: result.shared.commission,
+        storeCommissionHelocRefi: result.shared.storeCommission,
+        dscrCommission: result.shared.dscrCommission,
         closeOfContactsPct: result.shared.closePct,
         storeContactPct: result.shared.storeContact,
         pilotContactPct: result.shared.pilotContact,
@@ -1734,7 +1813,8 @@
       'ALL-IN:   ' + money(order.grandTotal),
       '────────────────────────────────────',
       'BAKE-OFF (planning, not a guarantee)',
-      'Commission: ' + money(p.commissionPerFund) + ' (edit for your DSCR vs HELOC mix)',
+      'Store HELOC/refi commission: ' + money(p.storeCommissionHelocRefi),
+      'Avg DSCR commission:         ' + money(p.dscrCommission),
       'Close of contacts: ' + p.closeOfContactsPct + '%',
       'Pilot contact field is a midpoint; nurtured exclusive band often ~28–45%',
       '',
@@ -1766,7 +1846,7 @@
     renderCompare();
   }
 
-  ['aov', 'closeRate', 'storeContact', 'storeCpl', 'pilotContact'].forEach((key) => {
+  ['storeCommission', 'dscrCommission', 'closeRate', 'storeContact', 'storeCpl', 'pilotContact'].forEach((key) => {
     const el = els[key];
     if (!el) return;
     el.addEventListener('input', function () {
@@ -1792,12 +1872,13 @@
 
     console.info('[westside-pilot-order]', order);
 
-    // Step 2: contact form + what happens next
+    // Step 2: pay + what happens next
     window.location.href = '/offers/team-westside/pay';
   });
 
   // Seed defaults if DOM was emptied
-  if (!els.aov.value) els.aov.value = String(DEFAULT_COMMISSION);
+  if (!els.storeCommission.value) els.storeCommission.value = String(DEFAULT_STORE_COMMISSION);
+  if (!els.dscrCommission.value) els.dscrCommission.value = String(DEFAULT_DSCR_COMMISSION);
   if (!els.closeRate.value) els.closeRate.value = String(DEFAULT_CLOSE);
   if (!els.storeContact.value) els.storeContact.value = String(DEFAULT_STORE_CONTACT);
   if (!els.pilotContact.value) els.pilotContact.value = String(DEFAULT_PILOT_CONTACT);
