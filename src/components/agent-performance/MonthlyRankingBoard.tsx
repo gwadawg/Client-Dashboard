@@ -1,17 +1,18 @@
 "use client";
 
 import type { AgentPerformanceRow } from "@/lib/agent-performance-types";
+import type { FloorBoardMode } from "./board-mode";
 
-export type RankMode = "daily" | "monthly";
+export type RankMode = FloorBoardMode;
 
 type Props = {
   mode: RankMode;
   agents: AgentPerformanceRow[];
-  monthLabel: string;
+  periodLabel: string;
 };
 
 function rankValue(a: AgentPerformanceRow, mode: RankMode): number {
-  return mode === "monthly" ? (a.show_lt_conversations ?? 0) : a.today.dials;
+  return mode === "period" ? (a.show_lt_conversations ?? 0) : a.today.dials;
 }
 
 function rankColor(rank: number): string {
@@ -21,11 +22,11 @@ function rankColor(rank: number): string {
   return "#64748b";
 }
 
-export default function MonthlyRankingBoard({ mode, agents, monthLabel }: Props) {
+export default function MonthlyRankingBoard({ mode, agents, periodLabel }: Props) {
   const ranked = [...agents].sort((a, b) => {
     const dv = rankValue(b, mode) - rankValue(a, mode);
     if (dv !== 0) return dv;
-    if (mode === "monthly") {
+    if (mode === "period") {
       const ap = b.appointments - a.appointments;
       if (ap !== 0) return ap;
     } else {
@@ -36,13 +37,13 @@ export default function MonthlyRankingBoard({ mode, agents, monthLabel }: Props)
   });
 
   const podium = ranked.slice(0, 3);
-  const rest = ranked.slice(3);
 
-  const title = mode === "monthly" ? `Month rank · ${monthLabel}` : "Today rank · dials";
+  const title =
+    mode === "period" ? `Period rank · ${periodLabel}` : "Today rank · dials (live day)";
   const metricHint =
-    mode === "monthly"
-      ? "Primary: Show/LT conversations (unique pay show ∪ live transfer)"
-      : "Primary: dials today · secondary appointments / LTs";
+    mode === "period"
+      ? "Primary: Show/LT in the selected period (unique pay show ∪ live transfer)"
+      : "Primary: dials today · secondary appointments / LTs · not limited by period filter";
 
   if (ranked.length === 0) return null;
 
@@ -59,7 +60,6 @@ export default function MonthlyRankingBoard({ mode, agents, monthLabel }: Props)
         </div>
       </div>
 
-      {/* Podium */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {podium.map((a, i) => {
           const rank = i + 1;
@@ -88,24 +88,30 @@ export default function MonthlyRankingBoard({ mode, agents, monthLabel }: Props)
                 >
                   {rank}
                 </span>
-                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#64748b" }}>
+                <span
+                  className="text-[10px] font-bold uppercase tracking-widest"
+                  style={{ color: "#64748b" }}
+                >
                   {rank === 1 ? "Leader" : rank === 2 ? "2nd" : "3rd"}
                 </span>
               </div>
               <p className="text-lg font-bold mt-3 truncate" style={{ color: "#f8fafc" }}>
                 {a.agent_name}
               </p>
-              <p className="text-3xl font-extrabold tabular-nums mt-2" style={{ color: rankColor(rank) }}>
+              <p
+                className="text-3xl font-extrabold tabular-nums mt-2"
+                style={{ color: rankColor(rank) }}
+              >
                 {val.toLocaleString()}
               </p>
               <p className="text-xs mt-1" style={{ color: "#64748b" }}>
-                {mode === "monthly" ? "Show/LT" : "Dials today"}
+                {mode === "period" ? "Show/LT in period" : "Dials today"}
               </p>
               <div
                 className="mt-4 grid grid-cols-3 gap-2 pt-3 text-center"
                 style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
               >
-                {mode === "monthly" ? (
+                {mode === "period" ? (
                   <>
                     <Mini k="Appts" v={a.appointments} />
                     <Mini k="Shows" v={a.shows} />
@@ -124,7 +130,6 @@ export default function MonthlyRankingBoard({ mode, agents, monthLabel }: Props)
         })}
       </div>
 
-      {/* Full table */}
       <div
         className="rounded-xl overflow-hidden"
         style={{ border: "1px solid rgba(255,255,255,0.06)" }}
@@ -133,7 +138,7 @@ export default function MonthlyRankingBoard({ mode, agents, monthLabel }: Props)
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: "#050c18" }}>
-                {(mode === "monthly"
+                {(mode === "period"
                   ? ["#", "Agent", "Show/LT", "Appts", "Shows", "LTs", "Dials", "Pickup %", "Show %"]
                   : ["#", "Agent", "Dials", "Pickups", "Appts", "LTs", "Period dials", "Period appts"]
                 ).map((h, i) => (
@@ -157,17 +162,27 @@ export default function MonthlyRankingBoard({ mode, agents, monthLabel }: Props)
                     key={a.agent_name}
                     style={{
                       background:
-                        rank <= 3 ? "rgba(245,158,11,0.04)" : i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent",
+                        rank <= 3
+                          ? "rgba(245,158,11,0.04)"
+                          : i % 2 === 0
+                            ? "rgba(255,255,255,0.015)"
+                            : "transparent",
                       borderTop: "1px solid rgba(255,255,255,0.03)",
                     }}
                   >
-                    <td className="px-3 py-2.5 tabular-nums font-bold" style={{ color: rankColor(rank) }}>
+                    <td
+                      className="px-3 py-2.5 tabular-nums font-bold"
+                      style={{ color: rankColor(rank) }}
+                    >
                       {rank}
                     </td>
-                    <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>
+                    <td
+                      className="px-3 py-2.5 font-medium whitespace-nowrap"
+                      style={{ color: "#e2e8f0" }}
+                    >
                       {a.agent_name}
                     </td>
-                    {mode === "monthly" ? (
+                    {mode === "period" ? (
                       <>
                         <Td bold v={a.show_lt_conversations ?? 0} />
                         <Td v={a.appointments} />
@@ -238,7 +253,7 @@ export function buildRankMap(agents: AgentPerformanceRow[], mode: RankMode): Map
   const sorted = [...agents].sort((a, b) => {
     const dv = rankValue(b, mode) - rankValue(a, mode);
     if (dv !== 0) return dv;
-    if (mode === "monthly") {
+    if (mode === "period") {
       const ap = b.appointments - a.appointments;
       if (ap !== 0) return ap;
     } else {

@@ -161,7 +161,8 @@ export async function GET(req: Request) {
     startDate ?? '',
     endDate ?? '',
     includeAllRoster ? '1' : '0',
-    'manager-floor-v1',
+    // Period-scoped show/LT (no silent month window); manager floor fields
+    'manager-floor-v2',
   ].join('|');
   const cached = agentStatsCache.get(cacheKey);
   if (cached) {
@@ -170,12 +171,8 @@ export async function GET(req: Request) {
     });
   }
 
+  // goal_month is only for loading monthly conversation goals — not a second data window
   const monthBounds = calendarMonthOf(endDate);
-  const monthMatchesRange =
-    Boolean(startDate && endDate) &&
-    startDate === monthBounds.startDate &&
-    endDate === monthBounds.endDate;
-
   const hasRange = Boolean(startDate && endDate);
 
   const [
@@ -184,24 +181,16 @@ export async function GET(req: Request) {
     { data: availability, error: availabilityError },
     { data: clients, error: clientsError },
     enrichedBookings,
-    monthEvents,
     rangeShowEvents,
-    monthShowEventsRaw,
   ] = await Promise.all([
     ctx.service.from('agents').select('name, phone, active, pay_type').order('name'),
     fetchAgentEventsInRange(ctx.service, startDate, endDate),
     ctx.service.from('setter_availability').select('weekday, time_start, time_end, is_live'),
     ctx.service.from('clients').select('id, name, reporting_type').order('name'),
     fetchEnrichedBookingsInRange(ctx.service, startDate, endDate),
-    monthMatchesRange || !hasRange
-      ? Promise.resolve(null)
-      : fetchAgentEventsInRange(ctx.service, monthBounds.startDate, monthBounds.endDate),
     hasRange
       ? fetchShowEventsForPayWindow(ctx.service, startDate!, endDate!)
       : Promise.resolve([] as ShowEventRow[]),
-    monthMatchesRange || !hasRange
-      ? Promise.resolve(null as ShowEventRow[] | null)
-      : fetchShowEventsForPayWindow(ctx.service, monthBounds.startDate, monthBounds.endDate),
   ]);
 
   if (rosterError) return NextResponse.json({ error: rosterError.message }, { status: 500 });
@@ -216,7 +205,6 @@ export async function GET(req: Request) {
   const outcomeByAgent = summarizeOutcomesByAgent(enrichedBookings, resolveAgent);
 
   let payShowsForRange: ShowEventRow[] = [];
-  let payShowsForMonth: ShowEventRow[] = [];
   if (hasRange) {
     let paidLeadKeys = new Set<string>();
     try {
@@ -233,18 +221,6 @@ export async function GET(req: Request) {
       endDate!,
       paidLeadKeys,
     );
-    if (monthMatchesRange) {
-      payShowsForMonth = payShowsForRange;
-    } else if (monthShowEventsRaw) {
-      payShowsForMonth = await preparePayShows(
-        ctx.service,
-        monthShowEventsRaw,
-        resolveAgent,
-        monthBounds.startDate,
-        monthBounds.endDate,
-        paidLeadKeys,
-      );
-    }
   }
 
   const creditEvents = data.filter(
@@ -262,10 +238,10 @@ export async function GET(req: Request) {
         )
       : new Map();
 
-  const showLtSourceEvents = monthMatchesRange || !hasRange ? data : (monthEvents ?? []);
-  const liveTransfersForShowLt = showLtSourceEvents.filter(r => r.event_type === 'live_transfer');
+  // Show/LT conversations match the selected period (same window as dials / pay credits)
+  const liveTransfersForShowLt = data.filter(r => r.event_type === 'live_transfer');
   const showLtByAgent = countShowLtConversationsByAgent(
-    payShowsForMonth,
+    payShowsForRange,
     liveTransfersForShowLt,
     resolveAgent,
   );
@@ -537,6 +513,11 @@ export async function GET(req: Request) {
     team_averages,
     vertical_effort,
     goal_month: monthBounds.month,
+    // Echo the window used so the UI can label honestly
+    period: {
+      start_date: startDate,
+      end_date: endDate,
+    },
   };
   agentStatsCache.set(cacheKey, payload);
   return NextResponse.json(payload, {

@@ -5,6 +5,12 @@ import AgentComparisonChart from "./agent-performance/AgentComparisonChart";
 import AgentGoalCard from "./agent-performance/AgentGoalCard";
 import AgentScorecard from "./agent-performance/AgentScorecard";
 import AgentStatsTable from "./agent-performance/AgentStatsTable";
+import {
+  defaultBoardMode,
+  formatPeriodLabel,
+  periodAlignsWithMonthlyGoals,
+  type FloorBoardMode,
+} from "./agent-performance/board-mode";
 import FloorPulseStrip from "./agent-performance/FloorPulseStrip";
 import MonthlyRankingBoard, {
   buildRankMap,
@@ -30,8 +36,6 @@ type Props = {
   startDate: string;
   endDate: string;
 };
-
-type BoardMode = "monthly" | "daily";
 
 function emptyVerticalEffort(): VerticalEffort {
   const emptyBucket = (): VerticalEffort["by_type"]["RM"] => ({
@@ -88,10 +92,24 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
   const [goalMonth, setGoalMonth] = useState(() => calendarMonthOf(endDate).month);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [mode, setMode] = useState<BoardMode>("monthly");
+  const [mode, setMode] = useState<FloorBoardMode>(() => defaultBoardMode(preset));
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
 
   const days = useMemo(() => periodDays(startDate, endDate), [startDate, endDate]);
+  const periodLabel = useMemo(
+    () => formatPeriodLabel(preset, startDate, endDate),
+    [preset, startDate, endDate],
+  );
+  const monthlyGoalFit = useMemo(
+    () => periodAlignsWithMonthlyGoals(startDate, endDate),
+    [startDate, endDate],
+  );
+
+  // When the dashboard date preset changes, pick a sensible default lens
+  useEffect(() => {
+    setMode(defaultBoardMode(preset));
+  }, [preset]);
+
   const rankMap = useMemo(() => buildRankMap(agents, mode), [agents, mode]);
 
   const scorecardAgents = useMemo(() => {
@@ -111,7 +129,7 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
     if (endDate) params.set("endDate", endDate);
     params.set("includeAllRoster", "1");
 
-    const statsKey = `agent-stats|manager-v1|${params.toString()}`;
+    const statsKey = `agent-stats|manager-v2|${params.toString()}`;
     const goalsKey = `goals|${month}`;
     type StatsPayload = {
       error?: string;
@@ -172,13 +190,18 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
   }, [preset, startDate, endDate]);
 
   const boardRows = useMemo(() => {
+    const showMonthlyGoals = mode === "period" && monthlyGoalFit.aligned;
     const rows = agents.map(agent => {
-      const target =
-        mode === "monthly"
-          ? monthlyTarget(goals, agent.agent_name, goalMonth)
-          : dailyDialTarget(goals, agent.agent_name);
-      const current =
-        mode === "monthly" ? (agent.show_lt_conversations ?? 0) : agent.today.dials;
+      if (mode === "today") {
+        const target = dailyDialTarget(goals, agent.agent_name);
+        const current = agent.today.dials;
+        const pct = target && target > 0 ? current / target : null;
+        return { agent, target, current, pct };
+      }
+      const target = showMonthlyGoals
+        ? monthlyTarget(goals, agent.agent_name, goalMonth)
+        : null;
+      const current = agent.show_lt_conversations ?? 0;
       const pct = target && target > 0 ? current / target : null;
       return { agent, target, current, pct };
     });
@@ -188,35 +211,41 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
       const bHas = b.target != null;
       if (aHas !== bHas) return aHas ? -1 : 1;
       if (a.pct != null && b.pct != null && a.pct !== b.pct) return b.pct - a.pct;
+      // Without goals: sort by score
+      if (a.current !== b.current) return b.current - a.current;
       return a.agent.agent_name.localeCompare(b.agent.agent_name);
     });
 
     return rows;
-  }, [agents, goals, goalMonth, mode]);
+  }, [agents, goals, goalMonth, mode, monthlyGoalFit.aligned]);
 
   function toggleAgent(name: string) {
     setExpandedAgent(prev => (prev === name ? null : name));
   }
 
-  const monthLabel = (() => {
+  const monthName = (() => {
     const [y, m] = goalMonth.split("-").map(Number);
     if (!y || !m) return goalMonth;
     return new Date(y, m - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
   })();
 
   const defaultComparisonMetric =
-    mode === "monthly" ? ("show_lt_conversations" as const) : ("dials" as const);
+    mode === "period" ? ("show_lt_conversations" as const) : ("dials" as const);
+
+  const showMonthlyGoalSection = mode === "period" && monthlyGoalFit.aligned;
+  const showTodayGoalSection = mode === "today";
 
   return (
     <div className="space-y-8">
-      {/* Header + mode */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold tracking-tight" style={{ color: "#e2e8f0" }}>
             Floor command
           </h2>
           <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
-            Manager board · daily pulse, monthly ranks, team benchmarks
+            <span style={{ color: "#94a3b8" }}>{periodLabel}</span>
+            {" · "}
+            period numbers follow the date filter · Today is always the live call-center day
           </p>
         </div>
         <div
@@ -225,11 +254,14 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
             background: "rgba(255,255,255,0.04)",
             border: "1px solid rgba(255,255,255,0.08)",
           }}
+          title="Lens only — does not change the date filter window"
         >
-          {([
-            ["monthly", "Monthly"],
-            ["daily", "Daily"],
-          ] as const).map(([key, label]) => (
+          {(
+            [
+              ["period", "Period"],
+              ["today", "Today"],
+            ] as const
+          ).map(([key, label]) => (
             <button
               key={key}
               type="button"
@@ -275,32 +307,30 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
             teamToday={teamToday}
             teamTotals={teamTotals}
             teamAverages={teamAverages}
-            monthLabel={monthLabel}
+            periodLabel={periodLabel}
           />
 
           <TeamAveragesPanel teamAverages={teamAverages} />
 
-          <MonthlyRankingBoard mode={mode} agents={agents} monthLabel={monthLabel} />
+          <MonthlyRankingBoard mode={mode} agents={agents} periodLabel={periodLabel} />
 
-          {/* Goal progress */}
-          <div>
-            <div className="flex flex-wrap items-end justify-between gap-2 mb-4">
-              <div>
-                <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
-                  {mode === "monthly" ? "Monthly goal progress" : "Daily dial goals"}
-                </h3>
-                <p className="text-xs mt-0.5" style={{ color: "#475569" }}>
-                  {mode === "monthly"
-                    ? `Show/LT vs monthly conversation goals · ${monthLabel}`
-                    : "Today dials vs daily dial goals"}
-                </p>
+          {/* Goals — only when current compares cleanly to target window */}
+          {(showMonthlyGoalSection || showTodayGoalSection) && (
+            <div>
+              <div className="flex flex-wrap items-end justify-between gap-2 mb-4">
+                <div>
+                  <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
+                    {showTodayGoalSection
+                      ? "Daily dial goals"
+                      : `Monthly conversation goals · ${monthName}`}
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: "#475569" }}>
+                    {showTodayGoalSection
+                      ? "Today dials vs daily dial goals (live call-center day)"
+                      : `Show/LT in this period (month-to-date or full month) vs ${monthName} targets`}
+                  </p>
+                </div>
               </div>
-            </div>
-            {boardRows.length === 0 ? (
-              <p className="text-sm" style={{ color: "#1e3a5f" }}>
-                No agents
-              </p>
-            ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 {boardRows.map((row, i) => (
                   <AgentGoalCard
@@ -310,14 +340,33 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
                     current={row.current}
                     target={row.target}
                     metricLabel={
-                      mode === "monthly" ? "Conversations (show / LT)" : "Dials today"
+                      showTodayGoalSection
+                        ? "Dials today"
+                        : "Conversations (show / LT) this period"
                     }
                     muted={row.target == null}
                   />
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {mode === "period" && !monthlyGoalFit.aligned && (
+            <div
+              className="rounded-xl px-4 py-3 text-sm"
+              style={{
+                background: "rgba(245,158,11,0.06)",
+                border: "1px solid rgba(245,158,11,0.15)",
+                color: "#94a3b8",
+              }}
+            >
+              Monthly conversation goals are hidden because the filter is{" "}
+              <span style={{ color: "#e2e8f0" }}>{periodLabel}</span>, not a month view. Rankings
+              and KPIs still use this period. Choose{" "}
+              <span style={{ color: "#f59e0b" }}>This Month</span> (or Last Month) to track
+              monthly goals.
+            </div>
+          )}
 
           <VerticalDialMix verticalEffort={verticalEffort} />
 
@@ -329,6 +378,9 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
           <div>
             <h3 className="text-base font-semibold mb-4" style={{ color: "#e2e8f0" }}>
               Agent scorecards
+              <span className="text-xs font-normal ml-2" style={{ color: "#475569" }}>
+                period stats = date filter · today strip = live day
+              </span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {scorecardAgents.map(a => (
@@ -336,7 +388,7 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
                   key={a.agent_name}
                   agent={a}
                   rank={rankMap.get(a.agent_name) ?? 0}
-                  rankLabel={mode === "monthly" ? "Month rank" : "Today rank"}
+                  rankLabel={mode === "period" ? "Period rank" : "Today rank"}
                   goals={goals}
                   teamAverages={teamAverages}
                   periodDays={days}
@@ -357,9 +409,9 @@ export default function AgentPerformance({ preset, startDate, endDate }: Props) 
           </div>
 
           <p className="text-[11px] leading-relaxed pb-2" style={{ color: "#334155" }}>
-            Appts / Shows / LTs = call-rep pay credit rules · Dials by vertical = event client →
-            reporting type (Reverse / DSCR / Call Center·HE) · Talk % on scorecards is
-            conversations ÷ dials; team talk % is conversations ÷ pickups (ops KPI).
+            Date filter sets the period for dials, pickups, appts, shows, LTs, Show/LT, vertical
+            mix, and averages. Today lens ranks live call-center day only. Appts / Shows / LTs =
+            call-rep pay credit rules.
           </p>
         </div>
       )}

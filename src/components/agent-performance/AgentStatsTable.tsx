@@ -5,7 +5,7 @@ import type { AgentPerformanceRow } from "@/lib/agent-performance-types";
 type Props = {
   agents: AgentPerformanceRow[];
   rankMap?: Map<string, number>;
-  mode?: "daily" | "monthly";
+  mode?: "period" | "today";
 };
 
 function rateColor(rate: number): string {
@@ -40,7 +40,7 @@ const STAT_COLS: Col[] = [
   { key: "stl", label: "STL (min)", kind: "stl" },
 ];
 
-export default function AgentStatsTable({ agents, rankMap, mode = "monthly" }: Props) {
+export default function AgentStatsTable({ agents, rankMap, mode = "period" }: Props) {
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
       <div className="overflow-x-auto">
@@ -62,7 +62,13 @@ export default function AgentStatsTable({ agents, rankMap, mode = "monthly" }: P
                   key={c.key}
                   className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
                   style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
-                  title={c.key === "rank" ? (mode === "monthly" ? "Month Show/LT rank" : "Today dials rank") : undefined}
+                  title={
+                    c.key === "rank"
+                      ? mode === "period"
+                        ? "Period Show/LT rank"
+                        : "Today dials rank"
+                      : undefined
+                  }
                 >
                   {c.label}
                 </th>

@@ -1,15 +1,14 @@
 "use client";
 
 import type { TeamAverages, TeamToday, TeamTotals } from "@/lib/agent-performance-types";
-
-type Mode = "daily" | "monthly";
+import type { FloorBoardMode } from "./board-mode";
 
 type Props = {
-  mode: Mode;
+  mode: FloorBoardMode;
   teamToday: TeamToday;
   teamTotals: TeamTotals;
   teamAverages: TeamAverages;
-  monthLabel: string;
+  periodLabel: string;
 };
 
 function StatCell({
@@ -51,9 +50,9 @@ export default function FloorPulseStrip({
   teamToday,
   teamTotals,
   teamAverages,
-  monthLabel,
+  periodLabel,
 }: Props) {
-  if (mode === "daily") {
+  if (mode === "today") {
     return (
       <section
         className="rounded-2xl px-5 py-5 sm:px-7 sm:py-6 relative overflow-hidden"
@@ -73,14 +72,14 @@ export default function FloorPulseStrip({
               className="text-[10px] font-bold uppercase tracking-[0.18em]"
               style={{ color: "#f59e0b" }}
             >
-              Floor pulse · Today
+              Floor pulse · Live today
             </p>
             <h2 className="text-lg sm:text-xl font-semibold mt-1" style={{ color: "#e2e8f0" }}>
-              Live team activity
+              Call-center local day
             </h2>
           </div>
-          <p className="text-xs" style={{ color: "#475569" }}>
-            Call-center local day
+          <p className="text-xs max-w-xs text-right" style={{ color: "#64748b" }}>
+            Not limited by the period filter · always today
           </p>
         </div>
         <div className="relative grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6 sm:gap-8">
@@ -163,15 +162,14 @@ export default function FloorPulseStrip({
             className="text-[10px] font-bold uppercase tracking-[0.18em]"
             style={{ color: "#64748b" }}
           >
-            Period · {monthLabel}
+            Period · {periodLabel}
           </p>
           <h2 className="text-lg sm:text-xl font-semibold mt-1" style={{ color: "#e2e8f0" }}>
             Team KPI strip
           </h2>
         </div>
         <p className="text-xs max-w-sm text-right" style={{ color: "#475569" }}>
-          Appts / Shows / LTs use call-rep pay credit rules · averages over{" "}
-          {teamAverages.active_rep_count} active rep
+          Matches the date filter above · averages over {teamAverages.active_rep_count} active rep
           {teamAverages.active_rep_count === 1 ? "" : "s"}
         </p>
       </div>

@@ -15,7 +15,7 @@ export type AgentPerformanceRow = {
   conversations: number;
   /** Talk-time conversations ÷ dials (scorecard volume rate). */
   conversation_rate: number;
-  /** Unique leads with show ∪ live_transfer (payroll-credited show + LT agents). */
+  /** Unique leads with show ∪ live_transfer in the selected period (pay show + LT agents). */
   show_lt_conversations: number;
   appointments: number;
   callbacks: number;
