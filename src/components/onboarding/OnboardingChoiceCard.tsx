@@ -15,10 +15,12 @@ export default function OnboardingChoiceCard({ label, description, icon, selecte
     <button
       type="button"
       onClick={onClick}
-      className="ob-card group flex flex-col items-center justify-center gap-3 p-6 sm:p-7 text-center min-h-[150px] w-full"
+      className="ob-card group flex flex-col items-center justify-center gap-3 p-6 sm:p-7 text-center w-full"
       data-selected={selected ? "true" : undefined}
+      aria-pressed={selected ? true : false}
       style={{
         borderRadius: 18,
+        minHeight: description ? 180 : 150,
         background: selected ? `linear-gradient(180deg, ${WAIZ.tint}, #ffffff)` : "#ffffff",
         border: `1.5px solid ${selected ? "rgba(79,163,255,.55)" : WAIZ.line}`,
         boxShadow: selected
@@ -28,7 +30,7 @@ export default function OnboardingChoiceCard({ label, description, icon, selecte
       }}
     >
       <span
-        className="flex items-center justify-center"
+        className="flex items-center justify-center shrink-0"
         style={{
           width: 52,
           height: 52,
@@ -53,8 +55,8 @@ export default function OnboardingChoiceCard({ label, description, icon, selecte
             fontFamily: FONT_BODY,
             fontSize: ".78rem",
             color: WAIZ.muted,
-            lineHeight: 1.4,
-            maxWidth: "28ch",
+            lineHeight: 1.45,
+            maxWidth: "26ch",
           }}
         >
           {description}

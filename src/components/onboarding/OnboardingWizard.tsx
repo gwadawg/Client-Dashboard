@@ -271,7 +271,7 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
                 }}
               >
                 <span style={{ width: 18, height: 1, background: "currentColor", opacity: 0.45 }} />
-                {isDscr ? "DSCR performance" : "Glad you're here"}
+                {isDscr ? "Welcome · DSCR performance" : "Glad you're here"}
               </span>
               <h1
                 className="mb-5 mx-auto"
@@ -282,12 +282,12 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
                   lineHeight: 1.08,
                   letterSpacing: "-0.03em",
                   color: WAIZ.ink,
-                  maxWidth: isDscr ? "16ch" : "14ch",
+                  maxWidth: isDscr ? "18ch" : "14ch",
                 }}
               >
                 {isDscr ? (
                   <>
-                    DSCR{" "}
+                    You&apos;re in — let&apos;s get your{" "}
                     <span
                       style={{
                         background: `linear-gradient(105deg, ${WAIZ.royal}, ${WAIZ.accent700})`,
@@ -296,9 +296,9 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
                         color: "transparent",
                       }}
                     >
-                      Performance
+                      DSCR
                     </span>{" "}
-                    Onboarding
+                    pipeline ready
                   </>
                 ) : (
                   <>
@@ -323,12 +323,12 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
                   fontFamily: FONT_BODY,
                   color: WAIZ.muted,
                   fontSize: "1.02rem",
-                  lineHeight: 1.6,
-                  maxWidth: "42ch",
+                  lineHeight: 1.65,
+                  maxWidth: isDscr ? "46ch" : "42ch",
                 }}
               >
                 {isDscr
-                  ? "A few quick questions so we can stand up your DSCR performance engine — leads or conversations, CRM path, and landing assets."
+                  ? "This short form is how we kick off your DSCR performance offer. We'll use your answers to set up leads or conversations, choose the CRM path, build your landing page, and get ads live — so your onboarding call is ready to go."
                   : "A few quick questions so we can build your ads, landing page, and booking system — before your first appointment lands."}
               </p>
               <ContinueButton
@@ -336,11 +336,31 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
                   const next = sequence.find(s => s !== "welcome");
                   goToStep(next ?? "management");
                 }}
-                label="Get started"
+                label={isDscr ? "Let's get started" : "Get started"}
               />
             </div>
           )}
 
+          {step !== "welcome" && (
+            <>
+              {question ? (
+                <h2
+                  className="text-center mb-8 sm:mb-9 mx-auto px-2"
+                  style={{
+                    fontFamily: FONT_DISPLAY,
+                    fontSize: "clamp(1.35rem, 1.1rem + 1.1vw, 1.8rem)",
+                    fontWeight: 600,
+                    letterSpacing: "-0.02em",
+                    color: WAIZ.ink,
+                    lineHeight: 1.2,
+                    maxWidth: "24ch",
+                  }}
+                >
+                  {question}
+                </h2>
+              ) : null}
+
+              <div key={step} className="ob-step">
           {step === "contact_name" && (
             <div className="space-y-3 max-w-md mx-auto">
               <input
@@ -348,10 +368,21 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
                 placeholder="First name"
                 value={draft.first_name}
                 onChange={e => patchDraft({ first_name: e.target.value })}
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const el = document.getElementById("ob-last-name") as HTMLInputElement | null;
+                    el?.focus();
+                  }
+                }}
                 autoFocus
+                autoComplete="given-name"
+                name="first_name"
+                id="ob-first-name"
               />
               <input
                 className={INPUT}
+                id="ob-last-name"
                 placeholder="Last name"
                 value={draft.last_name}
                 onChange={e => patchDraft({ last_name: e.target.value })}
@@ -361,6 +392,8 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
                     goNext();
                   }
                 }}
+                autoComplete="family-name"
+                name="last_name"
               />
               <ContinueButton onClick={goNext} />
             </div>
@@ -382,7 +415,7 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
           )}
 
           {step === "crm_choice" && (
-            <div className="space-y-4 max-w-xl mx-auto">
+            <div className="space-y-5 max-w-xl mx-auto">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {CRM_CHOICE_OPTIONS.map(opt => (
                   <OnboardingChoiceCard
@@ -396,29 +429,19 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
                 ))}
               </div>
               <p
-                className="text-center px-3"
-                style={{ fontFamily: FONT_BODY, fontSize: ".78rem", color: WAIZ.muted, lineHeight: 1.5 }}
+                className="text-center px-3 mx-auto"
+                style={{
+                  fontFamily: FONT_BODY,
+                  fontSize: ".78rem",
+                  color: WAIZ.muted,
+                  lineHeight: 1.55,
+                  maxWidth: "42ch",
+                }}
               >
+                <span style={{ color: WAIZ.ink, fontWeight: 500 }}>Using ours?</span>{" "}
                 {CRM_CHOICE_OPTIONS.find(o => o.value === "waiz")?.finePrint}
               </p>
             </div>
-          )}
-
-          {step !== "welcome" && question && (
-            <h2
-              className="text-center mb-9 mx-auto px-2"
-              style={{
-                fontFamily: FONT_DISPLAY,
-                fontSize: "clamp(1.35rem, 1.1rem + 1.1vw, 1.8rem)",
-                fontWeight: 600,
-                letterSpacing: "-0.02em",
-                color: WAIZ.ink,
-                lineHeight: 1.2,
-                maxWidth: "24ch",
-              }}
-            >
-              {question}
-            </h2>
           )}
 
           {step === "management" && (
@@ -817,38 +840,42 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
               onContinue={goNext}
             />
           )}
+              </div>
 
-          {error && (
-            <p
-              className="mt-6 mx-auto max-w-md text-center"
-              style={{
-                fontFamily: FONT_BODY,
-                fontSize: ".88rem",
-                color: "#b42318",
-                background: "#fef3f2",
-                border: "1px solid #fecdca",
-                borderRadius: 12,
-                padding: ".75rem 1rem",
-              }}
-            >
-              {error}
-            </p>
-          )}
+              {error && (
+                <p
+                  className="mt-6 mx-auto max-w-md text-center"
+                  role="alert"
+                  style={{
+                    fontFamily: FONT_BODY,
+                    fontSize: ".88rem",
+                    color: "#b42318",
+                    background: "#fef3f2",
+                    border: "1px solid #fecdca",
+                    borderRadius: 12,
+                    padding: ".75rem 1rem",
+                  }}
+                >
+                  {error}
+                </p>
+              )}
 
-          {showBack && (
-            <button
-              type="button"
-              onClick={goBack}
-              className="mt-8 mx-auto block"
-              style={{
-                fontFamily: FONT_BODY,
-                fontSize: ".88rem",
-                fontWeight: 500,
-                color: WAIZ.muted,
-              }}
-            >
-              ← Back
-            </button>
+              {showBack && (
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="mt-8 mx-auto block"
+                  style={{
+                    fontFamily: FONT_BODY,
+                    fontSize: ".88rem",
+                    fontWeight: 500,
+                    color: WAIZ.muted,
+                  }}
+                >
+                  ← Back
+                </button>
+              )}
+            </>
           )}
         </div>
       </main>
@@ -1020,8 +1047,15 @@ function BrandStyles() {
       }
       .ob-card:hover { transform: translateY(-2px); box-shadow: 0 18px 40px -22px rgba(6,26,74,.4); }
       .ob-drop:hover { border-color: ${WAIZ.accent} !important; background: ${WAIZ.tint} !important; }
+      .ob-step {
+        animation: obStepIn .28s cubic-bezier(.22,.61,.36,1);
+      }
+      @keyframes obStepIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: none; }
+      }
       @media (prefers-reduced-motion: reduce) {
-        .ob-input, .ob-btn, .ob-card { transition: none; }
+        .ob-input, .ob-btn, .ob-card, .ob-step { transition: none; animation: none; }
         .ob-btn:hover:not(:disabled), .ob-card:hover { transform: none; }
       }
     `}</style>
