@@ -4,6 +4,8 @@ import type { AgentPerformanceRow } from "@/lib/agent-performance-types";
 
 type Props = {
   agents: AgentPerformanceRow[];
+  rankMap?: Map<string, number>;
+  mode?: "daily" | "monthly";
 };
 
 function rateColor(rate: number): string {
@@ -15,9 +17,11 @@ function rateColor(rate: number): string {
 type Col =
   | { key: keyof AgentPerformanceRow; label: string; kind: "number" | "rate" }
   | { key: "today_dials"; label: string; kind: "today" }
-  | { key: "stl"; label: string; kind: "stl" };
+  | { key: "stl"; label: string; kind: "stl" }
+  | { key: "rank"; label: string; kind: "rank" };
 
 const STAT_COLS: Col[] = [
+  { key: "rank", label: "Rank", kind: "rank" },
   { key: "today_dials", label: "Today dials", kind: "today" },
   { key: "dials", label: "Dials", kind: "number" },
   { key: "pickups", label: "Pickups", kind: "number" },
@@ -36,7 +40,7 @@ const STAT_COLS: Col[] = [
   { key: "stl", label: "STL (min)", kind: "stl" },
 ];
 
-export default function AgentStatsTable({ agents }: Props) {
+export default function AgentStatsTable({ agents, rankMap, mode = "monthly" }: Props) {
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
       <div className="overflow-x-auto">
@@ -44,8 +48,12 @@ export default function AgentStatsTable({ agents }: Props) {
           <thead>
             <tr style={{ background: "#050c18" }}>
               <th
-                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
-                style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap sticky left-0 z-10"
+                style={{
+                  color: "#475569",
+                  borderBottom: "1px solid rgba(255,255,255,0.06)",
+                  background: "#050c18",
+                }}
               >
                 Agent
               </th>
@@ -54,6 +62,7 @@ export default function AgentStatsTable({ agents }: Props) {
                   key={c.key}
                   className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
                   style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+                  title={c.key === "rank" ? (mode === "monthly" ? "Month Show/LT rank" : "Today dials rank") : undefined}
                 >
                   {c.label}
                 </th>
@@ -80,10 +89,28 @@ export default function AgentStatsTable({ agents }: Props) {
                     background: i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent",
                   }}
                 >
-                  <td className="px-4 py-3 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>
+                  <td
+                    className="px-4 py-3 font-medium whitespace-nowrap sticky left-0 z-10"
+                    style={{
+                      color: "#e2e8f0",
+                      background: i % 2 === 0 ? "#0b1424" : "#0a1628",
+                    }}
+                  >
                     {a.agent_name}
                   </td>
                   {STAT_COLS.map(c => {
+                    if (c.kind === "rank") {
+                      const r = rankMap?.get(a.agent_name);
+                      return (
+                        <td
+                          key={c.key}
+                          className="px-4 py-3 text-right whitespace-nowrap tabular-nums font-bold"
+                          style={{ color: r === 1 ? "#f59e0b" : "#94a3b8" }}
+                        >
+                          {r != null ? r : "—"}
+                        </td>
+                      );
+                    }
                     if (c.kind === "today") {
                       return (
                         <td

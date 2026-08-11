@@ -1,39 +1,28 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { EnrichedAgentBooking } from '@/lib/agent-appointment-stats';
 import {
   calendarMonthOf,
   countShowLtConversationsByAgent,
+  type ShowLtLeadRow,
 } from '@/lib/agent-show-lt-conversations';
 
 const resolve = (raw: string | null | undefined) => (raw ? raw.trim() : null);
 
-function showBooking(
-  overrides: Partial<EnrichedAgentBooking> & { agent_name: string },
-): EnrichedAgentBooking {
+function showRow(overrides: Partial<ShowLtLeadRow> & { agent_name: string }): ShowLtLeadRow {
   return {
-    id: overrides.id ?? 'b1',
+    agent_name: overrides.agent_name,
     client_id: overrides.client_id ?? 'c1',
-    occurred_at: null,
-    scheduled_at: null,
-    external_id: null,
-    calendar_name: null,
-    calendar_id: null,
-    lead_name: overrides.lead_name ?? null,
+    ghl_contact_id: overrides.ghl_contact_id ?? null,
     lead_phone: overrides.lead_phone ?? null,
     lead_email: overrides.lead_email ?? null,
-    agent_name: overrides.agent_name,
-    ghl_contact_id: overrides.ghl_contact_id ?? null,
-    stage_booked: null,
-    status: overrides.status ?? 'show',
-    outcome_id: 'o1',
-  } as EnrichedAgentBooking;
+    lead_name: overrides.lead_name ?? null,
+  };
 }
 
 describe('countShowLtConversationsByAgent', () => {
   it('counts show-only as one conversation', () => {
     const counts = countShowLtConversationsByAgent(
-      [showBooking({ agent_name: 'Maya', ghl_contact_id: 'g1' })],
+      [showRow({ agent_name: 'Maya', ghl_contact_id: 'g1' })],
       [],
       resolve,
     );
@@ -51,25 +40,26 @@ describe('countShowLtConversationsByAgent', () => {
 
   it('dedupes show + LT for the same lead', () => {
     const counts = countShowLtConversationsByAgent(
-      [showBooking({ agent_name: 'Maya', ghl_contact_id: 'g1' })],
+      [showRow({ agent_name: 'Maya', ghl_contact_id: 'g1' })],
       [{ agent_name: 'Maya', client_id: 'c1', ghl_contact_id: 'g1' }],
       resolve,
     );
     assert.equal(counts.get('Maya'), 1);
   });
 
-  it('ignores non-show bookings', () => {
+  it('credits show event agent, not a different booking agent', () => {
     const counts = countShowLtConversationsByAgent(
-      [showBooking({ agent_name: 'Maya', ghl_contact_id: 'g1', status: 'no_show' })],
+      [showRow({ agent_name: 'Luka', ghl_contact_id: 'g1' })],
       [],
       resolve,
     );
-    assert.equal(counts.get('Maya'), undefined);
+    assert.equal(counts.get('Luka'), 1);
+    assert.equal(counts.get('Bernardo'), undefined);
   });
 
   it('separates agents', () => {
     const counts = countShowLtConversationsByAgent(
-      [showBooking({ agent_name: 'Maya', ghl_contact_id: 'g1' })],
+      [showRow({ agent_name: 'Maya', ghl_contact_id: 'g1' })],
       [{ agent_name: 'Jordan', client_id: 'c1', ghl_contact_id: 'g2' }],
       resolve,
     );

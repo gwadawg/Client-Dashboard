@@ -166,7 +166,7 @@ export default function AgentActivityLog({ agentName, startDate, endDate }: Prop
           </span>
           </div>
           <p className="text-[11px]" style={{ color: "#475569" }}>
-            Counts match the scorecard KPIs — each row is an appointment booked in this period with its linked show/no-show outcome.
+            Bookings + disposition for coaching. Scorecard Shows / Transfers use payroll rules (show event agent + scheduled date; LT event agent).
           </p>
         </div>
       )}

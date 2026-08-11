@@ -11,6 +11,7 @@ import AgentActivityLog from "./AgentActivityLog";
 type Props = {
   agent: AgentPerformanceRow;
   rank: number;
+  rankLabel?: string;
   goals: AgentGoal[];
   teamAverages: TeamAverages;
   periodDays: number;
@@ -97,6 +98,7 @@ function VsTeamBar({
 export default function AgentScorecard({
   agent,
   rank,
+  rankLabel = "Rank",
   goals,
   teamAverages,
   periodDays,
@@ -131,10 +133,10 @@ export default function AgentScorecard({
     { label: "Pickup %", value: `${agent.pickup_rate}%`, rate: agent.pickup_rate },
     { label: "Talk time convos", value: agent.conversations },
     { label: "Talk time %", value: `${agent.conversation_rate}%`, rate: agent.conversation_rate },
-    { label: "Appts booked", value: agent.appointments },
+    { label: "Appts booked (payroll)", value: agent.appointments },
     { label: "Callbacks", value: agent.callbacks },
-    { label: "Live transfers", value: agent.live_transfers },
-    { label: "Shows", value: agent.shows },
+    { label: "Live transfers (payroll)", value: agent.live_transfers },
+    { label: "Shows (payroll)", value: agent.shows },
     { label: "No shows", value: agent.no_shows },
     { label: "LO bailed", value: agent.lo_bailed },
     { label: "Pending", value: agent.pending },
@@ -169,13 +171,22 @@ export default function AgentScorecard({
           <div className="flex items-center gap-2 min-w-0">
             <span
               className="flex-shrink-0 text-xs font-bold px-2 py-0.5 rounded-full tabular-nums"
-              style={{ background: "rgba(245,158,11,0.12)", color: "#f59e0b" }}
+              style={{
+                background: rank === 1 ? "rgba(245,158,11,0.2)" : "rgba(245,158,11,0.12)",
+                color: "#f59e0b",
+              }}
+              title={rankLabel}
             >
-              #{rank}
+              #{rank || "—"}
             </span>
-            <span className="font-semibold truncate" style={{ color: "#e2e8f0" }}>
-              {agent.agent_name}
-            </span>
+            <div className="min-w-0">
+              <span className="font-semibold truncate block" style={{ color: "#e2e8f0" }}>
+                {agent.agent_name}
+              </span>
+              <span className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>
+                {rankLabel}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {agent.avg_speed_to_lead_min != null && (
@@ -330,7 +341,22 @@ export default function AgentScorecard({
               <VsTeamBar label="Appointments" value={agent.appointments} teamAvg={teamAverages.appointments} />
               <VsTeamBar label="Live Transfers" value={agent.live_transfers} teamAvg={teamAverages.live_transfers} />
               <VsTeamBar label="Shows" value={agent.shows} teamAvg={teamAverages.shows} />
+              <VsTeamBar
+                label="Show/LT"
+                value={agent.show_lt_conversations ?? 0}
+                teamAvg={teamAverages.show_lt_conversations ?? 0}
+              />
+              <VsTeamBar
+                label="Talk convos"
+                value={agent.conversations}
+                teamAvg={teamAverages.conversations ?? 0}
+              />
             </div>
+            <p className="text-[11px] mt-2" style={{ color: "#334155" }}>
+              Team rates · pickup {teamAverages.pickup_rate}% · show {teamAverages.show_rate}% ·
+              talk (conv÷pickup) {teamAverages.conversation_rate ?? 0}% · over{" "}
+              {teamAverages.active_rep_count ?? "—"} active reps
+            </p>
           </div>
 
           <div

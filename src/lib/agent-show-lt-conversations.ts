@@ -1,5 +1,4 @@
 import { leadIdentityKey } from '@/lib/metrics';
-import type { EnrichedAgentBooking } from '@/lib/agent-appointment-stats';
 
 export type ShowLtLeadRow = {
   agent_name: string | null;
@@ -11,13 +10,12 @@ export type ShowLtLeadRow = {
 };
 
 /**
- * Unique-lead Conversations (show ∪ live_transfer) per agent.
- * Shows credit the booking agent; LTs credit the LT event agent.
- * Same lead with both events counts once for that agent (and once per agent
- * if credited differently — rare).
+ * Unique-lead Conversations (show ∪ live_transfer) per agent — payroll credit rules.
+ * Shows credit the **show event** agent (same as call-rep pay); LTs credit the LT agent.
+ * Same lead with both events counts once for that agent.
  */
 export function countShowLtConversationsByAgent(
-  showBookings: EnrichedAgentBooking[],
+  payShows: ShowLtLeadRow[],
   liveTransfers: ShowLtLeadRow[],
   resolveAgent: (raw: string | null | undefined) => string | null,
 ): Map<string, number> {
@@ -39,9 +37,8 @@ export function countShowLtConversationsByAgent(
     keysByAgent.set(agent, set);
   }
 
-  for (const booking of showBookings) {
-    if (booking.status !== 'show') continue;
-    add(booking.agent_name, booking);
+  for (const show of payShows) {
+    add(show.agent_name, show);
   }
 
   for (const lt of liveTransfers) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -20,6 +20,7 @@ import {
 
 type Props = {
   agents: AgentPerformanceRow[];
+  defaultMetric?: ComparisonMetricKey;
 };
 
 const MUTED = "#475569";
@@ -30,25 +31,38 @@ const TOOLTIP_STYLE = {
   fontSize: 12,
 };
 
-export default function AgentComparisonChart({ agents }: Props) {
-  const [metric, setMetric] = useState<ComparisonMetricKey>("appointments");
+export default function AgentComparisonChart({
+  agents,
+  defaultMetric = "appointments",
+}: Props) {
+  const [metric, setMetric] = useState<ComparisonMetricKey>(defaultMetric);
   const [showGrouped, setShowGrouped] = useState(false);
 
-  const metricDef = COMPARISON_METRICS.find(m => m.key === metric)!;
+  useEffect(() => {
+    setMetric(defaultMetric);
+  }, [defaultMetric]);
+
+  const metricDef = COMPARISON_METRICS.find(m => m.key === metric) ?? COMPARISON_METRICS[0];
 
   const singleMetricData = useMemo(() => {
     return [...agents]
-      .sort((a, b) => b[metric] - a[metric])
+      .sort((a, b) => (b[metric] as number) - (a[metric] as number))
       .map(a => ({
         name: a.agent_name.length > 14 ? `${a.agent_name.slice(0, 12)}…` : a.agent_name,
         fullName: a.agent_name,
-        value: a[metric],
+        value: a[metric] as number,
       }));
   }, [agents, metric]);
 
   const groupedData = useMemo(() => {
     const top = [...agents]
-      .sort((a, b) => b.appointments - a.appointments)
+      .sort((a, b) => {
+        if (defaultMetric === "show_lt_conversations") {
+          return (b.show_lt_conversations ?? 0) - (a.show_lt_conversations ?? 0);
+        }
+        if (defaultMetric === "dials") return b.dials - a.dials;
+        return b.appointments - a.appointments;
+      })
       .slice(0, 5);
     return top.map(a => ({
       name: a.agent_name.length > 12 ? `${a.agent_name.slice(0, 10)}…` : a.agent_name,
@@ -58,8 +72,9 @@ export default function AgentComparisonChart({ agents }: Props) {
       Appointments: a.appointments,
       Transfers: a.live_transfers,
       Shows: a.shows,
+      "Show/LT": a.show_lt_conversations ?? 0,
     }));
-  }, [agents]);
+  }, [agents, defaultMetric]);
 
   if (agents.length === 0) return null;
 
@@ -122,19 +137,23 @@ export default function AgentComparisonChart({ agents }: Props) {
                 }
               />
               <Legend wrapperStyle={{ fontSize: 11, color: MUTED }} />
-              {COMPARISON_METRICS.map(m => (
-                <Bar
-                  key={m.key}
-                  dataKey={
-                    m.key === "live_transfers"
-                      ? "Transfers"
-                      : m.key.charAt(0).toUpperCase() + m.key.slice(1)
-                  }
-                  fill={m.color}
-                  radius={[2, 2, 0, 0]}
-                  maxBarSize={28}
-                />
-              ))}
+              {COMPARISON_METRICS.map(m => {
+                const dataKey =
+                  m.key === "live_transfers"
+                    ? "Transfers"
+                    : m.key === "show_lt_conversations"
+                      ? "Show/LT"
+                      : m.key.charAt(0).toUpperCase() + m.key.slice(1);
+                return (
+                  <Bar
+                    key={m.key}
+                    dataKey={dataKey}
+                    fill={m.color}
+                    radius={[2, 2, 0, 0]}
+                    maxBarSize={28}
+                  />
+                );
+              })}
             </BarChart>
           ) : (
             <BarChart
@@ -142,7 +161,11 @@ export default function AgentComparisonChart({ agents }: Props) {
               layout="vertical"
               margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="rgba(255,255,255,0.04)"
+                horizontal={false}
+              />
               <XAxis type="number" tick={{ fill: MUTED, fontSize: 11 }} />
               <YAxis
                 type="category"
@@ -152,7 +175,7 @@ export default function AgentComparisonChart({ agents }: Props) {
               />
               <Tooltip
                 contentStyle={TOOLTIP_STYLE}
-                formatter={(v) => [typeof v === "number" ? v : Number(v ?? 0), metricDef.label]}
+                formatter={v => [typeof v === "number" ? v : Number(v ?? 0), metricDef.label]}
                 labelFormatter={(_, payload) =>
                   payload?.[0]?.payload?.fullName ? String(payload[0].payload.fullName) : ""
                 }
