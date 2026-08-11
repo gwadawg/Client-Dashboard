@@ -449,6 +449,227 @@
 
   .tl-item:last-child .tl-connector { display: none; }
 
+  /* Primary dual CTAs — form + calendar */
+  .do-now {
+    margin: 0 0 36px;
+    background:
+      linear-gradient(145deg, rgba(79, 163, 255, 0.07), rgba(124, 255, 122, 0.05)),
+      var(--white);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 22px 22px 20px;
+    box-shadow: var(--shadow);
+  }
+
+  .do-now-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin-bottom: 16px;
+  }
+
+  .do-now-head p.now-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #b45309;
+  }
+
+  .do-now-head h2 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(26px, 3.5vw, 34px);
+    font-weight: 900;
+    text-transform: uppercase;
+    color: var(--navy);
+    line-height: 1;
+    width: 100%;
+  }
+
+  .do-now-head .hint {
+    font-size: 14px;
+    color: var(--mid);
+    max-width: 36em;
+    line-height: 1.5;
+  }
+
+  .cta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  a.cta-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    text-decoration: none;
+    border-radius: var(--radius);
+    padding: 20px 18px 18px;
+    border: 2px solid transparent;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    min-height: 100%;
+  }
+
+  a.cta-card:hover {
+    transform: translateY(-2px);
+  }
+
+  a.cta-card:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  a.cta-card.primary {
+    background: var(--navy);
+    color: var(--white);
+    box-shadow: 0 12px 28px rgba(6, 26, 74, 0.28);
+  }
+  a.cta-card.primary:hover {
+    border-color: var(--accent);
+    box-shadow: 0 16px 36px rgba(6, 26, 74, 0.34);
+  }
+
+  a.cta-card.secondary {
+    background: var(--white);
+    color: var(--dark);
+    border-color: var(--divider);
+  }
+  a.cta-card.secondary:hover {
+    border-color: var(--accent-deep);
+    box-shadow: 0 12px 28px rgba(6, 26, 74, 0.1);
+  }
+
+  .cta-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .cta-num {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+  }
+
+  a.cta-card.primary .cta-num {
+    background: var(--green);
+    color: var(--navy);
+  }
+
+  a.cta-card.secondary .cta-num {
+    background: rgba(79, 163, 255, 0.15);
+    color: var(--royal);
+  }
+
+  .cta-kicker {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  a.cta-card.primary .cta-kicker { color: var(--green); }
+  a.cta-card.secondary .cta-kicker { color: var(--accent-deep); }
+
+  .cta-card h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: 1;
+    letter-spacing: 0.01em;
+  }
+
+  a.cta-card.primary h3 { color: var(--white); }
+  a.cta-card.secondary h3 { color: var(--navy); }
+
+  .cta-card p {
+    font-size: 14px;
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  a.cta-card.primary p { color: rgba(255, 255, 255, 0.78); }
+  a.cta-card.secondary p { color: var(--mid); }
+
+  .cta-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 4px;
+    padding: 12px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  a.cta-card.primary .cta-btn {
+    background: var(--green);
+    color: var(--navy);
+  }
+
+  a.cta-card.secondary .cta-btn {
+    background: var(--royal);
+    color: var(--white);
+  }
+
+  .cta-btn .arrow {
+    font-size: 16px;
+    line-height: 1;
+    transition: transform 0.15s ease;
+  }
+
+  a.cta-card:hover .cta-btn .arrow {
+    transform: translateX(3px);
+  }
+
+  .tl-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  a.tl-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+
+  a.tl-btn:hover { transform: translateY(-1px); }
+
+  a.tl-btn.form {
+    background: var(--navy);
+    color: var(--white);
+    box-shadow: 0 8px 18px rgba(6, 26, 74, 0.2);
+  }
+
+  a.tl-btn.cal {
+    background: rgba(79, 163, 255, 0.12);
+    color: var(--royal);
+    border: 1.5px solid rgba(43, 125, 224, 0.35);
+  }
+
+  a.tl-btn .arrow { transition: transform 0.12s ease; }
+  a.tl-btn:hover .arrow { transform: translateX(2px); }
+
   .next-box {
     margin-top: 32px;
     background: var(--white);
@@ -484,6 +705,10 @@
 
   .next-box p strong { color: var(--navy); }
 
+  .next-box .cta-grid {
+    margin-top: 16px;
+  }
+
   .doc-footer {
     background: var(--dark);
     padding: 28px;
@@ -514,6 +739,7 @@
       gap: 16px 8px;
     }
     .roadmap-track::before { display: none; }
+    .cta-grid { grid-template-columns: 1fr; }
   }
 
   @media (max-width: 560px) {
@@ -557,8 +783,56 @@
   <h2 class="section-title">Paid → form → build → launch</h2>
   <p class="section-lead">
     Read this as a timeline: <strong>step 1 happens first</strong>, then 2, then 3…
-    We text and email every link you need. Stay fast on step 1 so the whole path stays short.
+    Use the two buttons below — form first if you haven’t yet, then book your onboarding call.
   </p>
+
+  <!-- Dual CTAs: form + calendar — clear click targets -->
+  <section class="do-now" aria-label="Your next actions">
+    <div class="do-now-head">
+      <p class="now-label">Your next two clicks</p>
+      <h2>Start here</h2>
+      <p class="hint">
+        Both open in a new tab. Complete the form as soon as you can, then grab a time on the calendar.
+      </p>
+    </div>
+    <div class="cta-grid">
+      <a
+        class="cta-card primary"
+        href="https://os.waizmedia.net/onboard/dscr"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <div class="cta-top">
+          <span class="cta-num">1</span>
+          <span class="cta-kicker">Do this first</span>
+        </div>
+        <h3>DSCR onboarding form</h3>
+        <p>
+          Access, branding, CRM, markets — everything we need to start build-out.
+          Takes a few minutes.
+        </p>
+        <span class="cta-btn">Open form <span class="arrow" aria-hidden="true">→</span></span>
+      </a>
+      <a
+        class="cta-card secondary"
+        href="https://PLACEHOLDER-ONBOARDING-CALENDAR"
+        target="_blank"
+        rel="noopener noreferrer"
+        id="ob-calendar-link"
+      >
+        <div class="cta-top">
+          <span class="cta-num">2</span>
+          <span class="cta-kicker">Then book</span>
+        </div>
+        <h3>Onboarding calendar</h3>
+        <p>
+          30–40 min with your project manager. Pick a slot after the form is in
+          so the call is productive.
+        </p>
+        <span class="cta-btn">Book OB call <span class="arrow" aria-hidden="true">→</span></span>
+      </a>
+    </div>
+  </section>
 
   <!-- At-a-glance horizontal roadmap -->
   <div class="roadmap" aria-label="Five-step overview">
@@ -612,9 +886,19 @@
           <h3>Onboarding form</h3>
           <p>
             Fill this out <strong>as soon as you can</strong> so we can start build-out.
-            We’ll also text and email you the link — watch both.
+            You can open it from the button below.
           </p>
           <span class="asap">Try to complete today if possible</span>
+          <div class="tl-actions">
+            <a
+              class="tl-btn form"
+              href="https://os.waizmedia.net/onboard/dscr"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open DSCR form <span class="arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
         </article>
         <div class="tl-connector">Then</div>
       </div>
@@ -636,6 +920,17 @@
             Get logged in, confirm access, and make sure we have everything we need
             (page, CRM, branding, markets).
           </p>
+          <div class="tl-actions">
+            <a
+              class="tl-btn cal"
+              href="https://PLACEHOLDER-ONBOARDING-CALENDAR"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-ob-calendar
+            >
+              Book on calendar <span class="arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
         </article>
         <div class="tl-connector">Then</div>
       </div>
@@ -705,13 +1000,43 @@
   </ol>
 
   <div class="next-box">
-    <p class="now-label">Your only action right now</p>
-    <h3>Complete step 1 — the form</h3>
+    <p class="now-label">Your actions right now</p>
+    <h3>Form first · then book the call</h3>
     <p>
-      Watch for our text/email with the <strong>onboarding form</strong> (and agreement if not already sent).
-      Finish that ASAP. Once it’s in, we book your <strong>30–40 min onboarding call</strong>
-      and move down the timeline.
+      Same two links as above — form unlocks build-out; the calendar locks in your
+      <strong>30–40 min onboarding call</strong> so we don’t lose time waiting on email.
     </p>
+    <div class="cta-grid">
+      <a
+        class="cta-card primary"
+        href="https://os.waizmedia.net/onboard/dscr"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <div class="cta-top">
+          <span class="cta-num">1</span>
+          <span class="cta-kicker">Required</span>
+        </div>
+        <h3>Open form</h3>
+        <p>DSCR onboarding intake on Waiz OS.</p>
+        <span class="cta-btn">os.waizmedia.net/onboard/dscr <span class="arrow" aria-hidden="true">→</span></span>
+      </a>
+      <a
+        class="cta-card secondary"
+        href="https://PLACEHOLDER-ONBOARDING-CALENDAR"
+        target="_blank"
+        rel="noopener noreferrer"
+        data-ob-calendar
+      >
+        <div class="cta-top">
+          <span class="cta-num">2</span>
+          <span class="cta-kicker">Schedule</span>
+        </div>
+        <h3>Book call</h3>
+        <p>Onboarding calendar — pick any open slot.</p>
+        <span class="cta-btn">Open calendar <span class="arrow" aria-hidden="true">→</span></span>
+      </a>
+    </div>
   </div>
 </main>
 
