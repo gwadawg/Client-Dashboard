@@ -291,7 +291,7 @@ export const NAV: NavItem[] = [
   { view: "agents",             label: "Call Center Hub",       group: "Team"         },
   { view: "resources",          label: "Resource Library",      group: "Team"         },
   { view: "closebot_log",       label: "Closebot Log",          group: "Team"         },
-  { view: "team_meetings",      label: "Team Meetings",         group: "Team"         },
+  { view: "team_meetings",      label: "Calendars",             group: "Team"         },
   { view: "account_work",       label: "Account Work",          group: "Team"         },
   { view: "call_library",       label: "Team Calls",            group: "Team"         },
   { view: "admin_agents",       label: "Team Roster",           group: "Admin"        },

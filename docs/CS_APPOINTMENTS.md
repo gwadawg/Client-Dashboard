@@ -63,7 +63,8 @@ Unknown `calendar_id` values are rejected by the webhook (`400`) until seeded.
 
 ## Dashboard
 
-- **Ops Overview** — “Upcoming CS calls” (next 14 days), including unmapped ClickUp IDs.
+- **Calendars** (Team sidebar; was Team Meetings) — team runbooks + client CS appointments in the date range. **CS calendars** panel: paste GHL calendar ID / name / type into `cs_calendar_config` (no SQL).
+- **Ops Overview / Team Command CS** — “Upcoming CS calls” (next 14 days), including unmapped ClickUp IDs.
 - **Client File** — “CS Calls” tab with full appointment history (when the client has a ClickUp task ID).
 - **Client Roster** — “Next CS” column (Full + Client Success views).
 

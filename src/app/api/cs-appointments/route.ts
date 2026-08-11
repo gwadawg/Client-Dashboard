@@ -3,14 +3,24 @@ import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import {
   type CsAppointmentEnriched,
   listCsAppointmentsForClickup,
+  listCsAppointmentsInRange,
   listUpcomingCsAppointments,
   mapNextCsAppointmentByClickup,
 } from '@/lib/cs-appointments';
+
+function endOfUtcDay(ymd: string): string {
+  return `${ymd}T23:59:59.999Z`;
+}
+
+function startOfUtcDay(ymd: string): string {
+  return `${ymd}T00:00:00.000Z`;
+}
 
 /**
  * GET /api/cs-appointments
  *   ?scope=upcoming          — next 14 days (Ops / Roster)
  *   ?scope=next_by_clickup&clickup_task_ids=a,b,c — next scheduled per ClickUp ID
+ *   ?from=&to=               — range for Calendars view (YMD or ISO)
  *   ?clickup_task_id=X       — appointments for one client (Client File)
  */
 export async function GET(req: Request) {
@@ -21,6 +31,8 @@ export async function GET(req: Request) {
   const scope = url.searchParams.get('scope');
   const clickupTaskId = url.searchParams.get('clickup_task_id')?.trim() || null;
   const clickupIdsRaw = url.searchParams.get('clickup_task_ids')?.trim() || '';
+  const fromParam = url.searchParams.get('from')?.trim() || '';
+  const toParam = url.searchParams.get('to')?.trim() || '';
 
   try {
     if (scope === 'upcoming') {
@@ -40,6 +52,17 @@ export async function GET(req: Request) {
       return NextResponse.json({ next_by_clickup });
     }
 
+    if (fromParam && toParam) {
+      const fromIso = fromParam.includes('T') ? fromParam : startOfUtcDay(fromParam);
+      const toIso = toParam.includes('T') ? toParam : endOfUtcDay(toParam);
+      const appointments = await listCsAppointmentsInRange(ctx.service, {
+        fromIso,
+        toIso,
+      });
+      const unmapped = appointments.filter(a => !a.client_id).length;
+      return NextResponse.json({ appointments, unmapped_count: unmapped });
+    }
+
     if (clickupTaskId) {
       const history = url.searchParams.get('history') === '1';
       const appointments = await listCsAppointmentsForClickup(ctx.service, clickupTaskId, {
@@ -51,7 +74,7 @@ export async function GET(req: Request) {
     return NextResponse.json(
       {
         error:
-          'Provide scope=upcoming, scope=next_by_clickup&clickup_task_ids=, or clickup_task_id=',
+          'Provide scope=upcoming, scope=next_by_clickup&clickup_task_ids=, from=&to=, or clickup_task_id=',
       },
       { status: 400 },
     );

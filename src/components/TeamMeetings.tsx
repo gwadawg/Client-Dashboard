@@ -1,12 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   CALL_CENTER_TIMEZONE,
   LIBRARY_SOP_LINK_LABELS,
   librarySlugsForTemplate,
   type TeamMeetingInstanceView,
 } from "@/lib/team-meetings";
+import {
+  CS_CALL_TYPES,
+  csCallTypeLabel,
+  type CsAppointmentEnriched,
+  type CsCalendarConfig,
+  type CsCallType,
+} from "@/lib/cs-appointments";
 import { commitmentModeForTemplateSlug } from "@/lib/meeting-commitments";
 import { weekPlanModeForTemplateSlug } from "@/lib/account-week-plans";
 import MeetingCommitmentsPanel from "@/components/MeetingCommitmentsPanel";
@@ -30,6 +37,7 @@ const STATUS_COLOR: Record<string, string> = {
   completed: "#34d399",
   skipped: "#fbbf24",
   cancelled: "#f87171",
+  no_show: "#f97316",
 };
 
 function formatWhen(iso: string): string {
@@ -61,7 +69,28 @@ function dayHeading(iso: string): string {
   });
 }
 
-type Filter = "all" | "upcoming" | "in_progress" | "completed" | "skipped";
+type StatusFilter = "all" | "upcoming" | "in_progress" | "completed" | "skipped";
+type KindFilter = "all" | "team" | "client";
+
+type CalendarListItem =
+  | {
+      key: string;
+      kind: "team";
+      scheduled_at: string;
+      status: string;
+      title: string;
+      subtitle: string;
+      meeting: TeamMeetingInstanceView;
+    }
+  | {
+      key: string;
+      kind: "client";
+      scheduled_at: string;
+      status: string;
+      title: string;
+      subtitle: string;
+      appointment: CsAppointmentEnriched;
+    };
 
 type Props = {
   from: string;
@@ -69,21 +98,34 @@ type Props = {
 };
 
 export default function TeamMeetings({ from, to }: Props) {
-  const [rows, setRows] = useState<TeamMeetingInstanceView[]>([]);
+  const [teamRows, setTeamRows] = useState<TeamMeetingInstanceView[]>([]);
+  const [clientRows, setClientRows] = useState<CsAppointmentEnriched[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<Filter>("all");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [showCalConfig, setShowCalConfig] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams({ from, to });
-    fetch(`/api/team-meetings?${params}`)
-      .then(async r => {
+    Promise.all([
+      fetch(`/api/team-meetings?${params}`).then(async r => {
         const d = await r.json();
-        if (!r.ok) throw new Error(d.error ?? "Failed to load");
-        setRows(d.rows ?? []);
+        if (!r.ok) throw new Error(d.error ?? "Failed to load team meetings");
+        return (d.rows ?? []) as TeamMeetingInstanceView[];
+      }),
+      fetch(`/api/cs-appointments?${params}`).then(async r => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error ?? "Failed to load client calls");
+        return (d.appointments ?? []) as CsAppointmentEnriched[];
+      }),
+    ])
+      .then(([team, client]) => {
+        setTeamRows(team);
+        setClientRows(client);
         setError(null);
       })
       .catch(e => setError(e instanceof Error ? e.message : "Failed to load"))
@@ -94,21 +136,58 @@ export default function TeamMeetings({ from, to }: Props) {
     load();
   }, [load, reloadKey]);
 
-  const selected = useMemo(
-    () => rows.find(r => r.id === selectedId) ?? null,
-    [rows, selectedId],
-  );
+  const items = useMemo((): CalendarListItem[] => {
+    const teamItems: CalendarListItem[] = teamRows.map(m => ({
+      key: `team:${m.id}`,
+      kind: "team" as const,
+      scheduled_at: m.scheduled_at,
+      status: m.status,
+      title: m.template.title,
+      subtitle: m.template.theme,
+      meeting: m,
+    }));
+    const clientItems: CalendarListItem[] = clientRows.map(a => ({
+      key: `client:${a.id}`,
+      kind: "client" as const,
+      scheduled_at: a.scheduled_at,
+      status: a.status,
+      title: a.client_name ?? `Unmapped · ${a.clickup_task_id}`,
+      subtitle: `${csCallTypeLabel(a.call_type)}${a.calendar_name ? ` · ${a.calendar_name}` : ""}`,
+      appointment: a,
+    }));
+    return [...teamItems, ...clientItems].sort(
+      (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+    );
+  }, [teamRows, clientRows]);
 
   const filtered = useMemo(() => {
-    if (filter === "all") return rows;
-    if (filter === "upcoming") {
-      return rows.filter(r => r.status === "scheduled" || r.status === "in_progress");
-    }
-    return rows.filter(r => r.status === filter);
-  }, [rows, filter]);
+    return items.filter(item => {
+      if (kindFilter !== "all" && item.kind !== kindFilter) return false;
+      if (statusFilter === "all") return true;
+      if (statusFilter === "upcoming") {
+        if (item.kind === "team") {
+          return item.status === "scheduled" || item.status === "in_progress";
+        }
+        return item.status === "scheduled";
+      }
+      if (statusFilter === "completed") {
+        return item.status === "completed";
+      }
+      if (statusFilter === "in_progress") {
+        return item.kind === "team" && item.status === "in_progress";
+      }
+      if (statusFilter === "skipped") {
+        return (
+          (item.kind === "team" && item.status === "skipped") ||
+          (item.kind === "client" && (item.status === "cancelled" || item.status === "no_show"))
+        );
+      }
+      return true;
+    });
+  }, [items, kindFilter, statusFilter]);
 
   const byDay = useMemo(() => {
-    const map = new Map<string, TeamMeetingInstanceView[]>();
+    const map = new Map<string, CalendarListItem[]>();
     for (const row of filtered) {
       const key = formatDayKey(row.scheduled_at);
       const list = map.get(key) ?? [];
@@ -118,18 +197,58 @@ export default function TeamMeetings({ from, to }: Props) {
     return [...map.entries()];
   }, [filtered]);
 
-  const skippedCount = rows.filter(r => r.status === "skipped").length;
+  const selected = useMemo(
+    () => items.find(r => r.key === selectedKey) ?? null,
+    [items, selectedKey],
+  );
+
+  const skippedCount = teamRows.filter(r => r.status === "skipped").length;
+  const clientCount = clientRows.length;
+  const unmappedCount = clientRows.filter(r => !r.client_id).length;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">Team Meetings</h2>
+          <h2 className="text-lg font-semibold text-slate-100">Calendars</h2>
           <p className="text-sm text-slate-400">
-            Q3 runbooks · times in São Paulo · open linked SOPs from Mon/Thu KPI
+            Team runbooks + client CS calls (onboarding / launch / check-in) · times in São Paulo
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs">
+        <div className="flex flex-wrap gap-2 items-center">
+          <button
+            type="button"
+            onClick={() => setShowCalConfig(v => !v)}
+            className="rounded-md px-2.5 py-1.5 text-xs"
+            style={{
+              background: showCalConfig ? "rgba(56,189,248,0.18)" : "rgba(15,32,64,0.8)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              color: showCalConfig ? "#7dd3fc" : "#94a3b8",
+            }}
+          >
+            {showCalConfig ? "Hide CS calendars" : "CS calendars"}
+          </button>
+          {(
+            [
+              ["all", "All kinds"],
+              ["team", "Team"],
+              ["client", "Client"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setKindFilter(key)}
+              className="rounded-md px-2.5 py-1.5 text-xs"
+              style={{
+                background: kindFilter === key ? "rgba(96,165,250,0.2)" : "rgba(15,32,64,0.8)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                color: kindFilter === key ? "#93c5fd" : "#94a3b8",
+              }}
+            >
+              {label}
+            </button>
+          ))}
           {(
             [
               ["all", "All"],
@@ -142,12 +261,12 @@ export default function TeamMeetings({ from, to }: Props) {
             <button
               key={key}
               type="button"
-              onClick={() => setFilter(key)}
-              className="rounded-md px-2.5 py-1.5"
+              onClick={() => setStatusFilter(key)}
+              className="rounded-md px-2.5 py-1.5 text-xs"
               style={{
-                background: filter === key ? "rgba(96,165,250,0.2)" : "rgba(15,32,64,0.8)",
+                background: statusFilter === key ? "rgba(96,165,250,0.2)" : "rgba(15,32,64,0.8)",
                 border: "1px solid rgba(255,255,255,0.12)",
-                color: filter === key ? "#93c5fd" : "#94a3b8",
+                color: statusFilter === key ? "#93c5fd" : "#94a3b8",
               }}
             >
               {label}
@@ -156,9 +275,33 @@ export default function TeamMeetings({ from, to }: Props) {
         </div>
       </div>
 
-      {skippedCount > 0 && (
-        <p className="text-xs text-amber-300/90">
-          {skippedCount} skipped this window — leadership smell if this piles up.
+      {showCalConfig && (
+        <CsCalendarsConfigPanel
+          onChanged={() => {
+            /* appointments only appear after Make posts; list stays as-is */
+          }}
+        />
+      )}
+
+      {(skippedCount > 0 || clientCount > 0) && (
+        <p className="text-xs text-slate-400">
+          {clientCount > 0 && (
+            <span>
+              {clientCount} client CS call{clientCount === 1 ? "" : "s"} in range
+              {unmappedCount > 0 ? (
+                <span className="text-amber-300/90">
+                  {" "}
+                  · {unmappedCount} unmapped ClickUp ID{unmappedCount === 1 ? "" : "s"}
+                </span>
+              ) : null}
+              {skippedCount > 0 ? " · " : ""}
+            </span>
+          )}
+          {skippedCount > 0 && (
+            <span className="text-amber-300/90">
+              {skippedCount} team meeting{skippedCount === 1 ? "" : "s"} skipped
+            </span>
+          )}
         </p>
       )}
 
@@ -174,9 +317,9 @@ export default function TeamMeetings({ from, to }: Props) {
           style={{ border: "1px solid rgba(255,255,255,0.08)", background: "rgba(15,23,42,0.6)" }}
         >
           {loading ? (
-            <p className="text-sm text-slate-500 p-6">Loading meetings…</p>
+            <p className="text-sm text-slate-500 p-6">Loading calendars…</p>
           ) : byDay.length === 0 ? (
-            <p className="text-sm text-slate-500 p-6">No meetings in this range.</p>
+            <p className="text-sm text-slate-500 p-6">No events in this range.</p>
           ) : (
             byDay.map(([day, list]) => (
               <div key={day}>
@@ -188,15 +331,15 @@ export default function TeamMeetings({ from, to }: Props) {
                 </div>
                 <ul>
                   {list.map(row => (
-                    <li key={row.id}>
+                    <li key={row.key}>
                       <button
                         type="button"
-                        onClick={() => setSelectedId(row.id)}
+                        onClick={() => setSelectedKey(row.key)}
                         className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-white/[0.03]"
                         style={{
                           borderBottom: "1px solid rgba(255,255,255,0.05)",
                           background:
-                            selectedId === row.id ? "rgba(96,165,250,0.08)" : "transparent",
+                            selectedKey === row.key ? "rgba(96,165,250,0.08)" : "transparent",
                         }}
                       >
                         <span
@@ -204,9 +347,23 @@ export default function TeamMeetings({ from, to }: Props) {
                           style={{ background: STATUS_COLOR[row.status] ?? "#64748b" }}
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="block text-sm text-slate-100">{row.template.title}</span>
-                          <span className="block text-xs text-slate-400 truncate">
-                            {formatWhen(row.scheduled_at)} · {row.template.theme}
+                          <span className="flex items-center gap-2">
+                            <span
+                              className="text-[10px] uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded"
+                              style={{
+                                color: row.kind === "client" ? "#38bdf8" : "#a78bfa",
+                                background:
+                                  row.kind === "client"
+                                    ? "rgba(56,189,248,0.12)"
+                                    : "rgba(167,139,250,0.12)",
+                              }}
+                            >
+                              {row.kind === "client" ? "Client" : "Team"}
+                            </span>
+                            <span className="block text-sm text-slate-100 truncate">{row.title}</span>
+                          </span>
+                          <span className="block text-xs text-slate-400 truncate mt-0.5">
+                            {formatWhen(row.scheduled_at)} · {row.subtitle}
                           </span>
                         </span>
                         <span
@@ -225,22 +382,257 @@ export default function TeamMeetings({ from, to }: Props) {
         </div>
 
         <div>
-          {selected ? (
+          {selected?.kind === "team" ? (
             <TeamMeetingRunbook
-              key={selected.id}
-              initial={selected}
+              key={selected.meeting.id}
+              initial={selected.meeting}
               onChanged={() => setReloadKey(k => k + 1)}
             />
+          ) : selected?.kind === "client" ? (
+            <ClientCsCallDetail appointment={selected.appointment} />
           ) : (
             <div
               className="rounded-xl p-8 text-sm text-slate-500"
               style={{ border: "1px solid rgba(255,255,255,0.08)", background: "rgba(15,23,42,0.4)" }}
             >
-              Open a meeting to run the checklist and disposition the call.
+              Open an event to view runbook details or client CS call info.
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ClientCsCallDetail({ appointment }: { appointment: CsAppointmentEnriched }) {
+  const mapped = !!appointment.client_id;
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ border: "1px solid rgba(255,255,255,0.08)", background: "rgba(15,23,42,0.75)" }}
+    >
+      <div className="px-4 py-4 space-y-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-sky-400/90 mb-1">Client CS call</p>
+            <h3 className="text-base font-semibold text-slate-100">
+              {appointment.client_name ?? "Unmapped client"}
+            </h3>
+            <p className="text-xs text-slate-400">{csCallTypeLabel(appointment.call_type)}</p>
+          </div>
+          <span className="text-[10px] uppercase" style={{ color: STATUS_COLOR[appointment.status] }}>
+            {appointment.status.replace("_", " ")}
+          </span>
+        </div>
+        <p className="text-xs text-slate-500">{formatWhen(appointment.scheduled_at)}</p>
+      </div>
+
+      <div className="px-4 py-4 space-y-3 text-sm">
+        <Row label="Calendar" value={appointment.calendar_name ?? appointment.calendar_id} />
+        <Row label="Calendar ID" value={appointment.calendar_id} mono />
+        <Row label="ClickUp task" value={appointment.clickup_task_id} mono />
+        <Row label="GHL appointment" value={appointment.ghl_appointment_id} mono />
+        {appointment.assigned_to && <Row label="Assigned" value={appointment.assigned_to} />}
+        {appointment.title && <Row label="Title" value={appointment.title} />}
+        {!mapped && (
+          <p
+            className="text-xs text-amber-200/90 rounded-md px-3 py-2"
+            style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)" }}
+          >
+            No roster client shares this ClickUp task ID. Appointments still sync — set{" "}
+            <code className="text-amber-100">clickup_task_id</code> on the client to map them.
+          </p>
+        )}
+        <p className="text-xs text-slate-500 pt-2">
+          Notes and recordings for completed CS work live on the client file (Calls & notes). This board
+          is the scheduled GHL calendar feed.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
+      <span className="text-xs uppercase tracking-wide text-slate-500 shrink-0 sm:w-28">{label}</span>
+      <span className={`text-slate-200 break-all ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
+    </div>
+  );
+}
+
+function CsCalendarsConfigPanel({ onChanged }: { onChanged?: () => void }) {
+  const [calendars, setCalendars] = useState<CsCalendarConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [calendarId, setCalendarId] = useState("");
+  const [calendarName, setCalendarName] = useState("");
+  const [callType, setCallType] = useState<CsCallType>("checkin");
+  const [message, setMessage] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    fetch("/api/cs-calendars")
+      .then(async r => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error ?? "Failed to load calendars");
+        setCalendars(d.calendars ?? []);
+        setError(null);
+      })
+      .catch(e => setError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/cs-calendars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          calendar_id: calendarId.trim(),
+          calendar_name: calendarName.trim(),
+          call_type: callType,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "Save failed");
+      setCalendarId("");
+      setCalendarName("");
+      setMessage("Calendar registered — Make can post this calendar_id now.");
+      load();
+      onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(id: string) {
+    if (!window.confirm(`Remove calendar ${id}? Incoming Make events for this ID will 400 until re-added.`)) {
+      return;
+    }
+    setError(null);
+    try {
+      const res = await fetch(`/api/cs-calendars?calendar_id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "Delete failed");
+      load();
+      onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
+  return (
+    <div
+      className="rounded-xl p-4 space-y-3"
+      style={{ border: "1px solid rgba(56,189,248,0.2)", background: "rgba(14,116,144,0.08)" }}
+    >
+      <div>
+        <h3 className="text-sm font-semibold text-slate-100">CS calendar IDs</h3>
+        <p className="text-xs text-slate-400 mt-0.5">
+          Paste GHL calendar IDs so onboarding / launch / check-in webhooks are accepted. Unknown IDs
+          return 400 from the webhook.
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-xs text-slate-500">Loading…</p>
+      ) : calendars.length === 0 ? (
+        <p className="text-xs text-slate-500">No calendars registered yet.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {calendars.map(c => (
+            <li
+              key={c.calendar_id}
+              className="flex flex-wrap items-center justify-between gap-2 text-xs rounded-md px-2.5 py-2"
+              style={{ background: "rgba(15,23,42,0.55)", border: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <div className="min-w-0">
+                <span className="text-slate-200 font-medium">{c.calendar_name}</span>
+                <span className="text-slate-500"> · {csCallTypeLabel(c.call_type)}</span>
+                <span className="block font-mono text-slate-400 truncate">{c.calendar_id}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => remove(c.calendar_id)}
+                className="text-red-300/90 hover:text-red-200 shrink-0"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form onSubmit={save} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto] items-end">
+        <label className="block space-y-1">
+          <span className="text-[11px] text-slate-400">Calendar ID</span>
+          <input
+            required
+            value={calendarId}
+            onChange={e => setCalendarId(e.target.value)}
+            placeholder="p26ULHRnyCdvIRv6odOZ"
+            style={fieldStyle}
+            className="font-mono"
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-[11px] text-slate-400">Display name</span>
+          <input
+            required
+            value={calendarName}
+            onChange={e => setCalendarName(e.target.value)}
+            placeholder="CHECK IN CALL"
+            style={fieldStyle}
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-[11px] text-slate-400">Type</span>
+          <select
+            value={callType}
+            onChange={e => setCallType(e.target.value as CsCallType)}
+            style={{ ...fieldStyle, width: "auto", minWidth: "8rem" }}
+          >
+            {CS_CALL_TYPES.map(t => (
+              <option key={t} value={t}>
+                {csCallTypeLabel(t)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded-md px-3 py-2 text-sm font-medium text-slate-950"
+          style={{ background: "#38bdf8", height: "2.5rem" }}
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </form>
+
+      {error && <p className="text-xs text-red-300">{error}</p>}
+      {message && <p className="text-xs text-emerald-300">{message}</p>}
     </div>
   );
 }
@@ -362,6 +754,7 @@ function TeamMeetingRunbook({
       <div className="px-4 py-4 space-y-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         <div className="flex items-start justify-between gap-3">
           <div>
+            <p className="text-[10px] uppercase tracking-wide text-violet-300/90 mb-1">Team meeting</p>
             <h3 className="text-base font-semibold text-slate-100">{row.template.title}</h3>
             <p className="text-xs text-slate-400">{row.template.theme}</p>
           </div>

@@ -235,6 +235,76 @@ export async function listUpcomingCsAppointments(
   return enrichCsAppointments(service, (appts ?? []) as CsAppointmentRow[]);
 }
 
+/** Range listing for the Calendars view (all statuses). */
+export async function listCsAppointmentsInRange(
+  service: SupabaseClient,
+  opts: { fromIso: string; toIso: string },
+): Promise<CsAppointmentEnriched[]> {
+  const { data: appts, error } = await service
+    .from('cs_appointments')
+    .select(
+      'id, clickup_task_id, ghl_appointment_id, calendar_id, calendar_name, booked_at, scheduled_at, status, title, assigned_to, created_at, updated_at',
+    )
+    .gte('scheduled_at', opts.fromIso)
+    .lte('scheduled_at', opts.toIso)
+    .order('scheduled_at', { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return enrichCsAppointments(service, (appts ?? []) as CsAppointmentRow[]);
+}
+
+export async function listCsCalendarConfig(
+  service: SupabaseClient,
+): Promise<CsCalendarConfig[]> {
+  const { data, error } = await service
+    .from('cs_calendar_config')
+    .select('calendar_id, calendar_name, call_type')
+    .order('call_type', { ascending: true })
+    .order('calendar_name', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as CsCalendarConfig[];
+}
+
+export async function upsertCsCalendarConfig(
+  service: SupabaseClient,
+  input: {
+    calendar_id: string;
+    calendar_name: string;
+    call_type: CsCallType;
+  },
+): Promise<CsCalendarConfig> {
+  const calendarId = input.calendar_id.trim();
+  const calendarName = input.calendar_name.trim();
+  if (!calendarId) throw new Error('calendar_id is required');
+  if (!calendarName) throw new Error('calendar_name is required');
+  if (!CS_CALL_TYPES.includes(input.call_type)) {
+    throw new Error(`call_type must be one of: ${CS_CALL_TYPES.join(', ')}`);
+  }
+
+  const row = {
+    calendar_id: calendarId,
+    calendar_name: calendarName,
+    call_type: input.call_type,
+  };
+  const { data, error } = await service
+    .from('cs_calendar_config')
+    .upsert(row, { onConflict: 'calendar_id' })
+    .select('calendar_id, calendar_name, call_type')
+    .single();
+  if (error) throw new Error(error.message);
+  return data as CsCalendarConfig;
+}
+
+export async function deleteCsCalendarConfig(
+  service: SupabaseClient,
+  calendarId: string,
+): Promise<void> {
+  const id = calendarId.trim();
+  if (!id) throw new Error('calendar_id is required');
+  const { error } = await service.from('cs_calendar_config').delete().eq('calendar_id', id);
+  if (error) throw new Error(error.message);
+}
+
 export async function listCsAppointmentsForClickup(
   service: SupabaseClient,
   clickupTaskId: string,

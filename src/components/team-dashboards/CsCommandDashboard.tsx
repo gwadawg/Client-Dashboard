@@ -443,7 +443,7 @@ export default function CsCommandDashboard({ onNavigate, embedded = false }: Pro
               label="Client Success board"
               onClick={() => go("client_health", "health")}
             />
-            <DeepLink label="Team Meetings" onClick={() => go("team_meetings")} />
+            <DeepLink label="Calendars" onClick={() => go("team_meetings")} />
             <a
               href={eod.href}
               className="block text-xs hover:underline"
@@ -565,7 +565,7 @@ function TodayCsMeetingsStrip({ onOpen }: { onOpen: () => void }) {
         >
           Today&apos;s meetings
         </h2>
-        <DeepLink label="Open Team Meetings" onClick={onOpen} />
+        <DeepLink label="Open Calendars" onClick={onOpen} />
       </div>
       <ul className="space-y-1.5">
         {rows.slice(0, 5).map(row => (

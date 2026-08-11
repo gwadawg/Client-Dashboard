@@ -588,7 +588,7 @@ function TodayTeamMeetingsStrip({ onOpen }: { onOpen: () => void }) {
         <h2 className="text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: "#94a3b8" }}>
           Today&apos;s meetings
         </h2>
-        <DeepLink label="Open Team Meetings" onClick={onOpen} />
+        <DeepLink label="Open Calendars" onClick={onOpen} />
       </div>
       <ul className="space-y-1.5">
         {rows.slice(0, 5).map(row => (
