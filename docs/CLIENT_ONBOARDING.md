@@ -59,7 +59,14 @@ Do **not** send GHL sub-account name at sign-up — kick-off sets `clients.name`
 
 ## 2. Client onboarding form
 
-**Public URL:** `https://<your-app>/onboard` — use this single link in GHL onboarding emails.
+**Public URLs** (also listed under Resources / Forms via `src/lib/internal-forms.ts`):
+
+| Offer | Path | Notes |
+|-------|------|--------|
+| Core / RM (default) | `/onboard` | Universal link in GHL onboarding emails for non-DSCR-performance closes |
+| DSCR performance | `/onboard/dscr` | Same Mr. Waiz match pipeline; Leads vs Conversations + CRM (Leads only). Design: [`docs/superpowers/specs/2026-08-11-dscr-performance-onboarding-form-design.md`](superpowers/specs/2026-08-11-dscr-performance-onboarding-form-design.md) |
+
+**Example:** `https://<your-app>/onboard` or `https://<your-app>/onboard/dscr`
 
 Clients enter email + phone (required for matching), licensed states, business info, address, and optional headshot.
 

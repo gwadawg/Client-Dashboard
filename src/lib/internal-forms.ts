@@ -63,6 +63,15 @@ export const INTERNAL_FORMS: InternalFormDef[] = [
     audience: "Clients",
     tags: ["onboarding", "client-facing"],
   },
+  {
+    slug: "onboard-dscr",
+    title: "Client Onboarding — DSCR Performance",
+    description:
+      "Public form for DSCR performance offer clients (Leads or Conversations). Same Mr. Waiz match as core OB, with unit + CRM path questions.",
+    href: "/onboard/dscr",
+    audience: "Clients (DSCR performance)",
+    tags: ["onboarding", "client-facing", "dscr", "performance"],
+  },
 ];
 
 export function internalFormHref(slug: string, params?: Record<string, string>): string {

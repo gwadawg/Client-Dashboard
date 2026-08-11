@@ -32,6 +32,7 @@ performance offer**. Same Mr. Waiz onboarding spine as `/onboard`; only
 | Item | Value |
 |------|--------|
 | URL | `/onboard/dscr` (universal link in GHL / sales emails for DSCR performance clients) |
+| Link registry | `src/lib/internal-forms.ts` (`slug: onboard-dscr`) → Resources + `/forms` hub next to core Client Onboarding |
 | Existing `/onboard` | Unchanged (RM / other products) |
 | Match | Email + phone → Mr. Waiz `clients` (same as today) |
 | Audience | New DSCR performance offer clients (Leads pack or Conversations pack) |
