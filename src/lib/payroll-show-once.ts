@@ -183,7 +183,11 @@ export function filterShowsOncePerLead<T extends ShowEventLike>(
     }
 
     const agent = resolveAgent(row.agent_name);
-    const date = showPayDate(row);
+    const date = showPayDate({
+      scheduled_at: row.scheduled_at ?? null,
+      occurred_at: row.occurred_at ?? null,
+      raw: row.raw ?? null,
+    });
     const inPeriod = Boolean(date && date >= startDate && date <= endDate);
     const lead_key = showLeadMatchKey(row);
 
