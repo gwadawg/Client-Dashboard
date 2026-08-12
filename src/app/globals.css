@@ -64,6 +64,15 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Client report PDF/print faces — loaded once in the root layout. */
+.font-report-display {
+  font-family: var(--font-report-display), "Arial Narrow", system-ui, sans-serif;
+}
+
+.font-report-body {
+  font-family: var(--font-report-body), "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
 /* ── Lead source ROI tool ──────────────────────────────────────────────
    Terminal treatment scoped to `.lsr` so the rest of the dashboard is
    untouched. Numerals use IBM Plex Mono; chrome uses Archivo. */

@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Barlow_Condensed, IBM_Plex_Sans } from "next/font/google";
 import type {
   ClientReportItemized,
   ClientReportLeadRow,
@@ -19,17 +18,9 @@ import { WAIZ } from "@/lib/waiz-brand";
 import RateTrendCharts from "@/components/RateTrendCharts";
 import CostTrendCharts from "@/components/CostTrendCharts";
 
-const barlow = Barlow_Condensed({
-  weight: ["600", "700", "800", "900"],
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const plex = IBM_Plex_Sans({
-  weight: ["300", "400", "500", "600"],
-  subsets: ["latin"],
-  display: "swap",
-});
+/** Faces live in src/styles/fonts.css — never call next/font here. */
+const barlow = { className: "font-report-display" };
+const plex = { className: "font-report-body" };
 
 type Props = {
   clientName: string;
