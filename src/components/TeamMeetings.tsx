@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
   type ReactNode,
 } from "react";
 import {
@@ -16,7 +15,6 @@ import {
   type TeamMeetingInstanceView,
 } from "@/lib/team-meetings";
 import {
-  CS_CALL_TYPES,
   csCallTypeLabel,
   type CsAppointmentEnriched,
   type CsCalendarConfig,
@@ -152,7 +150,7 @@ export default function TeamMeetings({ from, to }: Props) {
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [showCalConfig, setShowCalConfig] = useState(false);
+  const [pane, setPane] = useState<"board" | "library">("board");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -263,22 +261,44 @@ export default function TeamMeetings({ from, to }: Props) {
             Calendars
           </h2>
           <p className="text-sm text-slate-400">
-            One board · São Paulo time · team runbooks + client onboarding / launch / check-in
+            {pane === "library"
+              ? "Map each GHL CS calendar to onboarding, launch, or check-in"
+              : "São Paulo time · team runbooks + client CS calls"}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowCalConfig(v => !v)}
-          className="rounded-md px-3 py-1.5 text-xs font-medium shrink-0"
-          style={{
-            background: showCalConfig ? "rgba(79,163,255,0.16)" : "transparent",
-            border: "1px solid rgba(255,255,255,0.14)",
-            color: showCalConfig ? "#93c5fd" : "#94a3b8",
-          }}
+        <div
+          className="flex rounded-lg p-0.5 shrink-0"
+          role="tablist"
+          aria-label="Calendars view"
+          style={{ background: "rgba(8,15,30,0.85)", border: "1px solid rgba(255,255,255,0.1)" }}
         >
-          {showCalConfig ? "Close GHL IDs" : "Register GHL IDs"}
-        </button>
+          {(
+            [
+              ["board", "Board"],
+              ["library", "Library"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={pane === key}
+              onClick={() => setPane(key)}
+              className="rounded-md px-3 py-1.5 text-xs font-medium"
+              style={{
+                background: pane === key ? "rgba(79,163,255,0.2)" : "transparent",
+                color: pane === key ? "#e2e8f0" : "#94a3b8",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {pane === "library" && <CsCalendarLibrary />}
+
+      {pane === "board" && (
 
       <div
         className="flex flex-wrap items-end gap-5 rounded-xl px-4 py-3"
@@ -365,14 +385,6 @@ export default function TeamMeetings({ from, to }: Props) {
         </FilterCluster>
       </div>
 
-      {showCalConfig && (
-        <CsCalendarsConfigPanel
-          onChanged={() => {
-            /* appointments only appear after Make posts; list stays as-is */
-          }}
-        />
-      )}
-
       {(unmappedCount > 0 || skippedCount > 0) && (
         <p className="text-xs text-slate-400">
           {unmappedCount > 0 && (
@@ -411,7 +423,7 @@ export default function TeamMeetings({ from, to }: Props) {
                     : kindFilter === "team"
                       ? "No team meetings in this date range."
                       : "Nothing on the board for this date range."
-                  : `No ${KIND_LABEL[kindFilter].toLowerCase()} ${WHEN_LABEL[whenFilter].toLowerCase()} events.`}
+                  : `No ${KIND_LABEL[kindFilter]} events for ${WHEN_LABEL[whenFilter].toLowerCase()}.`}
               </p>
               <p className="text-xs text-slate-500">
                 {items.length === 0 && kindFilter !== "team"
@@ -542,6 +554,7 @@ export default function TeamMeetings({ from, to }: Props) {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -671,14 +684,62 @@ function Row({
   );
 }
 
-function CsCalendarsConfigPanel({ onChanged }: { onChanged?: () => void }) {
+const CS_LIBRARY_SLOTS: {
+  type: CsCallType;
+  defaultName: string;
+  hint: string;
+}[] = [
+  {
+    type: "onboarding",
+    defaultName: "ONBOARDING CALL",
+    hint: "Kickoff / onboarding calendar in GHL Client Success",
+  },
+  {
+    type: "launch",
+    defaultName: "LAUNCH CALL",
+    hint: "Launch calendar in GHL Client Success",
+  },
+  {
+    type: "checkin",
+    defaultName: "CHECK IN CALL",
+    hint: "Recurring check-in calendar in GHL Client Success",
+  },
+];
+
+type LibraryDraft = {
+  calendar_id: string;
+  calendar_name: string;
+  saved_id: string | null;
+};
+
+function emptyLibraryDrafts(): Record<CsCallType, LibraryDraft> {
+  return {
+    onboarding: { calendar_id: "", calendar_name: "ONBOARDING CALL", saved_id: null },
+    launch: { calendar_id: "", calendar_name: "LAUNCH CALL", saved_id: null },
+    checkin: { calendar_id: "", calendar_name: "CHECK IN CALL", saved_id: null },
+  };
+}
+
+function draftsFromConfigs(calendars: CsCalendarConfig[]): Record<CsCallType, LibraryDraft> {
+  const next = emptyLibraryDrafts();
+  for (const slot of CS_LIBRARY_SLOTS) {
+    const match = calendars.find(c => c.call_type === slot.type);
+    if (!match) continue;
+    next[slot.type] = {
+      calendar_id: match.calendar_id,
+      calendar_name: match.calendar_name || slot.defaultName,
+      saved_id: match.calendar_id,
+    };
+  }
+  return next;
+}
+
+function CsCalendarLibrary() {
   const [calendars, setCalendars] = useState<CsCalendarConfig[]>([]);
+  const [drafts, setDrafts] = useState<Record<CsCallType, LibraryDraft>>(emptyLibraryDrafts);
   const [loading, setLoading] = useState(true);
+  const [savingType, setSavingType] = useState<CsCallType | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [calendarId, setCalendarId] = useState("");
-  const [calendarName, setCalendarName] = useState("");
-  const [callType, setCallType] = useState<CsCallType>("checkin");
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -686,8 +747,10 @@ function CsCalendarsConfigPanel({ onChanged }: { onChanged?: () => void }) {
     fetch("/api/cs-calendars")
       .then(async r => {
         const d = await r.json();
-        if (!r.ok) throw new Error(d.error ?? "Failed to load calendars");
-        setCalendars(d.calendars ?? []);
+        if (!r.ok) throw new Error(d.error ?? "Failed to load calendar library");
+        const rows = (d.calendars ?? []) as CsCalendarConfig[];
+        setCalendars(rows);
+        setDrafts(draftsFromConfigs(rows));
         setError(null);
       })
       .catch(e => setError(e instanceof Error ? e.message : "Failed to load"))
@@ -698,143 +761,205 @@ function CsCalendarsConfigPanel({ onChanged }: { onChanged?: () => void }) {
     load();
   }, [load]);
 
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setMessage(null);
+  function patchDraft(type: CsCallType, patch: Partial<LibraryDraft>) {
+    setDrafts(prev => ({ ...prev, [type]: { ...prev[type], ...patch } }));
+  }
+
+  async function saveSlot(type: CsCallType) {
+    const draft = drafts[type];
+    const calendarId = draft.calendar_id.trim();
+    const calendarName = draft.calendar_name.trim() || CS_LIBRARY_SLOTS.find(s => s.type === type)!.defaultName;
+    if (!calendarId) {
+      setError(`Paste the GHL calendar ID for ${csCallTypeLabel(type)}.`);
+      return;
+    }
+
+    setSavingType(type);
     setError(null);
+    setMessage(null);
     try {
+      if (draft.saved_id && draft.saved_id !== calendarId) {
+        const del = await fetch(
+          `/api/cs-calendars?calendar_id=${encodeURIComponent(draft.saved_id)}`,
+          { method: "DELETE" },
+        );
+        const delBody = await del.json();
+        if (!del.ok) throw new Error(delBody.error ?? "Could not replace previous ID");
+      }
+
       const res = await fetch("/api/cs-calendars", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          calendar_id: calendarId.trim(),
-          calendar_name: calendarName.trim(),
-          call_type: callType,
+          calendar_id: calendarId,
+          calendar_name: calendarName,
+          call_type: type,
         }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "Save failed");
-      setCalendarId("");
-      setCalendarName("");
-      setMessage("Calendar registered — Make can post this calendar_id now.");
+      setMessage(`${csCallTypeLabel(type)} connected. Make can post this calendar now.`);
       load();
-      onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
-      setSaving(false);
+      setSavingType(null);
     }
   }
 
-  async function remove(id: string) {
-    if (!window.confirm(`Remove calendar ${id}? Incoming Make events for this ID will 400 until re-added.`)) {
+  async function clearSlot(type: CsCallType) {
+    const savedId = drafts[type].saved_id;
+    if (!savedId) {
+      patchDraft(type, {
+        calendar_id: "",
+        calendar_name: CS_LIBRARY_SLOTS.find(s => s.type === type)!.defaultName,
+      });
       return;
     }
+    if (!window.confirm(`Disconnect ${csCallTypeLabel(type)}? Make will 400 until you paste a new ID.`)) {
+      return;
+    }
+    setSavingType(type);
     setError(null);
+    setMessage(null);
     try {
-      const res = await fetch(`/api/cs-calendars?calendar_id=${encodeURIComponent(id)}`, {
+      const res = await fetch(`/api/cs-calendars?calendar_id=${encodeURIComponent(savedId)}`, {
         method: "DELETE",
       });
       const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? "Delete failed");
+      if (!res.ok) throw new Error(d.error ?? "Disconnect failed");
+      setMessage(`${csCallTypeLabel(type)} disconnected.`);
       load();
-      onChanged?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : "Disconnect failed");
+    } finally {
+      setSavingType(null);
     }
   }
 
+  const connected = CS_LIBRARY_SLOTS.filter(s => drafts[s.type].saved_id).length;
+  const extras = calendars.filter(c => {
+    const primary = drafts[c.call_type]?.saved_id;
+    return primary && c.calendar_id !== primary;
+  });
+
   return (
-    <div
-      className="rounded-xl p-4 space-y-3"
-      style={{ border: "1px solid rgba(56,189,248,0.2)", background: "rgba(14,116,144,0.08)" }}
-    >
-      <div>
-        <h3 className="text-sm font-semibold text-slate-100">Register GHL calendar IDs</h3>
-        <p className="text-xs text-slate-400 mt-0.5">
-          This is setup, not a filter. Paste onboarding / launch / check-in calendar IDs so Make
-          webhooks are accepted.
-        </p>
+    <div className="space-y-4">
+      <div
+        className="rounded-xl p-4 space-y-4"
+        style={{ border: "1px solid rgba(79,163,255,0.25)", background: "rgba(14,47,115,0.18)" }}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-100">Client Success calendar library</h3>
+            <p className="text-xs text-slate-400 mt-0.5 max-w-2xl">
+              Three corresponding GHL calendars. Paste each calendar ID once. This does not import
+              appointments — it only tells Mr. Waiz which calendars Make may send.
+            </p>
+          </div>
+          <span
+            className="text-xs tabular-nums shrink-0"
+            style={{ color: connected === 3 ? "#7CFF7A" : "#fbbf24" }}
+          >
+            {connected} / 3 connected
+          </span>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-slate-500">Loading library…</p>
+        ) : (
+          <ul className="space-y-3">
+            {CS_LIBRARY_SLOTS.map(slot => {
+              const draft = drafts[slot.type];
+              const connectedSlot = !!draft.saved_id;
+              const dirty =
+                draft.saved_id !== (draft.calendar_id.trim() || null) ||
+                (connectedSlot && draft.calendar_name.trim() !== calendars.find(c => c.calendar_id === draft.saved_id)?.calendar_name);
+              return (
+                <li
+                  key={slot.type}
+                  className="rounded-lg p-3 space-y-2"
+                  style={{
+                    background: "rgba(8,15,30,0.65)",
+                    border: `1px solid ${connectedSlot ? "rgba(124,255,122,0.22)" : "rgba(255,255,255,0.08)"}`,
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-slate-100">{csCallTypeLabel(slot.type)}</p>
+                      <p className="text-xs text-slate-500">{slot.hint}</p>
+                    </div>
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-[0.14em]"
+                      style={{ color: connectedSlot ? "#7CFF7A" : "#64748b" }}
+                    >
+                      {connectedSlot ? "Connected" : "Empty"}
+                    </span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] items-end">
+                    <label className="block space-y-1">
+                      <span className="text-[11px] text-slate-400">GHL calendar ID</span>
+                      <input
+                        value={draft.calendar_id}
+                        onChange={e => patchDraft(slot.type, { calendar_id: e.target.value })}
+                        placeholder="Paste ID from GHL → Calendars"
+                        style={fieldStyle}
+                        className="font-mono"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[11px] text-slate-400">Display name</span>
+                      <input
+                        value={draft.calendar_name}
+                        onChange={e => patchDraft(slot.type, { calendar_name: e.target.value })}
+                        placeholder={slot.defaultName}
+                        style={fieldStyle}
+                      />
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={savingType === slot.type || !draft.calendar_id.trim()}
+                        onClick={() => void saveSlot(slot.type)}
+                        className="rounded-md px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-40"
+                        style={{ background: "#4FA3FF", height: "2.5rem" }}
+                      >
+                        {savingType === slot.type ? "Saving…" : dirty || !connectedSlot ? "Save" : "Saved"}
+                      </button>
+                      {connectedSlot && (
+                        <button
+                          type="button"
+                          disabled={savingType === slot.type}
+                          onClick={() => void clearSlot(slot.type)}
+                          className="rounded-md px-3 py-2 text-sm text-red-200/90"
+                          style={{ border: "1px solid rgba(248,113,113,0.35)", height: "2.5rem" }}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {extras.length > 0 && (
+          <p className="text-xs text-amber-200/90">
+            Extra IDs also registered:{" "}
+            {extras.map(e => `${e.calendar_name} (${csCallTypeLabel(e.call_type)})`).join(", ")}
+          </p>
+        )}
+
+        {error && <p className="text-sm text-red-300">{error}</p>}
+        {message && <p className="text-sm text-emerald-300">{message}</p>}
       </div>
 
-      {loading ? (
-        <p className="text-xs text-slate-500">Loading…</p>
-      ) : calendars.length === 0 ? (
-        <p className="text-xs text-slate-500">No calendars registered yet.</p>
-      ) : (
-        <ul className="space-y-1.5">
-          {calendars.map(c => (
-            <li
-              key={c.calendar_id}
-              className="flex flex-wrap items-center justify-between gap-2 text-xs rounded-md px-2.5 py-2"
-              style={{ background: "rgba(15,23,42,0.55)", border: "1px solid rgba(255,255,255,0.06)" }}
-            >
-              <div className="min-w-0">
-                <span className="text-slate-200 font-medium">{c.calendar_name}</span>
-                <span className="text-slate-500"> · {csCallTypeLabel(c.call_type)}</span>
-                <span className="block font-mono text-slate-400 truncate">{c.calendar_id}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => remove(c.calendar_id)}
-                className="text-red-300/90 hover:text-red-200 shrink-0"
-              >
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <form onSubmit={save} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto] items-end">
-        <label className="block space-y-1">
-          <span className="text-[11px] text-slate-400">Calendar ID</span>
-          <input
-            required
-            value={calendarId}
-            onChange={e => setCalendarId(e.target.value)}
-            placeholder="p26ULHRnyCdvIRv6odOZ"
-            style={fieldStyle}
-            className="font-mono"
-          />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-[11px] text-slate-400">Display name</span>
-          <input
-            required
-            value={calendarName}
-            onChange={e => setCalendarName(e.target.value)}
-            placeholder="CHECK IN CALL"
-            style={fieldStyle}
-          />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-[11px] text-slate-400">Type</span>
-          <select
-            value={callType}
-            onChange={e => setCallType(e.target.value as CsCallType)}
-            style={{ ...fieldStyle, width: "auto", minWidth: "8rem" }}
-          >
-            {CS_CALL_TYPES.map(t => (
-              <option key={t} value={t}>
-                {csCallTypeLabel(t)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-md px-3 py-2 text-sm font-medium text-slate-950"
-          style={{ background: "#38bdf8", height: "2.5rem" }}
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
-      </form>
-
-      {error && <p className="text-xs text-red-300">{error}</p>}
-      {message && <p className="text-xs text-emerald-300">{message}</p>}
+      <p className="text-xs text-slate-500 px-1">
+        ClickUp Task ID still lives on the GHL contact, not here. Appointments without it will 400 until
+        that field is filled.
+      </p>
     </div>
   );
 }
