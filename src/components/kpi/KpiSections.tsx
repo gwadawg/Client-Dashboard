@@ -68,6 +68,11 @@ function formatCardValue(card: KpiCardDefinition, metrics: MetricsResult): strin
   return `${primary} / ${secondary}`;
 }
 
+function formatRefLine(card: KpiCardDefinition, metrics: MetricsResult): string | undefined {
+  if (!card.refMetric) return undefined;
+  return `${card.refMetric.label} ${formatKpiValue(metrics[card.refMetric.metric], card.refMetric.format)}`;
+}
+
 export default function KpiSections({ metrics, reportingType, previous, spark }: Props) {
   const sections = getKpiSections(reportingType);
   const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
@@ -93,6 +98,7 @@ export default function KpiSections({ metrics, reportingType, previous, spark }:
       caption: card.valueCaption,
       accent: card.accent,
       hint: card.hint,
+      refLine: formatRefLine(card, metrics),
       delta: previous
         ? computeDelta(card, metrics[card.metric], previous[card.metric])
         : undefined,
@@ -112,7 +118,7 @@ export default function KpiSections({ metrics, reportingType, previous, spark }:
   );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <KpiHeadlineStrip metrics={headlineMetrics} />
 
       {sections.map((section, sectionIndex) => {

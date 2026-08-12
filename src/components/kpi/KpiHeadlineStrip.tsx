@@ -10,6 +10,7 @@ export type HeadlineMetric = {
   hint?: string;
   delta?: KpiDelta;
   spark?: (number | null)[];
+  refLine?: string;
 };
 
 type Props = {
@@ -33,58 +34,65 @@ export default function KpiHeadlineStrip({ metrics }: Props) {
         boxShadow: "0 4px 24px rgba(8,15,30,0.5)",
       }}
     >
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
         {metrics.map(metric => (
           <div
             key={metric.label}
-            className="relative rounded-xl px-3.5 py-3 flex flex-col gap-1"
+            className="relative flex flex-col rounded-lg px-3 pt-2.5 pb-2"
             style={{
               background: "rgba(8,15,30,0.55)",
               border: "1px solid var(--color-ws-hairline)",
+              borderTop: `2px solid ${metric.accent ? "var(--color-ws-accent)" : "rgba(59,130,246,0.55)"}`,
             }}
           >
             {metric.hint && (
-              <span className="absolute top-2 right-2 z-10">
+              <span className="absolute top-1.5 right-1.5 z-10">
                 <MetricInfoTip hint={metric.hint} />
               </span>
             )}
             <span
-              className="font-display text-[10px] font-semibold uppercase tracking-[0.14em] pr-5"
-              style={{ color: "var(--color-ws-text-dim)" }}
+              className="font-display text-[10px] font-semibold uppercase leading-snug tracking-[0.12em] pr-5"
+              style={{ color: "var(--color-ws-text-muted)" }}
             >
               {metric.label}
             </span>
             <span
-              className="font-data text-2xl md:text-[1.75rem] leading-none font-bold tabular-nums tracking-tight"
+              className="font-data mt-1 text-[1.35rem] leading-none font-bold tabular-nums tracking-tight"
               style={{
                 color: metric.accent ? "var(--color-ws-accent-bright)" : "var(--color-ws-text-loud)",
               }}
             >
               {metric.value}
             </span>
-            {metric.caption && (
-              <span
-                className="text-[10px] font-medium uppercase tracking-wide"
-                style={{ color: "var(--color-ws-text-faint)" }}
-              >
-                {metric.caption}
-              </span>
-            )}
-            {metric.delta && (
-              <span
-                className="text-[11px] font-semibold flex items-center gap-1"
-                style={{ color: deltaColor(metric.delta.good) }}
-              >
-                {metric.delta.good == null ? "–" : metric.delta.good ? "▲" : "▼"} {metric.delta.text}
-              </span>
+            {(metric.caption || metric.delta) && (
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                {metric.caption && (
+                  <span
+                    className="text-[9px] font-medium uppercase tracking-wide"
+                    style={{ color: "var(--color-ws-text-faint)" }}
+                  >
+                    {metric.caption}
+                  </span>
+                )}
+                {metric.delta && (
+                  <span
+                    className="font-data text-[10px] font-semibold tabular-nums"
+                    style={{ color: deltaColor(metric.delta.good) }}
+                  >
+                    {metric.delta.good == null ? "–" : metric.delta.good ? "▲" : "▼"}{" "}
+                    {metric.delta.text}
+                  </span>
+                )}
+              </div>
             )}
             {metric.spark && (
-              <div className="mt-0.5 h-6 w-full">
+              <div className="mt-auto pt-2" style={{ height: 22 }}>
                 <Sparkline
                   data={metric.spark}
                   color={metric.accent ? "#f59e0b" : "#3b82f6"}
-                  width={140}
-                  height={24}
+                  width={160}
+                  height={22}
+                  className="h-full w-full"
                 />
               </div>
             )}

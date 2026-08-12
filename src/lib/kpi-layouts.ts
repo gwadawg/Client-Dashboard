@@ -48,6 +48,15 @@ export type KpiCardDefinition = {
   secondaryMetric?: keyof MetricsResult;
   /** Fine caption under a dual value, e.g. "unique / total". */
   valueCaption?: string;
+  /**
+   * A quieter companion metric shown under the primary value (e.g. a reference
+   * rate that shouldn't burn a whole card of its own).
+   */
+  refMetric?: {
+    label: string;
+    metric: keyof MetricsResult;
+    format: KpiFormat;
+  };
 };
 
 export type KpiSectionDefinition = {
@@ -58,9 +67,12 @@ export type KpiSectionDefinition = {
   footnote?: string;
 };
 
-const LEADS_GRID = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3";
-const COSTS_GRID = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3";
-const DEFAULT_GRID = "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3";
+const LEADS_GRID = "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5";
+const FOUR_GRID = "grid grid-cols-2 md:grid-cols-4 gap-2.5";
+const SIX_GRID = "grid grid-cols-2 md:grid-cols-3 gap-2.5";
+/** Equal-width tiles; incomplete last rows keep the same card size instead of stretching. */
+const TILE_GRID =
+  "grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(10.25rem,1fr))]";
 
 const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
   {
@@ -92,9 +104,9 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
   {
     title: "Appointments",
     variant: "grid",
-    gridClassName: DEFAULT_GRID,
+    gridClassName: SIX_GRID,
     footnote:
-      "Hand Raise Rate is the conversion benchmark (unique leads booked ∪ claimed ∪ LT). Booking Rate is reference only. Appointments Booked shows unique / total events.",
+      "Hand Raise Rate is the conversion benchmark (unique leads booked ∪ claimed ∪ LT). Booking Rate is shown as a reference under Hand Raise. Appointments Booked in the headline strip is unique / total events.",
     cards: [
       {
         label: "Appointments Booked",
@@ -111,12 +123,11 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
         format: "pct",
         accent: true,
         hint: "Unique leads with any intent path (booked, live transfer, or claimed) ÷ Qualified Leads. One lead counted once — the Client Success conversion benchmark.",
-      },
-      {
-        label: "Booking Rate (ref)",
-        metric: "appt_booking_rate",
-        format: "pct",
-        hint: "Reference only — unique booked ÷ Qualified. Prefer Hand Raise Rate (credits LT/claimed).",
+        refMetric: {
+          label: "Booking (ref)",
+          metric: "appt_booking_rate",
+          format: "pct",
+        },
       },
       {
         label: "Appts To Take Place",
@@ -139,7 +150,7 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
   {
     title: "Show Quality & Conversion",
     variant: "grid",
-    gridClassName: DEFAULT_GRID,
+    gridClassName: FOUR_GRID,
     footnote:
       "Show Rate = unique booked leads who eventually spoke to the LO (show ∪ claimed ∪ live transfer) after reschedules/no-show recovery — graded quality. True Show = of appointments that took place (show + no-show + LO bailed), how many showed.",
     cards: [
@@ -182,7 +193,7 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
   {
     title: "Acquisition Costs",
     variant: "grid",
-    gridClassName: COSTS_GRID,
+    gridClassName: FOUR_GRID,
     footnote:
       "All cost metrics use total ad spend (all platforms). CPQL = spend ÷ qualified leads. CPH = spend ÷ hot leads. Cost per conversation = spend ÷ unique leads who showed, were claimed, or live-transferred.",
     cards: [
@@ -199,7 +210,7 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
 const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
   {
     title: "Appointments",
-    gridClassName: DEFAULT_GRID,
+    gridClassName: TILE_GRID,
     footnote:
       "Billable Conversations = unique leads with a live transfer or show (claimed is not billable). Show Rate = unique booked who eventually spoke (show ∪ claimed ∪ LT) ÷ unique booked. True Show = of took-place appointments (show + no-show + LO bail), how many showed.",
     cards: [
@@ -233,12 +244,11 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
         format: "pct",
         accent: true,
         hint: "Unique leads with booked ∪ claimed ∪ live transfer ÷ Total Leads. One lead once — HE conversion benchmark.",
-      },
-      {
-        label: "Booking Rate (ref)",
-        metric: "lead_booking_rate",
-        format: "pct",
-        hint: "Reference only — unique booked ÷ Total Leads. Prefer Hand Raise Rate.",
+        refMetric: {
+          label: "Booking (ref)",
+          metric: "lead_booking_rate",
+          format: "pct",
+        },
       },
       {
         label: "Appts To Take Place",
@@ -288,7 +298,7 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
   },
   {
     title: "Calling Stats",
-    gridClassName: DEFAULT_GRID,
+    gridClassName: SIX_GRID,
     cards: [
       { label: "Outbound Dials", metric: "outbound_dials", format: "int", headline: true, hint: "All outbound dial attempts in this range." },
       { label: "Pickups (40s+)", metric: "pickups", format: "int", hint: "Calls answered — duration of at least 40 seconds." },

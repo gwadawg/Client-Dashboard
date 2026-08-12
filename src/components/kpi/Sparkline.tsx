@@ -3,13 +3,20 @@ type Props = {
   color?: string;
   width?: number;
   height?: number;
+  className?: string;
 };
 
 /**
  * Tiny inline trend line (no axes/labels) for a KPI card. Hand-rolled SVG so it
  * stays cheap to render across many cards. Nulls (no data that day) break the line.
  */
-export default function Sparkline({ data, color = "#3b82f6", width = 120, height = 28 }: Props) {
+export default function Sparkline({
+  data,
+  color = "#3b82f6",
+  width = 120,
+  height = 28,
+  className,
+}: Props) {
   const points = data.filter((v): v is number => v != null);
   if (points.length < 2) return null;
 
@@ -43,7 +50,14 @@ export default function Sparkline({ data, color = "#3b82f6", width = 120, height
   const lastY = pad + usableH - ((lastVal - min) / range) * usableH;
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden>
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      className={className}
+      aria-hidden
+    >
       <path d={d.trim()} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" opacity={0.9} />
       <circle cx={lastX} cy={lastY} r={2} fill={color} />
     </svg>

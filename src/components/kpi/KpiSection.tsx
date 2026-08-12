@@ -43,7 +43,7 @@ export default function KpiSection({
   return (
     <section>
       {showDivider && (
-        <div className="mb-8" style={{ borderTop: "1px solid var(--color-ws-hairline-soft)" }} />
+        <div className="mb-5" style={{ borderTop: "1px solid var(--color-ws-hairline-soft)" }} />
       )}
 
       {collapsible ? (
