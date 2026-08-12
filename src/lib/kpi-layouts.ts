@@ -70,7 +70,7 @@ export type KpiSectionDefinition = {
  * four-card section render tiles half again as wide as a six-card one, which is
  * what made the grid feel arbitrary. Incomplete last rows keep the card size.
  */
-const TILE_GRID = "grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]";
+const TILE_GRID = "grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(12.5rem,1fr))]";
 
 const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
   {

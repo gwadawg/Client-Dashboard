@@ -186,7 +186,7 @@ export default function ClientKpiPanel({
                 title="Conversions"
                 footnote="Counts use unique leads per stage in the selected date range. Cost metrics are total spend divided by each conversion-stage unique lead count."
               >
-                <div className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]">
+                <div className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(12.5rem,1fr))]">
                   <KpiCard label="Proposals Made" value={formatKpiValue(metrics.proposals_made, "int")} hint="Unique leads that reached the proposal stage or beyond (submitted/funded count too)." />
                   <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} hint="Unique leads that reached the submission stage or beyond (funded count too)." />
                   <KpiCard label="Funded Loans" value={formatKpiValue(metrics.funded_loans, "int")} accent hint="Unique leads with a funded loan — the deal closed." />

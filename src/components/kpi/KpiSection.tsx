@@ -39,7 +39,7 @@ export default function KpiSection({ title, children, footnote, meta, open, onTo
         </svg>
       )}
       <span
-        className="font-display shrink-0 text-[11px] font-bold uppercase tracking-[0.18em]"
+        className="font-display shrink-0 text-[12.5px] font-bold uppercase tracking-[0.16em]"
         style={{ color: "var(--color-ws-text-muted)" }}
       >
         {title}

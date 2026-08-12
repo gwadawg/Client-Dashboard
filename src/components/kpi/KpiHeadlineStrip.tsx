@@ -32,7 +32,7 @@ export default function KpiHeadlineStrip({ metrics }: Props) {
         boxShadow: "0 4px 24px rgba(8,15,30,0.5)",
       }}
     >
-      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))]">
         {metrics.map(metric => (
           <KpiCard
             key={metric.label}
