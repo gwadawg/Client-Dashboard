@@ -299,7 +299,7 @@ export default function TeamMeetings({ from, to }: Props) {
       {pane === "library" && <CsCalendarLibrary />}
 
       {pane === "board" && (
-
+      <>
       <div
         className="flex flex-wrap items-end gap-5 rounded-xl px-4 py-3"
         style={{
@@ -554,6 +554,7 @@ export default function TeamMeetings({ from, to }: Props) {
           )}
         </div>
       </div>
+      </>
       )}
     </div>
   );
