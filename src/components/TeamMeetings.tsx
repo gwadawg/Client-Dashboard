@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   CALL_CENTER_TIMEZONE,
   LIBRARY_SOP_LINK_LABELS,
@@ -69,8 +77,46 @@ function dayHeading(iso: string): string {
   });
 }
 
-type StatusFilter = "all" | "upcoming" | "in_progress" | "completed" | "skipped";
+function formatClock(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", {
+    timeZone: CALL_CENTER_TIMEZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+type WhenFilter = "upcoming" | "history" | "all";
 type KindFilter = "all" | "team" | "client";
+
+const KIND_LABEL: Record<KindFilter, string> = {
+  all: "Together",
+  team: "Team",
+  client: "Client CS",
+};
+
+const WHEN_LABEL: Record<WhenFilter, string> = {
+  upcoming: "Upcoming",
+  history: "History",
+  all: "All",
+};
+
+const KIND_RAIL: Record<"team" | "client", string> = {
+  team: "#F5C842",
+  client: "#4FA3FF",
+};
+
+function isUpcomingItem(item: CalendarListItem): boolean {
+  if (item.kind === "team") {
+    return item.status === "scheduled" || item.status === "in_progress";
+  }
+  return item.status === "scheduled";
+}
+
+function matchesWhen(item: CalendarListItem, when: WhenFilter): boolean {
+  if (when === "all") return true;
+  if (when === "upcoming") return isUpcomingItem(item);
+  return !isUpcomingItem(item);
+}
 
 type CalendarListItem =
   | {
@@ -102,7 +148,7 @@ export default function TeamMeetings({ from, to }: Props) {
   const [clientRows, setClientRows] = useState<CsAppointmentEnriched[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [whenFilter, setWhenFilter] = useState<WhenFilter>("upcoming");
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -163,28 +209,27 @@ export default function TeamMeetings({ from, to }: Props) {
   const filtered = useMemo(() => {
     return items.filter(item => {
       if (kindFilter !== "all" && item.kind !== kindFilter) return false;
-      if (statusFilter === "all") return true;
-      if (statusFilter === "upcoming") {
-        if (item.kind === "team") {
-          return item.status === "scheduled" || item.status === "in_progress";
-        }
-        return item.status === "scheduled";
-      }
-      if (statusFilter === "completed") {
-        return item.status === "completed";
-      }
-      if (statusFilter === "in_progress") {
-        return item.kind === "team" && item.status === "in_progress";
-      }
-      if (statusFilter === "skipped") {
-        return (
-          (item.kind === "team" && item.status === "skipped") ||
-          (item.kind === "client" && (item.status === "cancelled" || item.status === "no_show"))
-        );
-      }
-      return true;
+      return matchesWhen(item, whenFilter);
     });
-  }, [items, kindFilter, statusFilter]);
+  }, [items, kindFilter, whenFilter]);
+
+  const kindCounts = useMemo(() => {
+    const inWhen = items.filter(item => matchesWhen(item, whenFilter));
+    return {
+      all: inWhen.length,
+      team: inWhen.filter(i => i.kind === "team").length,
+      client: inWhen.filter(i => i.kind === "client").length,
+    };
+  }, [items, whenFilter]);
+
+  const whenCounts = useMemo(() => {
+    const inKind = kindFilter === "all" ? items : items.filter(i => i.kind === kindFilter);
+    return {
+      upcoming: inKind.filter(i => isUpcomingItem(i)).length,
+      history: inKind.filter(i => !isUpcomingItem(i)).length,
+      all: inKind.length,
+    };
+  }, [items, kindFilter]);
 
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarListItem[]>();
@@ -202,77 +247,122 @@ export default function TeamMeetings({ from, to }: Props) {
     [items, selectedKey],
   );
 
-  const skippedCount = teamRows.filter(r => r.status === "skipped").length;
-  const clientCount = clientRows.length;
   const unmappedCount = clientRows.filter(r => !r.client_id).length;
+  const skippedCount = teamRows.filter(r => r.status === "skipped").length;
+
+  const filtersActive = kindFilter !== "all" || whenFilter !== "all";
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">Calendars</h2>
+          <h2
+            className="text-lg font-semibold text-slate-100"
+            style={{ fontFamily: "var(--font-display), system-ui, sans-serif", letterSpacing: "-0.02em" }}
+          >
+            Calendars
+          </h2>
           <p className="text-sm text-slate-400">
-            Team runbooks + client CS calls (onboarding / launch / check-in) · times in São Paulo
+            One board · São Paulo time · team runbooks + client onboarding / launch / check-in
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <button
-            type="button"
-            onClick={() => setShowCalConfig(v => !v)}
-            className="rounded-md px-2.5 py-1.5 text-xs"
-            style={{
-              background: showCalConfig ? "rgba(56,189,248,0.18)" : "rgba(15,32,64,0.8)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              color: showCalConfig ? "#7dd3fc" : "#94a3b8",
-            }}
-          >
-            {showCalConfig ? "Hide CS calendars" : "CS calendars"}
-          </button>
+        <button
+          type="button"
+          onClick={() => setShowCalConfig(v => !v)}
+          className="rounded-md px-3 py-1.5 text-xs font-medium shrink-0"
+          style={{
+            background: showCalConfig ? "rgba(79,163,255,0.16)" : "transparent",
+            border: "1px solid rgba(255,255,255,0.14)",
+            color: showCalConfig ? "#93c5fd" : "#94a3b8",
+          }}
+        >
+          {showCalConfig ? "Close GHL IDs" : "Register GHL IDs"}
+        </button>
+      </div>
+
+      <div
+        className="flex flex-wrap items-end gap-5 rounded-xl px-4 py-3"
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(14,47,115,0.22), rgba(11,18,32,0.55))",
+          border: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <FilterCluster label="Calendar">
           {(
             [
-              ["all", "All kinds"],
-              ["team", "Team"],
-              ["client", "Client"],
+              ["all", KIND_LABEL.all, kindCounts.all],
+              ["team", KIND_LABEL.team, kindCounts.team],
+              ["client", KIND_LABEL.client, kindCounts.client],
             ] as const
-          ).map(([key, label]) => (
-            <button
+          ).map(([key, label, count]) => (
+            <FilterOption
               key={key}
-              type="button"
+              selected={kindFilter === key}
               onClick={() => setKindFilter(key)}
-              className="rounded-md px-2.5 py-1.5 text-xs"
-              style={{
-                background: kindFilter === key ? "rgba(96,165,250,0.2)" : "rgba(15,32,64,0.8)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                color: kindFilter === key ? "#93c5fd" : "#94a3b8",
-              }}
+              hint={
+                key === "all"
+                  ? "Team meetings and client CS calls, interleaved by time"
+                  : key === "team"
+                    ? "Internal runbooks only"
+                    : "GHL onboarding, launch, and check-in only"
+              }
             >
               {label}
-            </button>
+              <span
+                className="ml-1.5 tabular-nums"
+                style={{
+                  fontFamily: "var(--font-data), ui-monospace, monospace",
+                  fontSize: "10px",
+                  color: kindFilter === key ? "#7CFF7A" : "#64748b",
+                }}
+              >
+                {count}
+              </span>
+            </FilterOption>
           ))}
+        </FilterCluster>
+
+        <span
+          className="hidden sm:block w-px self-stretch"
+          style={{ background: "rgba(255,255,255,0.08)", minHeight: "2.5rem" }}
+          aria-hidden
+        />
+
+        <FilterCluster label="When">
           {(
             [
-              ["all", "All"],
-              ["upcoming", "Upcoming"],
-              ["in_progress", "In progress"],
-              ["completed", "Done"],
-              ["skipped", "Skipped"],
+              ["upcoming", WHEN_LABEL.upcoming, whenCounts.upcoming],
+              ["history", WHEN_LABEL.history, whenCounts.history],
+              ["all", WHEN_LABEL.all, whenCounts.all],
             ] as const
-          ).map(([key, label]) => (
-            <button
+          ).map(([key, label, count]) => (
+            <FilterOption
               key={key}
-              type="button"
-              onClick={() => setStatusFilter(key)}
-              className="rounded-md px-2.5 py-1.5 text-xs"
-              style={{
-                background: statusFilter === key ? "rgba(96,165,250,0.2)" : "rgba(15,32,64,0.8)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                color: statusFilter === key ? "#93c5fd" : "#94a3b8",
-              }}
+              selected={whenFilter === key}
+              onClick={() => setWhenFilter(key)}
+              hint={
+                key === "upcoming"
+                  ? "Still on the plate (scheduled or in progress)"
+                  : key === "history"
+                    ? "Completed, skipped, cancelled, or no-show"
+                    : "Everything in the date range"
+              }
             >
               {label}
-            </button>
+              <span
+                className="ml-1.5 tabular-nums"
+                style={{
+                  fontFamily: "var(--font-data), ui-monospace, monospace",
+                  fontSize: "10px",
+                  color: whenFilter === key ? "#7CFF7A" : "#64748b",
+                }}
+              >
+                {count}
+              </span>
+            </FilterOption>
           ))}
-        </div>
+        </FilterCluster>
       </div>
 
       {showCalConfig && (
@@ -283,23 +373,17 @@ export default function TeamMeetings({ from, to }: Props) {
         />
       )}
 
-      {(skippedCount > 0 || clientCount > 0) && (
+      {(unmappedCount > 0 || skippedCount > 0) && (
         <p className="text-xs text-slate-400">
-          {clientCount > 0 && (
-            <span>
-              {clientCount} client CS call{clientCount === 1 ? "" : "s"} in range
-              {unmappedCount > 0 ? (
-                <span className="text-amber-300/90">
-                  {" "}
-                  · {unmappedCount} unmapped ClickUp ID{unmappedCount === 1 ? "" : "s"}
-                </span>
-              ) : null}
-              {skippedCount > 0 ? " · " : ""}
+          {unmappedCount > 0 && (
+            <span className="text-amber-300/90">
+              {unmappedCount} client call{unmappedCount === 1 ? "" : "s"} unmapped to a roster ClickUp ID
             </span>
           )}
+          {unmappedCount > 0 && skippedCount > 0 ? " · " : null}
           {skippedCount > 0 && (
             <span className="text-amber-300/90">
-              {skippedCount} team meeting{skippedCount === 1 ? "" : "s"} skipped
+              {skippedCount} team meeting{skippedCount === 1 ? "" : "s"} skipped in this range
             </span>
           )}
         </p>
@@ -319,13 +403,70 @@ export default function TeamMeetings({ from, to }: Props) {
           {loading ? (
             <p className="text-sm text-slate-500 p-6">Loading calendars…</p>
           ) : byDay.length === 0 ? (
-            <p className="text-sm text-slate-500 p-6">No events in this range.</p>
+            <div className="px-5 py-8 space-y-3">
+              <p className="text-sm text-slate-300">
+                {items.length === 0
+                  ? kindFilter === "client"
+                    ? "No client CS calls in this date range."
+                    : kindFilter === "team"
+                      ? "No team meetings in this date range."
+                      : "Nothing on the board for this date range."
+                  : `No ${KIND_LABEL[kindFilter].toLowerCase()} ${WHEN_LABEL[whenFilter].toLowerCase()} events.`}
+              </p>
+              <p className="text-xs text-slate-500">
+                {items.length === 0 && kindFilter !== "team"
+                  ? "If Make is still returning unknown calendar_id, register the GHL ID above."
+                  : filtersActive
+                    ? "Filters are hiding rows that exist in this range."
+                    : "Change the dashboard date range to look at another week."}
+              </p>
+              {filtersActive && items.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {whenFilter === "upcoming" && whenCounts.history > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setWhenFilter("history")}
+                      className="text-xs rounded-md px-2.5 py-1.5"
+                      style={{ border: "1px solid rgba(255,255,255,0.14)", color: "#93c5fd" }}
+                    >
+                      Show history ({whenCounts.history})
+                    </button>
+                  )}
+                  {whenFilter === "history" && whenCounts.upcoming > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setWhenFilter("upcoming")}
+                      className="text-xs rounded-md px-2.5 py-1.5"
+                      style={{ border: "1px solid rgba(255,255,255,0.14)", color: "#93c5fd" }}
+                    >
+                      Show upcoming ({whenCounts.upcoming})
+                    </button>
+                  )}
+                  {(kindFilter !== "all" || whenFilter !== "all") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setKindFilter("all");
+                        setWhenFilter("all");
+                      }}
+                      className="text-xs rounded-md px-2.5 py-1.5"
+                      style={{ border: "1px solid rgba(255,255,255,0.14)", color: "#cbd5e1" }}
+                    >
+                      Show everything ({items.length})
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           ) : (
             byDay.map(([day, list]) => (
               <div key={day}>
                 <div
-                  className="px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate-400"
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+                  className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                  style={{
+                    borderBottom: "1px solid rgba(255,255,255,0.06)",
+                    background: "rgba(6,26,74,0.35)",
+                  }}
                 >
                   {dayHeading(list[0].scheduled_at)}
                 </div>
@@ -335,40 +476,41 @@ export default function TeamMeetings({ from, to }: Props) {
                       <button
                         type="button"
                         onClick={() => setSelectedKey(row.key)}
-                        className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-white/[0.03]"
+                        className="w-full text-left px-3 py-2.5 flex items-stretch gap-3 hover:bg-white/[0.03]"
                         style={{
                           borderBottom: "1px solid rgba(255,255,255,0.05)",
                           background:
-                            selectedKey === row.key ? "rgba(96,165,250,0.08)" : "transparent",
+                            selectedKey === row.key ? "rgba(79,163,255,0.08)" : "transparent",
                         }}
                       >
                         <span
-                          className="mt-1.5 h-2 w-2 rounded-full shrink-0"
-                          style={{ background: STATUS_COLOR[row.status] ?? "#64748b" }}
+                          className="w-0.5 shrink-0 rounded-full self-stretch"
+                          style={{ background: KIND_RAIL[row.kind] }}
+                          aria-hidden
                         />
+                        <span
+                          className="w-[4.5rem] shrink-0 pt-0.5 text-sm tabular-nums text-slate-200"
+                          style={{ fontFamily: "var(--font-data), ui-monospace, monospace" }}
+                        >
+                          {formatClock(row.scheduled_at)}
+                        </span>
                         <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2">
+                          <span className="flex items-baseline gap-2 min-w-0">
                             <span
-                              className="text-[10px] uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded"
-                              style={{
-                                color: row.kind === "client" ? "#38bdf8" : "#a78bfa",
-                                background:
-                                  row.kind === "client"
-                                    ? "rgba(56,189,248,0.12)"
-                                    : "rgba(167,139,250,0.12)",
-                              }}
+                              className="text-[10px] font-semibold uppercase tracking-[0.12em] shrink-0"
+                              style={{ color: KIND_RAIL[row.kind] }}
                             >
                               {row.kind === "client" ? "Client" : "Team"}
                             </span>
-                            <span className="block text-sm text-slate-100 truncate">{row.title}</span>
+                            <span className="text-sm text-slate-100 truncate">{row.title}</span>
                           </span>
-                          <span className="block text-xs text-slate-400 truncate mt-0.5">
-                            {formatWhen(row.scheduled_at)} · {row.subtitle}
+                          <span className="block text-xs text-slate-500 truncate mt-0.5">
+                            {row.subtitle}
                           </span>
                         </span>
                         <span
-                          className="text-[10px] uppercase tracking-wide shrink-0"
-                          style={{ color: STATUS_COLOR[row.status] }}
+                          className="text-[10px] uppercase tracking-wide shrink-0 pt-1"
+                          style={{ color: STATUS_COLOR[row.status] ?? "#64748b" }}
                         >
                           {row.status.replace("_", " ")}
                         </span>
@@ -395,12 +537,72 @@ export default function TeamMeetings({ from, to }: Props) {
               className="rounded-xl p-8 text-sm text-slate-500"
               style={{ border: "1px solid rgba(255,255,255,0.08)", background: "rgba(15,23,42,0.4)" }}
             >
-              Open an event to view runbook details or client CS call info.
+              Open a row to run a team meeting or see a client CS call.
             </div>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+function FilterCluster({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 min-w-0">
+      <span
+        className="text-[10px] font-semibold uppercase tracking-[0.18em]"
+        style={{ color: "#64748b" }}
+      >
+        {label}
+      </span>
+      <div
+        role="radiogroup"
+        aria-label={label}
+        className="flex flex-wrap rounded-lg p-0.5"
+        style={{
+          background: "rgba(8,15,30,0.85)",
+          border: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function FilterOption({
+  selected,
+  onClick,
+  children,
+  hint,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  hint?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      title={hint}
+      onClick={onClick}
+      className="rounded-md px-2.5 py-1.5 text-xs font-medium whitespace-nowrap"
+      style={{
+        background: selected ? "rgba(79,163,255,0.18)" : "transparent",
+        color: selected ? "#e2e8f0" : "#94a3b8",
+        boxShadow: selected ? "inset 0 0 0 1px rgba(79,163,255,0.35)" : "none",
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -549,10 +751,10 @@ function CsCalendarsConfigPanel({ onChanged }: { onChanged?: () => void }) {
       style={{ border: "1px solid rgba(56,189,248,0.2)", background: "rgba(14,116,144,0.08)" }}
     >
       <div>
-        <h3 className="text-sm font-semibold text-slate-100">CS calendar IDs</h3>
+        <h3 className="text-sm font-semibold text-slate-100">Register GHL calendar IDs</h3>
         <p className="text-xs text-slate-400 mt-0.5">
-          Paste GHL calendar IDs so onboarding / launch / check-in webhooks are accepted. Unknown IDs
-          return 400 from the webhook.
+          This is setup, not a filter. Paste onboarding / launch / check-in calendar IDs so Make
+          webhooks are accepted.
         </p>
       </div>
 
