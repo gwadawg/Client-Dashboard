@@ -28,6 +28,7 @@ type ApiPayload = {
   clients: ClientRow[];
   months: string[];
   can_view_revenue: boolean;
+  overrides_enabled?: boolean;
   error?: string;
 };
 
@@ -250,6 +251,8 @@ export default function PaymentStreakTimeline({ onOpenClient }: Props) {
           <p className="text-sm mt-0.5" style={{ color: "#64748b" }}>
             Consecutive full-freight months from the billing ledger. M3 / M6
             badges foreshadow stickiness commissions (no dollars here).
+            Cell overrides change this board only — they do not edit invoices,
+            payments, MRR, or client status.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -336,6 +339,21 @@ export default function PaymentStreakTimeline({ onOpenClient }: Props) {
           }}
         >
           {error}
+        </div>
+      )}
+
+      {data && data.overrides_enabled === false && (
+        <div
+          className="text-sm rounded-md px-3 py-2"
+          style={{
+            background: "rgba(245,158,11,0.10)",
+            color: "#fbbf24",
+            border: "1px solid rgba(245,158,11,0.25)",
+          }}
+        >
+          Derived from the billing ledger. Month overrides need the
+          <code className="mx-1">client_month_disposition_overrides</code>
+          migration applied in Supabase.
         </div>
       )}
 
@@ -526,7 +544,7 @@ export default function PaymentStreakTimeline({ onOpenClient }: Props) {
           >
             <span>{rows.length} clients</span>
             <span>Totals: P = paid · M = misses (unpaid+short) · E = extensions</span>
-            <span>Ring on cell = manual override</span>
+            <span>Ring on cell = board overlay only (ledger unchanged)</span>
           </div>
         </div>
       )}
@@ -549,7 +567,7 @@ export default function PaymentStreakTimeline({ onOpenClient }: Props) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-wider" style={{ color: "#64748b" }}>
-                  Month disposition
+                  Board overlay
                 </p>
                 <h3 className="text-lg font-semibold mt-0.5" style={{ color: "#f8fafc" }}>
                   {selected.client.name}
@@ -576,15 +594,21 @@ export default function PaymentStreakTimeline({ onOpenClient }: Props) {
               }}
             >
               <div className="flex justify-between">
-                <span style={{ color: "#64748b" }}>Current</span>
+                <span style={{ color: "#64748b" }}>Board shows</span>
                 <span style={{ color: DISP_META[selected.cell.disposition].text }}>
                   {DISP_META[selected.cell.disposition].label}
                 </span>
               </div>
               <div className="flex justify-between">
+                <span style={{ color: "#64748b" }}>Billing ledger</span>
+                <span style={{ color: DISP_META[selected.cell.ledger_disposition ?? selected.cell.disposition].text }}>
+                  {DISP_META[selected.cell.ledger_disposition ?? selected.cell.disposition].label}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span style={{ color: "#64748b" }}>Source</span>
                 <span style={{ color: "#e2e8f0" }}>
-                  {selected.cell.source === "override" ? "Override" : "Derived"}
+                  {selected.cell.source === "override" ? "Board overlay" : "Ledger"}
                 </span>
               </div>
               {data?.can_view_revenue && (
@@ -615,9 +639,14 @@ export default function PaymentStreakTimeline({ onOpenClient }: Props) {
               </div>
             </div>
 
+            <p className="text-xs leading-relaxed" style={{ color: "#64748b" }}>
+              Saving an overlay updates stickiness streak only. Queue, paid
+              history, invoice amounts, and client lifecycle stay untouched.
+            </p>
+
             <div className="space-y-2">
               <label className="block text-xs" style={{ color: "#94a3b8" }}>
-                Override disposition
+                Board overlay (not billing)
               </label>
               <select
                 value={overrideDisp}
@@ -657,7 +686,7 @@ export default function PaymentStreakTimeline({ onOpenClient }: Props) {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={saving}
+                disabled={saving || data?.overrides_enabled === false}
                 onClick={() => void saveOverride()}
                 className="rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
                 style={{

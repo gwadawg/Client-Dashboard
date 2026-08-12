@@ -129,6 +129,7 @@ function cells(
   return seq.map(([year_month, disposition, source]) => ({
     year_month,
     disposition,
+    ledger_disposition: disposition,
     source: source ?? 'derived',
     billing_id: null,
     amount: null,
@@ -268,6 +269,7 @@ describe('buildClientStreakTimeline', () => {
     });
     const jul = tl.months.find((m) => m.year_month === '2026-07');
     assert.equal(jul?.disposition, 'paid');
+    assert.equal(jul?.ledger_disposition, 'extension');
     assert.equal(jul?.source, 'override');
     assert.equal(tl.summary.current_streak, 4);
     assert.equal(tl.summary.milestone_m3, true);

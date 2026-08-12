@@ -9,6 +9,18 @@ import {
   type StreakBillingRow,
 } from '@/lib/payment-streak';
 
+function isMissingRelationError(err: { message?: string; code?: string } | null): boolean {
+  if (!err) return false;
+  const msg = (err.message ?? '').toLowerCase();
+  return (
+    err.code === '42P01' ||
+    err.code === 'PGRST205' ||
+    msg.includes('schema cache') ||
+    msg.includes('does not exist') ||
+    msg.includes('could not find the table')
+  );
+}
+
 const PERMS = ['client_health', 'admin_clients', 'admin_billing'] as const;
 
 const CLIENT_FIELDS =
@@ -72,6 +84,7 @@ export async function GET(req: Request) {
       clients: [],
       months: [],
       can_view_revenue: canViewRevenue,
+      overrides_enabled: true,
     });
   }
 
@@ -92,18 +105,12 @@ export async function GET(req: Request) {
   if (billingsRes.error) {
     return NextResponse.json({ error: billingsRes.error.message }, { status: 500 });
   }
-  if (overridesRes.error) {
-    // Table may not exist yet pre-migration — surface clearly
-    return NextResponse.json(
-      {
-        error:
-          overridesRes.error.message.includes('does not exist') ||
-          overridesRes.error.code === '42P01'
-            ? 'client_month_disposition_overrides missing — run migration add_client_month_disposition_overrides.sql'
-            : overridesRes.error.message,
-      },
-      { status: 500 },
-    );
+
+  // Override table is additive. If the migration is not applied yet, still
+  // render derived streaks from client_billings (no manual overrides).
+  const overridesMissing = isMissingRelationError(overridesRes.error);
+  if (overridesRes.error && !overridesMissing) {
+    return NextResponse.json({ error: overridesRes.error.message }, { status: 500 });
   }
 
   const billingsByClient = new Map<string, StreakBillingRow[]>();
@@ -198,5 +205,6 @@ export async function GET(req: Request) {
     clients: payload,
     months,
     can_view_revenue: canViewRevenue,
+    overrides_enabled: !overridesMissing,
   });
 }

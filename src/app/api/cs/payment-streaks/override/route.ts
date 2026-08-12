@@ -1,3 +1,10 @@
+/**
+ * Stickiness board overlays only.
+ *
+ * Writes exclusively to `client_month_disposition_overrides`.
+ * Never insert/update/delete `client_billings`, `billing_cycles`, or `clients`
+ * (no invoices, payments, MRR, pause, or churn changes from this route).
+ */
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import {
@@ -6,6 +13,21 @@ import {
 } from '@/lib/payment-streak';
 
 const PERMS = ['client_health', 'admin_clients', 'admin_billing'] as const;
+
+function isMissingRelationError(err: { message?: string; code?: string } | null): boolean {
+  if (!err) return false;
+  const msg = (err.message ?? '').toLowerCase();
+  return (
+    err.code === '42P01' ||
+    err.code === 'PGRST205' ||
+    msg.includes('schema cache') ||
+    msg.includes('does not exist') ||
+    msg.includes('could not find the table')
+  );
+}
+
+const MISSING_TABLE_MSG =
+  'Override table not applied yet. Run supabase/migrations/add_client_month_disposition_overrides.sql in Supabase SQL Editor.';
 
 export async function PUT(req: Request) {
   const ctx = await getAuthContext();
@@ -62,12 +84,16 @@ export async function PUT(req: Request) {
   }
 
   const now = new Date().toISOString();
-  const { data: existing } = await ctx.service
+  const existingRes = await ctx.service
     .from('client_month_disposition_overrides')
     .select('id')
     .eq('client_id', clientId)
     .eq('year_month', yearMonth)
     .maybeSingle();
+  if (isMissingRelationError(existingRes.error)) {
+    return NextResponse.json({ error: MISSING_TABLE_MSG }, { status: 503 });
+  }
+  const existing = existingRes.data;
 
   let data;
   let error;
@@ -104,6 +130,9 @@ export async function PUT(req: Request) {
   }
 
   if (error) {
+    if (isMissingRelationError(error)) {
+      return NextResponse.json({ error: MISSING_TABLE_MSG }, { status: 503 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
@@ -144,6 +173,9 @@ export async function DELETE(req: Request) {
     .eq('year_month', yearMonth);
 
   if (error) {
+    if (isMissingRelationError(error)) {
+      return NextResponse.json({ error: MISSING_TABLE_MSG }, { status: 503 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

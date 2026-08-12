@@ -71,6 +71,8 @@ export type MonthDispositionOverride = {
 export type MonthCell = {
   year_month: string;
   disposition: MonthDisposition;
+  /** Always the ledger/status truth. Never rewritten by a board override. */
+  ledger_disposition: MonthDisposition;
   source: 'derived' | 'override';
   billing_id: string | null;
   amount: number | null;
@@ -328,27 +330,33 @@ export function buildClientStreakTimeline(opts: {
 
   const months: MonthCell[] = [];
   for (const ym of monthRangeInclusive(fromYm, toYm)) {
+    const ledger = ledgerMap.get(ym);
+    const statusDisp = statusDispositionForMonth(opts.client, ym);
+    const ledgerDisposition: MonthDisposition =
+      ledger?.disposition ?? statusDisp ?? 'empty';
     const override = overrideMap.get(ym);
+
     if (override) {
       months.push({
         year_month: ym,
         disposition: override.disposition,
+        ledger_disposition: ledgerDisposition,
         source: 'override',
-        billing_id: ledgerMap.get(ym)?.billing_id ?? null,
-        amount: ledgerMap.get(ym)?.amount ?? null,
-        amount_paid: ledgerMap.get(ym)?.amount_paid ?? null,
-        is_extension: override.disposition === 'extension',
+        billing_id: ledger?.billing_id ?? null,
+        amount: ledger?.amount ?? null,
+        amount_paid: ledger?.amount_paid ?? null,
+        is_extension: ledger?.is_extension ?? override.disposition === 'extension',
         note: override.note ?? null,
       });
       continue;
     }
 
-    const ledger = ledgerMap.get(ym);
     if (ledger) {
       // Pause/churn flags do not bury ledger paid/extension/short/unpaid
       months.push({
         year_month: ym,
         disposition: ledger.disposition,
+        ledger_disposition: ledger.disposition,
         source: 'derived',
         billing_id: ledger.billing_id,
         amount: ledger.amount,
@@ -359,11 +367,11 @@ export function buildClientStreakTimeline(opts: {
       continue;
     }
 
-    const statusDisp = statusDispositionForMonth(opts.client, ym);
     if (statusDisp) {
       months.push({
         year_month: ym,
         disposition: statusDisp,
+        ledger_disposition: statusDisp,
         source: 'derived',
         billing_id: null,
         amount: null,
@@ -377,6 +385,7 @@ export function buildClientStreakTimeline(opts: {
     months.push({
       year_month: ym,
       disposition: 'empty',
+      ledger_disposition: 'empty',
       source: 'derived',
       billing_id: null,
       amount: null,

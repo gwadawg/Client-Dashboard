@@ -1,8 +1,8 @@
-# Payment Streak Timeline (CS Hub)
+# Payment Streak Timeline (Client Billing)
 
 Date: 2026-08-10  
 Status: Approved for implementation  
-Surface: Client Success → Stickiness tab  
+Surface: Admin → Client Billing → **Stickiness** tab  
 Ledger: `client_billings` + sparse `client_month_disposition_overrides`
 
 ## Problem
@@ -16,7 +16,7 @@ logo: who is streaking, who got an extension, who missed, who is paused.
 
 1. Auto-derive a month-by-month disposition strip for each **active**
    client from `client_billings` (live “backfill” on read).
-2. Show a color-coded heatmap in Client Success with current consecutive
+2. Show a color-coded heatmap in Client Billing with current consecutive
    paid streak and miss / extension counts.
 3. Allow sparse manual overrides for founder retention exceptions and
    history gaps without re-keying Admin Billing.
@@ -41,7 +41,8 @@ logo: who is streaking, who got an extension, who missed, who is paused.
 | Streak | Only `paid` advances; short/extension/unpaid/paused break |
 | Colors | green paid / orange short / yellow extension / red unpaid / gray paused / dark red churned |
 | Default roster | Active lifecycle; optional include paused |
-| Tab | Client Success hub: **Stickiness** |
+| Tab | Client Billing: **Stickiness** |
+| Write isolation | Board overlays write **only** to `client_month_disposition_overrides`. Never mutate `client_billings`, `billing_cycles`, or `clients`. |
 
 ## Disposition model
 

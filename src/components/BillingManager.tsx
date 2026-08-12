@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import { useNavigateChurnOffboard } from "@/hooks/useNavigateChurnOffboard";
 import ViewHub from "@/components/nav/ViewHub";
+import PaymentStreakTimeline from "@/components/PaymentStreakTimeline";
 import { CycleEditor } from "@/components/billing/PerformanceBilling";
 import ReportingTypeBadge from "@/components/ReportingTypeBadge";
 import {
@@ -649,7 +650,7 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-type BillingSubView = "queue" | "paid" | "inactive" | "setup";
+type BillingSubView = "queue" | "paid" | "inactive" | "setup" | "stickiness";
 
 function UnifiedBilling({
   pastDue,
@@ -705,6 +706,7 @@ function UnifiedBilling({
     tabs.push(
       { key: "inactive", label: `Paused / churned (${inactiveClients.length})` },
       { key: "setup", label: `Setup (${setupCount})` },
+      { key: "stickiness", label: "Stickiness" },
     );
     return tabs;
   }, [queueCount, canViewRevenue, paid.length, inactiveClients.length, setupCount]);
@@ -788,6 +790,8 @@ function UnifiedBilling({
           onRequestOffboard={onRequestOffboard}
         />
       )}
+
+      {subView === "stickiness" && <PaymentStreakTimeline />}
     </ViewHub>
   );
 }
