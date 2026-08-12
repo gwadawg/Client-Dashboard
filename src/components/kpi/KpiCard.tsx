@@ -67,7 +67,10 @@ export default function KpiCard({
           </span>
         )}
       </div>
-      <span className="text-3xl font-bold pl-3 tabular-nums" style={{ color: "#f1f5f9" }}>
+      <span
+        className="font-data text-3xl font-bold pl-3 tabular-nums tracking-tight"
+        style={{ color: "var(--color-ws-text-loud)" }}
+      >
         {value}
       </span>
       {caption && (

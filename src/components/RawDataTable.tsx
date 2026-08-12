@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type Client = { id: string; name: string };
+import { useUrlParams } from "@/lib/use-url-params";
 
 type Props = {
   type: "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ad_insights";
-  clients: Client[];
-  preset: string;
+  /** Scope inherited from the workspace filter bar. */
+  clientId?: string;
+  liveOnly?: boolean;
   startDate: string;
   endDate: string;
 };
@@ -121,14 +121,11 @@ function formatCell(key: string, value: unknown): string {
   return String(value);
 }
 
-export default function RawDataTable({ type, clients: allClients, preset, startDate, endDate }: Props) {
+export default function RawDataTable({ type, clientId, liveOnly, startDate, endDate }: Props) {
+  const urlParams = useUrlParams();
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [clientFilter, setClientFilter] = useState("");
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [useSetterSchedule, setUseSetterSchedule] = useState(true);
   const [leadAfter, setLeadAfter] = useState("");
   const [leadBefore, setLeadBefore] = useState("");
@@ -140,27 +137,36 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
   // Search only applies to lead-based event types
   const searchable = ["leads", "dials", "appointments", "speed_to_lead"].includes(type);
 
-  // Debounce the search input to avoid a request on every keystroke
+  // The URL owns the committed query and page so a filtered table is linkable;
+  // the input keeps its own copy so typing stays instant.
+  const query = searchable ? urlParams.get("q") : "";
+  const pageParam = Number(urlParams.get("page"));
+  const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+  const [search, setSearch] = useState(query);
+
+  useEffect(() => { setSearch(query); }, [query]);
+
+  // Debounce the search input to avoid a request on every keystroke. Committing
+  // resets to page 1, since page N of the old result set is meaningless.
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    const trimmed = search.trim();
+    if (trimmed === query) return;
+    const t = setTimeout(() => urlParams.setMany({ q: trimmed, page: null }), 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, query, urlParams]);
 
-  // Reset search when switching to a non-searchable tab
-  useEffect(() => { if (!searchable) setSearch(""); }, [searchable]);
-
-  useEffect(() => { setPage(1); }, [type, clientFilter, debouncedSearch, preset, startDate, endDate, useSetterSchedule, leadAfter, leadBefore]);
+  const setPage = (next: number) => urlParams.set("page", next > 1 ? String(next) : null);
 
   useEffect(() => {
     setLoading(true);
 
     if (isSpeedToLead) {
       const params = new URLSearchParams({ page: String(page), limit: String(pageSize) });
-      if (clientFilter === "__live__") params.set("live_only", "true");
-      else if (clientFilter) params.set("client_id", clientFilter);
+      if (liveOnly) params.set("live_only", "true");
+      else if (clientId) params.set("client_id", clientId);
       if (startDate) params.set("start_date", startDate);
       if (endDate) params.set("end_date", endDate);
-      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (query) params.set("search", query);
       params.set("use_setter_schedule", useSetterSchedule ? "true" : "false");
       if (leadAfter) params.set("lead_after", leadAfter);
       if (leadBefore) params.set("lead_before", leadBefore);
@@ -179,36 +185,25 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
 
     setStlSummary(null);
     const params = new URLSearchParams({ type, page: String(page) });
-    if (clientFilter === "__live__") params.set("live_only", "true");
-    else if (clientFilter) params.set("client_id", clientFilter);
+    if (liveOnly) params.set("live_only", "true");
+    else if (clientId) params.set("client_id", clientId);
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
-    if (searchable && debouncedSearch) params.set("search", debouncedSearch);
+    if (searchable && query) params.set("search", query);
 
     fetch(`/api/raw?${params}`)
       .then(r => r.json())
       .then(d => { setRows(d.rows ?? []); setTotal(d.total ?? 0); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [type, clientFilter, page, startDate, endDate, debouncedSearch, searchable, isSpeedToLead, useSetterSchedule, leadAfter, leadBefore]);
+  }, [type, clientId, liveOnly, page, startDate, endDate, query, searchable, isSpeedToLead, useSetterSchedule, leadAfter, leadBefore]);
 
   const cols = COLUMNS[type] ?? [];
   const totalPages = Math.ceil(total / pageSize);
 
   return (
     <div className="space-y-4">
-      {/* Client filter */}
+      {/* Client and date scope come from the workspace filter bar above. */}
       <div className="flex items-center gap-3">
-        <select
-          value={clientFilter}
-          onChange={e => setClientFilter(e.target.value)}
-          className="px-4 py-2 rounded-lg text-sm font-medium outline-none"
-          style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", minWidth: "11rem" }}
-        >
-          <option value="">All Clients</option>
-          <option value="__live__">Live Clients</option>
-          {allClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-
         {searchable && (
           <div className="relative">
             <input
@@ -277,7 +272,7 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
 
       {/* Table */}
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <table className="w-full text-sm">
+        <table className="w-full text-sm tabular-nums">
           <thead>
             <tr style={{ background: "#050c18" }}>
               {cols.map(c => (
@@ -322,13 +317,13 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center gap-3 justify-end">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+          <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
             className="px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-30 transition-colors"
             style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", color: "#94a3b8" }}>
             ← Prev
           </button>
           <span className="text-sm" style={{ color: "#334155" }}>Page {page} of {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+          <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
             className="px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-30 transition-colors"
             style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", color: "#94a3b8" }}>
             Next →

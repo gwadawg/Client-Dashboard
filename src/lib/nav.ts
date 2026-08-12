@@ -3,6 +3,8 @@
 
 export type HeatmapTab = "show_rate" | "pickup_rate" | "new_leads";
 export type DataExplorerTab = "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
+/** Level-1 tabs inside the unified Client Workspace. */
+export type ClientWorkspaceTab = "kpis" | "dials" | "explorer" | "heatmaps";
 export type AcquisitionTab = "appointments" | "credit_queue" | "sales_calls" | "pending_closes" | "log_close" | "call_examples";
 export type AcquisitionDataExplorerTab = "leads" | "appointments" | "offers" | "dials" | "closes" | "ads";
 export type AcquisitionKpiTab = "overview" | "setters" | "closers" | "costs";
@@ -12,8 +14,7 @@ export type ClientSuccessTab = "health" | "followups" | "stickiness";
 export type TeamDashboardTab = "cs" | "ccm" | "media";
 
 export type HubView =
-  | "heatmaps"
-  | "data_explorer"
+  | "client_workspace"
   | "acquisition"
   | "acquisition_data_explorer"
   | "acquisition_kpis"
@@ -22,17 +23,21 @@ export type HubView =
   | "team_dashboard";
 
 export type View =
-  | "dashboard"
   | "kpi_simulator"
   | "client_report_builder"
   | "ceo"
   | "ceo_raw"
-  | "dial_analytics"
   | "media_buyer"
   | "ops_overview"
   | "state_looker"
   | "team_dashboard_ccm"
   | "team_dashboard_media"
+  // Folded into the Client Workspace hub. Retained so stored permissions,
+  // bookmarks and icon maps keep resolving; redirected on the way in.
+  | "dashboard"
+  | "dial_analytics"
+  | "heatmaps"
+  | "data_explorer"
   | HubView
   | "resources"
   | "closebot_log"
@@ -82,6 +87,24 @@ export type NavItem = { view: View; label: string; group: string };
 
 export type HubTabDef<T extends string> = { key: T; label: string };
 
+export const CLIENT_WORKSPACE_TABS: HubTabDef<ClientWorkspaceTab>[] = [
+  { key: "kpis", label: "KPIs" },
+  { key: "dials", label: "Dials" },
+  { key: "explorer", label: "Explorer" },
+  { key: "heatmaps", label: "Heat Maps" },
+];
+
+/**
+ * Each Workspace tab keeps the permission of the sidebar entry it absorbed, so
+ * merging the views cannot hand anyone access they were not already granted.
+ */
+export const CLIENT_WORKSPACE_TAB_PERMISSIONS: Record<ClientWorkspaceTab, string> = {
+  kpis: "dashboard",
+  dials: "dial_analytics",
+  explorer: "data_explorer",
+  heatmaps: "heatmaps",
+};
+
 export const HEATMAP_TABS: HubTabDef<HeatmapTab>[] = [
   { key: "show_rate", label: "Show Rate" },
   { key: "pickup_rate", label: "Pick Up Rate" },
@@ -95,6 +118,30 @@ export const DATA_EXPLORER_TABS: HubTabDef<DataExplorerTab>[] = [
   { key: "speed_to_lead", label: "Speed to Lead" },
   { key: "meta_ads", label: "Meta Ads" },
 ];
+
+/**
+ * Level-2 tabs, addressed by the `sub` URL param. Workspace tabs absent here
+ * have no nested level. `kpis` is the exception: it uses `sub=conversions` for
+ * the RM drill-in rather than a tab bar.
+ */
+export const CLIENT_WORKSPACE_SUBTABS: Partial<Record<ClientWorkspaceTab, HubTabDef<string>[]>> = {
+  explorer: DATA_EXPLORER_TABS,
+  heatmaps: HEATMAP_TABS,
+};
+
+/** Validate a `sub` value, falling back to the first nested tab. */
+export function resolveWorkspaceSubTab(
+  tab: ClientWorkspaceTab,
+  sub: string | null | undefined,
+): string | null {
+  const tabs = CLIENT_WORKSPACE_SUBTABS[tab];
+  if (!tabs?.length) return null;
+  return tabs.some(t => t.key === sub) ? (sub as string) : tabs[0].key;
+}
+
+export function isClientWorkspaceTab(tab: string | null | undefined): tab is ClientWorkspaceTab {
+  return CLIENT_WORKSPACE_TABS.some(t => t.key === tab);
+}
 
 export const ACQUISITION_TABS: HubTabDef<AcquisitionTab>[] = [
   { key: "appointments", label: "Appointments" },
@@ -162,8 +209,23 @@ export const TEAM_COMMAND_LEGACY_REDIRECTS: Record<string, TeamDashboardTab> = {
 
 /** Hub view → legacy permission keys that grant access. */
 export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
-  heatmaps: ["heatmap_show", "heatmap_pickup", "heatmap_leads"],
-  data_explorer: ["leads", "dials", "appointments", "speed_to_lead", "meta_ad_insights"],
+  // Absorbed the four standalone client views plus their own legacy children, so
+  // any prior grant still opens the Workspace. Which tabs appear inside it is
+  // decided separately by CLIENT_WORKSPACE_TAB_PERMISSIONS.
+  client_workspace: [
+    "dashboard",
+    "dial_analytics",
+    "heatmaps",
+    "data_explorer",
+    "heatmap_show",
+    "heatmap_pickup",
+    "heatmap_leads",
+    "leads",
+    "dials",
+    "appointments",
+    "speed_to_lead",
+    "meta_ad_insights",
+  ],
   acquisition: [
     "acquisition",
     "acquisition_marketing",
@@ -193,8 +255,7 @@ export const HUB_LEGACY_CHILDREN: Record<HubView, string[]> = {
 
 /** All legacy keys still honored in stored permissions (soft deprecation). */
 export const LEGACY_PERMISSION_KEYS: string[] = [
-  ...HUB_LEGACY_CHILDREN.heatmaps,
-  ...HUB_LEGACY_CHILDREN.data_explorer,
+  ...HUB_LEGACY_CHILDREN.client_workspace,
   "ad_spend",
   ...HUB_LEGACY_CHILDREN.acquisition.filter(k => k !== "acquisition"),
   ...HUB_LEGACY_CHILDREN.agents,
@@ -202,16 +263,28 @@ export const LEGACY_PERMISSION_KEYS: string[] = [
   ...HUB_LEGACY_CHILDREN.team_dashboard,
 ];
 
-export const LEGACY_VIEW_REDIRECTS: Record<LegacyView, { view: View; tab: string }> = {
-  leads: { view: "data_explorer", tab: "leads" },
-  dials: { view: "data_explorer", tab: "dials" },
-  appointments: { view: "data_explorer", tab: "appointments" },
-  speed_to_lead: { view: "data_explorer", tab: "speed_to_lead" },
-  ad_spend: { view: "data_explorer", tab: "meta_ads" },
-  meta_ad_insights: { view: "data_explorer", tab: "meta_ads" },
-  heatmap_show: { view: "heatmaps", tab: "show_rate" },
-  heatmap_pickup: { view: "heatmaps", tab: "pickup_rate" },
-  heatmap_leads: { view: "heatmaps", tab: "new_leads" },
+export type ViewRedirect = { view: View; tab: string; sub?: string };
+
+/**
+ * Old flat view keys → hub + tab (+ nested sub-tab). Keyed loosely because the
+ * four views folded into the Client Workspace are still real `View` members,
+ * not `LegacyView`s.
+ */
+export const LEGACY_VIEW_REDIRECTS: Record<string, ViewRedirect> = {
+  // Sidebar entries absorbed by the Client Workspace.
+  dashboard: { view: "client_workspace", tab: "kpis" },
+  dial_analytics: { view: "client_workspace", tab: "dials" },
+  data_explorer: { view: "client_workspace", tab: "explorer" },
+  heatmaps: { view: "client_workspace", tab: "heatmaps" },
+  leads: { view: "client_workspace", tab: "explorer", sub: "leads" },
+  dials: { view: "client_workspace", tab: "explorer", sub: "dials" },
+  appointments: { view: "client_workspace", tab: "explorer", sub: "appointments" },
+  speed_to_lead: { view: "client_workspace", tab: "explorer", sub: "speed_to_lead" },
+  ad_spend: { view: "client_workspace", tab: "explorer", sub: "meta_ads" },
+  meta_ad_insights: { view: "client_workspace", tab: "explorer", sub: "meta_ads" },
+  heatmap_show: { view: "client_workspace", tab: "heatmaps", sub: "show_rate" },
+  heatmap_pickup: { view: "client_workspace", tab: "heatmaps", sub: "pickup_rate" },
+  heatmap_leads: { view: "client_workspace", tab: "heatmaps", sub: "new_leads" },
   agent_stats: { view: "agents", tab: "performance" },
   agent_credit_queue: { view: "agents", tab: "credit_queue" },
   agent_scorecards: { view: "agents", tab: "performance" },
@@ -228,8 +301,7 @@ export const LEGACY_VIEW_REDIRECTS: Record<LegacyView, { view: View; tab: string
 };
 
 export const HUB_VIEWS: HubView[] = [
-  "heatmaps",
-  "data_explorer",
+  "client_workspace",
   "acquisition",
   "acquisition_data_explorer",
   "acquisition_kpis",
@@ -239,8 +311,7 @@ export const HUB_VIEWS: HubView[] = [
 ];
 
 export const HUB_TAB_LABELS: Record<HubView, HubTabDef<string>[]> = {
-  heatmaps: HEATMAP_TABS,
-  data_explorer: DATA_EXPLORER_TABS,
+  client_workspace: CLIENT_WORKSPACE_TABS,
   acquisition: ACQUISITION_TABS,
   acquisition_data_explorer: ACQUISITION_DATA_EXPLORER_TABS,
   acquisition_kpis: ACQUISITION_KPI_TABS,
@@ -273,14 +344,11 @@ export const NAV_GROUPS = [
 
 export const NAV: NavItem[] = [
   { view: "team_dashboard",     label: "Team Command",          group: "Team Dashboards" },
-  { view: "dashboard",          label: "Client KPIs",           group: "Clients"      },
+  { view: "client_workspace",   label: "Client Workspace",      group: "Clients"      },
   { view: "kpi_simulator",      label: "Funnel Simulator",      group: "Clients"      },
   { view: "client_report_builder", label: "Client Reports",     group: "Clients"      },
-  { view: "dial_analytics",     label: "Dial Analytics",        group: "Clients"      },
   { view: "media_buyer",        label: "Ad Performance",        group: "Clients"      },
   { view: "client_health",      label: "Client Success",        group: "Clients"      },
-  { view: "heatmaps",           label: "Heat Maps",             group: "Clients"      },
-  { view: "data_explorer",      label: "Data Explorer",         group: "Clients"      },
   { view: "state_looker",       label: "Client Directory",      group: "Clients"      },
   { view: "ceo",                label: "CEO Dashboard",         group: "Executive"    },
   { view: "ceo_raw",            label: "Raw Data",              group: "Executive"    },
@@ -308,13 +376,24 @@ export const NAV: NavItem[] = [
 
 export const ALL_VIEWS: View[] = NAV.map(item => item.view);
 
+/** The view a bare `/dashboard` URL lands on. */
+export const DEFAULT_VIEW: HubView = "client_workspace";
+
 export function resolveViewFromParams(
   viewParam: string | null,
   tabParam: string | null,
 ): { view: View; tab: string | null } {
-  if (!viewParam || viewParam === "dashboard") {
-    return { view: "dashboard", tab: null };
-  }
+  const resolveHub = (view: HubView, rawTab: string | null): { view: View; tab: string } => {
+    const tabs = HUB_TAB_LABELS[view];
+    // Soft-map old Ops seat key → CS
+    const candidate = rawTab === "ops" && view === "team_dashboard" ? "cs" : rawTab;
+    const valid = tabs.some(t => t.key === candidate);
+    return { view, tab: valid ? (candidate as string) : defaultTabForHub(view) };
+  };
+
+  // No view param is the default workspace — still honor an explicit tab so a
+  // sub-tab click that only writes `?tab=` isn't snapped back.
+  if (!viewParam) return resolveHub(DEFAULT_VIEW, tabParam);
 
   // Old Team Dashboards URLs → single Team Command hub + seat tab.
   if (viewParam in TEAM_COMMAND_LEGACY_REDIRECTS) {
@@ -325,21 +404,15 @@ export function resolveViewFromParams(
   }
 
   if (viewParam in LEGACY_VIEW_REDIRECTS) {
-    const redirect = LEGACY_VIEW_REDIRECTS[viewParam as LegacyView];
+    const redirect = LEGACY_VIEW_REDIRECTS[viewParam];
     return { view: redirect.view, tab: redirect.tab };
   }
 
   if (ALL_VIEWS.includes(viewParam as View) || viewParam === "team_dashboard") {
     const view = viewParam as View;
-    if (isHubView(view)) {
-      const tabs = HUB_TAB_LABELS[view];
-      // Soft-map old Ops seat key → CS
-      const rawTab = tabParam === "ops" && view === "team_dashboard" ? "cs" : tabParam;
-      const valid = tabs.some(t => t.key === rawTab);
-      return { view, tab: valid ? rawTab : defaultTabForHub(view) };
-    }
+    if (isHubView(view)) return resolveHub(view, tabParam);
     return { view, tab: null };
   }
 
-  return { view: "dashboard", tab: null };
+  return resolveHub(DEFAULT_VIEW, null);
 }

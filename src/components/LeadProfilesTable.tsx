@@ -1,8 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-
-type Client = { id: string; name: string };
+import { useUrlParams } from "@/lib/use-url-params";
 
 type LeadCounts = {
   dials: number;
@@ -83,7 +82,9 @@ type MappingSummary = {
 type TableView = "leads" | "unmapped";
 
 type Props = {
-  clients: Client[];
+  /** Scope inherited from the workspace filter bar. */
+  clientId?: string;
+  liveOnly?: boolean;
   startDate: string;
   endDate: string;
 };
@@ -357,39 +358,49 @@ function TimelineRow({ item }: { item: TimelineItem }) {
   );
 }
 
-export default function LeadProfilesTable({ clients: allClients, startDate, endDate }: Props) {
+export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDate }: Props) {
+  const urlParams = useUrlParams();
   const [rows, setRows] = useState<(LeadProfile | UnmappedContact)[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [clientFilter, setClientFilter] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [capped, setCapped] = useState(false);
-  const [conversionFilter, setConversionFilter] = useState("");
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [tableView, setTableView] = useState<TableView>("leads");
   const [mappingSummary, setMappingSummary] = useState<MappingSummary | null>(null);
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(t);
-  }, [search]);
+  // Table-local filters live in the URL so a narrowed list is linkable.
+  const query = urlParams.get("q");
+  const conversionFilter = urlParams.get("conv");
+  const tableView: TableView = urlParams.get("rows") === "unmapped" ? "unmapped" : "leads";
+  const pageParam = Number(urlParams.get("page"));
+  const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+  const [search, setSearch] = useState(query);
+
+  useEffect(() => { setSearch(query); }, [query]);
 
   useEffect(() => {
-    setPage(1);
+    const trimmed = search.trim();
+    if (trimmed === query) return;
+    const t = setTimeout(() => urlParams.setMany({ q: trimmed, page: null }), 300);
+    return () => clearTimeout(t);
+  }, [search, query, urlParams]);
+
+  const setPage = (next: number) => urlParams.set("page", next > 1 ? String(next) : null);
+
+  // Rows are re-fetched from scratch, so previously opened detail rows would
+  // otherwise stay expanded against different leads.
+  useEffect(() => {
     setExpanded(new Set());
-  }, [clientFilter, startDate, endDate, conversionFilter, debouncedSearch, tableView]);
+  }, [clientId, liveOnly, startDate, endDate, conversionFilter, query, tableView]);
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), view: tableView });
-    if (clientFilter === "__live__") params.set("live_only", "true");
-    else if (clientFilter) params.set("client_id", clientFilter);
+    if (liveOnly) params.set("live_only", "true");
+    else if (clientId) params.set("client_id", clientId);
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
     if (conversionFilter && tableView === "leads") params.set("conversion_event", conversionFilter);
-    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (query) params.set("search", query);
 
     fetch(`/api/raw/leads?${params}`)
       .then((r) => r.json())
@@ -401,10 +412,10 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [clientFilter, page, startDate, endDate, conversionFilter, debouncedSearch, tableView]);
+  }, [clientId, liveOnly, page, startDate, endDate, conversionFilter, query, tableView]);
 
   function handleViewChange(next: TableView) {
-    setTableView(next);
+    urlParams.setMany({ rows: next === "unmapped" ? "unmapped" : null, page: null });
   }
 
   const isUnmappedView = tableView === "unmapped";
@@ -426,27 +437,8 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
       {mappingSummary && (
         <MappingBanner summary={mappingSummary} view={tableView} onViewChange={handleViewChange} />
       )}
+      {/* Client and date scope come from the workspace filter bar above. */}
       <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={clientFilter}
-          onChange={(e) => setClientFilter(e.target.value)}
-          className="px-4 py-2 rounded-lg text-sm font-medium outline-none"
-          style={{
-            background: "#0f2040",
-            border: "1px solid rgba(255,255,255,0.12)",
-            color: "#e2e8f0",
-            minWidth: "11rem",
-          }}
-        >
-          <option value="">All Clients</option>
-          <option value="__live__">Live Clients</option>
-          {allClients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-
         <div className="relative">
           <input
             type="text"
@@ -479,7 +471,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
 
         <select
           value={conversionFilter}
-          onChange={(e) => setConversionFilter(e.target.value)}
+          onChange={(e) => urlParams.setMany({ conv: e.target.value, page: null })}
           disabled={isUnmappedView}
           className="px-4 py-2 rounded-lg text-sm font-medium outline-none disabled:opacity-40"
           style={{
@@ -498,7 +490,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
           {isUnmappedView
             ? `${total.toLocaleString()} unmapped contact${total === 1 ? "" : "s"}`
             : `${leadCount.toLocaleString()} leads`}
-          {debouncedSearch && <span style={{ color: "#475569" }}> · searching all dates</span>}
+          {query && <span style={{ color: "#475569" }}> · searching all dates</span>}
         </span>
         <button
           type="button"
@@ -526,7 +518,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
       </p>
 
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <table className="w-full text-sm min-w-[1100px]">
+        <table className="w-full text-sm min-w-[1100px] tabular-nums">
           <thead>
             <tr style={{ background: "#050c18" }}>
               {["", "Client", "Name", "Flags", "Source", "Activity", "Loan amt", "Prop. value", "LTV", "B1 age", "B2 age", "Phone", "Email", isUnmappedView ? "Last activity" : "Created", "Contact"].map((h) => (
@@ -713,7 +705,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
         <div className="flex items-center gap-3 justify-end">
           <button
             type="button"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            onClick={() => setPage(Math.max(1, page - 1))}
             disabled={page === 1}
             className="px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-30 transition-colors"
             style={{
@@ -729,7 +721,7 @@ export default function LeadProfilesTable({ clients: allClients, startDate, endD
           </span>
           <button
             type="button"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
             disabled={page === totalPages}
             className="px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-30 transition-colors"
             style={{

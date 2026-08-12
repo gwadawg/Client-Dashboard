@@ -1,13 +1,32 @@
+"use client";
+
+import { useCallback, useMemo, useState } from "react";
 import type { MetricsResult } from "@/lib/metrics";
 import {
   formatKpiValue,
+  getHeadlineCards,
   getKpiSections,
   type KpiCardDefinition,
   type ReportingType,
 } from "@/lib/kpi-layouts";
 import KpiCard, { type KpiDelta } from "./KpiCard";
+import KpiHeadlineStrip, { type HeadlineMetric } from "./KpiHeadlineStrip";
 import KpiHeroCard from "./KpiHeroCard";
 import KpiSection from "./KpiSection";
+
+const COLLAPSED_STORAGE_KEY = "mw.kpi.collapsedSections";
+
+/** Section open/closed survives reloads, so your preferred depth is remembered. */
+function readCollapsed(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return new Set(Array.isArray(parsed) ? parsed.filter(x => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
 
 export type SparkMap = Partial<Record<keyof MetricsResult, (number | null)[]>>;
 
@@ -51,16 +70,60 @@ function formatCardValue(card: KpiCardDefinition, metrics: MetricsResult): strin
 
 export default function KpiSections({ metrics, reportingType, previous, spark }: Props) {
   const sections = getKpiSections(reportingType);
+  const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
+
+  const toggleSection = useCallback((title: string) => {
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      try {
+        window.localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // Non-persistent storage just means the sections reopen next session.
+      }
+      return next;
+    });
+  }, []);
+
+  const describeCard = useCallback(
+    (card: KpiCardDefinition): HeadlineMetric => ({
+      label: card.label,
+      value: formatCardValue(card, metrics),
+      caption: card.valueCaption,
+      accent: card.accent,
+      hint: card.hint,
+      delta: previous
+        ? computeDelta(card, metrics[card.metric], previous[card.metric])
+        : undefined,
+      spark:
+        spark?.[card.metric] ??
+        (card.secondaryMetric ? spark?.[card.secondaryMetric] : undefined),
+    }),
+    [metrics, previous, spark],
+  );
+
+  const headlineMetrics = useMemo(
+    () =>
+      getHeadlineCards(reportingType)
+        .filter(card => !card.visible || card.visible(metrics))
+        .map(describeCard),
+    [reportingType, metrics, describeCard],
+  );
 
   return (
     <div className="space-y-8">
+      <KpiHeadlineStrip metrics={headlineMetrics} />
+
       {sections.map((section, sectionIndex) => {
+        // Headline cards are lifted into the strip above, not repeated here.
         const visibleCards = section.cards.filter(
-          card => !card.visible || card.visible(metrics),
+          card => !card.headline && (!card.visible || card.visible(metrics)),
         );
         if (visibleCards.length === 0) return null;
 
         const isHero = section.variant === "hero";
+        const isCollapsed = collapsed.has(section.title);
 
         return (
           <KpiSection
@@ -68,6 +131,13 @@ export default function KpiSections({ metrics, reportingType, previous, spark }:
             title={section.title}
             footnote={section.footnote}
             showDivider={sectionIndex > 0}
+            open={!isCollapsed}
+            onToggle={() => toggleSection(section.title)}
+            meta={
+              isCollapsed
+                ? `${visibleCards.length} metric${visibleCards.length === 1 ? "" : "s"} hidden`
+                : undefined
+            }
           >
             {isHero ? (
               visibleCards.map(card => (
@@ -80,23 +150,7 @@ export default function KpiSections({ metrics, reportingType, previous, spark }:
             ) : (
               <div className={section.gridClassName}>
                 {visibleCards.map(card => (
-                  <KpiCard
-                    key={`${section.title}-${card.label}`}
-                    label={card.label}
-                    value={formatCardValue(card, metrics)}
-                    caption={card.valueCaption}
-                    accent={card.accent}
-                    hint={card.hint}
-                    delta={
-                      previous
-                        ? computeDelta(card, metrics[card.metric], previous[card.metric])
-                        : undefined
-                    }
-                    spark={
-                      spark?.[card.metric] ??
-                      (card.secondaryMetric ? spark?.[card.secondaryMetric] : undefined)
-                    }
-                  />
+                  <KpiCard key={`${section.title}-${card.label}`} {...describeCard(card)} />
                 ))}
               </div>
             )}

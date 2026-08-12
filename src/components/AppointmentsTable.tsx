@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type Client = { id: string; name: string };
+import { useUrlParams } from "@/lib/use-url-params";
 
 type Props = {
-  clients: Client[];
+  /** Scope inherited from the workspace filter bar. */
+  clientId?: string;
+  liveOnly?: boolean;
   startDate: string;
   endDate: string;
 };
@@ -69,40 +70,48 @@ function ghlContactUrl(row: AppointmentRow): string | null {
   return `https://app.gohighlevel.com/v2/location/${locationId}/contacts/detail/${contactId}`;
 }
 
-export default function AppointmentsTable({ clients: allClients, startDate, endDate }: Props) {
+export default function AppointmentsTable({ clientId, liveOnly, startDate, endDate }: Props) {
+  const urlParams = useUrlParams();
   const [rows, setRows] = useState<AppointmentRow[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [clientFilter, setClientFilter] = useState("");
-  const [pendingOnly, setPendingOnly] = useState(false);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(t);
-  }, [search]);
+  // Table-local filters live in the URL, so "the 12 past-due appointments I was
+  // just looking at" is a link you can send someone.
+  const query = urlParams.get("q");
+  const pendingOnly = urlParams.get("status") === "pending";
+  const pageParam = Number(urlParams.get("page"));
+  const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+  const [search, setSearch] = useState(query);
 
-  useEffect(() => { setPage(1); }, [clientFilter, pendingOnly, debouncedSearch, startDate, endDate]);
+  useEffect(() => { setSearch(query); }, [query]);
+
+  useEffect(() => {
+    const trimmed = search.trim();
+    if (trimmed === query) return;
+    const t = setTimeout(() => urlParams.setMany({ q: trimmed, page: null }), 300);
+    return () => clearTimeout(t);
+  }, [search, query, urlParams]);
+
+  const setPage = (next: number) => urlParams.set("page", next > 1 ? String(next) : null);
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ type: "appointments", page: String(page) });
-    if (clientFilter === "__live__") params.set("live_only", "true");
-    else if (clientFilter) params.set("client_id", clientFilter);
+    if (liveOnly) params.set("live_only", "true");
+    else if (clientId) params.set("client_id", clientId);
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
-    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (query) params.set("search", query);
     if (pendingOnly) params.set("status", "pending");
 
     fetch(`/api/raw?${params}`)
       .then(r => r.json())
       .then(d => { setRows(d.rows ?? []); setTotal(d.total ?? 0); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [clientFilter, pendingOnly, page, startDate, endDate, debouncedSearch]);
+  }, [clientId, liveOnly, pendingOnly, page, startDate, endDate, query]);
 
   async function updateStatus(row: AppointmentRow, nextStatus: AppointmentStatus) {
     if (nextStatus === row.status) return;
@@ -141,19 +150,8 @@ export default function AppointmentsTable({ clients: allClients, startDate, endD
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
+      {/* Client and date scope come from the workspace filter bar above. */}
       <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={clientFilter}
-          onChange={e => setClientFilter(e.target.value)}
-          className="px-4 py-2 rounded-lg text-sm font-medium outline-none"
-          style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", minWidth: "11rem" }}
-        >
-          <option value="">All Clients</option>
-          <option value="__live__">Live Clients</option>
-          {allClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-
         <div className="relative">
           <input
             type="text"
@@ -177,7 +175,7 @@ export default function AppointmentsTable({ clients: allClients, startDate, endD
         </div>
 
         <button
-          onClick={() => setPendingOnly(v => !v)}
+          onClick={() => urlParams.setMany({ status: pendingOnly ? null : "pending", page: null })}
           className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
           style={{
             background: pendingOnly ? "rgba(245,158,11,0.18)" : "#0f2040",
@@ -190,7 +188,7 @@ export default function AppointmentsTable({ clients: allClients, startDate, endD
 
         <span className="text-sm" style={{ color: "#334155" }}>
           {total.toLocaleString()} appointments
-          {debouncedSearch && <span style={{ color: "#475569" }}> · searching all dates</span>}
+          {query && <span style={{ color: "#475569" }}> · searching all dates</span>}
         </span>
       </div>
 
@@ -202,7 +200,7 @@ export default function AppointmentsTable({ clients: allClients, startDate, endD
 
       {/* Table */}
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <table className="w-full text-sm">
+        <table className="w-full text-sm tabular-nums">
           <thead>
             <tr style={{ background: "#050c18" }}>
               {["Client", "Booked At", "Lead Name", "Phone", "Email", "Agent", "Calendar", "Stage", "Scheduled For", "Status", "Lead File"].map(label => (
@@ -282,13 +280,13 @@ export default function AppointmentsTable({ clients: allClients, startDate, endD
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center gap-3 justify-end">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+          <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
             className="px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-30 transition-colors"
             style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", color: "#94a3b8" }}>
             ← Prev
           </button>
           <span className="text-sm" style={{ color: "#334155" }}>Page {page} of {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+          <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}
             className="px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-30 transition-colors"
             style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", color: "#94a3b8" }}>
             Next →

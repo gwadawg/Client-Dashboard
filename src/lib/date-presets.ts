@@ -12,6 +12,7 @@ export type DatePreset =
   | "last_14"
   | "last_30"
   | "last_90"
+  | "since_launch"
   | "all_time"
   | "custom";
 
@@ -29,6 +30,7 @@ export const PRESET_LABELS: Record<DatePreset, string> = {
   last_14: "Last 14 Days",
   last_30: "Last 30 Days",
   last_90: "Last 90 Days",
+  since_launch: "Since Launch",
   all_time: "All Time",
   custom: "Custom Range",
 };
@@ -52,6 +54,12 @@ export const PRESET_ORDER: DatePreset[] = [
   "custom",
 ];
 
+/** Insert Since Launch just before All Time — only show when a client has a launch date. */
+export function presetOrderWithSinceLaunch(): DatePreset[] {
+  const i = PRESET_ORDER.indexOf("all_time");
+  return [...PRESET_ORDER.slice(0, i), "since_launch", ...PRESET_ORDER.slice(i)];
+}
+
 export const ALL_TIME_START = "2000-01-01";
 
 /** Format a Date as YYYY-MM-DD using local calendar fields. */
@@ -62,7 +70,10 @@ export function ymdLocal(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-export function getDateRange(p: DatePreset): { start: string; end: string } {
+export function getDateRange(
+  p: DatePreset,
+  launchDate?: string | null,
+): { start: string; end: string } {
   const now = new Date();
   const today = ymdLocal(now);
   if (p === "today") return { start: today, end: today };
@@ -110,5 +121,10 @@ export function getDateRange(p: DatePreset): { start: string; end: string } {
   if (p === "last_30") return { start: ymdLocal(new Date(now.getTime() - 30 * 86400000)), end: today };
   if (p === "last_14") return { start: ymdLocal(new Date(now.getTime() - 14 * 86400000)), end: today };
   if (p === "last_7") return { start: ymdLocal(new Date(now.getTime() - 7 * 86400000)), end: today };
+  if (p === "since_launch") {
+    const launch = launchDate?.slice(0, 10) ?? "";
+    const start = /^\d{4}-\d{2}-\d{2}$/.test(launch) && launch <= today ? launch : today;
+    return { start, end: today };
+  }
   return { start: ALL_TIME_START, end: today };
 }

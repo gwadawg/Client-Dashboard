@@ -6,32 +6,27 @@ import { Suspense, useCallback, useEffect, useState, type ComponentType } from "
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ClientSelect from "./ClientSelect";
-import ShowQualityBar from "./ShowQualityBar";
-import ConversionFunnel from "./ConversionFunnel";
-import KpiSections, { type SparkMap } from "./kpi/KpiSections";
-import KpiSection from "./kpi/KpiSection";
-import KpiCard from "./kpi/KpiCard";
+import { type SparkMap } from "./kpi/KpiSections";
 import type { CostTrendPoint, KpiTimelineBucket, MetricsResult } from "@/lib/metrics";
 import {
   DEFAULT_REPORTING_TYPE,
-  formatKpiValue,
   normalizeReportingType,
-  usesRmKpiLayout,
   type ReportingType,
 } from "@/lib/kpi-layouts";
-import { REPORTING_TYPES } from "@/lib/reporting-types";
 import {
   NAV,
   NAV_GROUPS,
   LEGACY_VIEW_REDIRECTS,
+  CLIENT_WORKSPACE_TABS,
+  CLIENT_WORKSPACE_TAB_PERMISSIONS,
+  isClientWorkspaceTab,
   defaultTabForHub,
   isHubView,
   tabLabelForHub,
   HUB_TAB_LABELS,
   type View,
   type HubView,
-  type HeatmapTab,
-  type DataExplorerTab,
+  type ClientWorkspaceTab,
   type AcquisitionTab,
   type AcquisitionDataExplorerTab,
   type AcquisitionKpiTab,
@@ -44,7 +39,13 @@ import {
 } from "@/lib/nav";
 import { hasPermission, canViewClientRevenue, canAccessAutomations, type AllowedPermissions } from "@/lib/permissions";
 import DateRangeFilter from "./DateRangeFilter";
-import { type DatePreset, getDateRange } from "@/lib/date-presets";
+import ClientWorkspaceHub from "./client-workspace/ClientWorkspaceHub";
+import {
+  isSingleClientId,
+  LIVE_SCOPE,
+  useDashboardFilters,
+  type DashboardClient,
+} from "@/lib/use-dashboard-filters";
 import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
 import { hasTeamCommandPermission } from "@/lib/team-dashboards/access";
 
@@ -72,8 +73,6 @@ function lazyTab<T extends ComponentType<any>>(
 const AgentAdmin = lazyTab(() => import("./AgentAdmin"));
 const OfferCatalogManager = lazyTab(() => import("./OfferCatalogManager"));
 const ClientCallsBrowser = lazyTab(() => import("./ClientCallsBrowser"));
-const HeatMapsHub = lazyTab(() => import("./hubs/HeatMapsHub"));
-const DataExplorerHub = lazyTab(() => import("./hubs/DataExplorerHub"));
 const AcquisitionHub = lazyTab(() => import("./hubs/AcquisitionHub"));
 const AcquisitionKpiHub = lazyTab(() => import("./hubs/AcquisitionKpiHub"));
 const AcquisitionDataExplorerHub = lazyTab(() => import("./hubs/AcquisitionDataExplorerHub"));
@@ -83,9 +82,6 @@ const ClientRoster = lazyTab(() => import("./ClientRoster"));
 const BillingManager = lazyTab(() => import("./BillingManager"));
 const AgentPayrollReport = lazyTab(() => import("./AgentPayrollReport"));
 const UserManager = lazyTab(() => import("./UserManager"));
-const CostTrendCharts = lazyTab(() => import("./CostTrendCharts"), "Loading cost trends…");
-const RateTrendCharts = lazyTab(() => import("./RateTrendCharts"), "Loading rate trends…");
-const ClientConversionsView = lazyTab(() => import("./ClientConversionsView"));
 const FunnelSimulatorHub = lazyTab(() => import("./FunnelSimulatorHub"));
 const ClientReportBuilder = lazyTab(() => import("./ClientReportBuilder"));
 const TeamCommandDashboard = lazyTab(
@@ -93,7 +89,6 @@ const TeamCommandDashboard = lazyTab(
   "Loading team command…",
 );
 const StateLooker = lazyTab(() => import("./StateLooker"));
-const DialAnalytics = lazyTab(() => import("./DialAnalytics"));
 const MediaBuyer = lazyTab(() => import("./MediaBuyer"));
 const AcquisitionMarketing = lazyTab(() => import("./AcquisitionMarketing"));
 const CeoDashboard = lazyTab(() => import("./CeoDashboard"));
@@ -115,7 +110,7 @@ type TrendsPayload = {
   series: CostTrendPoint[];
 };
 
-type Client = { id: string; name: string; is_live?: boolean; reporting_type?: ReportingType };
+type Client = DashboardClient;
 
 function DataChatLauncher(props: {
   startDate: string;
@@ -158,6 +153,8 @@ function parseUrlView(searchParams: URLSearchParams): { view: View; tab: string 
 }
 
 const NAV_ICONS: Record<View, string> = {
+  // Panelled layout — the workspace holds several lenses on one client.
+  client_workspace: "M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z M4 9.5h16 M10 20V9.5",
   dashboard:     "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
   kpi_simulator: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z",
   client_report_builder: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
@@ -197,6 +194,21 @@ const NAV_ICONS: Record<View, string> = {
 };
 
 const DEFAULT_COLLAPSED_GROUPS = new Set<string>(["Admin"]);
+
+const RAIL_STORAGE_KEY = "mw.workspace.rail";
+
+/** `?rail=` wins for shared links; otherwise remember the last choice. */
+function resolveInitialRailOpen(params: URLSearchParams): boolean {
+  const fromUrl = params.get("rail");
+  if (fromUrl === "1") return true;
+  if (fromUrl === "0") return false;
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(RAIL_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 function ymd(d: Date): string {
   return d.toISOString().split("T")[0];
@@ -238,26 +250,8 @@ function previousRange(start: string, end: string): { start: string; end: string
   return { start: ymd(prevStart), end: ymd(prevEnd) };
 }
 
-function Select({ value, onChange, children, className = "" }: {
-  value: string | number;
-  onChange: (v: string) => void;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      className={`px-4 py-2 rounded-lg text-sm font-medium outline-none cursor-pointer transition-colors ${className}`}
-      style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
-    >
-      {children}
-    </select>
-  );
-}
-
 function getDashboardScopeClients(clients: Client[], selectedClientId: string): Client[] {
-  if (selectedClientId === "__live__") return clients.filter(c => c.is_live !== false);
+  if (selectedClientId === LIVE_SCOPE) return clients.filter(c => c.is_live !== false);
   if (selectedClientId) return clients.filter(c => c.id === selectedClientId);
   return clients;
 }
@@ -417,26 +411,31 @@ export default function DashboardView({
   const [view, setView] = useState<View>(() => resolveInitialView());
   const [hubTab, setHubTab] = useState<string | null>(() => resolveInitialHubTab());
   const [clients, setClients] = useState<Client[]>(initialClients);
-  const [selectedClientId, setSelectedClientId] = useState("");
-  const [offerScope, setOfferScope] = useState("");
-  const [preset, setPreset] = useState<DatePreset>("this_month");
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd, setCustomEnd] = useState("");
+  const filters = useDashboardFilters(clients);
+  const {
+    clientId: selectedClientId,
+    offerScope,
+    preset,
+    customStart,
+    customEnd,
+    compare,
+    dateStart,
+    dateEnd,
+    dateRangeLabel,
+    sinceLaunchAvailable,
+  } = filters;
   const [metrics, setMetrics] = useState<MetricsResult | null>(null);
   const [prevMetrics, setPrevMetrics] = useState<MetricsResult | null>(null);
-  const [compare, setCompare] = useState(false);
   const [sparkMap, setSparkMap] = useState<SparkMap | null>(null);
   const [trends, setTrends] = useState<TrendsPayload | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(false);
   const [trendsError, setTrendsError] = useState("");
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [overduePending, setOverduePending] = useState<number | null>(null);
-  const [heatmapDays, setHeatmapDays] = useState(0);
-  const [heatmapClientId, setHeatmapClientId] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set(DEFAULT_COLLAPSED_GROUPS));
-  const [dashboardSubView, setDashboardSubView] = useState<"main" | "conversions">("main");
-  const [renderDate] = useState(() => new Date());
+  const [workspaceSub, setWorkspaceSub] = useState<string | null>(() => searchParams.get("sub"));
+  const [railOpen, setRailOpen] = useState<boolean>(() => resolveInitialRailOpen(searchParams));
 
   const goToView = (next: View, tab?: string | null) => {
     let target = resolveAllowedView(next);
@@ -451,29 +450,26 @@ export default function DashboardView({
     setView(target);
     setSidebarOpen(false);
     const params = new URLSearchParams(searchParams.toString());
-    if (target === "dashboard") {
-      params.delete("view");
-      params.delete("tab");
-      setHubTab(null);
+    params.set("view", target);
+    if (isHubView(target)) {
+      const hub = target as HubView;
+      const tabs = HUB_TAB_LABELS[hub];
+      const candidate = nextTab ?? hubTab;
+      const resolvedTab =
+        candidate && tabs.some(t => t.key === candidate)
+          ? candidate
+          : hub === "team_dashboard"
+            ? homeSeat ?? TEAM_COMMAND_DEFAULT_SEAT
+            : defaultTabForHub(hub);
+      setHubTab(resolvedTab);
+      params.set("tab", resolvedTab);
     } else {
-      params.set("view", target);
-      if (isHubView(target)) {
-        const hub = target as HubView;
-        const tabs = HUB_TAB_LABELS[hub];
-        const candidate = nextTab ?? hubTab;
-        const resolvedTab =
-          candidate && tabs.some(t => t.key === candidate)
-            ? candidate
-            : hub === "team_dashboard"
-              ? homeSeat ?? TEAM_COMMAND_DEFAULT_SEAT
-              : defaultTabForHub(hub);
-        setHubTab(resolvedTab);
-        params.set("tab", resolvedTab);
-      } else {
-        setHubTab(null);
-        params.delete("tab");
-      }
+      setHubTab(null);
+      params.delete("tab");
     }
+    // Leaving a view abandons its nested selection.
+    setWorkspaceSub(null);
+    params.delete("sub");
     params.delete("appointment_id");
     params.delete("call_id");
     const qs = params.toString();
@@ -482,14 +478,43 @@ export default function DashboardView({
 
   const setHubTabAndUrl = (tab: string) => {
     setHubTab(tab);
+    setWorkspaceSub(null);
     const params = new URLSearchParams(searchParams.toString());
+    params.set("view", view);
     params.set("tab", tab);
+    // A stale nested selection from the previous tab would resolve to that
+    // tab's default anyway; clearing it keeps the URL honest.
+    params.delete("sub");
     // Tab-bar navigation is not a deep link — drop stale highlight targets so
     // revisiting Appointments / Sales Calls does not re-scroll to an old row.
     params.delete("appointment_id");
     params.delete("call_id");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
+  const setWorkspaceSubAndUrl = (sub: string | null) => {
+    setWorkspaceSub(sub);
+    const params = new URLSearchParams(searchParams.toString());
+    if (sub) params.set("sub", sub);
+    else params.delete("sub");
+    params.delete("appointment_id");
+    params.delete("call_id");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
+  const toggleRail = () => {
+    const next = !railOpen;
+    setRailOpen(next);
+    try {
+      window.localStorage.setItem(RAIL_STORAGE_KEY, next ? "1" : "0");
+    } catch {
+      // Non-persistent storage just means the rail resets next session.
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("rail", next ? "1" : "0");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   // Role homes: sync URL when landing with no view param.
@@ -510,10 +535,11 @@ export default function DashboardView({
   useEffect(() => {
     const viewParam = searchParams.get("view");
     if (viewParam && LEGACY_VIEW_KEYS.has(viewParam)) {
-      const redirect = LEGACY_VIEW_REDIRECTS[viewParam as keyof typeof LEGACY_VIEW_REDIRECTS];
+      const redirect = LEGACY_VIEW_REDIRECTS[viewParam];
       const params = new URLSearchParams(searchParams.toString());
       params.set("view", redirect.view);
       params.set("tab", redirect.tab);
+      if (redirect.sub) params.set("sub", redirect.sub);
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
       return;
     }
@@ -539,6 +565,7 @@ export default function DashboardView({
     const fromUrl = resolveAllowedView(parsed.view);
     setView(current => (current === fromUrl ? current : fromUrl));
     setHubTab(parsed.tab);
+    setWorkspaceSub(searchParams.get("sub"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -547,27 +574,8 @@ export default function DashboardView({
     fetch("/api/clients").then(r => r.json()).then(d => setClients(d.clients ?? []));
   }, [initialClients.length]);
 
-  useEffect(() => {
-    if (view !== "dashboard") {
-      setDashboardSubView("main");
-      return;
-    }
-    const sub = searchParams.get("sub");
-    if (sub === "conversions") {
-      setDashboardSubView("conversions");
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete("sub");
-      const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    }
-  }, [view, searchParams, pathname, router]);
-
-  useEffect(() => {
-    setDashboardSubView("main");
-  }, [selectedClientId, offerScope, preset, customStart, customEnd]);
-
   const appendDashboardMetricsParams = (params: URLSearchParams) => {
-    if (selectedClientId === "__live__") params.set("live_only", "true");
+    if (selectedClientId === LIVE_SCOPE) params.set("live_only", "true");
     else if (selectedClientId) params.set("client_id", selectedClientId);
     else if (offerScope) params.set("reporting_type", offerScope);
   };
@@ -596,14 +604,16 @@ export default function DashboardView({
     setSparkMap(buildSparkMap(kpiSeries));
   };
 
-  // Single round-trip for KPIs + trends on the dashboard (one events pull server-side).
-  // KPI simulator still hits metrics only. Client cache keeps tab revisits warm.
+  // Single round-trip for KPIs + trends on the workspace (one events pull
+  // server-side). KPI simulator still hits metrics only, so it skips trends.
+  // Client cache keeps tab revisits warm.
+  const wantsMetrics = view === "client_workspace" || view === "kpi_simulator";
   useEffect(() => {
-    if (view !== "dashboard" && view !== "kpi_simulator") return;
+    if (!wantsMetrics) return;
 
-    const { start, end } =
-      preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
-    const wantTrends = view === "dashboard" && Boolean(start && end);
+    const start = dateStart;
+    const end = dateEnd;
+    const wantTrends = view === "client_workspace" && Boolean(start && end);
     const params = new URLSearchParams();
     appendDashboardMetricsParams(params);
     if (start) params.set("start_date", start);
@@ -670,18 +680,16 @@ export default function DashboardView({
       });
 
     return () => ac.abort();
-  }, [view, selectedClientId, offerScope, preset, customStart, customEnd]);
+  }, [view, selectedClientId, offerScope, dateStart, dateEnd]);
 
   // Previous-period comparison: fetch the equal-length window immediately before
   // the current range so each KPI card can show a vs-prev delta.
   useEffect(() => {
-    if (view !== "dashboard" || !compare) {
+    if (view !== "client_workspace" || !compare || preset === "all_time" || preset === "since_launch") {
       setPrevMetrics(null);
       return;
     }
-    const { start, end } =
-      preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
-    const prev = previousRange(start, end);
+    const prev = previousRange(dateStart, dateEnd);
     if (!prev) {
       setPrevMetrics(null);
       return;
@@ -706,14 +714,14 @@ export default function DashboardView({
         if (!ac.signal.aborted) setPrevMetrics(null);
       });
     return () => ac.abort();
-  }, [view, compare, selectedClientId, offerScope, preset, customStart, customEnd]);
+  }, [view, compare, selectedClientId, offerScope, preset, dateStart, dateEnd]);
 
   // Past-due, un-dispositioned appointment backlog. Deliberately keyed only on
   // the client selection (not the date preset) so it stays a running total.
   useEffect(() => {
-    if (view !== "dashboard") return;
+    if (view !== "client_workspace") return;
     const params = new URLSearchParams();
-    if (selectedClientId === "__live__") params.set("live_only", "true");
+    if (selectedClientId === LIVE_SCOPE) params.set("live_only", "true");
     else if (selectedClientId) params.set("client_id", selectedClientId);
     const cacheKey = `overdue|${params.toString()}`;
     const peek = peekCachedJson<{ count?: number }>(cacheKey);
@@ -742,28 +750,16 @@ export default function DashboardView({
     router.refresh();
   }
 
-  const { start: dateStart, end: dateEnd } =
-    preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
-
-  const today = renderDate.toISOString().split("T")[0];
-  const heatmapStart = heatmapDays > 0
-    ? new Date(renderDate.getTime() - heatmapDays * 86400000).toISOString().split("T")[0]
-    : undefined;
-  const heatmapEnd = heatmapDays > 0 ? today : undefined;
-
-  const isHeatmap = view === "heatmaps";
-  const isDataExplorer = view === "data_explorer";
   const isAcquisition = view === "acquisition";
   const isAcquisitionDataExplorer = view === "acquisition_data_explorer";
   const isAgents = view === "agents";
+  // The Client Workspace owns its own sticky filter bar, so it opts out of the
+  // header controls rather than showing the range picker twice.
   const showDateFilters =
-    view === "dashboard"
-    || view === "kpi_simulator"
-    || isDataExplorer
+    view === "kpi_simulator"
     || isAcquisition
     || isAcquisitionDataExplorer
     || isAgents
-    || view === "dial_analytics"
     || view === "media_buyer"
     || view === "acquisition_marketing"
     || view === "client_calls"
@@ -771,6 +767,11 @@ export default function DashboardView({
 
   const navItem = NAV.find(n => n.view === view);
   const hubTabLabel = isHubView(view) && hubTab ? tabLabelForHub(view, hubTab) : null;
+
+  const workspaceTab: ClientWorkspaceTab = isClientWorkspaceTab(hubTab) ? hubTab : "kpis";
+  const allowedWorkspaceTabs = CLIENT_WORKSPACE_TABS.map(t => t.key).filter(key =>
+    hasPermission(CLIENT_WORKSPACE_TAB_PERMISSIONS[key], { isOwner, allowedPermissions }),
+  );
 
   const toggleGroup = (group: string) => {
     setCollapsedGroups(prev => {
@@ -786,20 +787,15 @@ export default function DashboardView({
   const dashboardHasMixedReportingTypes =
     new Set(dashboardScopeClients.map(c => normalizeReportingType(c.reporting_type))).size > 1;
   const dashboardClientLabel =
-    selectedClientId === "__live__"
+    selectedClientId === LIVE_SCOPE
       ? "Live clients"
       : selectedClientId
         ? clients.find(c => c.id === selectedClientId)?.name
         : "All clients";
   const simulatorClientIsRm =
     dashboardReportingType === "RM"
-    && !!selectedClientId
-    && selectedClientId !== "__live__"
+    && isSingleClientId(selectedClientId)
     && !dashboardHasMixedReportingTypes;
-  const dateRangeLabel =
-    preset === "custom" && customStart && customEnd
-      ? `${customStart} – ${customEnd}`
-      : preset.replace(/_/g, " ");
 
   const updateSimulatorUrl = useCallback((encoded: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -825,12 +821,14 @@ export default function DashboardView({
 
   const goToConversionsActuals = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
-    params.delete("view");
-    params.delete("sim");
+    params.set("view", "client_workspace");
+    params.set("tab", "kpis");
     params.set("sub", "conversions");
+    params.delete("sim");
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-    setView("dashboard");
-    setDashboardSubView("conversions");
+    setView("client_workspace");
+    setHubTab("kpis");
+    setWorkspaceSub("conversions");
     setSidebarOpen(false);
   }, [searchParams, pathname, router]);
 
@@ -956,63 +954,19 @@ export default function DashboardView({
 
           {showDateFilters && !view.startsWith("admin_") && (
             <>
-              {(view === "dashboard" || view === "kpi_simulator" || view === "dial_analytics" || view === "media_buyer") && (
-                <>
-                <ClientSelect value={selectedClientId} onChange={setSelectedClientId} clients={clients} />
-                {view === "dashboard" && !selectedClientId && (
-                  <select
-                    value={offerScope}
-                    onChange={e => setOfferScope(e.target.value)}
-                    className="px-3 py-2 rounded-lg text-sm font-medium"
-                    style={{ background: "#0f2040", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.12)" }}
-                    title="Filter metrics by product vertical"
-                  >
-                    <option value="">All offers</option>
-                    {REPORTING_TYPES.map(rt => (
-                      <option key={rt} value={rt}>{rt}</option>
-                    ))}
-                  </select>
-                )}
-                </>
-              )}
-
-              {view === "dashboard" && preset !== "all_time" && (
-                <button
-                  type="button"
-                  onClick={() => setCompare(c => !c)}
-                  className="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-                  style={compare
-                    ? { background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.4)" }
-                    : { background: "#0f2040", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.12)" }}
-                  title="Show change vs. the previous equal-length period"
-                >
-                  {compare ? "✓ Compare" : "Compare"}
-                </button>
+              {(view === "kpi_simulator" || view === "media_buyer") && (
+                <ClientSelect value={selectedClientId} onChange={filters.setClientId} clients={clients} />
               )}
 
               <DateRangeFilter
                 preset={preset}
                 customStart={customStart}
                 customEnd={customEnd}
-                onPresetChange={setPreset}
-                onCustomStartChange={setCustomStart}
-                onCustomEndChange={setCustomEnd}
+                onPresetChange={filters.setPreset}
+                onCustomStartChange={filters.setCustomStart}
+                onCustomEndChange={filters.setCustomEnd}
+                includeSinceLaunch={sinceLaunchAvailable}
               />
-            </>
-          )}
-
-          {/* Heat map controls */}
-          {isHeatmap && (
-            <>
-              <ClientSelect value={heatmapClientId} onChange={setHeatmapClientId} clients={clients} />
-              <Select value={heatmapDays} onChange={v => setHeatmapDays(Number(v))}>
-                <option value={0}>All Time</option>
-                <option value={7}>Last 7 days</option>
-                <option value={14}>Last 14 days</option>
-                <option value={30}>Last 30 days</option>
-                <option value={60}>Last 60 days</option>
-                <option value={90}>Last 90 days</option>
-              </Select>
             </>
           )}
         </header>
@@ -1042,145 +996,31 @@ export default function DashboardView({
             </div>
           )}
 
-          {/* ── Dashboard KPIs ── */}
-          {firstVisibleView && view === "dashboard" && (
-            <div className="space-y-8 max-w-7xl">
-            {overduePending != null && overduePending > 0 && (
-              <button
-                type="button"
-                onClick={() => goToView("data_explorer", "appointments")}
-                className="w-full flex items-center gap-4 text-left rounded-xl px-5 py-4 transition-colors"
-                style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.45)" }}
-              >
-                <div className="flex items-center justify-center rounded-lg shrink-0" style={{ width: "2.75rem", height: "2.75rem", background: "rgba(245,158,11,0.16)" }}>
-                  <span className="text-xl font-bold" style={{ color: "#fbbf24" }}>{overduePending}</span>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold" style={{ color: "#fbbf24" }}>
-                    {overduePending} past-due appointment{overduePending === 1 ? "" : "s"} awaiting disposition
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: "#a16207" }}>
-                    Their scheduled day has passed but they aren&apos;t marked show, no-show, cancelled, or LO bailed — this drags down show rate. Same-day appointments are excluded until tomorrow. Click to review. (All-time total, ignores the date filter.)
-                  </p>
-                </div>
-                <span className="ml-auto text-sm font-medium shrink-0 hidden sm:inline" style={{ color: "#fbbf24" }}>Review →</span>
-              </button>
-            )}
-            {metricsLoading ? (
-              <div className="flex items-center justify-center py-24">
-                <div className="flex items-center gap-3" style={{ color: "#334155" }}>
-                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                  </svg>
-                  <span className="text-sm font-medium">Loading metrics…</span>
-                </div>
-              </div>
-            ) : metrics ? (
-              dashboardSubView === "conversions" && dashboardReportingType === "RM" ? (
-                <ClientConversionsView
-                  metrics={metrics}
-                  clientLabel={dashboardClientLabel}
-                  onBack={() => setDashboardSubView("main")}
-                />
-              ) : (
-              <div className="space-y-8">
-                {dashboardReportingType === "RM" && dashboardSubView === "main" && (
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setDashboardSubView("conversions")}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
-                      style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.4)" }}
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                      </svg>
-                      Conversions &amp; ROI
-                    </button>
-                  </div>
-                )}
-
-                {dashboardHasMixedReportingTypes && (
-                  <p className="text-xs rounded-lg px-3 py-2" style={{ color: "#64748b", background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    Mixed offer types (RM / HE / DSCR) in this selection. Showing the full RM dashboard for this combined view.
-                  </p>
-                )}
-
-                <KpiSections metrics={metrics} reportingType={dashboardReportingType} previous={compare ? prevMetrics : null} spark={sparkMap} />
-
-                <KpiSection title="Appointment Breakdown" showDivider>
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <ShowQualityBar metrics={metrics} />
-                    <ConversionFunnel metrics={metrics} />
-                  </div>
-                </KpiSection>
-
-                {dashboardReportingType === "RM" && (
-                  <KpiSection
-                    title="Conversions"
-                    showDivider
-                    footnote="Counts use unique leads per stage in the selected date range. Cost metrics are total spend divided by each conversion-stage unique lead count."
-                  >
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                      <KpiCard label="Proposals Made" value={formatKpiValue(metrics.proposals_made, "int")} hint="Unique leads that reached the proposal stage or beyond (submitted/funded count too)." />
-                      <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} hint="Unique leads that reached the submission stage or beyond (funded count too)." />
-                      <KpiCard label="Funded Loans" value={formatKpiValue(metrics.funded_loans, "int")} accent hint="Unique leads with a funded loan — the deal closed." />
-                      <KpiCard label="Cost per Proposal" value={formatKpiValue(metrics.cp_proposal_made, "money")} hint="Total Spend ÷ Proposals Made." />
-                      <KpiCard label="Cost per Submission" value={formatKpiValue(metrics.cp_submission_made, "money")} hint="Total Spend ÷ Submissions." />
-                      <KpiCard label="Cost per Funded" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Funded Loans." />
-                    </div>
-                  </KpiSection>
-                )}
-
-                <KpiSection title="Rate Trends" showDivider>
-                  <RateTrendCharts
-                    kpiSeries={trends?.kpiSeries ?? []}
-                    granularity={trends?.granularity ?? "day"}
-                    loading={trendsLoading}
-                    error={trendsError}
-                    hasDateRange={Boolean(dateStart && dateEnd)}
-                    reportingType={dashboardReportingType}
-                  />
-                </KpiSection>
-
-                {usesRmKpiLayout(dashboardReportingType) && (
-                  <KpiSection title="Cost Trends" showDivider>
-                    <CostTrendCharts
-                      series={trends?.series ?? []}
-                      granularity={trends?.granularity ?? "day"}
-                      loading={trendsLoading}
-                      error={trendsError}
-                      hasDateRange={Boolean(dateStart && dateEnd)}
-                    />
-                  </KpiSection>
-                )}
-              </div>
-              )
-            ) : null}
-            </div>
-          )}
-
-          {/* ── Heat Maps hub ── */}
-          {view === "heatmaps" && hubTab && (
-            <HeatMapsHub
-              tab={hubTab as HeatmapTab}
+          {/* ── Client Workspace: KPIs, Dials, Explorer and Heat Maps on one scope ── */}
+          {firstVisibleView && view === "client_workspace" && (
+            <ClientWorkspaceHub
+              tab={workspaceTab}
+              sub={workspaceSub}
               onTabChange={setHubTabAndUrl}
-              heatmapClientId={heatmapClientId}
-              heatmapStart={heatmapStart}
-              heatmapEnd={heatmapEnd}
-            />
-          )}
-
-          {/* ── Data Explorer hub ── */}
-          {view === "data_explorer" && hubTab && (
-            <DataExplorerHub
-              tab={hubTab as DataExplorerTab}
-              onTabChange={setHubTabAndUrl}
+              onSubChange={setWorkspaceSubAndUrl}
+              allowedTabs={allowedWorkspaceTabs}
+              filters={filters}
               clients={clients}
-              preset={preset}
-              startDate={dateStart}
-              endDate={dateEnd}
+              railOpen={railOpen}
+              onToggleRail={toggleRail}
+              kpi={{
+                metrics,
+                prevMetrics,
+                metricsLoading,
+                sparkMap,
+                trends,
+                trendsLoading,
+                trendsError,
+                reportingType: dashboardReportingType,
+                hasMixedReportingTypes: dashboardHasMixedReportingTypes,
+                clientLabel: dashboardClientLabel,
+                overduePending,
+              }}
             />
           )}
 
@@ -1195,9 +1035,9 @@ export default function DashboardView({
               preset={preset}
               customStart={customStart}
               customEnd={customEnd}
-              onPresetChange={setPreset}
-              onCustomStartChange={setCustomStart}
-              onCustomEndChange={setCustomEnd}
+              onPresetChange={filters.setPreset}
+              onCustomStartChange={filters.setCustomStart}
+              onCustomEndChange={filters.setCustomEnd}
             />
           )}
 
@@ -1234,20 +1074,11 @@ export default function DashboardView({
             />
           )}
 
-          {view === "dial_analytics" && (
-            <DialAnalytics
-              startDate={dateStart}
-              endDate={dateEnd}
-              clientId={selectedClientId === "__live__" ? undefined : selectedClientId || undefined}
-              liveOnly={selectedClientId === "__live__"}
-            />
-          )}
-
           {view === "media_buyer" && (
             <MediaBuyer
               startDate={dateStart}
               endDate={dateEnd}
-              clientId={selectedClientId === "__live__" ? undefined : selectedClientId || undefined}
+              clientId={filters.singleClientId}
             />
           )}
 

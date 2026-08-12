@@ -12,17 +12,21 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Terminal type pairing — scoped to the lead-source ROI tool, not the whole app.
+// Editorial/terminal pairing. Exposed to Tailwind as `font-display` / `font-data`
+// via the @theme block in globals.css, which also keeps those names resolvable
+// from `var()` for the components that reference them directly.
 const archivo = Archivo({
-  variable: "--font-display",
+  variable: "--font-archivo",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
 
 const plexMono = IBM_Plex_Mono({
-  variable: "--font-data",
+  variable: "--font-plex-mono",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  // 700 is loaded because the KPI numerals are set bold; without it the browser
+  // synthesises the weight and the figures smear at large sizes.
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {

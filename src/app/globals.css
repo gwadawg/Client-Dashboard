@@ -12,6 +12,45 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* ── Dashboard surface tokens ────────────────────────────────────────────
+   The navy/amber palette the dashboard already uses, promoted from hex
+   literals repeated across components into named tokens. Prefixed `ws-`
+   because the Client Workspace is built on them; existing components keep
+   their inline hex until they're touched for other reasons.
+
+   Not `inline`, so these are emitted as real custom properties and stay
+   readable from `style={{}}` as well as from Tailwind utilities. */
+@theme {
+  --color-ws-base: #080f1e;
+  --color-ws-chrome: #050c18;
+  --color-ws-panel: #0a1628;
+  --color-ws-input: #0f2040;
+  --color-ws-hairline: rgba(255, 255, 255, 0.07);
+  --color-ws-hairline-soft: rgba(255, 255, 255, 0.045);
+
+  --color-ws-accent: #f59e0b;
+  --color-ws-accent-bright: #fbbf24;
+  --color-ws-accent-wash: rgba(245, 158, 11, 0.14);
+  --color-ws-info: #3b82f6;
+
+  /* Descending emphasis, brightest to faintest. */
+  --color-ws-text-loud: #f1f5f9;
+  --color-ws-text: #e2e8f0;
+  --color-ws-text-muted: #94a3b8;
+  --color-ws-text-dim: #64748b;
+  --color-ws-text-faint: #475569;
+  --color-ws-text-ghost: #334155;
+
+  --color-ws-positive: #34d399;
+  --color-ws-negative: #f87171;
+
+  --font-display: var(--font-archivo);
+  --font-data: var(--font-plex-mono);
+
+  /* The app's signature easing — a firm settle, used for every transition. */
+  --ease-ws: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;

@@ -5,6 +5,7 @@ import {
   type DatePreset,
   PRESET_LABELS,
   PRESET_ORDER,
+  presetOrderWithSinceLaunch,
 } from "@/lib/date-presets";
 
 type Props = {
@@ -16,6 +17,8 @@ type Props = {
   onCustomEndChange: (value: string) => void;
   /** Compact styling for in-page filter bars (default: header style). */
   variant?: "header" | "inline";
+  /** Show Since Launch when a single client with a launch date is selected. */
+  includeSinceLaunch?: boolean;
 };
 
 export default function DateRangeFilter({
@@ -26,9 +29,11 @@ export default function DateRangeFilter({
   onCustomStartChange,
   onCustomEndChange,
   variant = "header",
+  includeSinceLaunch = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const presets = includeSinceLaunch ? presetOrderWithSinceLaunch() : PRESET_ORDER;
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -79,7 +84,7 @@ export default function DateRangeFilter({
               overflowY: "auto",
             }}
           >
-            {PRESET_ORDER.map(p => (
+            {presets.map(p => (
               <button
                 key={p}
                 type="button"

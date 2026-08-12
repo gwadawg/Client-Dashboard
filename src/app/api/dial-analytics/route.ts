@@ -23,6 +23,8 @@ export async function GET(req: Request) {
   const endDate = searchParams.get("endDate");
   const speedToLeadOptions = parseSpeedToLeadParams(searchParams);
 
+  // Every parameter that changes the result must be in the key, or the 45s TTL
+  // will serve one filter's numbers under another's.
   const cacheKey = [
     client_id ?? "",
     live_only ? "1" : "0",
@@ -30,6 +32,9 @@ export async function GET(req: Request) {
     endDate ?? "",
     searchParams.get("stl_mode") ?? "",
     searchParams.get("stl_cap") ?? "",
+    searchParams.get("use_setter_schedule") ?? "",
+    searchParams.get("lead_after") ?? "",
+    searchParams.get("lead_before") ?? "",
   ].join("|");
   const cached = dialAnalyticsCache.get(cacheKey);
   if (cached) {

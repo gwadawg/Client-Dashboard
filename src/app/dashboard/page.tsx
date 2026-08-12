@@ -25,7 +25,7 @@ export default async function DashboardPage() {
       .maybeSingle(),
     service
       .from('clients')
-      .select('id, name, is_live, reporting_type')
+      .select('id, name, is_live, reporting_type, launch_date, date_signed, lifecycle_status, churned_at')
       .order('name'),
   ]);
 
@@ -41,6 +41,10 @@ export default async function DashboardPage() {
     name: c.name as string,
     is_live: c.is_live as boolean | undefined,
     reporting_type: c.reporting_type as ReportingType | undefined,
+    launch_date: (c.launch_date as string | null | undefined) ?? null,
+    date_signed: (c.date_signed as string | null | undefined) ?? null,
+    lifecycle_status: (c.lifecycle_status as string | null | undefined) ?? null,
+    churned_at: (c.churned_at as string | null | undefined) ?? null,
   }));
 
   return (

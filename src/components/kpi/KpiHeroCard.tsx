@@ -18,12 +18,15 @@ export default function KpiHeroCard({ label, value }: Props) {
         style={{ background: "linear-gradient(90deg, #f59e0b, #d97706)" }}
         aria-hidden
       />
-      <span className="text-sm font-semibold uppercase tracking-widest" style={{ color: "#94a3b8" }}>
+      <span
+        className="font-display text-sm font-semibold uppercase tracking-widest"
+        style={{ color: "var(--color-ws-text-muted)" }}
+      >
         {label}
       </span>
       <span
-        className="text-5xl md:text-6xl font-bold tabular-nums tracking-tight"
-        style={{ color: "#f1f5f9" }}
+        className="font-data text-5xl md:text-6xl font-bold tabular-nums tracking-tight"
+        style={{ color: "var(--color-ws-text-loud)" }}
       >
         {value}
       </span>
