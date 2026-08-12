@@ -11,7 +11,6 @@ import {
 } from "@/lib/kpi-layouts";
 import KpiCard, { type KpiDelta } from "./KpiCard";
 import KpiHeadlineStrip, { type HeadlineMetric } from "./KpiHeadlineStrip";
-import KpiHeroCard from "./KpiHeroCard";
 import KpiSection from "./KpiSection";
 
 const COLLAPSED_STORAGE_KEY = "mw.kpi.collapsedSections";
@@ -118,17 +117,16 @@ export default function KpiSections({ metrics, reportingType, previous, spark }:
   );
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <KpiHeadlineStrip metrics={headlineMetrics} />
 
-      {sections.map((section, sectionIndex) => {
+      {sections.map(section => {
         // Headline cards are lifted into the strip above, not repeated here.
         const visibleCards = section.cards.filter(
           card => !card.headline && (!card.visible || card.visible(metrics)),
         );
         if (visibleCards.length === 0) return null;
 
-        const isHero = section.variant === "hero";
         const isCollapsed = collapsed.has(section.title);
 
         return (
@@ -136,7 +134,6 @@ export default function KpiSections({ metrics, reportingType, previous, spark }:
             key={section.title}
             title={section.title}
             footnote={section.footnote}
-            showDivider={sectionIndex > 0}
             open={!isCollapsed}
             onToggle={() => toggleSection(section.title)}
             meta={
@@ -145,21 +142,11 @@ export default function KpiSections({ metrics, reportingType, previous, spark }:
                 : undefined
             }
           >
-            {isHero ? (
-              visibleCards.map(card => (
-                <KpiHeroCard
-                  key={card.label}
-                  label={card.label}
-                  value={formatCardValue(card, metrics)}
-                />
-              ))
-            ) : (
-              <div className={section.gridClassName}>
-                {visibleCards.map(card => (
-                  <KpiCard key={`${section.title}-${card.label}`} {...describeCard(card)} />
-                ))}
-              </div>
-            )}
+            <div className={section.gridClassName}>
+              {visibleCards.map(card => (
+                <KpiCard key={`${section.title}-${card.label}`} {...describeCard(card)} />
+              ))}
+            </div>
           </KpiSection>
         );
       })}

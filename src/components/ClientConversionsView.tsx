@@ -209,7 +209,7 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
         </div>
       </KpiSection>
 
-      <KpiSection title="Conversion rates" showDivider footnote="Each rate is step conversion between pipeline stages. Proposal → Funded is the end-to-end close rate from proposal stage.">
+      <KpiSection title="Conversion rates" footnote="Each rate is step conversion between pipeline stages. Proposal → Funded is the end-to-end close rate from proposal stage.">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <KpiCard
             label="Proposal → Submitted"
@@ -236,7 +236,7 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
         </div>
       </KpiSection>
 
-      <KpiSection title="Funnel" showDivider>
+      <KpiSection title="Funnel">
         <div className="grid gap-4 lg:grid-cols-2">
           <ConversionFunnel metrics={metrics} />
           <div
@@ -280,7 +280,7 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
 
       <KpiSection
         title="Revenue inputs"
-        showDivider
+       
         footnote="Average commission is a placeholder until loan-level commission data is wired in. ROAS uses estimated commission revenue, not loan amount."
       >
         <div
@@ -311,7 +311,7 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
 
       <KpiSection
         title="What-if scenario"
-        showDivider
+       
         footnote="Assumes CPL stays flat when spend increases (more spend → proportionally more leads). Conversion lift applies evenly across pipeline stages."
       >
         <div

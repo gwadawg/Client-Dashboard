@@ -22,8 +22,6 @@ export {
 
 export type KpiFormat = "int" | "pct" | "money" | "decimal";
 
-export type KpiSectionVariant = "grid" | "hero";
-
 export type KpiCardDefinition = {
   label: string;
   metric: keyof MetricsResult;
@@ -61,24 +59,23 @@ export type KpiCardDefinition = {
 
 export type KpiSectionDefinition = {
   title: string;
-  variant?: KpiSectionVariant;
   gridClassName: string;
   cards: KpiCardDefinition[];
   footnote?: string;
 };
 
-const LEADS_GRID = "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5";
-const FOUR_GRID = "grid grid-cols-2 md:grid-cols-4 gap-2.5";
-const SIX_GRID = "grid grid-cols-2 md:grid-cols-3 gap-2.5";
-/** Equal-width tiles; incomplete last rows keep the same card size instead of stretching. */
-const TILE_GRID =
-  "grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(10.25rem,1fr))]";
+/**
+ * Every section shares one track so tiles are the same width down the whole
+ * page and columns line up between sections. Fixed column counts made a
+ * four-card section render tiles half again as wide as a six-card one, which is
+ * what made the grid feel arbitrary. Incomplete last rows keep the card size.
+ */
+const TILE_GRID = "grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]";
 
 const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
   {
     title: "Leads & Pipeline",
-    variant: "grid",
-    gridClassName: LEADS_GRID,
+    gridClassName: TILE_GRID,
     cards: [
       { label: "Total Leads", metric: "new_leads", format: "int", headline: true, hint: "Every new lead/contact ingested in this date range." },
       { label: "Qualified Leads", metric: "qualified_leads", format: "int", headline: true, hint: "Leads manually tagged as qualified — the ones worth dialing." },
@@ -103,8 +100,7 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
   },
   {
     title: "Appointments",
-    variant: "grid",
-    gridClassName: SIX_GRID,
+    gridClassName: TILE_GRID,
     footnote:
       "Hand Raise Rate is the conversion benchmark (unique leads booked ∪ claimed ∪ LT). Booking Rate is shown as a reference under Hand Raise. Appointments Booked in the headline strip is unique / total events.",
     cards: [
@@ -149,8 +145,7 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
   },
   {
     title: "Show Quality & Conversion",
-    variant: "grid",
-    gridClassName: FOUR_GRID,
+    gridClassName: TILE_GRID,
     footnote:
       "Show Rate = unique booked leads who eventually spoke to the LO (show ∪ claimed ∪ live transfer) after reschedules/no-show recovery — graded quality. True Show = of appointments that took place (show + no-show + LO bailed), how many showed.",
     cards: [
@@ -192,8 +187,7 @@ const RM_KPI_SECTIONS: KpiSectionDefinition[] = [
   },
   {
     title: "Acquisition Costs",
-    variant: "grid",
-    gridClassName: FOUR_GRID,
+    gridClassName: TILE_GRID,
     footnote:
       "All cost metrics use total ad spend (all platforms). CPQL = spend ÷ qualified leads. CPH = spend ÷ hot leads. Cost per conversation = spend ÷ unique leads who showed, were claimed, or live-transferred.",
     cards: [
@@ -298,7 +292,7 @@ const HE_KPI_SECTIONS: KpiSectionDefinition[] = [
   },
   {
     title: "Calling Stats",
-    gridClassName: SIX_GRID,
+    gridClassName: TILE_GRID,
     cards: [
       { label: "Outbound Dials", metric: "outbound_dials", format: "int", headline: true, hint: "All outbound dial attempts in this range." },
       { label: "Pickups (40s+)", metric: "pickups", format: "int", hint: "Calls answered — duration of at least 40 seconds." },

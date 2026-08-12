@@ -63,7 +63,7 @@ export default function AcquisitionDashboard({ startDate, endDate }: Props) {
         </label>
       </div>
 
-      <KpiSection title="Acquisition Overview" showDivider>
+      <KpiSection title="Acquisition Overview">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
           <KpiCard label="Ad Spend" value={fmt(m.ad_spend, "money")} />
           <KpiCard label="Meta Leads" value={fmt(m.meta_leads, "int")} />
@@ -76,7 +76,7 @@ export default function AcquisitionDashboard({ startDate, endDate }: Props) {
         </div>
       </KpiSection>
 
-      <KpiSection title="Funnel" showDivider>
+      <KpiSection title="Funnel">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <KpiCard label="Intros Booked" value={fmt(m.intros_booked, "int")} />
           <KpiCard label="Intro Show Rate" value={fmt(m.intro_show_rate, "pct")} />

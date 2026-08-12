@@ -4,7 +4,6 @@ type Props = {
   title: string;
   children: ReactNode;
   footnote?: string;
-  showDivider?: boolean;
   /** Trailing text beside the header, e.g. a hidden-card count when collapsed. */
   meta?: string;
   /** When set the header becomes a disclosure button. Omit for a static section. */
@@ -12,28 +11,49 @@ type Props = {
   onToggle?: () => void;
 };
 
-export default function KpiSection({
-  title,
-  children,
-  footnote,
-  showDivider,
-  meta,
-  open,
-  onToggle,
-}: Props) {
+/**
+ * Section header doubles as the divider: label, then a hairline running to the
+ * right edge. One element instead of a separate rule above a near-invisible
+ * caption, which is what made the sections blur together.
+ */
+export default function KpiSection({ title, children, footnote, meta, open, onToggle }: Props) {
   const collapsible = typeof open === "boolean" && Boolean(onToggle);
   const expanded = !collapsible || open;
 
   const heading = (
     <>
+      {collapsible && (
+        <svg
+          className="h-3 w-3 shrink-0 transition-transform duration-200 ease-ws"
+          style={{
+            color: "var(--color-ws-text-dim)",
+            transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+          }}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          viewBox="0 0 24 24"
+          aria-hidden
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      )}
       <span
-        className="font-display text-xs font-bold uppercase tracking-widest"
-        style={{ color: "var(--color-ws-text-ghost)" }}
+        className="font-display shrink-0 text-[11px] font-bold uppercase tracking-[0.18em]"
+        style={{ color: "var(--color-ws-text-muted)" }}
       >
         {title}
       </span>
+      <span
+        aria-hidden
+        className="h-px flex-1"
+        style={{ background: "var(--color-ws-hairline)" }}
+      />
       {meta && (
-        <span className="font-data text-[10px] tabular-nums" style={{ color: "var(--color-ws-text-faint)" }}>
+        <span
+          className="font-data shrink-0 text-[10px] tabular-nums"
+          style={{ color: "var(--color-ws-text-dim)" }}
+        >
           {meta}
         </span>
       )}
@@ -42,44 +62,29 @@ export default function KpiSection({
 
   return (
     <section>
-      {showDivider && (
-        <div className="mb-5" style={{ borderTop: "1px solid var(--color-ws-hairline-soft)" }} />
-      )}
-
-      {collapsible ? (
-        <h2 className="mb-4">
+      <h2 className="mb-3">
+        {collapsible ? (
           <button
             type="button"
             onClick={onToggle}
             aria-expanded={expanded}
-            className="group flex items-center gap-2 py-0.5 transition-colors ease-ws"
+            className="flex w-full items-center gap-2.5 py-0.5 text-left transition-colors ease-ws"
           >
-            <svg
-              className="w-3 h-3 shrink-0 transition-transform duration-200 ease-ws"
-              style={{
-                color: "var(--color-ws-text-faint)",
-                transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
-              }}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.5}
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
             {heading}
           </button>
-        </h2>
-      ) : (
-        <h2 className="flex items-center gap-2 mb-4">{heading}</h2>
-      )}
+        ) : (
+          <span className="flex w-full items-center gap-2.5 py-0.5">{heading}</span>
+        )}
+      </h2>
 
       {expanded && (
         <>
           {children}
           {footnote && (
-            <p className="text-[10px] mt-3 px-1 leading-relaxed" style={{ color: "var(--color-ws-text-faint)" }}>
+            <p
+              className="mt-2.5 max-w-4xl text-[11px] leading-relaxed"
+              style={{ color: "var(--color-ws-text-dim)" }}
+            >
               {footnote}
             </p>
           )}

@@ -92,14 +92,16 @@ export default function ClientKpiPanel({
         <button
           type="button"
           onClick={onReviewOverdue}
-          className="w-full flex items-center gap-4 text-left rounded-xl px-5 py-4 transition-colors"
+          className="w-full flex items-center gap-3.5 text-left rounded-xl px-4 py-3 transition-colors"
           style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.45)" }}
         >
           <div
             className="flex items-center justify-center rounded-lg shrink-0"
-            style={{ width: "2.75rem", height: "2.75rem", background: "rgba(245,158,11,0.16)" }}
+            style={{ width: "2.25rem", height: "2.25rem", background: "rgba(245,158,11,0.16)" }}
           >
-            <span className="text-xl font-bold" style={{ color: "#fbbf24" }}>{overduePending}</span>
+            <span className="font-data text-base font-bold tabular-nums" style={{ color: "#fbbf24" }}>
+              {overduePending}
+            </span>
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold" style={{ color: "#fbbf24" }}>
@@ -136,7 +138,7 @@ export default function ClientKpiPanel({
           // Refetches keep the previous numbers on screen and dim them, so
           // changing scope never blanks the page you are auditing.
           <div
-            className="space-y-8 transition-opacity duration-200"
+            className="space-y-6 transition-opacity duration-200"
             style={{ opacity: metricsLoading ? 0.55 : 1 }}
             aria-busy={metricsLoading}
           >
@@ -172,7 +174,7 @@ export default function ClientKpiPanel({
               spark={sparkMap}
             />
 
-            <KpiSection title="Appointment Breakdown" showDivider>
+            <KpiSection title="Appointment Breakdown">
               <div className="grid gap-4 lg:grid-cols-2">
                 <ShowQualityBar metrics={metrics} />
                 <ConversionFunnel metrics={metrics} />
@@ -182,10 +184,9 @@ export default function ClientKpiPanel({
             {reportingType === "RM" && (
               <KpiSection
                 title="Conversions"
-                showDivider
                 footnote="Counts use unique leads per stage in the selected date range. Cost metrics are total spend divided by each conversion-stage unique lead count."
               >
-                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
+                <div className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]">
                   <KpiCard label="Proposals Made" value={formatKpiValue(metrics.proposals_made, "int")} hint="Unique leads that reached the proposal stage or beyond (submitted/funded count too)." />
                   <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} hint="Unique leads that reached the submission stage or beyond (funded count too)." />
                   <KpiCard label="Funded Loans" value={formatKpiValue(metrics.funded_loans, "int")} accent hint="Unique leads with a funded loan — the deal closed." />
@@ -196,7 +197,7 @@ export default function ClientKpiPanel({
               </KpiSection>
             )}
 
-            <KpiSection title="Rate Trends" showDivider>
+            <KpiSection title="Rate Trends">
               <RateTrendCharts
                 kpiSeries={trends?.kpiSeries ?? []}
                 granularity={trends?.granularity ?? "day"}
@@ -208,7 +209,7 @@ export default function ClientKpiPanel({
             </KpiSection>
 
             {usesRmKpiLayout(reportingType) && (
-              <KpiSection title="Cost Trends" showDivider>
+              <KpiSection title="Cost Trends">
                 <CostTrendCharts
                   series={trends?.series ?? []}
                   granularity={trends?.granularity ?? "day"}
