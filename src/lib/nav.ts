@@ -180,7 +180,6 @@ export const AGENTS_TABS: HubTabDef<AgentsTab>[] = [
 export const CLIENT_SUCCESS_TABS: HubTabDef<ClientSuccessTab>[] = [
   { key: "health", label: "Health" },
   { key: "followups", label: "Follow-ups" },
-  { key: "stickiness", label: "Stickiness" },
 ];
 
 export const TEAM_DASHBOARD_TABS: HubTabDef<TeamDashboardTab>[] = [
