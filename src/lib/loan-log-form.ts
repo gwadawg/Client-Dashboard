@@ -5,13 +5,20 @@ import type { createServiceClient } from '@/lib/supabase';
 
 type Service = ReturnType<typeof createServiceClient>;
 
-export const LOAN_LOG_STAGES = ['submitted', 'funded'] as const;
+export const LOAN_LOG_STAGES = ['proposal', 'submitted', 'funded'] as const;
 export type LoanLogStage = (typeof LOAN_LOG_STAGES)[number];
 
 const CONVERSATION_TYPES = new Set(['show', 'live_transfer', 'claimed']);
 const PROPOSAL_TYPES = new Set(['proposal_made', 'proposal_sent']);
 const SUBMISSION_TYPES = new Set(['submission_made', 'loan_processing']);
 const FUNDED_TYPES = new Set(['loan_funded', 'closed']);
+
+export function loanLogStageLabel(stage: string): string {
+  if (stage === 'proposal') return 'Proposal';
+  if (stage === 'funded') return 'Funded';
+  if (stage === 'submitted') return 'Submitted';
+  return stage;
+}
 
 export type LoanLogExistingEvent = {
   event_type: string;
@@ -49,7 +56,7 @@ export type PlanLoanLogResult = {
 };
 
 export function isLoanLogStage(value: unknown): value is LoanLogStage {
-  return value === 'submitted' || value === 'funded';
+  return value === 'proposal' || value === 'submitted' || value === 'funded';
 }
 
 export function generateLoanLogToken(): string {
@@ -95,7 +102,6 @@ function hasTypeOnDate(
 }
 
 export function planLoanLogEvents(input: PlanLoanLogInput): PlanLoanLogResult {
-  const phone = normalizePhone(input.leadPhone);
   const ghlContactId =
     input.ghlContactId?.trim() || buildContactKey(input.clientId, input.leadPhone);
   const occurredAt = `${input.occurredDate}T12:00:00.000Z`;
@@ -113,7 +119,12 @@ export function planLoanLogEvents(input: PlanLoanLogInput): PlanLoanLogResult {
   const hasConversation = hasType(existing, CONVERSATION_TYPES);
   const hasProposal = hasType(existing, PROPOSAL_TYPES);
   const hasSubmission = hasType(existing, SUBMISSION_TYPES);
-  const clickedTypes = input.stage === 'funded' ? FUNDED_TYPES : SUBMISSION_TYPES;
+  const clickedTypes =
+    input.stage === 'funded'
+      ? FUNDED_TYPES
+      : input.stage === 'submitted'
+        ? SUBMISSION_TYPES
+        : PROPOSAL_TYPES;
   const duplicateClicked = hasTypeOnDate(existing, clickedTypes, input.occurredDate);
 
   const rows: LoanLogEventRow[] = [];
@@ -128,18 +139,25 @@ export function planLoanLogEvents(input: PlanLoanLogInput): PlanLoanLogResult {
   if (!hasConversation) {
     push('claimed', { source: 'loan_log_form' });
   }
-  if (!hasProposal) {
-    push('proposal_made', { source: 'loan_log_form' });
-  }
 
   const moneyRaw: Record<string, unknown> = {
     source: 'loan_log_form',
     loan_size: input.loanSize,
   };
 
-  if (!hasSubmission) {
-    push('submission_made', moneyRaw);
-  } else if (input.stage === 'submitted' && !duplicateClicked) {
+  if (input.stage === 'proposal') {
+    if (!duplicateClicked) {
+      push('proposal_made', moneyRaw);
+    }
+  } else if (!hasProposal) {
+    push('proposal_made', { source: 'loan_log_form' });
+  }
+
+  if (input.stage === 'submitted') {
+    if (!duplicateClicked) {
+      push('submission_made', moneyRaw);
+    }
+  } else if (input.stage === 'funded' && !hasSubmission) {
     push('submission_made', moneyRaw);
   }
 

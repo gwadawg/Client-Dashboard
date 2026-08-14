@@ -8,7 +8,7 @@ import {
   WAIZ,
   WaizWordmark,
 } from "@/components/onboarding/brand";
-import type { LoanLogStage } from "@/lib/loan-log-form";
+import { LOAN_LOG_STAGES, loanLogStageLabel, type LoanLogStage } from "@/lib/loan-log-form";
 
 type LeadHit = {
   lead_name: string;
@@ -117,7 +117,7 @@ export default function LoanLogForm({ token }: Props) {
     e.preventDefault();
     setError(null);
     if (!stage) {
-      setError("Choose Submitted or Funded.");
+      setError("Choose Proposal, Submitted, or Funded.");
       return;
     }
     setSubmitting(true);
@@ -185,7 +185,7 @@ export default function LoanLogForm({ token }: Props) {
             Logged
           </h1>
           <p style={{ color: WAIZ.muted }}>
-            {done.lead_name} — {done.stage === "funded" ? "Funded" : "Submitted"}.
+            {done.lead_name} — {loanLogStageLabel(done.stage)}.
           </p>
           <button
             type="button"
@@ -218,20 +218,20 @@ export default function LoanLogForm({ token }: Props) {
           <legend className="text-sm font-medium" style={{ color: WAIZ.ink }}>
             What happened?
           </legend>
-          <div className="grid grid-cols-2 gap-2">
-            {(["submitted", "funded"] as const).map(value => (
+          <div className="grid grid-cols-3 gap-2">
+            {LOAN_LOG_STAGES.map(value => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setStage(value)}
-                className="rounded-xl py-3 text-sm font-semibold"
+                className="rounded-xl py-3 text-xs sm:text-sm font-semibold"
                 style={{
                   border: `1px solid ${stage === value ? WAIZ.accent : WAIZ.line}`,
                   background: stage === value ? WAIZ.tint : WAIZ.soft,
                   color: WAIZ.navy,
                 }}
               >
-                {value === "funded" ? "Funded" : "Submitted"}
+                {loanLogStageLabel(value)}
               </button>
             ))}
           </div>

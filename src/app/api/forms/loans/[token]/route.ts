@@ -94,7 +94,7 @@ export async function POST(
 
   const stage = body.stage;
   if (!isLoanLogStage(stage)) {
-    return NextResponse.json({ error: 'Choose Submitted or Funded.' }, { status: 400 });
+    return NextResponse.json({ error: 'Choose Proposal, Submitted, or Funded.' }, { status: 400 });
   }
 
   const occurredDate = parseLoanLogDate(body.occurred_on) ?? parseLoanLogDate(new Date().toISOString().slice(0, 10));

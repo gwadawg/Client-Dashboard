@@ -33,7 +33,7 @@ export default function LoanLogLinkSection({ clientId }: Props) {
   return (
     <div className="space-y-3">
       <p className="text-sm" style={{ color: "#94a3b8" }}>
-        Permanent public form for this office to log submitted and funded loans.
+        Permanent public form for this office to log proposals, submissions, and funded loans.
         Anyone with the URL can submit. Copy as many times as you want — the link stays the same.
       </p>
       {url && (

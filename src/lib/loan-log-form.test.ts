@@ -121,6 +121,20 @@ describe('planLoanLogEvents', () => {
     assert.ok(rows.some(r => r.event_type === 'submission_made'));
   });
 
+  it('proposal only backfills conversation, not submitted or funded', () => {
+    const { rows } = planLoanLogEvents({
+      ...base,
+      stage: 'proposal',
+      createLead: true,
+      existing: [],
+    });
+    assert.deepEqual(
+      rows.map(r => r.event_type),
+      ['lead', 'claimed', 'proposal_made'],
+    );
+    assert.equal(rows.find(r => r.event_type === 'proposal_made')?.raw.loan_size, 350000);
+  });
+
   it('stores commission only on funded', () => {
     const { rows } = planLoanLogEvents({
       ...base,
