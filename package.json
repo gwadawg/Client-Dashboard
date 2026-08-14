@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "npx --yes tsx --test src/lib/kpi-simulator.test.ts src/lib/lead-source-roi/math.test.ts src/lib/lead-source-roi/state.test.ts src/lib/lead-source-roi/contact-rate.test.ts src/lib/lead-source-roi/scale.test.ts src/lib/payment-streak.test.ts src/lib/payment-streak.qa.test.ts",
+    "test": "npx --yes tsx --test src/lib/kpi-simulator.test.ts src/lib/lead-source-roi/math.test.ts src/lib/lead-source-roi/state.test.ts src/lib/lead-source-roi/contact-rate.test.ts src/lib/lead-source-roi/scale.test.ts src/lib/payment-streak.test.ts src/lib/payment-streak.qa.test.ts src/lib/loan-log-form.test.ts",
     "verify:onboard": "npx tsx scripts/verify-onboard-payload.ts",
     "audit:roster": "node scripts/audit-client-roster.mjs",
     "audit:agent-stats": "npx tsx scripts/audit-agent-appointment-stats.ts",

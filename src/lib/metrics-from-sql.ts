@@ -250,6 +250,8 @@ export function metricsFromSqlCounts(
     cp_proposal_made: proposals_made > 0 ? ad_spend / proposals_made : 0,
     cp_submission_made: submissions_made > 0 ? ad_spend / submissions_made : 0,
     cp_loan_funded: funded_loans > 0 ? ad_spend / funded_loans : 0,
+    commission_total: 0,
+    roas: null,
     ad_spend,
     ad_spend_meta,
     cpl: leads > 0 ? ad_spend / leads : 0,

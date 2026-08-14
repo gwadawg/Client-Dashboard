@@ -200,6 +200,14 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
           <KpiCard label="Funded Loans" value={formatKpiValue(metrics.funded_loans, "int")} accent hint="Deals that closed and funded." />
           <KpiCard label="Total Spend" value={formatKpiValue(metrics.ad_spend, "money")} hint="Meta ad spend in this range." />
           <KpiCard label="Cost per Funded" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Funded Loans." />
+          {metrics.roas != null && (
+            <KpiCard
+              label="ROAS"
+              value={`${metrics.roas.toFixed(2)}x`}
+              accent
+              hint="Logged funded earnings ÷ ad spend."
+            />
+          )}
           <KpiCard
             label="Est. Commission Rev."
             value={hasCommission ? money(current.revenue) : "—"}

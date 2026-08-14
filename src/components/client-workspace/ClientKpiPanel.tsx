@@ -193,6 +193,14 @@ export default function ClientKpiPanel({
                   <KpiCard label="Cost per Proposal" value={formatKpiValue(metrics.cp_proposal_made, "money")} hint="Total Spend ÷ Proposals Made." />
                   <KpiCard label="Cost per Submission" value={formatKpiValue(metrics.cp_submission_made, "money")} hint="Total Spend ÷ Submissions." />
                   <KpiCard label="Cost per Funded" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Funded Loans." />
+                  {metrics.roas != null && (
+                    <KpiCard
+                      label="ROAS"
+                      value={`${metrics.roas.toFixed(2)}x`}
+                      accent
+                      hint="What they made (logged on funded loans) ÷ ad spend. Hidden until someone logs earnings."
+                    />
+                  )}
                 </div>
               </KpiSection>
             )}

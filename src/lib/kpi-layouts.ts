@@ -328,7 +328,8 @@ export function getHeadlineCards(reportingType: ReportingType): KpiCardDefinitio
   );
 }
 
-export function formatKpiValue(value: number, format: KpiFormat): string {
+export function formatKpiValue(value: number | null | undefined, format: KpiFormat): string {
+  if (value == null || !Number.isFinite(value)) return "—";
   if (format === "money") return `$${Math.round(value).toLocaleString("en-US")}`;
   if (format === "pct") return `${value.toFixed(2)}%`;
   if (format === "decimal") return value.toFixed(2);

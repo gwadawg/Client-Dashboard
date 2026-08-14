@@ -154,6 +154,10 @@ export type MetricsResult = {
   cp_proposal_made: number;
   cp_submission_made: number;
   cp_loan_funded: number;
+  /** Sum of client-logged funded commission in range. */
+  commission_total: number;
+  /** Commission ÷ ad spend when both > 0; otherwise null (hide the card). */
+  roas: number | null;
   /** Sum of Meta ad spend (meta_ad_insights). */
   ad_spend: number;
   /** Meta / Facebook spend only (same as ad_spend). */
@@ -403,6 +407,8 @@ export function calculateMetrics(
     cp_proposal_made: proposals_made > 0 ? ad_spend / proposals_made : 0,
     cp_submission_made: submissions_made > 0 ? ad_spend / submissions_made : 0,
     cp_loan_funded: funded_loans > 0 ? ad_spend / funded_loans : 0,
+    commission_total: 0,
+    roas: null,
     ad_spend,
     ad_spend_meta,
     cpl: leads > 0 ? ad_spend / leads : 0,
@@ -426,6 +432,15 @@ export function calculateMetrics(
     speed_to_lead_excluded_before_cutoff: speed.excluded_before_cutoff,
     speed_to_lead_excluded_after_cutoff: speed.excluded_after_cutoff,
   };
+}
+
+export function attachCommissionRoas(
+  metrics: MetricsResult,
+  commissionTotal: number,
+): MetricsResult {
+  const total = Number.isFinite(commissionTotal) ? Math.max(0, commissionTotal) : 0;
+  const roas = total > 0 && metrics.ad_spend > 0 ? total / metrics.ad_spend : null;
+  return { ...metrics, commission_total: total, roas };
 }
 
 function utcDateKey(iso: string): string {

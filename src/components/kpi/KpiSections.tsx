@@ -38,24 +38,26 @@ type Props = {
 
 function computeDelta(
   card: KpiCardDefinition,
-  current: number,
-  previous: number,
+  current: number | null,
+  previous: number | null,
 ): KpiDelta | undefined {
+  const cur = current ?? 0;
+  const prev = previous ?? 0;
   // Skip noisy/meaningless comparisons (e.g. both zero).
-  if (current === previous) return { text: "0%", good: null };
+  if (cur === prev) return { text: "0%", good: null };
 
   let text: string;
   if (card.format === "pct") {
-    const diff = current - previous;
+    const diff = cur - prev;
     text = `${diff > 0 ? "+" : ""}${diff.toFixed(1)} pts`;
-  } else if (previous === 0) {
+  } else if (prev === 0) {
     text = "new";
   } else {
-    const relative = ((current - previous) / Math.abs(previous)) * 100;
-    text = `${relative > 0 ? "+" : ""}${relative.toFixed(0)}%`;
+    const pct = ((cur - prev) / Math.abs(prev)) * 100;
+    text = `${pct > 0 ? "+" : ""}${pct.toFixed(0)}%`;
   }
 
-  const increased = current > previous;
+  const increased = cur > prev;
   const good = card.lowerIsBetter ? !increased : increased;
   return { text, good };
 }

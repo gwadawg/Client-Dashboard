@@ -41,6 +41,7 @@ import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileE
 import { toDateInputValue } from "@/lib/client-dates";
 import LifecycleStatusSelect from "@/components/LifecycleStatusSelect";
 import ClientFormsSection, { type FormSubmissionSummary } from "@/components/ClientFormsSection";
+import LoanLogLinkSection from "@/components/loan-log/LoanLogLinkSection";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
@@ -1051,6 +1052,9 @@ export default function ClientFile({
 
             {activeTab === "records" && (
             <div className="space-y-7">
+            <Section title="Loan log form">
+              <LoanLogLinkSection clientId={clientId} />
+            </Section>
             <Section title={`Onboarding forms (${formSubmissions.length})`}>
               <ClientFormsSection submissions={formSubmissions} />
             </Section>
