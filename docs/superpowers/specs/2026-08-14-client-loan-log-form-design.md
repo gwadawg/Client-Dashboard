@@ -45,7 +45,7 @@ fill in without a second pipeline or a GHL form.
 - ROAS appears on Client KPIs only when at least one funded loan in range has
   “what you made.”
 - Lead history shows the funnel chain, including system backfill.
-- A leaked link can be rotated without a deploy.
+- The client’s loan-log URL is stable: copy as often as needed; it does not change.
 
 ## Entry
 
@@ -56,7 +56,7 @@ fill in without a second pipeline or a GHL form.
 | Auth | None. Anyone with a valid token submits for that client only. |
 | How they get it | You copy the unique link from Client Roster / Client File and send it |
 | Hub | Do not add a tokenless `/forms/loans` to the public forms list.
-Copy/rotate lives on Client Roster / Client File only. |
+Copy lives on Client File only. |
 
 Headline copy: `{Client name} — Log a loan` (use `clients.name`).
 Visual: existing Waiz form chrome and company colors.
@@ -156,9 +156,8 @@ Writes are **one transaction**: all backfill events persist or none do.
 ### Token
 
 Store a unique `loan_log_token` on `clients`.
-Generate when an admin first copies the link if the column is null;
-a one-time migration may backfill tokens for the active roster.
-**Rotate** replaces the token; the old URL returns the invalid-link page.
+Generate when an admin first copies the link if the column is null.
+The token never changes after that.
 
 ## Reporting
 
@@ -180,7 +179,7 @@ KPI month follows the form date, not the submit timestamp.
 
 | Situation | Behavior |
 |-----------|----------|
-| Bad or rotated token | “This link isn’t valid. Ask your Waiz contact for a new one.” No search/submit. |
+| Bad token | “This link isn’t valid. Ask your Waiz contact for a new one.” No search/submit. |
 | Search, no matches | Empty list + Can’t find this lead. |
 | Can’t find without phone | Block submit. |
 | Missing loan size | Block submit (both stages). |
@@ -211,7 +210,6 @@ GHL is unchanged in v1.
 
 - Token scopes search and submit to one client; other clients’ leads never
   appear.
-- Rotated token cannot search or submit.
 - Empty history + Can’t find + Funded writes `lead`, `claimed`,
   `proposal_made`, `submission_made`, `loan_funded` (same date).
 - Empty history + existing lead + Submitted writes `claimed` (if no

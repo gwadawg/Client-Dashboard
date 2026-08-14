@@ -216,29 +216,6 @@ export async function ensureLoanLogToken(
   return { token, url: buildLoanLogUrl(token), created: true };
 }
 
-export async function rotateLoanLogToken(
-  service: Service,
-  clientId: string,
-): Promise<{ token: string; url: string }> {
-  const token = generateLoanLogToken();
-  const { data, error } = await service
-    .from('clients')
-    .update({ loan_log_token: token })
-    .eq('id', clientId)
-    .select('id')
-    .single();
-
-  if (error) {
-    const status = error.code === 'PGRST116' ? 404 : 500;
-    throw Object.assign(new Error(error.message), { status });
-  }
-  if (!data) {
-    throw Object.assign(new Error('Client not found'), { status: 404 });
-  }
-
-  return { token, url: buildLoanLogUrl(token) };
-}
-
 export async function resolveLoanLogToken(
   service: Service,
   token: string,
