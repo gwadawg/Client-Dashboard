@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -704,31 +704,82 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                   </tr>
                 </thead>
                 <tbody>
-                  {unsourcedAds.map((ad) => (
-                    <tr key={ad.row_key} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                      <td className="px-3 py-2 text-left" style={{ color: "#e2e8f0" }}>{ad.ad_name}</td>
-                      <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{money(ad.spend)}</td>
-                      <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(ad.leads)}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          className="text-[11px] underline mr-3"
-                          style={{ color: "#f59e0b" }}
-                          onClick={() => onAddToLibrary(ad.ad_name)}
+                  {unsourcedAds.map((ad) => {
+                    const isOpen = expanded === ad.row_key;
+                    const d = drill[ad.row_key];
+                    return (
+                      <Fragment key={ad.row_key}>
+                        <tr
+                          className="cursor-pointer transition-colors"
+                          style={{
+                            borderTop: "1px solid rgba(255,255,255,0.04)",
+                            background: isOpen ? "rgba(245,158,11,0.04)" : "transparent",
+                          }}
+                          onClick={() => toggleExpand(ad)}
                         >
-                          Add to library
-                        </button>
-                        <button
-                          type="button"
-                          className="text-[11px] underline"
-                          style={{ color: "#60a5fa" }}
-                          onClick={() => openLinkModal(ad.ad_name)}
-                        >
-                          Link to existing
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                          <td className="px-3 py-2 text-left" style={{ color: "#e2e8f0" }}>
+                            <div className="flex items-center gap-2">
+                              <svg
+                                className="w-3.5 h-3.5 flex-shrink-0 transition-transform"
+                                style={{ color: "#475569", transform: isOpen ? "rotate(90deg)" : "none" }}
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                              </svg>
+                              <span>{ad.ad_name}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{money(ad.spend)}</td>
+                          <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(ad.leads)}</td>
+                          <td className="px-3 py-2 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              className="text-[11px] underline mr-3"
+                              style={{ color: "#cbd5e1" }}
+                              onClick={() => toggleExpand(ad)}
+                            >
+                              {isOpen ? "Hide" : "Review"}
+                            </button>
+                            <button
+                              type="button"
+                              className="text-[11px] underline mr-3"
+                              style={{ color: "#f59e0b" }}
+                              onClick={() => onAddToLibrary(ad.ad_name)}
+                            >
+                              Add to library
+                            </button>
+                            <button
+                              type="button"
+                              className="text-[11px] underline"
+                              style={{ color: "#60a5fa" }}
+                              onClick={() => openLinkModal(ad.ad_name)}
+                            >
+                              Link to existing
+                            </button>
+                          </td>
+                        </tr>
+                        {isOpen ? (
+                          <tr style={{ background: "#060e1c" }}>
+                            <td colSpan={4} className="px-4 py-4">
+                              {d === "loading" || !d ? (
+                                <p className="text-sm" style={{ color: "#475569" }}>Loading breakdown…</p>
+                              ) : (
+                                <DrilldownPanel
+                                  ad={ad}
+                                  drilldown={d}
+                                  onViewInLibrary={onViewInLibrary}
+                                  formatLabels={formatLabels}
+                                />
+                              )}
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
