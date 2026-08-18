@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   if (!detail) {
     const { data, error } = await ctx.service
       .from('clients')
-      .select('id, name, is_live, reporting_type, share_token, created_at, launch_date, date_signed, lifecycle_status, churned_at')
+      .select('id, name, is_live, reporting_type, share_token, created_at, launch_date, date_signed, lifecycle_status, churned_at, states_licensed')
       .order('name');
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ clients: data });

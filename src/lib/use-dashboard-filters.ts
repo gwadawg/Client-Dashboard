@@ -19,6 +19,7 @@ export type DashboardClient = ClientTenureInput & {
   name: string;
   is_live?: boolean;
   reporting_type?: ReportingType;
+  states_licensed?: string[] | null;
 };
 
 /** A real client is selected — not All Clients ("") and not the Live sentinel. */

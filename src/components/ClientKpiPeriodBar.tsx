@@ -9,10 +9,11 @@ import {
   describeClientTenure,
   type ClientTenureInput,
 } from "@/lib/client-tenure";
+import { normalizeStatesLicensed, usStateName } from "@/lib/us-states";
 
 type Props = {
   clientName: string;
-  client: ClientTenureInput;
+  client: ClientTenureInput & { states_licensed?: string[] | null };
   todayYmd: string;
   /** Read-only here — the workspace filter bar owns the range. */
   preset: DatePreset;
@@ -49,6 +50,7 @@ export default function ClientKpiPeriodBar({
       : getDateRange(preset, tenure.launchYmd);
   const rangeHint =
     range.start && range.end ? `${formatChipDate(range.start)} – ${formatChipDate(range.end)}` : null;
+  const licensed = normalizeStatesLicensed(client.states_licensed) ?? [];
 
   return (
     <section
@@ -69,6 +71,28 @@ export default function ClientKpiPeriodBar({
           <p className="text-sm mt-0.5" style={{ color: "#94a3b8" }}>
             {launchHeadline}
           </p>
+          {licensed.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5 mt-2.5">
+              {licensed.map(code => (
+                <li
+                  key={code}
+                  title={usStateName(code)}
+                  className="rounded-md px-1.5 py-0.5 font-data text-[11px] font-semibold tabular-nums tracking-wide"
+                  style={{
+                    color: "#fbbf24",
+                    background: "rgba(245,158,11,0.10)",
+                    border: "1px solid rgba(245,158,11,0.22)",
+                  }}
+                >
+                  {code}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[11px] mt-2" style={{ color: "#475569" }}>
+              Licensed states not on file
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -98,7 +122,6 @@ export default function ClientKpiPeriodBar({
           />
         </div>
       </div>
-
     </section>
   );
 }
