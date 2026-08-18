@@ -2,7 +2,7 @@
 // permission editor. Hub views appear in the sidebar; sub-tabs live in-page.
 
 export type HeatmapTab = "show_rate" | "pickup_rate" | "new_leads";
-export type DataExplorerTab = "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
+export type DataExplorerTab = "leads" | "conversions" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
 /** Level-1 tabs inside the unified Client Workspace. */
 export type ClientWorkspaceTab = "kpis" | "dials" | "explorer" | "heatmaps";
 export type AcquisitionTab = "appointments" | "credit_queue" | "sales_calls" | "pending_closes" | "log_close" | "call_examples";
@@ -114,6 +114,7 @@ export const HEATMAP_TABS: HubTabDef<HeatmapTab>[] = [
 
 export const DATA_EXPLORER_TABS: HubTabDef<DataExplorerTab>[] = [
   { key: "leads", label: "Leads" },
+  { key: "conversions", label: "Conversions" },
   { key: "dials", label: "Dials" },
   { key: "appointments", label: "Appointments" },
   { key: "speed_to_lead", label: "Speed to Lead" },
@@ -122,8 +123,8 @@ export const DATA_EXPLORER_TABS: HubTabDef<DataExplorerTab>[] = [
 
 /**
  * Level-2 tabs, addressed by the `sub` URL param. Workspace tabs absent here
- * have no nested level. `kpis` is the exception: it uses `sub=conversions` for
- * the RM drill-in rather than a tab bar.
+ * have no nested level. `kpis` uses `sub=roi` for Conversions & ROI (`sub=conversions` is still
+ * accepted as an alias). Explorer uses `sub=conversions` for the lead list.
  */
 export const CLIENT_WORKSPACE_SUBTABS: Partial<Record<ClientWorkspaceTab, HubTabDef<string>[]>> = {
   explorer: DATA_EXPLORER_TABS,

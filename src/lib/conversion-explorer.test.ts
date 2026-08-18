@@ -8,6 +8,7 @@ import {
   profilesForConversionExplorer,
   shouldShowConversionCosts,
 } from './conversion-explorer';
+import { DATA_EXPLORER_TABS, resolveWorkspaceSubTab } from './nav';
 
 const fundedOnly = {
   has_proposal_made: false,
@@ -76,5 +77,18 @@ describe('conversion-explorer', () => {
       sub: 'conversions',
       conv: 'loan_funded',
     });
+  });
+});
+
+describe('explorer conversions tab', () => {
+  it('lists Conversions next to Leads', () => {
+    assert.equal(DATA_EXPLORER_TABS[0].key, 'leads');
+    assert.equal(DATA_EXPLORER_TABS[1].key, 'conversions');
+    assert.equal(DATA_EXPLORER_TABS[1].label, 'Conversions');
+  });
+
+  it('resolves explorer sub=conversions instead of falling back to leads', () => {
+    assert.equal(resolveWorkspaceSubTab('explorer', 'conversions'), 'conversions');
+    assert.equal(resolveWorkspaceSubTab('explorer', 'roi'), 'leads');
   });
 });
