@@ -11,7 +11,9 @@ import {
   YAxis,
 } from "recharts";
 import { AdFormatPicker, useAdFormats } from "./AdFormatPicker";
+import { AdTagPicker, useAdTags } from "./AdTagPicker";
 import { adFormatLabel } from "@/lib/ad-formats";
+import type { AdTagRef } from "@/lib/ad-tags";
 
 type Props = {
   startDate: string;
@@ -28,6 +30,7 @@ type LibraryMeta = {
   visual_notes: string | null;
   drive_url: string | null;
   thumbnail_url: string | null;
+  tags?: AdTagRef[];
 };
 
 type DrilldownClientRow = {
@@ -124,6 +127,7 @@ type LibEntry = {
   created_at: string;
   updated_at: string;
   aliases: LibraryAlias[];
+  tags: AdTagRef[];
 };
 
 export type LibraryNav = {
@@ -207,6 +211,113 @@ function ProductFilterBar({
           >
             {f.label}
             <span className="ml-1.5 tabular-nums" style={{ opacity: 0.7 }}>{counts[f.value]}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function normalizeAdQuery(q: string): string {
+  return q.trim().toLowerCase();
+}
+
+function matchesAdQuery(haystacks: Array<string | null | undefined>, q: string): boolean {
+  const needle = normalizeAdQuery(q);
+  if (!needle) return true;
+  return haystacks.some((h) => (h ?? "").toLowerCase().includes(needle));
+}
+
+function AdSearchInput({
+  value,
+  onChange,
+  placeholder = "Search ads…",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="relative min-w-[14rem] w-full sm:w-72">
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onChange("");
+        }}
+        placeholder={placeholder}
+        aria-label="Search ads"
+        className="w-full px-3 py-1.5 rounded-lg text-xs outline-none"
+        style={{
+          background: "#050c18",
+          border: "1px solid rgba(255,255,255,0.1)",
+          color: "#e2e8f0",
+          fontFamily: "var(--font-plex-mono)",
+        }}
+      />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] uppercase tracking-wider"
+          style={{ color: "#64748b" }}
+        >
+          Clear
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function TagFilterBar({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (slug: string) => void;
+  options: { slug: string; label: string; count: number }[];
+}) {
+  if (options.length === 0 && value === "all") return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span
+        className="text-[10px] uppercase tracking-wider mr-1"
+        style={{ color: "#475569", fontFamily: "var(--font-plex-mono)" }}
+      >
+        Topic
+      </span>
+      <button
+        type="button"
+        onClick={() => onChange("all")}
+        className="px-2.5 py-1 rounded-md text-[11px] tracking-wide transition-colors"
+        style={{
+          fontFamily: "var(--font-plex-mono)",
+          background: value === "all" ? "rgba(148,163,184,0.18)" : "rgba(255,255,255,0.03)",
+          color: value === "all" ? "#cbd5e1" : "#94a3b8",
+          border: value === "all" ? "1px solid rgba(148,163,184,0.45)" : "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        All
+      </button>
+      {options.map((opt) => {
+        const selected = value === opt.slug;
+        return (
+          <button
+            key={opt.slug}
+            type="button"
+            onClick={() => onChange(opt.slug)}
+            className="px-2.5 py-1 rounded-md text-[11px] tracking-wide transition-colors"
+            style={{
+              fontFamily: "var(--font-plex-mono)",
+              background: selected ? "rgba(52,211,153,0.16)" : "rgba(255,255,255,0.03)",
+              color: selected ? "#6ee7b7" : "#94a3b8",
+              border: selected ? "1px solid rgba(52,211,153,0.55)" : "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            {opt.label}
+            <span className="ml-1.5 tabular-nums" style={{ opacity: 0.7 }}>{opt.count}</span>
           </button>
         );
       })}
@@ -338,6 +449,8 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   const [linkSaving, setLinkSaving] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
+  const [search, setSearch] = useState("");
+  const [linkSearch, setLinkSearch] = useState("");
   const { labels: formatLabels } = useAdFormats();
 
   const loadAds = useCallback(() => {
@@ -379,8 +492,21 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   }
 
   const filteredAds = useMemo(
-    () => ads.filter((a) => productMatches(a.library?.product, productFilter)),
-    [ads, productFilter],
+    () =>
+      ads.filter(
+        (a) =>
+          productMatches(a.library?.product, productFilter) &&
+          matchesAdQuery(
+            [
+              a.ad_name,
+              ...(a.variant_names ?? []),
+              a.library?.summary,
+              ...(a.library?.tags ?? []).flatMap((t) => [t.label, t.slug]),
+            ],
+            search,
+          ),
+      ),
+    [ads, productFilter, search],
   );
 
   const sorted = useMemo(() => {
@@ -418,15 +544,21 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   const unsourcedAds = useMemo(
     () =>
       productFilter === "all"
-        ? ads.filter((a) => !a.is_sourced && (a.spend > 0 || a.has_meta))
+        ? ads.filter(
+            (a) =>
+              !a.is_sourced &&
+              (a.spend > 0 || a.has_meta) &&
+              matchesAdQuery([a.ad_name, ...(a.variant_names ?? [])], search),
+          )
         : [],
-    [ads, productFilter],
+    [ads, productFilter, search],
   );
 
   const openLinkModal = useCallback((adName: string) => {
     setLinkTarget(adName);
     setLinkLibraryId("");
     setLinkError(null);
+    setLinkSearch("");
     fetch("/api/ad-library")
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load library");
@@ -495,7 +627,10 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
 
   return (
     <div className="space-y-4">
-      <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={filterCounts} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={filterCounts} />
+        <AdSearchInput value={search} onChange={setSearch} placeholder="Search ad name…" />
+      </div>
 
       {productFilter === "all" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -648,8 +783,9 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
               {sorted.length === 0 ? (
                 <tr>
                   <td colSpan={16} className="px-4 py-10 text-center text-sm" style={{ color: "#64748b" }}>
-                    No {productFilter === "reverse" ? "RM" : "DSCR"} ads tagged in this range.
-                    Tag creatives with a product in Ad Library to split performance.
+                    {search.trim()
+                      ? `No ads match “${search.trim()}”.`
+                      : `No ${productFilter === "reverse" ? "RM" : "DSCR"} ads tagged in this range. Tag creatives with a product in Ad Library to split performance.`}
                   </td>
                 </tr>
               ) : (
@@ -687,6 +823,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
             <p className="text-xs" style={{ color: "#94a3b8" }}>
               Link <span style={{ color: "#e2e8f0" }}>{linkTarget}</span> to a library entry. Metrics will roll up with other variants.
             </p>
+            <AdSearchInput value={linkSearch} onChange={setLinkSearch} placeholder="Search library ads…" />
             <select
               value={linkLibraryId}
               onChange={(e) => setLinkLibraryId(e.target.value)}
@@ -694,7 +831,14 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
               style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
             >
               <option value="">Select library entry…</option>
-              {libraryOptions.map((e) => (
+              {libraryOptions
+                .filter((e) =>
+                  matchesAdQuery(
+                    [e.ad_name, ...(e.aliases ?? []).map((a) => a.alias_name)],
+                    linkSearch,
+                  ),
+                )
+                .map((e) => (
                 <option key={e.id} value={e.id}>{e.ad_name}</option>
               ))}
             </select>
@@ -773,6 +917,9 @@ function FragmentRow({
                 color={ad.library.product === "dscr" ? "#fbbf24" : "#38bdf8"}
               />
             ) : null}
+            {(ad.library?.tags ?? []).slice(0, 3).map((t) => (
+              <ClassBadge key={t.slug} label={t.label} color="#34d399" />
+            ))}
             {ad.variant_names.length > 1 ? (
               <ClassBadge label={`${ad.variant_names.length} variants`} color="#f59e0b" />
             ) : null}
@@ -902,9 +1049,9 @@ function DrilldownPanel({
             </ResponsiveContainer>
           </div>
         )}
-        {(ad.library?.summary || ad.library?.visual_notes || ad.library?.ad_format || ad.library?.product) ? (
+        {(ad.library?.summary || ad.library?.visual_notes || ad.library?.ad_format || ad.library?.product || (ad.library?.tags?.length ?? 0) > 0) ? (
           <div className="mt-3 rounded-lg p-3" style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}>
-            {(ad.library?.ad_format || ad.library?.product) ? (
+            {(ad.library?.ad_format || ad.library?.product || (ad.library?.tags?.length ?? 0) > 0) ? (
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {ad.library?.ad_format ? (
                   <ClassBadge label={adFormatLabel(ad.library.ad_format, formatLabels)} color="#60a5fa" />
@@ -912,6 +1059,9 @@ function DrilldownPanel({
                 {ad.library?.product ? (
                   <ClassBadge label={PRODUCT_LABELS[ad.library.product] ?? ad.library.product} color="#a78bfa" />
                 ) : null}
+                {(ad.library?.tags ?? []).map((t) => (
+                  <ClassBadge key={t.slug} label={t.label} color="#34d399" />
+                ))}
               </div>
             ) : null}
             {ad.library?.summary ? (
@@ -1022,6 +1172,7 @@ const EMPTY_FORM = {
   status: "active",
   ad_format: "",
   product: "",
+  tags: [] as string[],
   drive_url: "",
   thumbnail_url: "",
   summary: "",
@@ -1069,7 +1220,10 @@ function AdLibrary({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
+  const [tagFilter, setTagFilter] = useState("all");
+  const [search, setSearch] = useState("");
   const { formats, labels: formatLabels, createFormat, loading: formatsLoading } = useAdFormats();
+  const { tags: tagCatalog, createTag, loading: tagsLoading } = useAdTags();
 
   const openEditForm = useCallback((e: LibEntry) => {
     setFormError(null);
@@ -1082,6 +1236,7 @@ function AdLibrary({
       status: e.status,
       ad_format: e.ad_format ?? "",
       product: e.product ?? "",
+      tags: (e.tags ?? []).map((t) => t.slug),
       drive_url: e.drive_url ?? "",
       thumbnail_url: e.thumbnail_url ?? "",
       summary: e.summary ?? "",
@@ -1105,7 +1260,7 @@ function AdLibrary({
       }),
     ])
       .then(([libraryData, perfData]) => {
-        setEntries(libraryData.map((e) => ({ ...e, aliases: e.aliases ?? [] })));
+        setEntries(libraryData.map((e) => ({ ...e, aliases: e.aliases ?? [], tags: e.tags ?? [] })));
         const next = new Map<string, LibraryMetrics>();
         for (const ad of perfData.ads ?? []) {
           const libId = ad.library?.id;
@@ -1178,6 +1333,7 @@ function AdLibrary({
       status: form.status,
       ad_format: form.ad_format || null,
       product: form.product || null,
+      tags: form.tags,
       drive_url: form.drive_url.trim() || null,
       thumbnail_url: form.thumbnail_url.trim() || null,
       summary: form.summary.trim() || null,
@@ -1223,8 +1379,22 @@ function AdLibrary({
   }
 
   const visibleEntries = useMemo(
-    () => entries.filter((e) => productMatches(e.product, productFilter)),
-    [entries, productFilter],
+    () =>
+      entries.filter(
+        (e) =>
+          productMatches(e.product, productFilter) &&
+          (tagFilter === "all" || (e.tags ?? []).some((t) => t.slug === tagFilter)) &&
+          matchesAdQuery(
+            [
+              e.ad_name,
+              e.summary,
+              ...(e.aliases ?? []).map((a) => a.alias_name),
+              ...(e.tags ?? []).flatMap((t) => [t.label, t.slug]),
+            ],
+            search,
+          ),
+      ),
+    [entries, productFilter, tagFilter, search],
   );
   const libraryFilterCounts = useMemo(
     () => ({
@@ -1234,14 +1404,36 @@ function AdLibrary({
     }),
     [entries],
   );
+  const tagFilterOptions = useMemo(() => {
+    const counts = new Map<string, { slug: string; label: string; count: number }>();
+    for (const e of entries) {
+      for (const t of e.tags ?? []) {
+        const prev = counts.get(t.slug);
+        counts.set(t.slug, { slug: t.slug, label: t.label, count: (prev?.count ?? 0) + 1 });
+      }
+    }
+    if (tagFilter !== "all" && !counts.has(tagFilter)) {
+      const fromCatalog = tagCatalog.find((t) => t.slug === tagFilter);
+      counts.set(tagFilter, {
+        slug: tagFilter,
+        label: fromCatalog?.label ?? tagFilter,
+        count: 0,
+      });
+    }
+    return [...counts.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [entries, tagFilter, tagCatalog]);
 
   if (loading) return <p style={{ color: "#475569" }} className="text-sm py-10 text-center">Loading library…</p>;
   if (error) return <p style={{ color: "#f87171" }} className="text-sm py-10 text-center">{error}</p>;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={libraryFilterCounts} />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-2 min-w-0 flex-1">
+          <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={libraryFilterCounts} />
+          <TagFilterBar value={tagFilter} onChange={setTagFilter} options={tagFilterOptions} />
+          <AdSearchInput value={search} onChange={setSearch} placeholder="Search name, alias, or topic…" />
+        </div>
         <button
           onClick={() => {
             setFormError(null);
@@ -1260,7 +1452,9 @@ function AdLibrary({
         </p>
       ) : visibleEntries.length === 0 ? (
         <p style={{ color: "#64748b" }} className="text-sm py-10 text-center">
-          No {productFilter === "reverse" ? "RM" : "DSCR"} creatives tagged yet. Set product on an ad to include it here.
+          {search.trim()
+            ? `No ads match “${search.trim()}”.`
+            : "No ads match these filters. Adjust product or topic, or tag an ad in the library."}
         </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -1327,7 +1521,7 @@ function AdLibrary({
                         ) : null}
                       </div>
                     ) : null}
-                    {(e.ad_format || e.product || (e.knowledge_capture_status && e.knowledge_capture_status !== "none")) ? (
+                    {(e.ad_format || e.product || (e.tags ?? []).length > 0 || (e.knowledge_capture_status && e.knowledge_capture_status !== "none")) ? (
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {e.ad_format ? (
                           <ClassBadge label={adFormatLabel(e.ad_format, formatLabels)} color="#60a5fa" />
@@ -1335,6 +1529,16 @@ function AdLibrary({
                         {e.product ? (
                           <ClassBadge label={PRODUCT_LABELS[e.product] ?? e.product} color="#a78bfa" />
                         ) : null}
+                        {(e.tags ?? []).map((t) => (
+                          <button
+                            key={t.slug}
+                            type="button"
+                            onClick={() => setTagFilter(t.slug)}
+                            title={`Filter by ${t.label}`}
+                          >
+                            <ClassBadge label={t.label} color="#34d399" />
+                          </button>
+                        ))}
                         {e.knowledge_capture_status && e.knowledge_capture_status !== "none" ? (
                           <span
                             className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
@@ -1526,6 +1730,18 @@ function AdLibrary({
                     onCreate={createFormat}
                     loading={formatsLoading}
                   />
+              </div>
+            </div>
+            <div>
+              <span className="text-[11px] uppercase tracking-wider" style={{ color: "#475569" }}>Topics</span>
+              <div className="mt-1">
+                <AdTagPicker
+                  value={form.tags}
+                  onChange={(slugs) => setForm({ ...form, tags: slugs })}
+                  tags={tagCatalog}
+                  onCreate={createTag}
+                  loading={tagsLoading}
+                />
               </div>
             </div>
             <Field label="Thumbnail URL (optional)">
