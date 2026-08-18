@@ -523,8 +523,9 @@ async function fetchClientHealthSummary(ctx: AuthContext, clientId: string) {
       .maybeSingle(),
     ctx.service
       .from('client_action_logs')
-      .select('id, title, layer, constraint_label, status, review_date, created_at')
+      .select('id, title, layer, constraint_label, status, review_date, created_at, work_type')
       .eq('client_id', clientId)
+      .eq('work_type', 'bet')
       .in('status', ['planned', 'in_progress', 'measuring'])
       .order('review_date', { ascending: true })
       .limit(10),
@@ -574,7 +575,7 @@ async function fetchClientInterventions(ctx: AuthContext, clientId: string, limi
   const { data, error } = await ctx.service
     .from('client_action_logs')
     .select(
-      'id, title, layer, constraint_label, change_description, hypothesis, success_metric, status, review_date, outcome_notes, created_at',
+      'id, title, layer, constraint_label, change_description, hypothesis, success_metric, status, review_date, outcome_notes, created_at, work_type, change_date, planned_date',
     )
     .eq('client_id', clientId)
     .order('created_at', { ascending: false })

@@ -5,6 +5,8 @@ import type { AccountPlanTask, AccountWeekPlan } from "@/lib/account-week-plans"
 import { weekStartMondayContaining } from "@/lib/account-week-plans";
 import { addDaysToYmd } from "@/lib/team-meetings";
 import { todayYmdInCallCenterTz } from "@/lib/time";
+import { WORK_TYPE_META, WORK_TYPES, parseWorkType, type WorkType } from "@/lib/client-work-log";
+import { SUCCESS_METRIC_META } from "@/lib/client-health";
 
 type Props = {
   defaultWeekStart?: string;
@@ -34,7 +36,8 @@ export default function AccountWeekPlansWeekList({
   const [error, setError] = useState<string | null>(null);
   const [completeId, setCompleteId] = useState<string | null>(null);
   const [report, setReport] = useState("");
-  const [logChange, setLogChange] = useState(false);
+  const [completeType, setCompleteType] = useState<WorkType>("cadence");
+  const [completeMetric, setCompleteMetric] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -76,7 +79,7 @@ export default function AccountWeekPlansWeekList({
       if (!res.ok) throw new Error(d.error ?? "Failed");
       setCompleteId(null);
       setReport("");
-      setLogChange(false);
+      setCompleteMetric("");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
@@ -183,7 +186,8 @@ export default function AccountWeekPlansWeekList({
                       {t.status}
                       {t.scheduled_for ? ` · ${t.scheduled_for}` : ""}
                       {t.tactic_tag ? ` · #${t.tactic_tag}` : ""}
-                      {t.client_action_log_id ? " · logged as account change" : ""}
+                      {` · ${WORK_TYPE_META[parseWorkType(t.work_type, "cadence")].label}`}
+                      {t.client_action_log_id ? " · filed to work log" : ""}
                     </div>
                     {t.completion_report && (
                       <p className="text-slate-400 mt-1 whitespace-pre-wrap">
@@ -201,7 +205,8 @@ export default function AccountWeekPlansWeekList({
                         onClick={() => {
                           setCompleteId(t.id);
                           setReport("");
-                          setLogChange(false);
+                          setCompleteType(parseWorkType(t.work_type, "cadence"));
+                          setCompleteMetric(t.success_metric ?? "");
                         }}
                       >
                         Done
@@ -228,25 +233,44 @@ export default function AccountWeekPlansWeekList({
                       onChange={e => setReport(e.target.value)}
                       style={fieldStyle}
                     />
-                    <label className="flex items-center gap-2 text-[11px] text-slate-400">
-                      <input
-                        type="checkbox"
-                        checked={logChange}
-                        onChange={e => setLogChange(e.target.checked)}
-                      />
-                      Log as account change (Client Success action log)
-                    </label>
+                    <select
+                      value={completeType}
+                      onChange={e => setCompleteType(parseWorkType(e.target.value, "cadence"))}
+                      style={fieldStyle}
+                    >
+                      {WORK_TYPES.map(type => (
+                        <option key={type} value={type}>
+                          File as {WORK_TYPE_META[type].label}
+                        </option>
+                      ))}
+                    </select>
+                    {completeType === "bet" && (
+                      <select
+                        value={completeMetric}
+                        onChange={e => setCompleteMetric(e.target.value)}
+                        style={fieldStyle}
+                        required
+                      >
+                        <option value="">Success metric (required)</option>
+                        {Object.entries(SUCCESS_METRIC_META).map(([key, meta]) => (
+                          <option key={key} value={key}>
+                            {meta.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        disabled={busyId === t.id}
+                        disabled={busyId === t.id || (completeType === "bet" && !completeMetric)}
                         className="text-xs text-white px-3 py-1 rounded"
                         style={{ background: "#059669" }}
                         onClick={() =>
                           patchTask(t.id, {
                             status: "done",
                             completion_report: report || null,
-                            log_as_account_change: logChange,
+                            work_type: completeType,
+                            success_metric: completeType === "bet" ? completeMetric : t.success_metric,
                           })
                         }
                       >

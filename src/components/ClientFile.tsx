@@ -188,6 +188,18 @@ const ACTIVITY_STYLE: Record<string, { color: string; bg: string }> = {
   note: { color: "#f472b6", bg: "rgba(244,114,182,0.12)" },
   action: { color: "#fbbf24", bg: "rgba(251,191,36,0.12)" },
   billing: { color: "#34d399", bg: "rgba(52,211,153,0.12)" },
+  touchpoint: { color: "#2dd4bf", bg: "rgba(45,212,191,0.12)" },
+  commitment: { color: "#f472b6", bg: "rgba(244,114,182,0.12)" },
+  plan: { color: "#a3e635", bg: "rgba(163,230,53,0.12)" },
+  task: { color: "#a3e635", bg: "rgba(163,230,53,0.12)" },
+  health: { color: "#fb923c", bg: "rgba(251,146,60,0.12)" },
+  mrr: { color: "#34d399", bg: "rgba(52,211,153,0.12)" },
+};
+
+const ACTION_SUBTYPE_STYLE: Record<string, { color: string; bg: string; label: string }> = {
+  finding: { color: "#fbbf24", bg: "rgba(251,191,36,0.12)", label: "Finding" },
+  cadence: { color: "#94a3b8", bg: "rgba(148,163,184,0.12)", label: "Cadence" },
+  bet: { color: "#60a5fa", bg: "rgba(96,165,250,0.12)", label: "Bet" },
 };
 
 const STATUS_STYLE: Record<string, { color: string; bg: string }> = {
@@ -989,7 +1001,7 @@ export default function ClientFile({
               />
             </Section>
 
-            <Section title="Success interventions">
+            <Section title="Work log">
               <ClientInterventionHistory clientId={clientId} compact />
             </Section>
 
@@ -1005,7 +1017,12 @@ export default function ClientFile({
               ) : (
                 <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                   {activities.map(a => {
-                    const style = ACTIVITY_STYLE[a.activity_type] ?? { color: "#94a3b8", bg: "rgba(148,163,184,0.1)" };
+                    const subtypeStyle =
+                      a.activity_type === "action" && a.subtype
+                        ? ACTION_SUBTYPE_STYLE[a.subtype]
+                        : null;
+                    const style = subtypeStyle ?? ACTIVITY_STYLE[a.activity_type] ?? { color: "#94a3b8", bg: "rgba(148,163,184,0.1)" };
+                    const label = subtypeStyle?.label ?? a.activity_type;
                     return (
                       <div
                         key={`${a.source_table}-${a.source_id}-${a.occurred_at}`}
@@ -1016,7 +1033,7 @@ export default function ClientFile({
                           className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
                           style={{ color: style.color, background: style.bg }}
                         >
-                          {a.activity_type}
+                          {label}
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs" style={{ color: "#64748b" }}>{formatDateTime(a.occurred_at)}</p>

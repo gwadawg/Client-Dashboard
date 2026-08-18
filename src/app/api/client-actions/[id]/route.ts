@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { freezeInterventionBaseline } from '@/lib/client-action-log-write';
+import { defaultReviewDateFromTimebox } from '@/lib/client-health-interventions';
+import { isWorkType, shouldFreezeBaseline } from '@/lib/client-work-log';
 
 const MUTABLE_STATUSES = ['planned', 'in_progress', 'measuring', 'succeeded', 'failed', 'abandoned'];
 
@@ -10,7 +13,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (denied) return denied;
 
   const { id } = await params;
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  const { data: existing, error: loadErr } = await ctx.service
+    .from('client_action_logs')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (loadErr) return NextResponse.json({ error: loadErr.message }, { status: 500 });
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const update: Record<string, unknown> = {};
   if (body.status != null) {
@@ -33,6 +48,80 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   if (body.review_date !== undefined) update.review_date = body.review_date;
   if (body.change_date !== undefined) update.change_date = body.change_date;
+  if (body.planned_date !== undefined) update.planned_date = body.planned_date || null;
+  if (body.work_type != null) {
+    if (!isWorkType(body.work_type)) {
+      return NextResponse.json({ error: 'invalid work_type' }, { status: 400 });
+    }
+    update.work_type = body.work_type;
+  }
+
+  const promoting =
+    body.promote === true ||
+    (existing.work_type === 'finding' && (body.work_type === 'bet' || body.promote === true));
+
+  if (promoting) {
+    update.work_type = 'bet';
+    update.status = typeof body.status === 'string' ? body.status : 'in_progress';
+    if (body.hypothesis !== undefined) update.hypothesis = body.hypothesis;
+    if (body.success_metric !== undefined) update.success_metric = body.success_metric;
+    const today = new Date().toISOString().split('T')[0];
+    update.change_date =
+      typeof body.change_date === 'string' && body.change_date.trim()
+        ? body.change_date.trim()
+        : existing.change_date || today;
+    update.review_date =
+      typeof body.review_date === 'string' && body.review_date.trim()
+        ? body.review_date.trim()
+        : existing.review_date || defaultReviewDateFromTimebox('7 days');
+    if (body.target_value !== undefined) {
+      update.target_value = body.target_value != null ? Number(body.target_value) : null;
+    }
+  }
+
+  const nextStatus = (update.status as string | undefined) ?? existing.status;
+  const nextWorkType = (update.work_type as string | undefined) ?? existing.work_type ?? 'bet';
+  let nextChangeDate =
+    (update.change_date as string | null | undefined) !== undefined
+      ? (update.change_date as string | null)
+      : existing.change_date;
+
+  const goingLive =
+    existing.status === 'planned' &&
+    nextStatus !== 'planned' &&
+    nextWorkType === 'bet';
+  if (goingLive && !nextChangeDate) {
+    nextChangeDate = new Date().toISOString().split('T')[0];
+    update.change_date = nextChangeDate;
+    update.status = nextStatus === 'planned' ? 'in_progress' : nextStatus;
+  }
+
+  const needsFreeze =
+    !existing.baseline_snapshot_id &&
+    shouldFreezeBaseline(
+      isWorkType(nextWorkType) ? nextWorkType : 'bet',
+      nextChangeDate,
+      nextStatus,
+    );
+
+  if (needsFreeze && nextChangeDate) {
+    try {
+      const frozen = await freezeInterventionBaseline(ctx.service, {
+        clientId: existing.client_id,
+        successMetric:
+          (update.success_metric as string | null | undefined) ?? existing.success_metric,
+        changeDate: nextChangeDate,
+        userId: ctx.userId,
+      });
+      update.baseline_snapshot_id = frozen.baseline_snapshot_id;
+      update.baseline_value = frozen.baseline_value;
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : 'Failed to freeze baseline' },
+        { status: 500 },
+      );
+    }
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'no updatable fields provided' }, { status: 400 });

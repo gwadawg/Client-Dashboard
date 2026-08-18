@@ -52,7 +52,7 @@ Run Monday Week Plan and Thursday Commitment Check so every under-KPI account le
 
 - Mr. Waiz Account Work: `/dashboard?view=account_work` (new plan, approve, week list)
 - Team Meetings Mon/Thu embed the same week-plan form/list
-- Client file: Account work history + Success interventions (measured account changes)
+- Client file: Account work history + Work log (findings, cadence, KPI bets)
 - Resource Library: `/library/kpi-review-meeting-sop`, `/library/under-kpi-diagnosis-ladder`
 - Live grading / focus: Client Success overview (numbers from Mr. Waiz — do not re-debate formulas in the room)
 
@@ -154,14 +154,18 @@ Owning roles run the [Under-KPI Diagnosis Ladder](under-kpi-diagnosis-ladder.md)
 
 Refine the same plan tasks in Account Work; do not invent a parallel note system.
 
-**After founder approves:** tasks are active work. Complete them in Account Work. For material shipped changes, use **Log as account change** so Client Success can measure outcome — separate from “did we do the task?”
+**After founder approves:** tasks are active work. Complete them in
+Account Work. Completing a task always files the work log as Finding,
+Cadence (default), or Bet. Bets freeze a baseline and get a review
+date so Client Success can measure outcome.
 
 ## Quality bar
 
 - Every Mon red has a week plan (Why + ≥1 task with assignee when known).
 - Founder can clear pending plans without Slack archaeology.
 - Thu answers “what did we execute?” from week list + client history.
-- Account work ≠ Success interventions until someone opts into logging a change.
+- Completing a task files Finding / Cadence / Bet on the client work
+  log. Cadence is hygiene; only Bets overlay the KPI chart by default.
 - Positions only — no personal names in the standard.
 - Meeting stays ~25 minutes; depth lives in the library ladder, not the form.
 

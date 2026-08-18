@@ -74,6 +74,7 @@ export default function ClientAiDiagnosis({ clientId, endDate, defaultLayer, onS
         change_description: `Owner: ${item.owner} · ${item.timebox}`,
         success_metric: "cpconv",
         ai_generated: true,
+        work_type: "bet",
         status: "planned",
       }),
     });

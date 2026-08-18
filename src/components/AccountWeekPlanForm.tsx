@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { AccountWeekPlanSeverity } from "@/lib/account-week-plans";
 import { weekStartMondayContaining } from "@/lib/account-week-plans";
 import { todayYmdInCallCenterTz } from "@/lib/time";
+import { WORK_TYPE_META, WORK_TYPES, parseWorkType, type WorkType } from "@/lib/client-work-log";
 
 const fieldStyle = {
   background: "#0f2040",
@@ -27,6 +28,7 @@ type TaskDraft = {
   assignee_user_id: string;
   scheduled_for: string;
   success_metric: string;
+  work_type: WorkType;
 };
 
 type Props = {
@@ -59,6 +61,7 @@ function emptyTask(): TaskDraft {
     assignee_user_id: "",
     scheduled_for: "",
     success_metric: "",
+    work_type: "cadence",
   };
 }
 
@@ -129,6 +132,7 @@ export default function AccountWeekPlanForm({
           assignee_user_id: t.assignee_user_id || null,
           scheduled_for: t.scheduled_for || null,
           success_metric: t.success_metric || null,
+          work_type: t.work_type,
           sort_order: i,
         }));
 
@@ -310,17 +314,31 @@ export default function AccountWeekPlanForm({
                 title="Due / do-on day"
               />
             </div>
-            <select
-              value={t.success_metric}
-              onChange={e => updateTask(t.key, { success_metric: e.target.value })}
-              style={fieldStyle}
-            >
-              {KPI_OPTIONS.map(o => (
-                <option key={o.value || "none"} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <select
+                value={t.work_type}
+                onChange={e => updateTask(t.key, { work_type: parseWorkType(e.target.value, "cadence") })}
+                style={fieldStyle}
+              >
+                {WORK_TYPES.map(type => (
+                  <option key={type} value={type}>
+                    {WORK_TYPE_META[type].label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={t.success_metric}
+                onChange={e => updateTask(t.key, { success_metric: e.target.value })}
+                style={fieldStyle}
+                required={t.work_type === "bet"}
+              >
+                {KPI_OPTIONS.map(o => (
+                  <option key={o.value || "none"} value={o.value}>
+                    {t.work_type === "bet" && !o.value ? "Target KPI (required for bets)" : o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <input
               placeholder="Notes (optional)"
               value={t.notes}

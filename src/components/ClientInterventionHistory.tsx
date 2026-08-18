@@ -6,6 +6,7 @@ import {
   type SuccessMetricKey,
 } from "@/lib/client-health";
 import { actionChangeDate } from "@/lib/client-health-interventions";
+import { WORK_TYPE_META, parseWorkType } from "@/lib/client-work-log";
 
 type Intervention = {
   id: string;
@@ -22,6 +23,8 @@ type Intervention = {
   change_description: string | null;
   hypothesis: string | null;
   constraint_label: string | null;
+  work_type?: string | null;
+  planned_date?: string | null;
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -92,13 +95,17 @@ export default function ClientInterventionHistory({ clientId, compact = false }:
   if (actions.length === 0) {
     return (
       <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>
-        No success interventions logged yet. Log changes from Client Success when you adjust strategy.
+        No work logged yet. Log findings, cadence, or bets from Client Success.
       </p>
     );
   }
 
-  const open = actions.filter(a => ["planned", "in_progress", "measuring"].includes(a.status));
-  const closed = actions.filter(a => !["planned", "in_progress", "measuring"].includes(a.status));
+  const open = actions.filter(
+    a =>
+      parseWorkType(a.work_type, "bet") === "bet" &&
+      ["planned", "in_progress", "measuring"].includes(a.status),
+  );
+  const closed = actions.filter(a => parseWorkType(a.work_type, "bet") === "bet" && !["planned", "in_progress", "measuring"].includes(a.status));
   const list = compact ? actions.slice(0, 5) : actions;
 
   return (
@@ -111,8 +118,11 @@ export default function ClientInterventionHistory({ clientId, compact = false }:
       <div className="space-y-2">
         {list.map(a => {
           const meta = a.success_metric ? SUCCESS_METRIC_META[a.success_metric as SuccessMetricKey] : undefined;
-          const changeDate = a.change_date ?? actionChangeDate(a);
+          const type = parseWorkType(a.work_type, "bet");
+          const typeMeta = WORK_TYPE_META[type];
+          const changeDate = a.change_date ?? (type === "bet" ? actionChangeDate(a) : null);
           const reviewDue =
+            type === "bet" &&
             a.review_date &&
             a.review_date <= new Date().toISOString().split("T")[0] &&
             ["planned", "in_progress", "measuring"].includes(a.status);
@@ -132,6 +142,13 @@ export default function ClientInterventionHistory({ clientId, compact = false }:
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span
                       className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                      style={{ background: `${typeMeta.color}22`, color: typeMeta.color }}
+                    >
+                      {typeMeta.label}
+                    </span>
+                    {type === "bet" && (
+                    <span
+                      className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
                       style={{
                         background: `${STATUS_COLOR[a.status] ?? "#64748b"}22`,
                         color: STATUS_COLOR[a.status] ?? "#64748b",
@@ -139,15 +156,19 @@ export default function ClientInterventionHistory({ clientId, compact = false }:
                     >
                       {a.status.replace("_", " ")}
                     </span>
+                    )}
                     {reviewDue && (
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24" }}>
                         Review due
                       </span>
                     )}
+                    {changeDate && (
                     <span className="text-[10px]" style={{ color: "#475569" }}>
-                      change {changeDate}
-                      {a.review_date ? ` · review ${a.review_date}` : ""}
+                      {type === "finding" ? "observed" : type === "bet" ? "live" : "done"} {changeDate}
+                      {a.planned_date ? ` · planned ${a.planned_date}` : ""}
+                      {type === "bet" && a.review_date ? ` · review ${a.review_date}` : ""}
                     </span>
+                    )}
                   </div>
                   <p className="text-sm font-medium" style={{ color: "#e2e8f0" }}>
                     {a.title}

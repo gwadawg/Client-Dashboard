@@ -5,6 +5,7 @@
 
 import { CALL_CENTER_TIMEZONE } from '@/lib/time';
 import { addDaysToYmd } from '@/lib/team-meetings';
+import type { WorkType } from '@/lib/client-work-log';
 
 export type AccountWeekPlanStatus = 'pending' | 'approved' | 'rejected';
 export type AccountPlanTaskStatus = 'open' | 'done' | 'cancelled';
@@ -57,6 +58,7 @@ export type AccountPlanTask = {
   review_verdict: AccountPlanTaskReviewVerdict | null;
   reviewed_at: string | null;
   reviewed_by: string | null;
+  work_type?: WorkType | null;
   sort_order: number;
   created_at: string;
   updated_at: string;

@@ -153,7 +153,7 @@ const CLIENT_SUCCESS_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'get_client_interventions',
-    description: 'Action log / interventions planned or in progress for a client.',
+    description: 'Work log for a client: findings, cadence, and KPI bets (interventions).',
     input_schema: {
       type: 'object',
       properties: {

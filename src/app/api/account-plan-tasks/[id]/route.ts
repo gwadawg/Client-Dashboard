@@ -15,9 +15,11 @@ import {
 } from '@/lib/account-week-plans-api';
 import {
   compareTaskKpi,
-  freezeBaselineForTask,
   isSuccessMetricKey,
 } from '@/lib/account-plan-task-kpi';
+import { createClientActionLog } from '@/lib/client-action-log-write';
+import { defaultReviewDateFromTimebox } from '@/lib/client-health-interventions';
+import { isWorkType, parseWorkType } from '@/lib/client-work-log';
 import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz, ymdInTimeZone } from '@/lib/time';
 
 function optionalText(value: unknown): string | null {
@@ -207,42 +209,46 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
         }
       }
 
-      let baseline_value = task.baseline_value;
-      const changeDate = todayYmdInCallCenterTz();
-      if (success_metric && isSuccessMetricKey(success_metric) && baseline_value == null) {
-        try {
-          baseline_value = await freezeBaselineForTask(ctx.service, {
-            clientId: task.client_id,
-            successMetric: success_metric,
-            changeDate,
-          });
-        } catch {
-          baseline_value = task.baseline_value;
-        }
+      const work_type = isWorkType(body.work_type)
+        ? body.work_type
+        : parseWorkType(task.work_type, 'cadence');
+
+      if (work_type === 'bet' && !success_metric) {
+        return NextResponse.json(
+          { error: 'Bet tasks require a success metric before they can be marked done' },
+          { status: 400 },
+        );
       }
 
-      if (body.log_as_account_change === true) {
-        const { data: action, error: actErr } = await ctx.service
-          .from('client_action_logs')
-          .insert({
+      let baseline_value = task.baseline_value;
+      const changeDate = todayYmdInCallCenterTz();
+
+      if (!client_action_log_id) {
+        try {
+          const { action } = await createClientActionLog(ctx.service, ctx.userId, {
             client_id: task.client_id,
             title: task.title,
+            work_type,
             change_description:
               completion_report || task.notes || `Completed plan task: ${task.title}`,
-            hypothesis: task.notes,
+            hypothesis: work_type === 'bet' ? task.notes : null,
             constraint_label: task.tactic_tag,
-            success_metric,
-            baseline_value,
-            status: 'in_progress',
+            success_metric: work_type === 'bet' ? success_metric : null,
+            status: work_type === 'bet' ? 'in_progress' : 'in_progress',
             change_date: changeDate,
-            created_by: ctx.userId,
-          })
-          .select('id')
-          .single();
-        if (actErr) {
-          return NextResponse.json({ error: actErr.message }, { status: 500 });
+            planned_date: task.scheduled_for,
+            review_date: work_type === 'bet' ? defaultReviewDateFromTimebox('7 days') : null,
+          });
+          client_action_log_id = typeof action.id === 'string' ? action.id : null;
+          if (typeof action.baseline_value === 'number') {
+            baseline_value = action.baseline_value;
+          }
+        } catch (e) {
+          return NextResponse.json(
+            { error: e instanceof Error ? e.message : 'Failed to file work log' },
+            { status: 500 },
+          );
         }
-        client_action_log_id = (action as { id: string }).id;
       }
 
       const { data: updated, error: updErr } = await ctx.service
@@ -255,6 +261,7 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
           client_action_log_id,
           success_metric,
           baseline_value,
+          work_type,
           updated_at: now,
         })
         .eq('id', id)
@@ -339,6 +346,12 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
       patch.success_metric = body.success_metric;
     }
     if (typeof body.sort_order === 'number') patch.sort_order = body.sort_order;
+    if (body.work_type != null) {
+      if (!isWorkType(body.work_type)) {
+        return NextResponse.json({ error: 'Invalid work_type' }, { status: 400 });
+      }
+      patch.work_type = body.work_type;
+    }
   } else {
     return NextResponse.json(
       { error: 'Only open tasks can be edited (or done for review)' },

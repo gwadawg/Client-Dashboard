@@ -330,9 +330,10 @@ export async function loadClientHealthBundle(
   let actionsQuery = service
     .from('client_action_logs')
     .select(
-      'id, client_id, title, review_date, status, created_at, change_date, success_metric, baseline_value, target_value, baseline_snapshot_id, outcome_value, outcome_recorded_at',
+      'id, client_id, title, review_date, status, created_at, change_date, success_metric, baseline_value, target_value, baseline_snapshot_id, outcome_value, outcome_recorded_at, work_type',
     )
-    .in('status', [...OPEN_ACTION_STATUSES]);
+    .in('status', [...OPEN_ACTION_STATUSES])
+    .eq('work_type', 'bet');
   if (liveClientIds?.length) {
     actionsQuery = actionsQuery.in('client_id', liveClientFilter(liveClientIds));
   }

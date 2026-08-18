@@ -16,6 +16,8 @@ export type ActionLogRow = {
   client_id: string;
   created_at: string;
   change_date: string | null;
+  planned_date?: string | null;
+  work_type?: string | null;
   title: string;
   success_metric: string | null;
   baseline_value: number | null;
@@ -192,6 +194,8 @@ export function evaluateActionOutcome(
   today: string = new Date().toISOString().split('T')[0],
   metaClicks?: number,
 ): OutcomeEvaluation | null {
+  if ((action.work_type ?? 'bet') !== 'bet') return null;
+  if (!action.change_date) return null;
   const metricKey = action.success_metric as SuccessMetricKey | null;
   if (!metricKey || !SUCCESS_METRIC_META[metricKey]) return null;
   if (action.baseline_value == null) return null;

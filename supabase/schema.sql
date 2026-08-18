@@ -762,7 +762,7 @@ create table if not exists client_health_snapshots (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 12. Client Action Logs (interventions + outcomes, the change history)
+-- 12. Client Action Logs (work log: findings, cadence, bets)
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists client_action_logs (
   id                   uuid    primary key default gen_random_uuid(),
@@ -770,6 +770,7 @@ create table if not exists client_action_logs (
   created_by           uuid    references auth.users(id) on delete set null,
   created_at           timestamptz default now(),
   title                text    not null,
+  work_type            text    not null default 'bet',  -- finding | cadence | bet
   layer                text,             -- L1 | L2 | L3 | L4 | DATA
   constraint_label     text,
   change_description   text,
@@ -780,13 +781,17 @@ create table if not exists client_action_logs (
   target_value         numeric,
   status               text    not null default 'planned',
   review_date          date,
-  change_date          date,             -- when the change went live (may differ from created_at)
+  change_date          date,             -- live / done / observed (null until a bet ships)
+  planned_date         date,             -- when we intended to do it
   outcome_value        numeric,
   outcome_notes        text,
   outcome_recorded_at  timestamptz,
   ai_generated         boolean not null default false,
   constraint client_action_logs_status_check check (
     status in ('planned', 'in_progress', 'measuring', 'succeeded', 'failed', 'abandoned')
+  ),
+  constraint client_action_logs_work_type_check check (
+    work_type in ('finding', 'cadence', 'bet')
   )
 );
 
@@ -1183,6 +1188,7 @@ create index if not exists pd_schedule_date        on pd_schedule(scheduled_date
 create index if not exists client_health_snapshots_client_period on client_health_snapshots(client_id, period_end desc);
 create index if not exists client_action_logs_client_created     on client_action_logs(client_id, created_at desc);
 create index if not exists client_action_logs_status             on client_action_logs(status);
+create index if not exists client_action_logs_client_type_change_idx on client_action_logs(client_id, work_type, change_date);
 create index if not exists clients_lifecycle_status_idx          on clients(lifecycle_status);
 create index if not exists clients_churned_at_idx                on clients(churned_at) where churned_at is not null;
 create index if not exists client_status_history_client          on client_status_history(client_id, changed_at desc);
@@ -1956,7 +1962,8 @@ alter table account_plan_tasks
   add column if not exists review_notes text,
   add column if not exists review_verdict text,
   add column if not exists reviewed_at timestamptz,
-  add column if not exists reviewed_by uuid references auth.users(id) on delete set null;
+  add column if not exists reviewed_by uuid references auth.users(id) on delete set null,
+  add column if not exists work_type text not null default 'cadence';
 
 do $$
 begin
@@ -1968,6 +1975,18 @@ begin
         review_verdict is null or review_verdict in (
           'helped', 'no_change', 'hurt', 'unclear', 'too_early'
         )
+      );
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'account_plan_tasks_work_type_check'
+  ) then
+    alter table account_plan_tasks
+      add constraint account_plan_tasks_work_type_check check (
+        work_type in ('finding', 'cadence', 'bet')
       );
   end if;
 end $$;
@@ -2087,9 +2106,14 @@ create or replace view v_client_activity as
     'client_notes'::text from client_notes n where n.deleted_at is null
   union all
   select a.client_id, a.id, 'action'::text,
-    coalesce(a.change_date::timestamptz at time zone 'UTC', a.created_at),
-    coalesce(a.status, 'action'),
-    trim(both ' ' from a.title
+    coalesce(
+      a.change_date::timestamptz at time zone 'UTC',
+      a.planned_date::timestamptz at time zone 'UTC',
+      a.created_at
+    ),
+    coalesce(a.work_type, a.status, 'action'),
+    trim(both ' ' from coalesce(a.work_type, 'work')
+      || ' · ' || a.title
       || coalesce(' · ' || a.status, '')
       || coalesce(' · ' || a.success_metric, '')
       || coalesce(' · review ' || a.review_date::text, '')
@@ -2127,7 +2151,7 @@ create or replace view v_client_activity as
     'account_week_plans'::text from account_week_plans p
   union all
   select k.client_id, k.id, 'task'::text, k.created_at, k.status,
-    trim(both ' ' from k.title || ' · ' || k.status
+    trim(both ' ' from coalesce(k.work_type || ' · ', '') || k.title || ' · ' || k.status
       || coalesce(' · ' || k.tactic_tag, '')
       || coalesce(' · verdict ' || k.review_verdict, '')
       || coalesce(' — ' || left(k.completion_report, 160), '')),

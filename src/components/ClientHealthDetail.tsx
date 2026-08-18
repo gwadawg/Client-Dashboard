@@ -612,7 +612,7 @@ export default function ClientHealthDetail({
           {/* Timeline & drop-off detection */}
           <ClientTimelineChart clientId={data.client_id} />
 
-          {/* Change log & progress */}
+          {/* Work log */}
           <ClientActionLog
             clientId={data.client_id}
             snapshot={data.current}

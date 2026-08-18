@@ -109,7 +109,7 @@ export default function AccountWeekPlansClientHistory({
                       ) : null}
                       {t.client_action_log_id ? (
                         <span className="block text-sky-500/80 pl-2">
-                          Logged as account change
+                          Filed to work log
                         </span>
                       ) : null}
                     </li>

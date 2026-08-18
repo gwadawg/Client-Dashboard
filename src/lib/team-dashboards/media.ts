@@ -212,8 +212,9 @@ export async function buildMediaBuyerCommandPayload(
       service
         .from('client_action_logs')
         .select(
-          'id, client_id, title, layer, status, success_metric, change_date, review_date, baseline_value, target_value, change_description, hypothesis, created_at, baseline_snapshot_id, outcome_value, outcome_recorded_at',
+          'id, client_id, title, layer, status, success_metric, change_date, review_date, baseline_value, target_value, change_description, hypothesis, created_at, baseline_snapshot_id, outcome_value, outcome_recorded_at, work_type',
         )
+        .eq('work_type', 'bet')
         .in('status', [...OPEN_ACTION_STATUSES])
         .not('review_date', 'is', null)
         .lte('review_date', today),

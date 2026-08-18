@@ -45,7 +45,13 @@ const TYPE_STYLE: Record<string, { label: string; color: string }> = {
   mrr: { label: "MRR", color: "#34d399" },
 };
 
-function styleFor(type: string) {
+function styleFor(type: string, subtype?: string | null) {
+  if (type === "action") {
+    if (subtype === "finding") return { label: "Finding", color: "#fbbf24" };
+    if (subtype === "cadence") return { label: "Cadence", color: "#94a3b8" };
+    if (subtype === "bet") return { label: "Bet", color: "#60a5fa" };
+    return { label: "Work", color: "#fbbf24" };
+  }
   return TYPE_STYLE[type] ?? { label: type, color: "#64748b" };
 }
 
@@ -207,7 +213,7 @@ export default function ClientActivityRail({ client, todayYmd, onClose }: Props)
                 </p>
                 <div className="space-y-1.5">
                   {items.map(a => {
-                    const style = styleFor(a.activity_type);
+                    const style = styleFor(a.activity_type, a.subtype);
                     return (
                       <article
                         key={`${a.source_table}-${a.source_id}`}

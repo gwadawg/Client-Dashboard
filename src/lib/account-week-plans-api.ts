@@ -7,7 +7,7 @@ export const PLAN_SELECT =
   'id, client_id, week_start, why, severity, status, success_signal, origin_meeting_id, approved_by, approved_at, founder_note, created_by, created_at, updated_at';
 
 export const TASK_SELECT =
-  'id, plan_id, client_id, title, notes, tactic_tag, assignee_user_id, scheduled_for, status, completion_report, completed_at, completed_by, client_action_log_id, success_metric, baseline_value, outcome_value, review_notes, review_verdict, reviewed_at, reviewed_by, sort_order, created_at, updated_at';
+  'id, plan_id, client_id, title, notes, tactic_tag, assignee_user_id, scheduled_for, status, completion_report, completed_at, completed_by, client_action_log_id, success_metric, baseline_value, outcome_value, review_notes, review_verdict, reviewed_at, reviewed_by, work_type, sort_order, created_at, updated_at';
 
 const PLAN_ACCESS = ['account_work', 'team_meetings', 'client_health', 'ceo'] as const;
 
