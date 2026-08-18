@@ -168,7 +168,9 @@ function ExplorerPanel({ tab, filters }: { tab: DataExplorerTab; filters: Dashbo
     endDate: filters.dateEnd,
   };
 
-  if (tab === "leads") return <LeadProfilesTable {...scope} />;
+  if (tab === "leads" || tab === "conversions") {
+    return <LeadProfilesTable {...scope} conversionsTab={tab === "conversions"} />;
+  }
   if (tab === "appointments") return <AppointmentsTable {...scope} />;
   // Keyed so switching between the RawDataTable-backed tabs resets its rows
   // instead of briefly showing the previous tab's columns against new data.

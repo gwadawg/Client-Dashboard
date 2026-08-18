@@ -87,6 +87,7 @@ type Props = {
   liveOnly?: boolean;
   startDate: string;
   endDate: string;
+  conversionsTab?: boolean;
 };
 
 const EVENT_LABELS: Record<string, string> = {
@@ -358,7 +359,7 @@ function TimelineRow({ item }: { item: TimelineItem }) {
   );
 }
 
-export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDate }: Props) {
+export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDate, conversionsTab }: Props) {
   const urlParams = useUrlParams();
   const [rows, setRows] = useState<(LeadProfile | UnmappedContact)[]>([]);
   const [total, setTotal] = useState(0);
@@ -514,7 +515,9 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
       <p className="text-xs leading-relaxed max-w-3xl" style={{ color: "#475569" }}>
         {isUnmappedView
           ? "Contacts with dial, claim, or appointment activity in this range but no lead event on record anywhere. Expand a row to inspect the orphaned events — usually a missing GHL lead webhook or a legacy contact being power-dialed."
-          : "One row per lead event in the selected date range (matches dashboard Total Leads). Activity columns count dials, appointments, and outcomes in the same range. Search by name, phone, or email to jump to a lead (ignores the date range). Expand a row for the full event timeline."}
+          : conversionsTab
+            ? "Unique leads who reached this conversion stage in the selected date range (same rollup as the KPI cards: funded counts as submitted and proposed). Search by name, phone, or email still ignores the date range. Expand a row for the full event timeline."
+            : "One row per lead event in the selected date range (matches dashboard Total Leads). Activity columns count dials, appointments, and outcomes in the same range. Search by name, phone, or email to jump to a lead (ignores the date range). Expand a row for the full event timeline."}
       </p>
 
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -542,7 +545,11 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={15} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
-                  {isUnmappedView ? "No unmapped activity in this range" : "No leads in this range"}
+                  {isUnmappedView
+                    ? "No unmapped activity in this range"
+                    : conversionFilter
+                      ? "No leads reached this stage in this range"
+                      : "No leads in this range"}
                 </td>
               </tr>
             ) : (
