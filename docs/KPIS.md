@@ -90,7 +90,7 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **CP Appointment** | Cost per booking | `Ad Spend ÷ Appointments Booked` |
 | **CPS** | Cost per show | `Ad Spend ÷ Shows` |
 
-### RM dashboard layout (login → Dashboard)
+### Client Workspace KPI layout
 
 The main **Dashboard** view for RM clients shows these sections:
 
@@ -98,14 +98,20 @@ The main **Dashboard** view for RM clients shows these sections:
 2. **Appointments** — Booked, booking rate, appts to take place, shows, no-shows, LO bailed, cancellations  
 3. **Show Quality & Conversion** — **Show Rate** (primary), **True Show**, Cancel Rate, LO Bail Rate, Conversation Rate  
 4. **Acquisition Costs** — Total Spend, CPL, CPQL, CPH, Cost per Appointment, Cost per Conversation  
-5. **Conversions** — Proposals Made, Submissions, Funded Loans, and per-stage cost  
+5. **Conversions** — Proposals Made, Submissions, Unique Funded
+   Borrowers (and funded-transaction / loan-volume cards). Shown for
+   Reverse, DSCR, and Call Center. Cost per stage and ROAS omit when
+   ad spend in range is $0. Unique-lead count cards open Explorer →
+   Conversions filtered to that stage.
 6. **Trends** — Line charts for CPL, CPQL, and Cost per Conversation over the selected date range  
 
 The **Funnel Simulator** tab (`?view=kpi_simulator`) is a forward-looking calculator for RM prospects and clients: plug in spend, CPL, and stage conversion rates (or load from a selected RM client’s date range) to see projected funnel counts, cost metrics, KPI tier badges, and goal back-solve (“N funded loans → required spend”).
 
 Rate cards carry an info tooltip with their formula. Show Quality leads with **Show Rate** (unique booked → spoke to LO); **True Show** (took-place slots) is secondary.
 
-HE / Call Center clients keep a minimal dashboard (leads, appointments + calling stats). **Booking Rate** on the HE overview uses **Total Leads** as the denominator (`Unique booked leads ÷ Total Leads`), not qualified leads. Other operational metrics (dials, Show Rate, etc.) remain in other nav views.
+HE / Call Center clients keep the appointment + calling stats grid
+and also get the Conversions block. Booking Rate on the HE overview
+still uses Total Leads as the denominator.
 
 **Call Center billable (not RM Unique Conversations):** **Billable Conversations** = unique leads with `live_transfer` ∪ `show` in the selected range — claimed never counts toward what we charge. **Claimed After Booked** = unique leads whose earliest `claimed` in range is strictly after their earliest `appointment_booked` in range (summary watch card; dated drill-down is a follow-up). RM **Unique Conversations** remains `show ∪ claimed ∪ live_transfer` and is unchanged.
 
