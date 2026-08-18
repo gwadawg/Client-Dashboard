@@ -13,6 +13,7 @@ import {
   type AdMetaRow,
 } from '@/lib/ad-performance';
 import { createTtlCache } from '@/lib/ttl-cache';
+import { tagsByLibraryId } from '@/lib/ad-tags-db';
 
 // Funnel events we attribute to an ad (plus 'lead' which carries the ad name).
 const FUNNEL_EVENT_TYPES = ['lead', 'appointment_booked', 'show', 'no_show', 'loan_funded'];
@@ -110,6 +111,11 @@ export async function GET(req: Request) {
   const libraryRows = (library ?? []) as AdLibraryMeta[];
   const aliasRows = (aliases ?? []) as AdLibraryAliasRow[];
   const resolver = new AdLibraryResolver(libraryRows, aliasRows);
+  const tagLookup = await tagsByLibraryId(
+    ctx.service,
+    libraryRows.map((row) => row.id),
+  );
+  const tagsById = tagLookup.data;
 
   const respond = (payload: unknown) => {
     mediaBuyerCache.set(cacheKey, payload);
@@ -169,6 +175,7 @@ export async function GET(req: Request) {
           visual_notes: row.library.visual_notes,
           drive_url: row.library.drive_url,
           thumbnail_url: row.library.thumbnail_url,
+          tags: tagsById.get(row.library.id) ?? [],
         },
       };
     }
