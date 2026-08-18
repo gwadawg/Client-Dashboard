@@ -16,10 +16,18 @@ import { createTtlCache } from '@/lib/ttl-cache';
 import { tagsByLibraryId } from '@/lib/ad-tags-db';
 
 // Funnel events we attribute to an ad (plus 'lead' which carries the ad name).
-const FUNNEL_EVENT_TYPES = ['lead', 'appointment_booked', 'show', 'no_show', 'loan_funded'];
+const FUNNEL_EVENT_TYPES = [
+  'lead',
+  'appointment_booked',
+  'show',
+  'no_show',
+  'loan_funded',
+  'claimed',
+  'live_transfer',
+];
 
 const EVENT_SELECT =
-  'client_id, event_type, ghl_contact_id, lead_phone, phone_number_used, ad_name, is_qualified, is_hot, occurred_at';
+  'client_id, event_type, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, is_qualified, is_hot, occurred_at';
 const META_SELECT = 'client_id, ad_name, insight_date, spend, impressions, clicks';
 
 const LIBRARY_SELECT =
@@ -151,12 +159,18 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Library entry not found' }, { status: 404 });
     }
     const variantNames = resolver.variantNamesFor(lib.id, lib.ad_name);
-    const drilldown = buildMultiAdDrilldown(lib.ad_name, variantNames, metaRows, eventRows, lib.id);
+    const drilldown = buildMultiAdDrilldown(lib.ad_name, variantNames, metaRows, eventRows, lib.id, {
+      startDate: start_date,
+      endDate: end_date,
+    });
     return respond(await attachClientNames(drilldown));
   }
 
   if (adParam) {
-    const drilldown = buildAdDrilldown(adParam, metaRows, eventRows);
+    const drilldown = buildAdDrilldown(adParam, metaRows, eventRows, {
+      startDate: start_date,
+      endDate: end_date,
+    });
     return respond(await attachClientNames(drilldown));
   }
 

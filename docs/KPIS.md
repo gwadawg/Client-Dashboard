@@ -414,7 +414,7 @@ local time of day**, so "best hour to call" reflects the prospect's clock rather
 The **Media Buyer** view (Overview group) ranks Facebook ads **globally across all live clients**, grouped by `ad_name`. It joins two sources by ad name:
 
 - **Spend / platform metrics** from `meta_ad_insights` (spend, impressions, clicks, CTR, CPC, CPM), summed across clients.
-- **Funnel outcomes** attributed from `events`: the ad name on each `lead` builds a per-client contact → ad map (via `buildContactKey`), and that contact's later `appointment_booked` / `show` / `no_show` / `loan_funded` events inherit the lead's ad.
+- **Funnel outcomes** attributed from `events`: the ad name on each `lead` builds a per-client contact → ad map (via `buildContactKey`), and that contact's later `appointment_booked` / `show` / `no_show` / `claimed` / `live_transfer` / `loan_funded` events inherit the lead's ad. Unique-lead rates use the same `leadIdentityKey` as client KPI cards.
 
 | Metric | Formula (per ad name, summed across clients) |
 |--------|----------------------------------------------|
@@ -424,12 +424,19 @@ The **Media Buyer** view (Overview group) ranks Facebook ads **globally across a
 | **CTR** | `Clicks ÷ Impressions × 100` |
 | **CPC** | `Spend ÷ Clicks` |
 | **CPM** | `Spend ÷ Impressions × 1000` |
-| **Leads / Qualified / Closes** | `COUNT(attributed lead / qualified lead / loan_funded)` |
+| **Leads / Qualified / Closes** | `COUNT(attributed lead / qualified lead / loan_funded)` — volume, not unique |
+| **Qual %** | `Qualified ÷ Leads × 100` |
 | **CPL** | `Spend ÷ Leads` |
-| **Cost per Show** | `Spend ÷ Shows` |
-| **Cost per Close** | `Spend ÷ Closes` |
+| **CPQL** | `Spend ÷ Qualified` |
+| **CPCONV** | `Spend ÷ Unique (show ∪ claimed ∪ live_transfer)` — north star, same as client cards |
+| **Hand-raise %** | `Unique (booked ∪ claimed ∪ LT) ÷ Qualified × 100` |
+| **Conversation %** | `Unique (show ∪ claimed ∪ LT) ÷ Qualified × 100` |
 | **Booking Rate** | `Unique booked leads ÷ Qualified × 100` |
-| **Show Rate** (Media Buyer ad board) | Often slot/event attendance — align to **True Show** (`Shows ÷ (Shows + No Shows + LO bailed)`) when using outcomes that took place. **Not** Client Success graded **Show Rate** (unique booked → spoke) |
+| **Cost per Show** | `Spend ÷ Show events` — platform/secondary only; **not** CPCONV |
+| **Cost per Close** | `Spend ÷ Closes` |
+| **Show Rate** (Media Buyer ad board) | Slot/event attendance (`Shows ÷ (Shows + No Shows)`). **Not** Client Success graded **Show Rate** (unique booked → spoke) |
+
+Opening an ad loads the **ad workspace**: CPL / CPQL / CPCONV (and qual / hand-raise / conversation rate) as day or week series (week when the range is > 90 days, same rule as client cost trends), plus a per-client table so a blended spike can be split into **creative fatigue** (most accounts drift together) vs **one account**.
 
 Each ad can also have an **Ad Library** entry (`ad_library` table): a Google Drive link to the creative plus a summary and visual notes. This is curated manually and is the structured input a future "AI recreate this winning ad" feature will use.
 

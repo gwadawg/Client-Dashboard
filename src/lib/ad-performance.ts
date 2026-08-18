@@ -1,4 +1,5 @@
 import { buildContactKey, eventPhone } from '@/lib/contact-key';
+import { daysInRange, leadIdentityKey, weekStartKey } from '@/lib/metrics';
 
 // Minimal shapes (decoupled from the full EventRow / meta_ad_insights row).
 export type AdMetaRow = {
@@ -16,11 +17,16 @@ export type AdEventRow = {
   ghl_contact_id?: string | null;
   lead_phone?: string | null;
   phone_number_used?: string | null;
+  lead_email?: string | null;
+  lead_name?: string | null;
   ad_name?: string | null;
   is_qualified?: boolean | null;
   is_hot?: boolean | null;
   occurred_at?: string | null;
 };
+
+const HAND_RAISE_TYPES = new Set(['appointment_booked', 'claimed', 'live_transfer']);
+const CONVERSATION_TYPES = new Set(['show', 'claimed', 'live_transfer']);
 
 export type AdPerformanceRow = {
   ad_name: string;
@@ -37,15 +43,23 @@ export type AdPerformanceRow = {
   shows: number;
   no_shows: number;
   closes: number;
+  unique_booked: number;
+  unique_hand_raises: number;
+  unique_conversations: number;
   cpl: number | null;
   cost_per_qualified: number | null;
   cost_per_appointment: number | null;
   cost_per_show: number | null;
   cost_per_close: number | null;
+  cp_conversation: number | null;
   booking_rate: number | null;
   /** Qualified leads ÷ total leads × 100. */
   qualified_rate: number | null;
   show_rate: number | null;
+  /** Unique (booked ∪ claimed ∪ LT) ÷ qualified × 100. */
+  hand_raise_rate: number | null;
+  /** Unique (show ∪ claimed ∪ LT) ÷ qualified × 100. */
+  conversation_rate: number | null;
   client_count: number;
   /** Client IDs for rollup union; omitted in API responses when empty. */
   client_ids?: string[];
@@ -136,6 +150,26 @@ function adKey(name: string): string {
   return name.toLowerCase();
 }
 
+export function resolveAdGranularity(start?: string | null, end?: string | null): 'day' | 'week' {
+  if (!start || !end) return 'day';
+  return daysInRange(start, end) > 90 ? 'week' : 'day';
+}
+
+function bucketDate(date: string, granularity: 'day' | 'week'): string {
+  const d = date.slice(0, 10);
+  return granularity === 'week' ? weekStartKey(d) : d;
+}
+
+function adLeadIdentity(e: AdEventRow): string | null {
+  return leadIdentityKey({
+    client_id: e.client_id,
+    ghl_contact_id: e.ghl_contact_id,
+    lead_phone: e.lead_phone || e.phone_number_used,
+    lead_email: e.lead_email,
+    lead_name: e.lead_name,
+  });
+}
+
 type Acc = {
   ad_name: string;
   spend: number;
@@ -148,6 +182,9 @@ type Acc = {
   shows: number;
   no_shows: number;
   closes: number;
+  bookedKeys: Set<string>;
+  handRaiseKeys: Set<string>;
+  conversationKeys: Set<string>;
   clients: Set<string>;
   has_meta: boolean;
 };
@@ -165,9 +202,55 @@ function blankAcc(displayName: string): Acc {
     shows: 0,
     no_shows: 0,
     closes: 0,
-    clients: new Set<string>(),
+    bookedKeys: new Set(),
+    handRaiseKeys: new Set(),
+    conversationKeys: new Set(),
+    clients: new Set(),
     has_meta: false,
   };
+}
+
+function applyFunnelEvent(
+  acc: {
+    leads: number;
+    qualified: number;
+    hot: number;
+    appointments: number;
+    shows: number;
+    no_shows: number;
+    closes: number;
+    bookedKeys: Set<string>;
+    handRaiseKeys: Set<string>;
+    conversationKeys: Set<string>;
+  },
+  e: AdEventRow,
+): void {
+  const id = adLeadIdentity(e);
+  switch (e.event_type) {
+    case 'lead':
+      acc.leads += 1;
+      if (e.is_qualified) acc.qualified += 1;
+      if (e.is_hot) acc.hot += 1;
+      break;
+    case 'appointment_booked':
+      acc.appointments += 1;
+      break;
+    case 'show':
+      acc.shows += 1;
+      break;
+    case 'no_show':
+      acc.no_shows += 1;
+      break;
+    case 'loan_funded':
+      acc.closes += 1;
+      break;
+    default:
+      break;
+  }
+  if (!id) return;
+  if (e.event_type === 'appointment_booked') acc.bookedKeys.add(id);
+  if (HAND_RAISE_TYPES.has(e.event_type)) acc.handRaiseKeys.add(id);
+  if (CONVERSATION_TYPES.has(e.event_type)) acc.conversationKeys.add(id);
 }
 
 /**
@@ -209,6 +292,21 @@ function round(v: number | null, dp = 2): number | null {
   return Math.round(v * f) / f;
 }
 
+function pct(numerator: number, denominator: number): number | null {
+  return round(ratio(numerator, denominator) != null ? (numerator / denominator) * 100 : null, 1);
+}
+
+function costMetrics(spend: number, leads: number, qualified: number, conversations: number, shows: number, appointments: number, closes: number) {
+  return {
+    cpl: round(ratio(spend, leads), 2),
+    cost_per_qualified: round(ratio(spend, qualified), 2),
+    cost_per_appointment: round(ratio(spend, appointments), 2),
+    cost_per_show: round(ratio(spend, shows), 2),
+    cost_per_close: round(ratio(spend, closes), 2),
+    cp_conversation: round(ratio(spend, conversations), 2),
+  };
+}
+
 /**
  * Global, cross-client ad leaderboard grouped by ad name. Spend / platform
  * metrics come from meta_ad_insights; the funnel (leads → qualified → appts →
@@ -230,7 +328,6 @@ export function aggregateAdPerformance(
     return acc;
   };
 
-  // 1. Meta spend / platform metrics.
   for (const m of metaRows) {
     const name = normalizeAdName(m.ad_name);
     if (!name) continue;
@@ -242,33 +339,13 @@ export function aggregateAdPerformance(
     if (m.client_id) acc.clients.add(m.client_id);
   }
 
-  // 2. Attributed funnel from events.
   const contactAd = buildContactAdMap(events);
   for (const e of events) {
     const name = resolveEventAdName(e, contactAd);
     if (!name) continue;
     const acc = ensure(name);
     if (e.client_id) acc.clients.add(e.client_id);
-
-    switch (e.event_type) {
-      case 'lead':
-        acc.leads += 1;
-        if (e.is_qualified) acc.qualified += 1;
-        if (e.is_hot) acc.hot += 1;
-        break;
-      case 'appointment_booked':
-        acc.appointments += 1;
-        break;
-      case 'show':
-        acc.shows += 1;
-        break;
-      case 'no_show':
-        acc.no_shows += 1;
-        break;
-      case 'loan_funded':
-        acc.closes += 1;
-        break;
-    }
+    applyFunnelEvent(acc, e);
   }
 
   const rows: AdPerformanceRow[] = [];
@@ -280,6 +357,18 @@ export function aggregateAdPerformance(
 }
 
 function accToRow(acc: Acc): AdPerformanceRow {
+  const unique_booked = acc.bookedKeys.size;
+  const unique_hand_raises = acc.handRaiseKeys.size;
+  const unique_conversations = acc.conversationKeys.size;
+  const costs = costMetrics(
+    acc.spend,
+    acc.leads,
+    acc.qualified,
+    unique_conversations,
+    acc.shows,
+    acc.appointments,
+    acc.closes,
+  );
   return {
     ad_name: acc.ad_name,
     spend: round(acc.spend) ?? 0,
@@ -295,17 +384,18 @@ function accToRow(acc: Acc): AdPerformanceRow {
     shows: acc.shows,
     no_shows: acc.no_shows,
     closes: acc.closes,
-    cpl: round(ratio(acc.spend, acc.leads), 2),
-    cost_per_qualified: round(ratio(acc.spend, acc.qualified), 2),
-    cost_per_appointment: round(ratio(acc.spend, acc.appointments), 2),
-    cost_per_show: round(ratio(acc.spend, acc.shows), 2),
-    cost_per_close: round(ratio(acc.spend, acc.closes), 2),
-    booking_rate: round(ratio(acc.appointments, acc.qualified) != null ? (acc.appointments / acc.qualified) * 100 : null, 1),
-    qualified_rate: round(ratio(acc.qualified, acc.leads) != null ? (acc.qualified / acc.leads) * 100 : null, 1),
+    unique_booked,
+    unique_hand_raises,
+    unique_conversations,
+    ...costs,
+    booking_rate: pct(unique_booked, acc.qualified),
+    qualified_rate: pct(acc.qualified, acc.leads),
     show_rate: round(
       acc.shows + acc.no_shows > 0 ? (acc.shows / (acc.shows + acc.no_shows)) * 100 : null,
       1,
     ),
+    hand_raise_rate: pct(unique_hand_raises, acc.qualified),
+    conversation_rate: pct(unique_conversations, acc.qualified),
     client_count: acc.clients.size,
     client_ids: [...acc.clients],
     has_meta: acc.has_meta,
@@ -327,6 +417,9 @@ type RollupAcc = {
   shows: number;
   no_shows: number;
   closes: number;
+  unique_booked: number;
+  unique_hand_raises: number;
+  unique_conversations: number;
   clients: Set<string>;
   has_meta: boolean;
 };
@@ -345,6 +438,9 @@ function rollupAccToRow(acc: RollupAcc): RolledUpAdPerformanceRow {
     shows: acc.shows,
     no_shows: acc.no_shows,
     closes: acc.closes,
+    bookedKeys: numberedSet(acc.unique_booked),
+    handRaiseKeys: numberedSet(acc.unique_hand_raises),
+    conversationKeys: numberedSet(acc.unique_conversations),
     clients: acc.clients,
     has_meta: acc.has_meta,
   });
@@ -355,6 +451,13 @@ function rollupAccToRow(acc: RollupAcc): RolledUpAdPerformanceRow {
     variant_names,
     is_sourced: acc.library != null,
   };
+}
+
+/** Placeholder unique keys so accToRow can read .size after a numeric rollup. */
+function numberedSet(n: number): Set<string> {
+  const s = new Set<string>();
+  for (let i = 0; i < n; i++) s.add(String(i));
+  return s;
 }
 
 /**
@@ -394,6 +497,9 @@ export function rollupAdPerformanceByLibrary(
       shows: 0,
       no_shows: 0,
       closes: 0,
+      unique_booked: 0,
+      unique_hand_raises: 0,
+      unique_conversations: 0,
       clients: new Set<string>(),
       has_meta: false,
     }));
@@ -409,6 +515,9 @@ export function rollupAdPerformanceByLibrary(
     acc.shows += row.shows;
     acc.no_shows += row.no_shows;
     acc.closes += row.closes;
+    acc.unique_booked += row.unique_booked;
+    acc.unique_hand_raises += row.unique_hand_raises;
+    acc.unique_conversations += row.unique_conversations;
     if (row.has_meta) acc.has_meta = true;
     for (const id of row.client_ids ?? []) acc.clients.add(id);
   }
@@ -426,17 +535,35 @@ export type AdClientBreakdownRow = {
   appointments: number;
   shows: number;
   closes: number;
+  unique_hand_raises: number;
+  unique_conversations: number;
   cpl: number | null;
+  cost_per_qualified: number | null;
+  cp_conversation: number | null;
   cost_per_show: number | null;
+  qualified_rate: number | null;
+  hand_raise_rate: number | null;
+  conversation_rate: number | null;
 };
 
 export type AdDailyPoint = {
   date: string;
   spend: number;
   leads: number;
+  qualified: number;
   appointments: number;
   shows: number;
+  unique_hand_raises: number;
+  unique_conversations: number;
+  cpl: number | null;
+  cost_per_qualified: number | null;
+  cp_conversation: number | null;
+  qualified_rate: number | null;
+  hand_raise_rate: number | null;
+  conversation_rate: number | null;
 };
+
+export type AdClientDailyPoint = AdDailyPoint & { client_id: string };
 
 export type AdVariantBreakdown = {
   ad_name: string;
@@ -446,104 +573,121 @@ export type AdVariantBreakdown = {
   appointments: number;
   shows: number;
   closes: number;
+  unique_conversations: number;
   cpl: number | null;
+  cost_per_qualified: number | null;
+  cp_conversation: number | null;
 };
 
 export type AdDrilldown = {
   ad_name: string;
   library_id?: string | null;
+  granularity: 'day' | 'week';
   perClient: AdClientBreakdownRow[];
   daily: AdDailyPoint[];
+  perClientDaily: AdClientDailyPoint[];
   variants?: AdVariantBreakdown[];
 };
+
+export type AdDrilldownOptions = {
+  startDate?: string | null;
+  endDate?: string | null;
+  granularity?: 'day' | 'week';
+};
+
+type RawBucket = {
+  spend: number;
+  leads: number;
+  qualified: number;
+  hot: number;
+  appointments: number;
+  shows: number;
+  no_shows: number;
+  closes: number;
+  bookedKeys: Set<string>;
+  handRaiseKeys: Set<string>;
+  conversationKeys: Set<string>;
+};
+
+function blankBucket(): RawBucket {
+  return {
+    spend: 0,
+    leads: 0,
+    qualified: 0,
+    hot: 0,
+    appointments: 0,
+    shows: 0,
+    no_shows: 0,
+    closes: 0,
+    bookedKeys: new Set(),
+    handRaiseKeys: new Set(),
+    conversationKeys: new Set(),
+  };
+}
+
+function finalizeDailyPoint(date: string, b: RawBucket): AdDailyPoint {
+  const unique_hand_raises = b.handRaiseKeys.size;
+  const unique_conversations = b.conversationKeys.size;
+  const costs = costMetrics(b.spend, b.leads, b.qualified, unique_conversations, b.shows, b.appointments, b.closes);
+  return {
+    date,
+    spend: round(b.spend) ?? 0,
+    leads: b.leads,
+    qualified: b.qualified,
+    appointments: b.appointments,
+    shows: b.shows,
+    unique_hand_raises,
+    unique_conversations,
+    cpl: costs.cpl,
+    cost_per_qualified: costs.cost_per_qualified,
+    cp_conversation: costs.cp_conversation,
+    qualified_rate: pct(b.qualified, b.leads),
+    hand_raise_rate: pct(unique_hand_raises, b.qualified),
+    conversation_rate: pct(unique_conversations, b.qualified),
+  };
+}
+
+function finalizeClientRow(client_id: string, b: RawBucket): AdClientBreakdownRow {
+  const unique_hand_raises = b.handRaiseKeys.size;
+  const unique_conversations = b.conversationKeys.size;
+  const costs = costMetrics(b.spend, b.leads, b.qualified, unique_conversations, b.shows, b.appointments, b.closes);
+  return {
+    client_id,
+    spend: round(b.spend) ?? 0,
+    leads: b.leads,
+    qualified: b.qualified,
+    appointments: b.appointments,
+    shows: b.shows,
+    closes: b.closes,
+    unique_hand_raises,
+    unique_conversations,
+    cpl: costs.cpl,
+    cost_per_qualified: costs.cost_per_qualified,
+    cp_conversation: costs.cp_conversation,
+    cost_per_show: costs.cost_per_show,
+    qualified_rate: pct(b.qualified, b.leads),
+    hand_raise_rate: pct(unique_hand_raises, b.qualified),
+    conversation_rate: pct(unique_conversations, b.qualified),
+  };
+}
+
+function addBucketSpend(b: RawBucket, spend: number): void {
+  b.spend += spend;
+}
+
+function matchesAd(name: string | null, targets: Set<string>): boolean {
+  if (!name) return false;
+  return targets.has(adKey(name));
+}
 
 /** Per-client breakdown + daily trend for one ad name. */
 export function buildAdDrilldown(
   adName: string,
   metaRows: AdMetaRow[],
   events: AdEventRow[],
+  options: AdDrilldownOptions = {},
 ): AdDrilldown {
-  const target = adKey(adName);
-  const contactAd = buildContactAdMap(events);
-
-  const perClient = new Map<string, AdClientBreakdownRow>();
-  const ensureClient = (clientId: string): AdClientBreakdownRow => {
-    let row = perClient.get(clientId);
-    if (!row) {
-      row = {
-        client_id: clientId,
-        spend: 0,
-        leads: 0,
-        qualified: 0,
-        appointments: 0,
-        shows: 0,
-        closes: 0,
-        cpl: null,
-        cost_per_show: null,
-      };
-      perClient.set(clientId, row);
-    }
-    return row;
-  };
-
-  const daily = new Map<string, AdDailyPoint>();
-  const ensureDay = (date: string): AdDailyPoint => {
-    let p = daily.get(date);
-    if (!p) {
-      p = { date, spend: 0, leads: 0, appointments: 0, shows: 0 };
-      daily.set(date, p);
-    }
-    return p;
-  };
-
-  for (const m of metaRows) {
-    const name = normalizeAdName(m.ad_name);
-    if (!name || adKey(name) !== target) continue;
-    const spend = num(m.spend);
-    if (m.client_id) ensureClient(m.client_id).spend += spend;
-    if (m.insight_date) ensureDay(m.insight_date.slice(0, 10)).spend += spend;
-  }
-
-  for (const e of events) {
-    const name = resolveEventAdName(e, contactAd);
-    if (!name || adKey(name) !== target) continue;
-    const day = e.occurred_at ? e.occurred_at.slice(0, 10) : null;
-    const client = e.client_id ? ensureClient(e.client_id) : null;
-    const dayPoint = day ? ensureDay(day) : null;
-
-    switch (e.event_type) {
-      case 'lead':
-        if (client) {
-          client.leads += 1;
-          if (e.is_qualified) client.qualified += 1;
-        }
-        if (dayPoint) dayPoint.leads += 1;
-        break;
-      case 'appointment_booked':
-        if (client) client.appointments += 1;
-        if (dayPoint) dayPoint.appointments += 1;
-        break;
-      case 'show':
-        if (client) client.shows += 1;
-        if (dayPoint) dayPoint.shows += 1;
-        break;
-      case 'loan_funded':
-        if (client) client.closes += 1;
-        break;
-    }
-  }
-
-  for (const row of perClient.values()) {
-    row.spend = round(row.spend) ?? 0;
-    row.cpl = round(ratio(row.spend, row.leads), 2);
-    row.cost_per_show = round(ratio(row.spend, row.shows), 2);
-  }
-
-  return {
-    ad_name: adName,
-    perClient: [...perClient.values()].sort((a, b) => b.spend - a.spend),
-    daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)),
-  };
+  return buildMultiAdDrilldown(adName, [adName], metaRows, events, null, options);
 }
 
 /** Merge drilldowns for multiple Facebook ad names (library variants). */
@@ -553,69 +697,108 @@ export function buildMultiAdDrilldown(
   metaRows: AdMetaRow[],
   events: AdEventRow[],
   libraryId?: string | null,
+  options: AdDrilldownOptions = {},
 ): AdDrilldown {
+  const granularity = options.granularity ?? resolveAdGranularity(options.startDate, options.endDate);
   if (adNames.length === 0) {
-    return { ad_name: displayName, library_id: libraryId, perClient: [], daily: [], variants: [] };
-  }
-
-  const drilldowns = adNames.map((name) => buildAdDrilldown(name, metaRows, events));
-  const variants: AdVariantBreakdown[] = drilldowns.map((d) => {
-    const spend = d.perClient.reduce((s, c) => s + c.spend, 0);
-    const leads = d.perClient.reduce((s, c) => s + c.leads, 0);
     return {
-      ad_name: d.ad_name,
-      spend,
-      leads,
-      qualified: d.perClient.reduce((s, c) => s + c.qualified, 0),
-      appointments: d.perClient.reduce((s, c) => s + c.appointments, 0),
-      shows: d.perClient.reduce((s, c) => s + c.shows, 0),
-      closes: d.perClient.reduce((s, c) => s + c.closes, 0),
-      cpl: round(ratio(spend, leads), 2),
+      ad_name: displayName,
+      library_id: libraryId,
+      granularity,
+      perClient: [],
+      daily: [],
+      perClientDaily: [],
+      variants: [],
     };
-  });
-
-  const perClientMap = new Map<string, AdClientBreakdownRow>();
-  for (const d of drilldowns) {
-    for (const row of d.perClient) {
-      const existing = perClientMap.get(row.client_id);
-      if (!existing) {
-        perClientMap.set(row.client_id, { ...row });
-      } else {
-        existing.spend += row.spend;
-        existing.leads += row.leads;
-        existing.qualified += row.qualified;
-        existing.appointments += row.appointments;
-        existing.shows += row.shows;
-        existing.closes += row.closes;
-      }
-    }
-  }
-  for (const row of perClientMap.values()) {
-    row.spend = round(row.spend) ?? 0;
-    row.cpl = round(ratio(row.spend, row.leads), 2);
-    row.cost_per_show = round(ratio(row.spend, row.shows), 2);
   }
 
-  const dailyMap = new Map<string, AdDailyPoint>();
-  for (const d of drilldowns) {
-    for (const point of d.daily) {
-      const existing = dailyMap.get(point.date);
-      if (!existing) {
-        dailyMap.set(point.date, { ...point });
-      } else {
-        existing.spend += point.spend;
-        existing.leads += point.leads;
-        existing.appointments += point.appointments;
-        existing.shows += point.shows;
-      }
+  const targets = new Set(adNames.map((n) => adKey(n)).filter(Boolean));
+  const contactAd = buildContactAdMap(events);
+
+  const perClient = new Map<string, RawBucket>();
+  const daily = new Map<string, RawBucket>();
+  const perClientDaily = new Map<string, RawBucket>();
+  const variants = new Map<string, RawBucket>();
+
+  const ensure = (map: Map<string, RawBucket>, key: string): RawBucket => {
+    let b = map.get(key);
+    if (!b) {
+      b = blankBucket();
+      map.set(key, b);
     }
+    return b;
+  };
+
+  const clientDayKey = (clientId: string, date: string) => `${clientId}|${date}`;
+
+  for (const m of metaRows) {
+    const name = normalizeAdName(m.ad_name);
+    if (!matchesAd(name, targets)) continue;
+    const spend = num(m.spend);
+    const date = m.insight_date ? bucketDate(m.insight_date, granularity) : null;
+    if (name) addBucketSpend(ensure(variants, name), spend);
+    if (m.client_id) {
+      addBucketSpend(ensure(perClient, m.client_id), spend);
+      if (date) addBucketSpend(ensure(perClientDaily, clientDayKey(m.client_id, date)), spend);
+    }
+    if (date) addBucketSpend(ensure(daily, date), spend);
   }
+
+  for (const e of events) {
+    const name = resolveEventAdName(e, contactAd);
+    if (!matchesAd(name, targets)) continue;
+    const date = e.occurred_at ? bucketDate(e.occurred_at, granularity) : null;
+    if (name) applyFunnelEvent(ensure(variants, name), e);
+    if (e.client_id) {
+      applyFunnelEvent(ensure(perClient, e.client_id), e);
+      if (date) applyFunnelEvent(ensure(perClientDaily, clientDayKey(e.client_id, date)), e);
+    }
+    if (date) applyFunnelEvent(ensure(daily, date), e);
+  }
+
+  const variantRows: AdVariantBreakdown[] = [...variants.entries()].map(([ad_name, b]) => {
+    const unique_conversations = b.conversationKeys.size;
+    const costs = costMetrics(b.spend, b.leads, b.qualified, unique_conversations, b.shows, b.appointments, b.closes);
+    return {
+      ad_name,
+      spend: round(b.spend) ?? 0,
+      leads: b.leads,
+      qualified: b.qualified,
+      appointments: b.appointments,
+      shows: b.shows,
+      closes: b.closes,
+      unique_conversations,
+      cpl: costs.cpl,
+      cost_per_qualified: costs.cost_per_qualified,
+      cp_conversation: costs.cp_conversation,
+    };
+  }).sort((a, b) => b.spend - a.spend);
 
   return {
     ad_name: displayName,
     library_id: libraryId,
-    perClient: [...perClientMap.values()].sort((a, b) => b.spend - a.spend),
-    daily: [...dailyMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
-    variants: variants.sort((a, b) => b.spend - a.spend),
+    granularity,
+    perClient: [...perClient.entries()]
+      .map(([id, b]) => finalizeClientRow(id, b))
+      .sort((a, b) => {
+        const ac = a.cp_conversation;
+        const bc = b.cp_conversation;
+        if (ac == null && bc == null) return b.spend - a.spend;
+        if (ac == null) return 1;
+        if (bc == null) return -1;
+        return ac - bc;
+      }),
+    daily: [...daily.entries()]
+      .map(([date, b]) => finalizeDailyPoint(date, b))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    perClientDaily: [...perClientDaily.entries()]
+      .map(([key, b]) => {
+        const sep = key.indexOf('|');
+        const client_id = key.slice(0, sep);
+        const date = key.slice(sep + 1);
+        return { client_id, ...finalizeDailyPoint(date, b) };
+      })
+      .sort((a, b) => a.date.localeCompare(b.date) || a.client_id.localeCompare(b.client_id)),
+    variants: variantRows,
   };
 }

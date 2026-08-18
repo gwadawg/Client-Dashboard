@@ -133,12 +133,18 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Library entry not found' }, { status: 404 });
     }
     const variantNames = resolver.variantNamesFor(lib.id, lib.ad_name);
-    const drilldown = buildMultiAdDrilldown(lib.ad_name, variantNames, metaRows, eventRows, lib.id);
+    const drilldown = buildMultiAdDrilldown(lib.ad_name, variantNames, metaRows, eventRows, lib.id, {
+      startDate: start_date,
+      endDate: end_date,
+    });
     return NextResponse.json({ ...drilldown, perClient: [] });
   }
 
   if (adParam) {
-    const drilldown = buildAdDrilldown(adParam, metaRows, eventRows);
+    const drilldown = buildAdDrilldown(adParam, metaRows, eventRows, {
+      startDate: start_date,
+      endDate: end_date,
+    });
     return NextResponse.json({ ...drilldown, perClient: [] });
   }
 
