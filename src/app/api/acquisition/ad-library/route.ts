@@ -1,18 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
-
-const VALID_AD_FORMAT = ['static', 'ugc'] as const;
+import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
 
 function cleanString(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const s = v.trim();
   return s || null;
-}
-
-function cleanEnum<T extends readonly string[]>(v: unknown, allowed: T): T[number] | null {
-  const s = cleanString(v);
-  if (!s) return null;
-  return allowed.includes(s as T[number]) ? (s as T[number]) : null;
 }
 
 function cleanDate(v: unknown): string | null {
@@ -82,17 +75,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'ad_name is required' }, { status: 400 });
   }
 
-  if ('ad_format' in body && body.ad_format != null && body.ad_format !== '') {
-    const ad_format = cleanEnum(body.ad_format, VALID_AD_FORMAT);
-    if (!ad_format) {
-      return NextResponse.json({ error: `ad_format must be one of: ${VALID_AD_FORMAT.join(', ')}` }, { status: 400 });
-    }
+  const formatResult = await resolveAdFormatSlug(ctx.service, body.ad_format);
+  if (formatResult.error) {
+    return NextResponse.json({ error: formatResult.error }, { status: 400 });
   }
 
   const row = {
     ad_name,
     drive_url: cleanString(body.drive_url),
-    ad_format: cleanEnum(body.ad_format, VALID_AD_FORMAT),
+    ad_format: formatResult.slug,
     angle_id: cleanString(body.angle_id),
     creative_created_at: cleanDate(body.creative_created_at),
     created_by: ctx.userId,

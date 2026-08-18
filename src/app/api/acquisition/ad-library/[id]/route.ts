@@ -1,18 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
-
-const VALID_AD_FORMAT = ['static', 'ugc'] as const;
+import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
 
 function cleanString(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const s = v.trim();
   return s || null;
-}
-
-function cleanEnum<T extends readonly string[]>(v: unknown, allowed: T): T[number] | null {
-  const s = cleanString(v);
-  if (!s) return null;
-  return allowed.includes(s as T[number]) ? (s as T[number]) : null;
 }
 
 function cleanDate(v: unknown): string | null {
@@ -48,15 +41,11 @@ export async function PATCH(
     updates.ad_name = ad_name;
   }
   if ('ad_format' in body) {
-    if (body.ad_format == null || body.ad_format === '') {
-      updates.ad_format = null;
-    } else {
-      const ad_format = cleanEnum(body.ad_format, VALID_AD_FORMAT);
-      if (!ad_format) {
-        return NextResponse.json({ error: `ad_format must be one of: ${VALID_AD_FORMAT.join(', ')}` }, { status: 400 });
-      }
-      updates.ad_format = ad_format;
+    const formatResult = await resolveAdFormatSlug(ctx.service, body.ad_format);
+    if (formatResult.error) {
+      return NextResponse.json({ error: formatResult.error }, { status: 400 });
     }
+    updates.ad_format = formatResult.slug;
   }
   if ('drive_url' in body) updates.drive_url = cleanString(body.drive_url);
   if ('angle_id' in body) {

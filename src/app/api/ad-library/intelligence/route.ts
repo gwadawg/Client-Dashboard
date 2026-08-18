@@ -5,6 +5,7 @@ import {
   isValidAdKnowledgeCaptureStatus,
   isValidAdProduct,
 } from '@/lib/ad-intelligence';
+import { adFormatSlugExists, listAdFormats } from '@/lib/ad-formats-db';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -16,6 +17,7 @@ export async function GET(req: Request) {
   const id = searchParams.get('id')?.trim();
   const status = searchParams.get('status')?.trim();
   const product = searchParams.get('product')?.trim();
+  const adFormat = searchParams.get('ad_format')?.trim();
   const libraryStatus = searchParams.get('library_status')?.trim();
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)));
 
@@ -24,6 +26,9 @@ export async function GET(req: Request) {
   }
   if (product && !isValidAdProduct(product)) {
     return NextResponse.json({ error: 'Invalid product' }, { status: 400 });
+  }
+  if (adFormat && !(await adFormatSlugExists(ctx.service, adFormat))) {
+    return NextResponse.json({ error: 'Invalid ad_format' }, { status: 400 });
   }
 
   let query = ctx.service
@@ -35,6 +40,7 @@ export async function GET(req: Request) {
   if (id) query = query.eq('id', id);
   if (status) query = query.eq('knowledge_capture_status', status);
   if (product) query = query.eq('product', product);
+  if (adFormat) query = query.eq('ad_format', adFormat);
   if (libraryStatus) query = query.eq('status', libraryStatus);
 
   const { data: library, error, count } = await query;
@@ -47,20 +53,24 @@ export async function GET(req: Request) {
   }
 
   const ids = (library ?? []).map((r) => r.id);
+  const [{ data: catalog }, aliasesResult] = await Promise.all([
+    listAdFormats(ctx.service),
+    ids.length > 0
+      ? ctx.service
+          .from('ad_library_aliases')
+          .select('id, library_id, alias_name, created_at')
+          .in('library_id', ids)
+      : Promise.resolve({ data: [] as { id: string; library_id: string; alias_name: string; created_at: string }[], error: null }),
+  ]);
+
   let aliasesByLibrary = new Map<string, { id: string; alias_name: string; created_at: string }[]>();
-  if (ids.length > 0) {
-    const { data: aliases, error: aliasError } = await ctx.service
-      .from('ad_library_aliases')
-      .select('id, library_id, alias_name, created_at')
-      .in('library_id', ids);
-    if (aliasError) {
-      return NextResponse.json({ error: aliasError.message }, { status: 500 });
-    }
-    for (const a of aliases ?? []) {
-      const list = aliasesByLibrary.get(a.library_id) ?? [];
-      list.push({ id: a.id, alias_name: a.alias_name, created_at: a.created_at });
-      aliasesByLibrary.set(a.library_id, list);
-    }
+  if (aliasesResult.error) {
+    return NextResponse.json({ error: aliasesResult.error.message }, { status: 500 });
+  }
+  for (const a of aliasesResult.data ?? []) {
+    const list = aliasesByLibrary.get(a.library_id) ?? [];
+    list.push({ id: a.id, alias_name: a.alias_name, created_at: a.created_at });
+    aliasesByLibrary.set(a.library_id, list);
   }
 
   const rows = (library ?? []).map((entry) => ({
@@ -72,6 +82,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     rows,
     total: count ?? rows.length,
+    formats: catalog ?? [],
   });
 }
 

@@ -11,10 +11,8 @@ import {
   YAxis,
 } from "recharts";
 
-type Props = {
-  startDate: string;
-  endDate: string;
-};
+import { AdFormatPicker, useAdFormats } from "./AdFormatPicker";
+import { adFormatLabel } from "@/lib/ad-formats";
 
 type Angle = { id: string; label: string; sort_order: number; is_active: boolean };
 
@@ -78,13 +76,10 @@ type LibEntry = {
 
 type LibraryNav = { libraryId?: string; prefillAdName?: string; openForm?: boolean } | null;
 
-const FORMAT_OPTIONS = [
-  { value: "", label: "Select format…" },
-  { value: "static", label: "Static" },
-  { value: "ugc", label: "UGC" },
-] as const;
-
-const FORMAT_LABELS: Record<string, string> = { static: "Static", ugc: "UGC" };
+type Props = {
+  startDate: string;
+  endDate: string;
+};
 
 function money(v: number | null | undefined): string {
   if (v == null) return "—";
@@ -134,6 +129,7 @@ function AdPerformance({
   const [linkLibraryId, setLinkLibraryId] = useState("");
   const [linkSaving, setLinkSaving] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const { labels: formatLabels } = useAdFormats();
 
   const loadAds = useCallback(() => {
     setLoading(true);
@@ -347,7 +343,7 @@ function AdPerformance({
                           <div className="flex flex-wrap gap-1 mt-1">
                             {ad.library.ad_format ? (
                               <span className="px-1.5 py-0.5 rounded text-[10px]" style={{ background: "rgba(96,165,250,0.15)", color: "#60a5fa" }}>
-                                {FORMAT_LABELS[ad.library.ad_format] ?? ad.library.ad_format}
+                                {adFormatLabel(ad.library.ad_format, formatLabels)}
                               </span>
                             ) : null}
                             {ad.library.angle_label ? (
@@ -518,6 +514,7 @@ function AdLibrary({ libraryNav, onNavClear }: { libraryNav: LibraryNav; onNavCl
   const [newAngleLabel, setNewAngleLabel] = useState("");
   const [addingAngle, setAddingAngle] = useState(false);
   const [showInlineAngle, setShowInlineAngle] = useState(false);
+  const { formats, labels: formatLabels, createFormat, loading: formatsLoading } = useAdFormats();
 
   const loadAngles = useCallback(() => {
     return fetch("/api/acquisition/ad-angles")
@@ -740,7 +737,7 @@ function AdLibrary({ libraryNav, onNavClear }: { libraryNav: LibraryNav; onNavCl
                   <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
                     Created {e.creative_created_at ?? "—"}
                     {e.angle_label ? ` · ${e.angle_label}` : ""}
-                    {e.ad_format ? ` · ${FORMAT_LABELS[e.ad_format] ?? e.ad_format}` : ""}
+                    {e.ad_format ? ` · ${adFormatLabel(e.ad_format, formatLabels)}` : ""}
                   </p>
                 </div>
                 <button type="button" className="text-xs underline shrink-0" style={{ color: "#f59e0b" }} onClick={() => openEditForm(e)}>
@@ -795,18 +792,18 @@ function AdLibrary({ libraryNav, onNavClear }: { libraryNav: LibraryNav; onNavCl
                 placeholder="https://drive.google.com/..."
               />
             </Field>
-            <Field label="Format">
-              <select
-                value={form.ad_format}
-                onChange={(e) => setForm({ ...form, ad_format: e.target.value })}
-                className={inputCls}
-                style={inputStyle}
-              >
-                {FORMAT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </Field>
+            <div>
+              <span className="text-[11px] uppercase tracking-wider" style={{ color: "#475569" }}>Format</span>
+              <div className="mt-1">
+                <AdFormatPicker
+                  value={form.ad_format}
+                  onChange={(slug) => setForm({ ...form, ad_format: slug })}
+                  formats={formats}
+                  onCreate={createFormat}
+                  loading={formatsLoading}
+                />
+              </div>
+            </div>
             <Field label="Angle">
               <div className="space-y-2">
                 <select

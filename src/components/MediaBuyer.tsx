@@ -10,6 +10,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { AdFormatPicker, useAdFormats } from "./AdFormatPicker";
+import { adFormatLabel } from "@/lib/ad-formats";
 
 type Props = {
   startDate: string;
@@ -130,14 +132,6 @@ export type LibraryNav = {
   openForm?: boolean;
 } | null;
 
-const AD_FORMAT_OPTIONS = [
-  { value: "", label: "Select format…" },
-  { value: "static", label: "Static" },
-  { value: "ugc", label: "UGC" },
-  { value: "testimonial", label: "Testimonial" },
-  { value: "ext", label: "Ext" },
-] as const;
-
 const PRODUCT_OPTIONS = [
   { value: "", label: "Select product…" },
   { value: "reverse", label: "Reverse" },
@@ -145,9 +139,6 @@ const PRODUCT_OPTIONS = [
   { value: "broad_forward", label: "Broad Forward" },
 ] as const;
 
-const AD_FORMAT_LABELS: Record<string, string> = Object.fromEntries(
-  AD_FORMAT_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]),
-);
 const PRODUCT_LABELS: Record<string, string> = Object.fromEntries(
   PRODUCT_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]),
 );
@@ -275,6 +266,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   const [linkLibraryId, setLinkLibraryId] = useState("");
   const [linkSaving, setLinkSaving] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const { labels: formatLabels } = useAdFormats();
 
   const loadAds = useCallback(() => {
     setLoading(true);
@@ -529,6 +521,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                     ad={ad}
                     isOpen={isOpen}
                     drilldown={d}
+                    formatLabels={formatLabels}
                     onToggle={() => toggleExpand(ad)}
                     onAddToLibrary={onAddToLibrary}
                     onViewInLibrary={onViewInLibrary}
@@ -589,6 +582,7 @@ function FragmentRow({
   ad,
   isOpen,
   drilldown,
+  formatLabels,
   onToggle,
   onAddToLibrary,
   onViewInLibrary,
@@ -597,6 +591,7 @@ function FragmentRow({
   ad: AdRow;
   isOpen: boolean;
   drilldown: Drilldown | "loading" | undefined;
+  formatLabels: Record<string, string>;
   onToggle: () => void;
   onAddToLibrary: (adName: string) => void;
   onViewInLibrary: (libraryId: string) => void;
@@ -627,6 +622,9 @@ function FragmentRow({
                 Not in library
               </span>
             )}
+            {ad.library?.ad_format ? (
+              <ClassBadge label={adFormatLabel(ad.library.ad_format, formatLabels)} color="#60a5fa" />
+            ) : null}
             {ad.variant_names.length > 1 ? (
               <ClassBadge label={`${ad.variant_names.length} variants`} color="#f59e0b" />
             ) : null}
@@ -710,7 +708,7 @@ function FragmentRow({
             {drilldown === "loading" || !drilldown ? (
               <p className="text-sm" style={{ color: "#475569" }}>Loading breakdown…</p>
             ) : (
-              <DrilldownPanel ad={ad} drilldown={drilldown} onViewInLibrary={onViewInLibrary} />
+              <DrilldownPanel ad={ad} drilldown={drilldown} onViewInLibrary={onViewInLibrary} formatLabels={formatLabels} />
             )}
           </td>
         </tr>
@@ -723,10 +721,12 @@ function DrilldownPanel({
   ad,
   drilldown,
   onViewInLibrary,
+  formatLabels,
 }: {
   ad: AdRow;
   drilldown: Drilldown;
   onViewInLibrary: (libraryId: string) => void;
+  formatLabels: Record<string, string>;
 }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -759,7 +759,7 @@ function DrilldownPanel({
             {(ad.library?.ad_format || ad.library?.product) ? (
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {ad.library?.ad_format ? (
-                  <ClassBadge label={AD_FORMAT_LABELS[ad.library.ad_format] ?? ad.library.ad_format} color="#60a5fa" />
+                  <ClassBadge label={adFormatLabel(ad.library.ad_format, formatLabels)} color="#60a5fa" />
                 ) : null}
                 {ad.library?.product ? (
                   <ClassBadge label={PRODUCT_LABELS[ad.library.product] ?? ad.library.product} color="#a78bfa" />
@@ -920,6 +920,7 @@ function AdLibrary({
   const [expandedVariants, setExpandedVariants] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const { formats, labels: formatLabels, createFormat, loading: formatsLoading } = useAdFormats();
 
   const openEditForm = useCallback((e: LibEntry) => {
     setFormError(null);
@@ -1165,7 +1166,7 @@ function AdLibrary({
                     {(e.ad_format || e.product || (e.knowledge_capture_status && e.knowledge_capture_status !== "none")) ? (
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         {e.ad_format ? (
-                          <ClassBadge label={AD_FORMAT_LABELS[e.ad_format] ?? e.ad_format} color="#60a5fa" />
+                          <ClassBadge label={adFormatLabel(e.ad_format, formatLabels)} color="#60a5fa" />
                         ) : null}
                         {e.product ? (
                           <ClassBadge label={PRODUCT_LABELS[e.product] ?? e.product} color="#a78bfa" />
@@ -1338,20 +1339,6 @@ function AdLibrary({
                   ))}
                 </select>
               </Field>
-              <Field label="Ad format">
-                <select
-                  value={form.ad_format}
-                  onChange={(e) => setForm({ ...form, ad_format: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg text-sm"
-                  style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
-                >
-                  {AD_FORMAT_OPTIONS.map((o) => (
-                    <option key={o.value || "empty"} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
               <Field label="Product">
                 <select
                   value={form.product}
@@ -1364,16 +1351,28 @@ function AdLibrary({
                   ))}
                 </select>
               </Field>
-              <Field label="Thumbnail URL (optional)">
-                <input
-                  value={form.thumbnail_url}
-                  onChange={(e) => setForm({ ...form, thumbnail_url: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg text-sm"
-                  style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
-                  placeholder="https://…"
-                />
-              </Field>
             </div>
+            <div>
+              <span className="text-[11px] uppercase tracking-wider" style={{ color: "#475569" }}>Ad format</span>
+              <div className="mt-1">
+                  <AdFormatPicker
+                    value={form.ad_format}
+                    onChange={(slug) => setForm({ ...form, ad_format: slug })}
+                    formats={formats}
+                    onCreate={createFormat}
+                    loading={formatsLoading}
+                  />
+              </div>
+            </div>
+            <Field label="Thumbnail URL (optional)">
+              <input
+                value={form.thumbnail_url}
+                onChange={(e) => setForm({ ...form, thumbnail_url: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                placeholder="https://…"
+              />
+            </Field>
             <Field label="Google Drive link">
               <input
                 value={form.drive_url}

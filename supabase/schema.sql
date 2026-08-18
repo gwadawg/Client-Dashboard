@@ -498,7 +498,33 @@ grant select on daily_meta_spend to authenticated;
 grant select on daily_meta_spend to anon;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 6b. Ad Library (manually curated Facebook ad creatives — Media Buyer view)
+-- 6b. Ad format catalog (shared by client + acquisition libraries)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists ad_formats (
+  id          uuid primary key default gen_random_uuid(),
+  slug        text not null unique,
+  label       text not null,
+  sort_order  int not null default 0,
+  is_active   boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  constraint ad_formats_slug_format check (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')
+);
+
+create unique index if not exists ad_formats_label_lower_key
+  on ad_formats (lower(label));
+
+insert into ad_formats (slug, label, sort_order) values
+  ('static', 'Static', 10),
+  ('ugc', 'UGC', 20),
+  ('testimonial', 'Testimonial', 30),
+  ('ext', 'Ext', 40)
+on conflict (slug) do nothing;
+
+alter table ad_formats enable row level security;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 6c. Ad Library (manually curated Facebook ad creatives — Media Buyer view)
 --     Keyed by ad_name (same join key as meta_ad_insights / events). Stores a
 --     Google Drive link to the creative plus a summary and visual notes.
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -507,7 +533,7 @@ create table if not exists ad_library (
   ad_name       text    not null unique,
   platform      text    not null default 'facebook',
   status        text    not null default 'active',
-  ad_format     text,
+  ad_format     text    references ad_formats(slug) on update cascade on delete set null,
   product       text,
   summary       text,
   visual_notes  text,
@@ -518,9 +544,6 @@ create table if not exists ad_library (
   updated_at    timestamptz not null default now(),
   constraint ad_library_status_check check (
     status in ('active', 'winner', 'paused', 'archived')
-  ),
-  constraint ad_library_ad_format_check check (
-    ad_format is null or ad_format in ('static', 'ugc', 'testimonial', 'ext')
   ),
   constraint ad_library_product_check check (
     product is null or product in ('reverse', 'dscr', 'broad_forward')
@@ -549,7 +572,7 @@ create table if not exists ad_library_aliases (
 create index if not exists ad_library_aliases_library_id_idx on ad_library_aliases(library_id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 6c. Resource Library (company-wide forms, SOPs, document links, templates)
+-- 6d. Resource Library (company-wide forms, SOPs, document links, templates)
 --     Company-wide (not per-client). Viewing is gated by the 'resources' tab
 --     permission; mutations are admin/owner only (enforced in app code).
 -- ─────────────────────────────────────────────────────────────────────────────

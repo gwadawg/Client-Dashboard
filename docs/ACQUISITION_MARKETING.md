@@ -25,7 +25,7 @@ Legacy thin webhook (`POST /api/acquisition/ad-insights`) still works and upsert
 | Ad name | Exact Meta ad name (primary join key) |
 | Creative created | Date the creative was made |
 | Google Drive | Link to creative asset |
-| Format | UGC or Static |
+| Format | Shared catalog (`ad_formats`). Add from the picker in either library. |
 | Angle | User-managed catalog (`acquisition_ad_angles`) |
 
 Alias names map incoming Meta ad variants to a library entry (same pattern as client Media Buyer).

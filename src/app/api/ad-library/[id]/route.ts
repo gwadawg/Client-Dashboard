@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
 
 const VALID_STATUS = ['active', 'winner', 'paused', 'archived'] as const;
-const VALID_AD_FORMAT = ['static', 'ugc', 'testimonial', 'ext'] as const;
 const VALID_PRODUCT = ['reverse', 'dscr', 'broad_forward'] as const;
 
 function cleanString(v: unknown): string | null {
@@ -56,18 +56,11 @@ export async function PATCH(
     updates.status = status;
   }
   if ('ad_format' in body) {
-    if (body.ad_format == null || body.ad_format === '') {
-      updates.ad_format = null;
-    } else {
-      const ad_format = cleanEnum(body.ad_format, VALID_AD_FORMAT);
-      if (!ad_format) {
-        return NextResponse.json(
-          { error: `ad_format must be one of: ${VALID_AD_FORMAT.join(', ')}` },
-          { status: 400 },
-        );
-      }
-      updates.ad_format = ad_format;
+    const formatResult = await resolveAdFormatSlug(ctx.service, body.ad_format);
+    if (formatResult.error) {
+      return NextResponse.json({ error: formatResult.error }, { status: 400 });
     }
+    updates.ad_format = formatResult.slug;
   }
   if ('product' in body) {
     if (body.product == null || body.product === '') {

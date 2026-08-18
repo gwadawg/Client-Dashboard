@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
 
 const VALID_STATUS = ['active', 'winner', 'paused', 'archived'] as const;
-const VALID_AD_FORMAT = ['static', 'ugc', 'testimonial', 'ext'] as const;
 const VALID_PRODUCT = ['reverse', 'dscr', 'broad_forward'] as const;
 
 function cleanString(v: unknown): string | null {
@@ -77,14 +77,9 @@ export async function POST(req: Request) {
     );
   }
 
-  if ('ad_format' in body && body.ad_format != null && body.ad_format !== '') {
-    const ad_format = cleanEnum(body.ad_format, VALID_AD_FORMAT);
-    if (!ad_format) {
-      return NextResponse.json(
-        { error: `ad_format must be one of: ${VALID_AD_FORMAT.join(', ')}` },
-        { status: 400 },
-      );
-    }
+  const formatResult = await resolveAdFormatSlug(ctx.service, body.ad_format);
+  if (formatResult.error) {
+    return NextResponse.json({ error: formatResult.error }, { status: 400 });
   }
 
   if ('product' in body && body.product != null && body.product !== '') {
@@ -101,7 +96,7 @@ export async function POST(req: Request) {
     ad_name,
     platform: cleanString(body.platform) ?? 'facebook',
     status,
-    ad_format: cleanEnum(body.ad_format, VALID_AD_FORMAT),
+    ad_format: formatResult.slug,
     product: cleanEnum(body.product, VALID_PRODUCT),
     summary: cleanString(body.summary),
     visual_notes: cleanString(body.visual_notes),
