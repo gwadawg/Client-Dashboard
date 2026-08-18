@@ -134,7 +134,7 @@ export type LibraryNav = {
 
 const PRODUCT_OPTIONS = [
   { value: "", label: "Select product…" },
-  { value: "reverse", label: "Reverse" },
+  { value: "reverse", label: "RM" },
   { value: "dscr", label: "DSCR" },
   { value: "broad_forward", label: "Broad Forward" },
 ] as const;
@@ -142,6 +142,77 @@ const PRODUCT_OPTIONS = [
 const PRODUCT_LABELS: Record<string, string> = Object.fromEntries(
   PRODUCT_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]),
 );
+
+type ProductFilter = "all" | "reverse" | "dscr";
+
+const PRODUCT_FILTERS: { value: ProductFilter; label: string; color: string }[] = [
+  { value: "all", label: "All", color: "#94a3b8" },
+  { value: "reverse", label: "RM", color: "#38bdf8" },
+  { value: "dscr", label: "DSCR", color: "#fbbf24" },
+];
+
+function productMatches(product: string | null | undefined, filter: ProductFilter): boolean {
+  if (filter === "all") return true;
+  return product === filter;
+}
+
+function rollupAds(list: AdRow[]) {
+  const spend = list.reduce((s, a) => s + a.spend, 0);
+  const leads = list.reduce((s, a) => s + a.leads, 0);
+  const appointments = list.reduce((s, a) => s + a.appointments, 0);
+  const shows = list.reduce((s, a) => s + a.shows, 0);
+  const closes = list.reduce((s, a) => s + a.closes, 0);
+  return {
+    ads: list.length,
+    spend,
+    leads,
+    appointments,
+    shows,
+    closes,
+    cpl: leads > 0 ? spend / leads : null,
+  };
+}
+
+function ProductFilterBar({
+  value,
+  onChange,
+  counts,
+}: {
+  value: ProductFilter;
+  onChange: (v: ProductFilter) => void;
+  counts: Record<ProductFilter, number>;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span
+        className="text-[10px] uppercase tracking-wider mr-1"
+        style={{ color: "#475569", fontFamily: "var(--font-plex-mono)" }}
+      >
+        Product
+      </span>
+      {PRODUCT_FILTERS.map((f) => {
+        const selected = value === f.value;
+        return (
+          <button
+            key={f.value}
+            type="button"
+            onClick={() => onChange(f.value)}
+            className="px-2.5 py-1 rounded-md text-[11px] tracking-wide transition-colors"
+            style={{
+              fontFamily: "var(--font-plex-mono)",
+              background: selected ? `${f.color}22` : "rgba(255,255,255,0.03)",
+              color: selected ? f.color : "#94a3b8",
+              border: selected ? `1px solid ${f.color}88` : "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            {f.label}
+            <span className="ml-1.5 tabular-nums" style={{ opacity: 0.7 }}>{counts[f.value]}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   winner: { bg: "rgba(245,158,11,0.14)", text: "#fbbf24", label: "Winner" },
@@ -266,6 +337,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   const [linkLibraryId, setLinkLibraryId] = useState("");
   const [linkSaving, setLinkSaving] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const { labels: formatLabels } = useAdFormats();
 
   const loadAds = useCallback(() => {
@@ -306,8 +378,13 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
     }
   }
 
+  const filteredAds = useMemo(
+    () => ads.filter((a) => productMatches(a.library?.product, productFilter)),
+    [ads, productFilter],
+  );
+
   const sorted = useMemo(() => {
-    const copy = [...ads];
+    const copy = [...filteredAds];
     copy.sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
@@ -318,11 +395,32 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
       return asc ? av - bv : bv - av;
     });
     return copy;
-  }, [ads, sortKey, asc]);
+  }, [filteredAds, sortKey, asc]);
+
+  const filterCounts = useMemo(
+    () => ({
+      all: ads.length,
+      reverse: ads.filter((a) => a.library?.product === "reverse").length,
+      dscr: ads.filter((a) => a.library?.product === "dscr").length,
+    }),
+    [ads],
+  );
+
+  const rmRollup = useMemo(
+    () => rollupAds(ads.filter((a) => a.library?.product === "reverse")),
+    [ads],
+  );
+  const dscrRollup = useMemo(
+    () => rollupAds(ads.filter((a) => a.library?.product === "dscr")),
+    [ads],
+  );
 
   const unsourcedAds = useMemo(
-    () => ads.filter((a) => !a.is_sourced && (a.spend > 0 || a.has_meta)),
-    [ads],
+    () =>
+      productFilter === "all"
+        ? ads.filter((a) => !a.is_sourced && (a.spend > 0 || a.has_meta))
+        : [],
+    [ads, productFilter],
   );
 
   const openLinkModal = useCallback((adName: string) => {
@@ -393,20 +491,54 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
       </p>
     );
 
-  const totals = ads.reduce(
-    (t, a) => {
-      t.spend += a.spend;
-      t.leads += a.leads;
-      t.appointments += a.appointments;
-      t.shows += a.shows;
-      t.closes += a.closes;
-      return t;
-    },
-    { spend: 0, leads: 0, appointments: 0, shows: 0, closes: 0 },
-  );
+  const totals = rollupAds(filteredAds);
 
   return (
     <div className="space-y-4">
+      <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={filterCounts} />
+
+      {productFilter === "all" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {([
+            { key: "reverse" as const, label: "RM", color: "#38bdf8", stats: rmRollup },
+            { key: "dscr" as const, label: "DSCR", color: "#fbbf24", stats: dscrRollup },
+          ]).map((lane) => (
+            <button
+              key={lane.key}
+              type="button"
+              onClick={() => setProductFilter(lane.key)}
+              className="rounded-xl p-4 text-left transition-colors"
+              style={{
+                background: "#0a1424",
+                border: `1px solid ${lane.color}33`,
+              }}
+            >
+              <p
+                className="text-[11px] uppercase tracking-wider font-semibold"
+                style={{ color: lane.color, fontFamily: "var(--font-plex-mono)" }}
+              >
+                {lane.label}
+                <span className="ml-2 font-normal" style={{ color: "#64748b" }}>{lane.stats.ads} ads</span>
+              </p>
+              <div className="mt-3 grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>Spend</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(Math.round(lane.stats.spend))}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>Leads</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{num(lane.stats.leads)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>CPL</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(lane.stats.cpl)}</p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {unsourcedAds.length > 0 ? (
         <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(251,191,36,0.2)" }}>
           <button
@@ -469,13 +601,14 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {[
           { label: "Total Spend", value: money(Math.round(totals.spend)) },
           { label: "Leads", value: num(totals.leads) },
           { label: "Appointments", value: num(totals.appointments) },
           { label: "Shows", value: num(totals.shows) },
           { label: "Closes", value: num(totals.closes) },
+          { label: "CPL", value: money(totals.cpl) },
         ].map((s) => (
           <div key={s.label} className="rounded-xl p-4" style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}>
             <p className="text-[11px] uppercase tracking-wider" style={{ color: "#475569" }}>{s.label}</p>
@@ -512,7 +645,15 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
               </tr>
             </thead>
             <tbody>
-              {sorted.map((ad) => {
+              {sorted.length === 0 ? (
+                <tr>
+                  <td colSpan={16} className="px-4 py-10 text-center text-sm" style={{ color: "#64748b" }}>
+                    No {productFilter === "reverse" ? "RM" : "DSCR"} ads tagged in this range.
+                    Tag creatives with a product in Ad Library to split performance.
+                  </td>
+                </tr>
+              ) : (
+                sorted.map((ad) => {
                 const isOpen = expanded === ad.row_key;
                 const d = drill[ad.row_key];
                 return (
@@ -528,7 +669,8 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                     onLinkToExisting={openLinkModal}
                   />
                 );
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>
@@ -624,6 +766,12 @@ function FragmentRow({
             )}
             {ad.library?.ad_format ? (
               <ClassBadge label={adFormatLabel(ad.library.ad_format, formatLabels)} color="#60a5fa" />
+            ) : null}
+            {ad.library?.product ? (
+              <ClassBadge
+                label={PRODUCT_LABELS[ad.library.product] ?? ad.library.product}
+                color={ad.library.product === "dscr" ? "#fbbf24" : "#38bdf8"}
+              />
             ) : null}
             {ad.variant_names.length > 1 ? (
               <ClassBadge label={`${ad.variant_names.length} variants`} color="#f59e0b" />
@@ -920,6 +1068,7 @@ function AdLibrary({
   const [expandedVariants, setExpandedVariants] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const { formats, labels: formatLabels, createFormat, loading: formatsLoading } = useAdFormats();
 
   const openEditForm = useCallback((e: LibEntry) => {
@@ -1073,15 +1222,26 @@ function AdLibrary({
     load();
   }
 
+  const visibleEntries = useMemo(
+    () => entries.filter((e) => productMatches(e.product, productFilter)),
+    [entries, productFilter],
+  );
+  const libraryFilterCounts = useMemo(
+    () => ({
+      all: entries.length,
+      reverse: entries.filter((e) => e.product === "reverse").length,
+      dscr: entries.filter((e) => e.product === "dscr").length,
+    }),
+    [entries],
+  );
+
   if (loading) return <p style={{ color: "#475569" }} className="text-sm py-10 text-center">Loading library…</p>;
   if (error) return <p style={{ color: "#f87171" }} className="text-sm py-10 text-center">{error}</p>;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs" style={{ color: "#64748b" }}>
-          CPL / CTR / CPC use the dashboard date range ({startDate} → {endDate}).
-        </p>
+        <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={libraryFilterCounts} />
         <button
           onClick={() => {
             setFormError(null);
@@ -1098,9 +1258,13 @@ function AdLibrary({
         <p style={{ color: "#475569" }} className="text-sm py-10 text-center">
           No ads in the library yet. Add one with its ad name and a Google Drive link.
         </p>
+      ) : visibleEntries.length === 0 ? (
+        <p style={{ color: "#64748b" }} className="text-sm py-10 text-center">
+          No {productFilter === "reverse" ? "RM" : "DSCR"} creatives tagged yet. Set product on an ad to include it here.
+        </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {entries.map((e) => {
+          {visibleEntries.map((e) => {
             const thumb = driveThumb(e);
             const allNames = [e.ad_name, ...(e.aliases ?? []).map((a) => a.alias_name)];
             const isHighlighted = highlightId === e.id;
