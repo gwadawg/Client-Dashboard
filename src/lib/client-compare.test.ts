@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import {
   barsForChart,
   compareRowFromMetrics,
+  costHistoryFromDailySeries,
   costMapPoints,
   isDefaultRosterClient,
   mapMedians,
   medianOf,
+  pivotCostHistory,
   rangeForComparePreset,
   rateMapPoints,
   rosterIdsForOffer,
@@ -230,3 +232,92 @@ describe('client-compare median and dates', () => {
     assert.equal(r.start, '2026-07-19');
   });
 });
+
+describe('client-compare cost history', () => {
+  it('omits Call Center and leaves empty-denominator days as null', () => {
+    const series = costHistoryFromDailySeries(
+      [
+        { id: 'rm', name: 'Reverse Co', is_call_center: false },
+        { id: 'cc', name: 'CC Co', is_call_center: true },
+      ],
+      new Map([
+        [
+          'rm',
+          [
+            {
+              client_id: 'rm',
+              event_type: 'lead',
+              occurred_at: '2026-08-01T12:00:00.000Z',
+              is_qualified: true,
+              ghl_contact_id: 'a',
+            },
+            {
+              client_id: 'rm',
+              event_type: 'show',
+              occurred_at: '2026-08-01T13:00:00.000Z',
+              ghl_contact_id: 'a',
+            },
+          ],
+        ],
+      ]),
+      [{ client_id: 'rm', spend_date: '2026-08-01', amount: 100 }],
+      '2026-08-01',
+      '2026-08-02',
+      'day',
+    );
+    assert.equal(series.length, 1);
+    assert.equal(series[0].id, 'rm');
+    assert.equal(series[0].points[0].cpl, 100);
+    assert.equal(series[0].points[0].cpql, 100);
+    assert.equal(series[0].points[0].cpconv, 100);
+    assert.equal(series[0].points[1].cpl, null);
+    assert.equal(series[0].points[1].cpconv, null);
+  });
+
+  it('pivots one column per client for the selected metric', () => {
+    const series = costHistoryFromDailySeries(
+      [
+        { id: 'a', name: 'A', is_call_center: false },
+        { id: 'b', name: 'B', is_call_center: false },
+      ],
+      new Map(),
+      [
+        { client_id: 'a', spend_date: '2026-08-01', amount: 50 },
+        { client_id: 'b', spend_date: '2026-08-01', amount: 80 },
+      ],
+      '2026-08-01',
+      '2026-08-01',
+      'day',
+    );
+    // Spend with 0 leads stays null — add leads so CPL plots.
+    const withLeads = costHistoryFromDailySeries(
+      [
+        { id: 'a', name: 'A', is_call_center: false },
+        { id: 'b', name: 'B', is_call_center: false },
+      ],
+      new Map([
+        [
+          'a',
+          [{ client_id: 'a', event_type: 'lead', occurred_at: '2026-08-01T12:00:00.000Z', ghl_contact_id: '1' }],
+        ],
+        [
+          'b',
+          [{ client_id: 'b', event_type: 'lead', occurred_at: '2026-08-01T12:00:00.000Z', ghl_contact_id: '2' }],
+        ],
+      ]),
+      [
+        { client_id: 'a', spend_date: '2026-08-01', amount: 50 },
+        { client_id: 'b', spend_date: '2026-08-01', amount: 80 },
+      ],
+      '2026-08-01',
+      '2026-08-01',
+      'day',
+    );
+    const pivoted = pivotCostHistory(withLeads, 'cpl');
+    assert.equal(pivoted.length, 1);
+    assert.equal(pivoted[0].a, 50);
+    assert.equal(pivoted[0].b, 80);
+    assert.equal(series[0].points[0].cpl, null);
+  });
+});
+

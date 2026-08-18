@@ -7,6 +7,9 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
+  Line,
+  LineChart,
   ReferenceLine,
   ResponsiveContainer,
   Scatter,
@@ -22,10 +25,12 @@ import {
   costChartsCaption,
   costMapPoints,
   countWithSpend,
+  lineColorForIndex,
   mapMedians,
   medianForBars,
   parseIdList,
   parseOfferFilter,
+  pivotCostHistory,
   rangeForComparePreset,
   rateMapPoints,
   rosterIdsForOffer,
@@ -34,6 +39,8 @@ import {
   visibleChartKeys,
   type ClientCompareRow,
   type CompareBar,
+  type CompareClientCostSeries,
+  type CompareCostMetric,
   type CompareDatePreset,
   type CompareKpiKey,
   type CompareMapPoint,
@@ -136,7 +143,9 @@ type DirectoryClient = {
 
 type Bundle = {
   period: { start: string; end: string };
+  granularity?: "day" | "week";
   clients: ClientCompareRow[];
+  costHistory?: CompareClientCostSeries[];
   error?: string;
 };
 
@@ -391,6 +400,11 @@ export default function ClientCompareDashboard({ directory }: Props) {
             canCost={costPoints.length > 0}
             onPoint={goClient}
           />
+          <CostHistoryLines
+            series={(bundle?.costHistory ?? []).filter(s => visible.some(v => v.id === s.id))}
+            granularity={bundle?.granularity ?? "week"}
+            onClient={goClient}
+          />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {chartKeys.map(key => (
               <RankedBarCard
@@ -600,6 +614,108 @@ function Controls({
           in this range may not have happened yet.
         </p>
       )}
+    </section>
+  );
+}
+
+function formatHistoryDate(date: string, granularity: "day" | "week"): string {
+  const d = new Date(`${date}T00:00:00.000Z`);
+  return (
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) +
+    (granularity === "week" ? " wk" : "")
+  );
+}
+
+const COST_HISTORY_CHARTS: { key: CompareCostMetric; title: string; formula: string }[] = [
+  { key: "cpl", title: "CPL over time", formula: "Ad Spend ÷ Leads" },
+  { key: "cpql", title: "CPQL over time", formula: "Ad Spend ÷ Qualified Leads" },
+  { key: "cpconv", title: "CPConv over time", formula: "Ad Spend ÷ Unique Conversations" },
+];
+
+function CostHistoryLines({
+  series,
+  granularity,
+  onClient,
+}: {
+  series: CompareClientCostSeries[];
+  granularity: "day" | "week";
+  onClient: (id: string) => void;
+}) {
+  if (series.length === 0) return null;
+
+  return (
+    <section className="rounded-xl p-4 space-y-5" style={CARD}>
+      <div>
+        <h2 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>
+          Cost history
+        </h2>
+        <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
+          One line per account. Gaps are buckets with no denominator (no leads,
+          qualified, or conversations). Call Center accounts are excluded.
+          {granularity === "week" ? " Weekly buckets." : " Daily buckets."}
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-5">
+        {COST_HISTORY_CHARTS.map(chart => {
+          const data = pivotCostHistory(series, chart.key).map(row => ({
+            ...row,
+            label: formatHistoryDate(String(row.date), granularity),
+          }));
+          return (
+            <div key={chart.key}>
+              <h3 className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: "#cbd5e1" }}>
+                {chart.title}
+                <span className="font-normal" style={{ color: "#64748b" }}>
+                  {chart.formula}
+                </span>
+              </h3>
+              <div style={{ height: 220 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(255,255,255,0.06)" />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fill: "#64748b", fontSize: 10 }}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis
+                      tick={{ fill: "#64748b", fontSize: 10 }}
+                      tickFormatter={v => formatValue(Number(v), "money")}
+                      width={48}
+                    />
+                    <Tooltip
+                      contentStyle={TOOLTIP_STYLE}
+                      formatter={(value, name) => {
+                        const s = series.find(x => x.id === name);
+                        const n = value == null ? null : Number(value);
+                        return [n == null || Number.isNaN(n) ? "—" : formatValue(n, "money"), s?.name ?? String(name)];
+                      }}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: 11, color: "#94a3b8" }}
+                      formatter={value => series.find(s => s.id === value)?.name ?? String(value)}
+                    />
+                    {series.map((s, i) => (
+                      <Line
+                        key={s.id}
+                        type="monotone"
+                        dataKey={s.id}
+                        name={s.id}
+                        stroke={lineColorForIndex(i)}
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls={false}
+                        isAnimationActive={false}
+                        onClick={() => onClient(s.id)}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

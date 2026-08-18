@@ -14,7 +14,15 @@ import {
 } from '@/lib/client-health';
 import { worstTier } from '@/lib/dept-health';
 import { usesCallCenterKpiLayout, type ReportingType } from '@/lib/kpi-layouts';
-import type { MetricsResult } from '@/lib/metrics';
+import {
+  buildDailyCostSeries,
+  rollupCostSeriesToWeeks,
+  toCostTrendPoints,
+  weekStartKey,
+  type MetricsResult,
+  type TrendEventRow,
+  type TrendSpendRow,
+} from '@/lib/metrics';
 
 export type CompareOfferFilter = 'all' | ReportingType;
 
@@ -432,3 +440,202 @@ export function parseIdList(raw: string | null | undefined): string[] {
     .map(s => s.trim())
     .filter(Boolean);
 }
+
+export type CompareCostMetric = 'cpl' | 'cpql' | 'cpconv';
+
+export type CompareCostPoint = {
+  date: string;
+  cpl: number | null;
+  cpql: number | null;
+  cpconv: number | null;
+};
+
+export type CompareClientCostSeries = {
+  id: string;
+  name: string;
+  points: CompareCostPoint[];
+};
+
+export function compareCostGranularity(start: string, end: string): 'day' | 'week' {
+  return inclusiveDayCount(start, end) <= 21 ? 'day' : 'week';
+}
+
+function eachYmd(start: string, end: string): string[] {
+  const out: string[] = [];
+  const last = Date.parse(`${end}T00:00:00.000Z`);
+  let cur = Date.parse(`${start}T00:00:00.000Z`);
+  if (!Number.isFinite(cur) || !Number.isFinite(last) || last < cur) return out;
+  while (cur <= last) {
+    out.push(new Date(cur).toISOString().slice(0, 10));
+    cur += 86400000;
+  }
+  return out;
+}
+
+export function compareTimelineDates(
+  start: string,
+  end: string,
+  granularity: 'day' | 'week',
+): string[] {
+  const days = eachYmd(start, end);
+  if (granularity === 'day') return days;
+  const weeks: string[] = [];
+  const seen = new Set<string>();
+  for (const d of days) {
+    const key = weekStartKey(d);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    weeks.push(key);
+  }
+  return weeks;
+}
+
+function emptyPoint(date: string): CompareCostPoint {
+  return { date, cpl: null, cpql: null, cpconv: null };
+}
+
+function pointFromCounts(
+  date: string,
+  spend: number,
+  leads: number,
+  qualified: number,
+  conversations: number,
+): CompareCostPoint {
+  return {
+    date,
+    cpl: leads > 0 ? spend / leads : null,
+    cpql: qualified > 0 ? spend / qualified : null,
+    cpconv: conversations > 0 ? spend / conversations : null,
+  };
+}
+
+export function costHistoryFromDailySeries(
+  clients: Array<{ id: string; name: string; is_call_center: boolean }>,
+  eventsByClient: Map<string, TrendEventRow[]>,
+  spendRows: Array<{ client_id: string; spend_date: string; amount: number }>,
+  start: string,
+  end: string,
+  granularity: 'day' | 'week',
+): CompareClientCostSeries[] {
+  const spendByClient = new Map<string, TrendSpendRow[]>();
+  for (const row of spendRows) {
+    const list = spendByClient.get(row.client_id) ?? [];
+    list.push({ spend_date: row.spend_date, amount: row.amount });
+    spendByClient.set(row.client_id, list);
+  }
+
+  const dates = compareTimelineDates(start, end, granularity);
+  return clients
+    .filter(c => !c.is_call_center)
+    .map(c => {
+      const daily = buildDailyCostSeries(
+        eventsByClient.get(c.id) ?? [],
+        spendByClient.get(c.id) ?? [],
+        start,
+        end,
+      );
+      const buckets = granularity === 'week' ? rollupCostSeriesToWeeks(daily) : daily;
+      const byDate = new Map(toCostTrendPoints(buckets).map(p => [p.date, p]));
+      const points = dates.map(date => {
+        const p = byDate.get(date);
+        if (!p) return emptyPoint(date);
+        return {
+          date,
+          cpl: p.cpl,
+          cpql: p.cp_qualified,
+          cpconv: p.cp_conversation,
+        };
+      });
+      return { id: c.id, name: c.name, points };
+    });
+}
+
+export function costHistoryFromSqlBuckets(
+  clients: Array<{ id: string; name: string; is_call_center: boolean }>,
+  buckets: Array<{
+    client_id: string;
+    date: string;
+    leads: number;
+    qualified_leads: number;
+    conversations: number;
+  }>,
+  spendRows: Array<{ client_id: string; spend_date: string; amount: number }>,
+  start: string,
+  end: string,
+  granularity: 'day' | 'week',
+): CompareClientCostSeries[] {
+  const dates = compareTimelineDates(start, end, granularity);
+  const spendKey = (clientId: string, date: string) => `${clientId}|${date}`;
+  const spendMap = new Map<string, number>();
+  for (const row of spendRows) {
+    const date = granularity === 'week' ? weekStartKey(row.spend_date) : row.spend_date;
+    const key = spendKey(row.client_id, date);
+    spendMap.set(key, (spendMap.get(key) ?? 0) + row.amount);
+  }
+
+  const bucketMap = new Map<string, { leads: number; qualified_leads: number; conversations: number }>();
+  for (const row of buckets) {
+    const date = granularity === 'week' ? weekStartKey(row.date) : row.date;
+    const key = spendKey(row.client_id, date);
+    const prev = bucketMap.get(key) ?? { leads: 0, qualified_leads: 0, conversations: 0 };
+    prev.leads += row.leads;
+    prev.qualified_leads += row.qualified_leads;
+    prev.conversations += row.conversations;
+    bucketMap.set(key, prev);
+  }
+
+  return clients
+    .filter(c => !c.is_call_center)
+    .map(c => ({
+      id: c.id,
+      name: c.name,
+      points: dates.map(date => {
+        const key = spendKey(c.id, date);
+        const b = bucketMap.get(key);
+        const spend = spendMap.get(key) ?? 0;
+        return pointFromCounts(
+          date,
+          spend,
+          b?.leads ?? 0,
+          b?.qualified_leads ?? 0,
+          b?.conversations ?? 0,
+        );
+      }),
+    }));
+}
+
+/** Recharts-friendly: one row per date, one column per client id. */
+export function pivotCostHistory(
+  series: CompareClientCostSeries[],
+  metric: CompareCostMetric,
+): Array<Record<string, string | number | null>> {
+  if (series.length === 0) return [];
+  const dates = series[0].points.map(p => p.date);
+  return dates.map((date, i) => {
+    const row: Record<string, string | number | null> = { date };
+    for (const s of series) {
+      row[s.id] = s.points[i]?.[metric] ?? null;
+    }
+    return row;
+  });
+}
+
+export const COMPARE_LINE_COLORS = [
+  '#38bdf8',
+  '#fbbf24',
+  '#34d399',
+  '#f472b6',
+  '#a78bfa',
+  '#fb7185',
+  '#22d3ee',
+  '#f97316',
+  '#4ade80',
+  '#e879f9',
+  '#60a5fa',
+  '#facc15',
+] as const;
+
+export function lineColorForIndex(i: number): string {
+  return COMPARE_LINE_COLORS[i % COMPARE_LINE_COLORS.length];
+}
+
