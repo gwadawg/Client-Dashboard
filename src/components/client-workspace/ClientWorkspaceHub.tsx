@@ -15,7 +15,7 @@ import {
   type DataExplorerTab,
   type HeatmapTab,
 } from "@/lib/nav";
-import { isKpiRoiSub } from "@/lib/conversion-explorer";
+import { isKpiRoiSub, type ConversionStage } from "@/lib/conversion-explorer";
 import type { DashboardClient, DashboardFilters } from "@/lib/use-dashboard-filters";
 
 const DialAnalytics = dynamic(() => import("../DialAnalytics"));
@@ -37,6 +37,8 @@ type Props = {
   kpi: ClientKpiPanelData;
   railOpen: boolean;
   onToggleRail: () => void;
+  canOpenExplorer: boolean;
+  onOpenConversionLeads: (stage: ConversionStage) => void;
 };
 
 export default function ClientWorkspaceHub({
@@ -50,6 +52,8 @@ export default function ClientWorkspaceHub({
   kpi,
   railOpen,
   onToggleRail,
+  canOpenExplorer,
+  onOpenConversionLeads,
 }: Props) {
   const visibleTabs = useMemo(
     () => CLIENT_WORKSPACE_TABS.filter(t => allowedTabs.includes(t.key)),
@@ -117,8 +121,8 @@ export default function ClientWorkspaceHub({
                   onTabChange("explorer");
                   onSubChange("appointments");
                 }}
-                canOpenExplorer={false}
-                onOpenConversionLeads={() => {}}
+                canOpenExplorer={canOpenExplorer}
+                onOpenConversionLeads={onOpenConversionLeads}
               />
             )}
 

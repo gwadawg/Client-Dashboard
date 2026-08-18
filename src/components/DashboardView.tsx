@@ -48,6 +48,10 @@ import {
 } from "@/lib/use-dashboard-filters";
 import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
 import { hasTeamCommandPermission } from "@/lib/team-dashboards/access";
+import {
+  conversionExplorerNav,
+  type ConversionStage,
+} from "@/lib/conversion-explorer";
 
 function TabLoading({ label = "Loading…" }: { label?: string }) {
   return (
@@ -825,12 +829,27 @@ export default function DashboardView({
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "client_workspace");
     params.set("tab", "kpis");
-    params.set("sub", "conversions");
+    params.set("sub", "roi");
     params.delete("sim");
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     setView("client_workspace");
     setHubTab("kpis");
-    setWorkspaceSub("conversions");
+    setWorkspaceSub("roi");
+    setSidebarOpen(false);
+  }, [searchParams, pathname, router]);
+
+  const goToConversionLeads = useCallback((stage: ConversionStage) => {
+    const nav = conversionExplorerNav(stage);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", nav.view);
+    params.set("tab", nav.tab);
+    params.set("sub", nav.sub);
+    params.set("conv", nav.conv);
+    params.delete("sim");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setView(nav.view);
+    setHubTab(nav.tab);
+    setWorkspaceSub(nav.sub);
     setSidebarOpen(false);
   }, [searchParams, pathname, router]);
 
@@ -1023,6 +1042,8 @@ export default function DashboardView({
                 clientLabel: dashboardClientLabel,
                 overduePending,
               }}
+              canOpenExplorer={allowedWorkspaceTabs.includes("explorer")}
+              onOpenConversionLeads={goToConversionLeads}
             />
           )}
 
