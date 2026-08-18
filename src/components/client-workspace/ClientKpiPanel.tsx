@@ -8,6 +8,10 @@ import KpiSection from "../kpi/KpiSection";
 import KpiCard from "../kpi/KpiCard";
 import ClientKpiPeriodBar from "../ClientKpiPeriodBar";
 import { formatKpiValue, usesRmKpiLayout, type ReportingType } from "@/lib/kpi-layouts";
+import {
+  shouldShowConversionCosts,
+  type ConversionStage,
+} from "@/lib/conversion-explorer";
 import type { CostTrendPoint, KpiTimelineBucket, MetricsResult } from "@/lib/metrics";
 import type { DashboardClient, DashboardFilters } from "@/lib/use-dashboard-filters";
 
@@ -39,12 +43,15 @@ type Props = {
   data: ClientKpiPanelData;
   filters: DashboardFilters;
   selectedClient: DashboardClient | null;
-  /** True when `?sub=conversions` — the RM pipeline drill-in. */
+  /** True when `?sub=conversions` — the pipeline drill-in. */
   showConversions: boolean;
   onOpenConversions: () => void;
   onCloseConversions: () => void;
   /** Jump to Explorer → Appointments filtered to the un-dispositioned backlog. */
   onReviewOverdue: () => void;
+  /** When true, unique-lead conversion cards open Explorer. */
+  canOpenExplorer: boolean;
+  onOpenConversionLeads: (stage: ConversionStage) => void;
 };
 
 export default function ClientKpiPanel({
@@ -55,6 +62,8 @@ export default function ClientKpiPanel({
   onOpenConversions,
   onCloseConversions,
   onReviewOverdue,
+  canOpenExplorer,
+  onOpenConversionLeads,
 }: Props) {
   const {
     metrics,
@@ -71,9 +80,11 @@ export default function ClientKpiPanel({
   } = data;
 
   const hasDateRange = Boolean(filters.dateStart && filters.dateEnd);
-  // Conversions is RM-only, so an inherited `sub` from another client falls back
-  // to the main grid rather than rendering an empty panel.
-  const conversions = showConversions && usesRmKpiLayout(reportingType);
+  const conversions = showConversions;
+  const showCosts = metrics ? shouldShowConversionCosts(metrics.ad_spend) : false;
+  const openStage = canOpenExplorer
+    ? (stage: ConversionStage) => onOpenConversionLeads(stage)
+    : undefined;
 
   return (
     <div className="space-y-8">
@@ -142,21 +153,19 @@ export default function ClientKpiPanel({
             style={{ opacity: metricsLoading ? 0.55 : 1 }}
             aria-busy={metricsLoading}
           >
-            {usesRmKpiLayout(reportingType) && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={onOpenConversions}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
-                  style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.4)" }}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                  </svg>
-                  Conversions &amp; ROI
-                </button>
-              </div>
-            )}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onOpenConversions}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.4)" }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+                Conversions &amp; ROI
+              </button>
+            </div>
 
             {hasMixedReportingTypes && (
               <p
@@ -181,32 +190,74 @@ export default function ClientKpiPanel({
               </div>
             </KpiSection>
 
-            {usesRmKpiLayout(reportingType) && (
-              <KpiSection
-                title="Conversions"
-                footnote="Borrowers are unique people in the funnel (cost per funded person). Transactions are each loan file — two loans on the same house count as two. Cost per funded transaction uses that count."
-              >
-                <div className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(12.5rem,1fr))]">
-                  <KpiCard label="Proposals Made" value={formatKpiValue(metrics.proposals_made, "int")} hint="Unique leads that reached the proposal stage or beyond (submitted/funded count too)." />
-                  <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} hint="Unique borrowers that reached the submission stage or beyond." />
-                  <KpiCard label="Funded Transactions" value={formatKpiValue(metrics.funded_deals, "int")} accent hint="Each loan file that funded in this range. Same borrower or same house, two loans = two transactions." />
-                  <KpiCard label="Unique Funded Borrowers" value={formatKpiValue(metrics.funded_loans, "int")} hint="Unique people with at least one funded loan — conversion / CAC grain." />
-                  <KpiCard label="Loan Volume" value={formatKpiValue(metrics.loan_volume, "money")} hint="Sum of loan size on funded transactions in this range." />
-                  <KpiCard label="Cost per Funded Transaction" value={formatKpiValue(metrics.cp_funded_deal, "money")} hint="Total Spend ÷ Funded Transactions." />
-                  <KpiCard label="Cost per Funded Borrower" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Unique Funded Borrowers." />
-                  <KpiCard label="Cost per Proposal" value={formatKpiValue(metrics.cp_proposal_made, "money")} hint="Total Spend ÷ Proposals Made." />
-                  <KpiCard label="Cost per Submission" value={formatKpiValue(metrics.cp_submission_made, "money")} hint="Total Spend ÷ unique submitted borrowers." />
-                  {metrics.roas != null && (
+            <KpiSection
+              title="Conversions"
+              footnote="Borrowers are unique people in the funnel (cost per funded person). Transactions are each loan file — two loans on the same house count as two. Cost per funded transaction uses that count."
+            >
+              <div className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(12.5rem,1fr))]">
+                <KpiCard
+                  label="Proposals Made"
+                  value={formatKpiValue(metrics.proposals_made, "int")}
+                  hint="Unique leads that reached the proposal stage or beyond (submitted/funded count too)."
+                  onActivate={openStage ? () => openStage("proposal_made") : undefined}
+                />
+                <KpiCard
+                  label="Submissions"
+                  value={formatKpiValue(metrics.submissions_made, "int")}
+                  hint="Unique borrowers that reached the submission stage or beyond."
+                  onActivate={openStage ? () => openStage("submission_made") : undefined}
+                />
+                <KpiCard
+                  label="Funded Transactions"
+                  value={formatKpiValue(metrics.funded_deals, "int")}
+                  accent
+                  hint="Each loan file that funded in this range. Same borrower or same house, two loans = two transactions."
+                />
+                <KpiCard
+                  label="Unique Funded Borrowers"
+                  value={formatKpiValue(metrics.funded_loans, "int")}
+                  hint="Unique people with at least one funded loan — conversion / CAC grain."
+                  onActivate={openStage ? () => openStage("loan_funded") : undefined}
+                />
+                <KpiCard
+                  label="Loan Volume"
+                  value={formatKpiValue(metrics.loan_volume, "money")}
+                  hint="Sum of loan size on funded transactions in this range."
+                />
+                {showCosts && (
+                  <>
                     <KpiCard
-                      label="ROAS"
-                      value={`${metrics.roas.toFixed(2)}x`}
-                      accent
-                      hint="What they made (logged on funded transactions) ÷ ad spend. Hidden until someone logs earnings."
+                      label="Cost per Funded Transaction"
+                      value={formatKpiValue(metrics.cp_funded_deal, "money")}
+                      hint="Total Spend ÷ Funded Transactions."
                     />
-                  )}
-                </div>
-              </KpiSection>
-            )}
+                    <KpiCard
+                      label="Cost per Funded Borrower"
+                      value={formatKpiValue(metrics.cp_loan_funded, "money")}
+                      hint="Total Spend ÷ Unique Funded Borrowers."
+                    />
+                    <KpiCard
+                      label="Cost per Proposal"
+                      value={formatKpiValue(metrics.cp_proposal_made, "money")}
+                      hint="Total Spend ÷ Proposals Made."
+                    />
+                    <KpiCard
+                      label="Cost per Submission"
+                      value={formatKpiValue(metrics.cp_submission_made, "money")}
+                      hint="Total Spend ÷ unique submitted borrowers."
+                    />
+                    {metrics.roas != null && (
+                      <KpiCard
+                        label="ROAS"
+                        value={`${metrics.roas.toFixed(2)}x`}
+                        accent
+                        hint="What they made (logged on funded transactions) ÷ ad spend. Hidden until someone logs earnings."
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            </KpiSection>
 
             <KpiSection title="Rate Trends">
               <RateTrendCharts

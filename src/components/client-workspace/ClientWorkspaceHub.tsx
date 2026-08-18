@@ -116,6 +116,8 @@ export default function ClientWorkspaceHub({
                   onTabChange("explorer");
                   onSubChange("appointments");
                 }}
+                canOpenExplorer={false}
+                onOpenConversionLeads={() => {}}
               />
             )}
 

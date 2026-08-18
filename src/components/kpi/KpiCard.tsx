@@ -27,6 +27,8 @@ type Props = {
   size?: "default" | "hero";
   /** Surface override so the hero strip can sit on its own panel. */
   surface?: string;
+  /** Opens a drill-in (Explorer). Ignored when undefined. */
+  onActivate?: () => void;
 };
 
 /**
@@ -46,6 +48,7 @@ export default function KpiCard({
   refLine,
   size = "default",
   surface,
+  onActivate,
 }: Props) {
   const hero = size === "hero";
   const showSpark = sparkHasSignal(spark);
@@ -67,7 +70,20 @@ export default function KpiCard({
         />
       )}
 
-      <div className={`flex min-w-0 flex-1 flex-col ${hero ? "px-4 pt-3.5 pb-3" : "px-3.5 pt-3 pb-2.5"}`}>
+      {onActivate && (
+        <button
+          type="button"
+          onClick={onActivate}
+          aria-label={`View ${label} leads`}
+          className="absolute inset-0 z-[1] rounded-lg"
+        />
+      )}
+
+      <div
+        className={`flex min-w-0 flex-1 flex-col ${hero ? "px-4 pt-3.5 pb-3" : "px-3.5 pt-3 pb-2.5"}${
+          onActivate ? " relative z-[2] pointer-events-none" : ""
+        }`}
+      >
         {/* Two-line floor so a wrapping label doesn't drop its figure below the
             ones beside it — the row shares a baseline either way. */}
         <div className="flex min-h-[2rem] min-w-0 items-start gap-1.5">
@@ -89,11 +105,15 @@ export default function KpiCard({
               {badge}
             </span>
           )}
-          {hint && (
-            <span className="-mt-0.5 -mr-1 shrink-0 opacity-50 transition-opacity group-hover:opacity-100">
+          {hint ? (
+            <span
+              className={`-mt-0.5 -mr-1 shrink-0 opacity-50 transition-opacity group-hover:opacity-100${
+                onActivate ? " pointer-events-auto relative z-[3]" : ""
+              }`}
+            >
               <MetricInfoTip hint={hint} />
             </span>
-          )}
+          ) : null}
         </div>
 
         <div className={`flex min-w-0 items-baseline gap-2 ${hero ? "mt-2.5" : "mt-2"}`}>
