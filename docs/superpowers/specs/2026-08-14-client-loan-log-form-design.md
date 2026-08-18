@@ -1,7 +1,7 @@
 ---
 title: Client Loan Log Form — Design
-status: draft
-last_updated: 2026-08-14
+status: implemented
+last_updated: 2026-08-18
 artifact_type: design
 related_docs:
   - docs/KPIS.md
@@ -28,7 +28,6 @@ fill in without a second pipeline or a GHL form.
 - GHL create/tag/stage sync (Waiz is source of truth)
 - Login, PIN, or per-user auth on the form (token URL is enough)
 - Slack or email on every submit
-- A `loan_outcomes` table or loan CRM
 - Asking loan type, notes, credit, or team member
 - Client-branded colors (Waiz colors + **their office name** in the headline)
 - Showing Claimed / Proposal / backfill language on the form
@@ -121,37 +120,35 @@ Picking an existing lead never writes a second lead event.
 
 ## Duplicate rule
 
-Same lead + **same clicked stage** + same calendar day → reject with
-“Already logged for this day.”
-Do not write a second Submitted or Funded for that day.
+**Person grain:** at most one `proposal_made` / `submission_made` /
+`loan_funded` per contact (existing unique index). A second transaction does
+**not** write another conversion event.
 
-If earlier stages are still missing, **still backfill** those gaps in the
-same request (clicked stage is not duplicated).
+**Transaction grain:** same contact + same loan size + same transaction
+label + same calendar day → reject with “Already logged for this day.”
+Add a name (or a different size) to log another file. Two loans on the
+same house are two transactions.
 
-A different calendar day is allowed.
+If earlier person-level stages are still missing, **still backfill** those
+gaps in the same request.
 
 ## Storage
 
-Reuse `events` (no new loan table).
+Person conversion stays on `events`. Each loan transaction is a row in
+`loan_deals`.
 
 | Event type | When |
 |------------|------|
 | `lead` | Can’t find create only |
 | `claimed` | Backfill when no conversation exists |
 | `proposal_made` | Backfill when no proposal exists |
-| `submission_made` | Clicked Submitted, or backfill from Funded |
-| `loan_funded` | Clicked Funded |
+| `submission_made` | First Submitted (or backfill from first Funded) |
+| `loan_funded` | First Funded for that borrower |
 
-Payload on stage events (not on `lead` / `claimed` / `proposal_made`):
-
-- `loan_size` (number) on `submission_made` and `loan_funded`
-- `commission_amount` (number) on `loan_funded` only, and only if they filled
-  “what you made”
-
-Identity fields on every written event: `client_id`, `lead_name`,
-`lead_phone`, `ghl_contact_id` when known, `occurred_at` from the form date.
-
-Writes are **one transaction**: all backfill events persist or none do.
+`loan_deals` columns: `stage` (`submitted`/`funded`), `submitted_at`,
+`funded_at`, `loan_size`, `commission_amount`, `transaction_label`,
+`ghl_contact_id`. A later Funded for the same size/label **promotes** the
+open submitted row instead of inserting a second file.
 
 ### Token
 
@@ -166,11 +163,10 @@ No second counter.
 
 | Surface | Behavior |
 |---------|----------|
-| Lead history / lead profile | Timeline includes backfilled + clicked events. Loan size on submitted/funded. Commission on funded when present. Submission / Funded flags already on lead profiles turn on. |
-| Client KPIs | Submissions, Funded, Cost per Submission (`ad_spend ÷ submissions`), Cost per Funded (`ad_spend ÷ funded`). Conversations include system Claimed. |
-| ROAS | **New card:** `ad_spend ÷ SUM(commission_amount)` for funded events in range that have commission. If none have commission, **omit the card** (do not show $0). |
-| Loan size | Not a KPI in v1. Visible on the lead event only. |
-| Your team | Same client KPI view and lead history. Commission is visible if they entered it. |
+| Lead history / lead profile | Timeline includes backfilled + first conversion events. |
+| Client KPIs | Unique borrowers (funnel) + **Funded Transactions**, **Loan Volume**, cost per transaction vs cost per borrower. |
+| ROAS | `SUM(loan_deals.commission_amount)` for funded files in range ÷ ad spend. Hidden until someone logs earnings. |
+| Loan size | Summed as Loan Volume on funded deals. |
 
 Ad spend remains Meta spend already stored for that client and date range.
 KPI month follows the form date, not the submit timestamp.

@@ -6,7 +6,7 @@
  */
 
 import {
-  attachCommissionRoas,
+  attachLoanDealMetrics,
   buildClientKpiTimeline,
   buildDailyCostSeries,
   calculateMetrics,
@@ -18,7 +18,7 @@ import {
   type KpiTimelineBucket,
   type MetricsResult,
 } from '@/lib/metrics';
-import { extractCommissionTotal } from '@/lib/loan-log-form';
+import { fetchLoanDealTotals } from '@/lib/loan-deals';
 import {
   metricsFromSqlCounts,
   parseSqlKpiCounts,
@@ -150,23 +150,17 @@ function rangeBounds(filters: MetricsBundleFilters): {
   };
 }
 
-async function fetchCommissionTotal(
+async function fetchDealTotals(
   service: ServiceClient,
   filters: MetricsBundleFilters,
   scopedClientIds: ScopedIds,
-): Promise<number> {
-  let q = service
-    .from('events')
-    .select('raw')
-    .eq('event_type', 'loan_funded');
-  if (filters.client_id) q = q.eq('client_id', filters.client_id);
-  else if (scopedClientIds) q = q.in('client_id', liveClientFilter(scopedClientIds));
-  if (filters.start_date) q = q.gte('occurred_at', `${filters.start_date}T00:00:00.000Z`);
-  if (filters.end_date) q = q.lte('occurred_at', `${filters.end_date}T23:59:59.999Z`);
-  q = q.limit(20000);
-  const { data, error } = await q;
-  if (error) return 0;
-  return extractCommissionTotal((data ?? []).map(row => row.raw));
+) {
+  return fetchLoanDealTotals(service, {
+    client_id: filters.client_id,
+    client_ids: scopedClientIds ? liveClientFilter(scopedClientIds) : null,
+    start_date: filters.start_date,
+    end_date: filters.end_date,
+  });
 }
 
 async function fetchSpeedToLeadEvents(
@@ -227,7 +221,7 @@ async function loadViaSql(
     trendSpend,
     availability,
     stlEvents,
-    commissionTotal,
+    dealTotals,
   ] = await Promise.all([
     countsPromise,
     timelinePromise,
@@ -237,7 +231,7 @@ async function loadViaSql(
       : Promise.resolve([]),
     loadAvailability(service),
     fetchSpeedToLeadEvents(service, filters, scopedClientIds),
-    fetchCommissionTotal(service, filters, scopedClientIds),
+    fetchDealTotals(service, filters, scopedClientIds),
   ]);
 
   if (countsRes.error) {
@@ -257,9 +251,9 @@ async function loadViaSql(
   if (!counts) throw new Error('dashboard_kpi_counts returned empty payload');
 
   const speed = computeSpeedToLead(stlEvents, availability.data);
-  const metrics = attachCommissionRoas(
+  const metrics = attachLoanDealMetrics(
     metricsFromSqlCounts(counts, spendRows, speed),
-    commissionTotal,
+    dealTotals,
   );
 
   let trends: TrendsPayload | null = null;
@@ -312,7 +306,7 @@ async function loadViaEventsFallback(
     end_date: filters.end_date ?? undefined,
   };
 
-  const [{ data: events, error: eventsError }, spendRows, trendSpend, availability, commissionTotal] =
+  const [{ data: events, error: eventsError }, spendRows, trendSpend, availability, dealTotals] =
     await Promise.all([
       eventsQuery,
       fetchCombinedSpendForMetrics(service, spendFilters),
@@ -320,16 +314,16 @@ async function loadViaEventsFallback(
         ? fetchCombinedTrendSpend(service, spendFilters)
         : Promise.resolve([]),
       loadAvailability(service),
-      fetchCommissionTotal(service, filters, scopedClientIds),
+      fetchDealTotals(service, filters, scopedClientIds),
     ]);
 
   if (eventsError) throw new Error(eventsError.message);
   if (availability.error) throw new Error(availability.error);
 
   const eventRows = (events ?? []) as EventRow[];
-  const metrics = attachCommissionRoas(
+  const metrics = attachLoanDealMetrics(
     calculateMetrics(eventRows, spendRows, availability.data),
-    commissionTotal,
+    dealTotals,
   );
 
   let trends: TrendsPayload | null = null;

@@ -36,7 +36,7 @@ export default function ConversionFunnel({ metrics }: Props) {
     >
       <h3 className="text-sm font-semibold mb-1" style={{ color: "#e2e8f0" }}>Conversion funnel</h3>
       <p className="text-[10px] mb-4" style={{ color: "#475569" }}>
-        Lead → funded. Right column is step conversion from the stage above.
+        Lead → unique funded borrowers. Loan transactions (count / volume) are on Conversions.
       </p>
 
       {top === 0 ? (

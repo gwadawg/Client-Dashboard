@@ -73,7 +73,7 @@ export default function ClientKpiPanel({
   const hasDateRange = Boolean(filters.dateStart && filters.dateEnd);
   // Conversions is RM-only, so an inherited `sub` from another client falls back
   // to the main grid rather than rendering an empty panel.
-  const conversions = showConversions && reportingType === "RM";
+  const conversions = showConversions && usesRmKpiLayout(reportingType);
 
   return (
     <div className="space-y-8">
@@ -142,7 +142,7 @@ export default function ClientKpiPanel({
             style={{ opacity: metricsLoading ? 0.55 : 1 }}
             aria-busy={metricsLoading}
           >
-            {reportingType === "RM" && (
+            {usesRmKpiLayout(reportingType) && (
               <div className="flex justify-end">
                 <button
                   type="button"
@@ -181,24 +181,27 @@ export default function ClientKpiPanel({
               </div>
             </KpiSection>
 
-            {reportingType === "RM" && (
+            {usesRmKpiLayout(reportingType) && (
               <KpiSection
                 title="Conversions"
-                footnote="Counts use unique leads per stage in the selected date range. Cost metrics are total spend divided by each conversion-stage unique lead count."
+                footnote="Borrowers are unique people in the funnel (cost per funded person). Transactions are each loan file — two loans on the same house count as two. Cost per funded transaction uses that count."
               >
                 <div className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(12.5rem,1fr))]">
                   <KpiCard label="Proposals Made" value={formatKpiValue(metrics.proposals_made, "int")} hint="Unique leads that reached the proposal stage or beyond (submitted/funded count too)." />
-                  <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} hint="Unique leads that reached the submission stage or beyond (funded count too)." />
-                  <KpiCard label="Funded Loans" value={formatKpiValue(metrics.funded_loans, "int")} accent hint="Unique leads with a funded loan — the deal closed." />
+                  <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} hint="Unique borrowers that reached the submission stage or beyond." />
+                  <KpiCard label="Funded Transactions" value={formatKpiValue(metrics.funded_deals, "int")} accent hint="Each loan file that funded in this range. Same borrower or same house, two loans = two transactions." />
+                  <KpiCard label="Unique Funded Borrowers" value={formatKpiValue(metrics.funded_loans, "int")} hint="Unique people with at least one funded loan — conversion / CAC grain." />
+                  <KpiCard label="Loan Volume" value={formatKpiValue(metrics.loan_volume, "money")} hint="Sum of loan size on funded transactions in this range." />
+                  <KpiCard label="Cost per Funded Transaction" value={formatKpiValue(metrics.cp_funded_deal, "money")} hint="Total Spend ÷ Funded Transactions." />
+                  <KpiCard label="Cost per Funded Borrower" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Unique Funded Borrowers." />
                   <KpiCard label="Cost per Proposal" value={formatKpiValue(metrics.cp_proposal_made, "money")} hint="Total Spend ÷ Proposals Made." />
-                  <KpiCard label="Cost per Submission" value={formatKpiValue(metrics.cp_submission_made, "money")} hint="Total Spend ÷ Submissions." />
-                  <KpiCard label="Cost per Funded" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Funded Loans." />
+                  <KpiCard label="Cost per Submission" value={formatKpiValue(metrics.cp_submission_made, "money")} hint="Total Spend ÷ unique submitted borrowers." />
                   {metrics.roas != null && (
                     <KpiCard
                       label="ROAS"
                       value={`${metrics.roas.toFixed(2)}x`}
                       accent
-                      hint="What they made (logged on funded loans) ÷ ad spend. Hidden until someone logs earnings."
+                      hint="What they made (logged on funded transactions) ÷ ad spend. Hidden until someone logs earnings."
                     />
                   )}
                 </div>

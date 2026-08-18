@@ -11,6 +11,7 @@ import {
   INGEST_SOURCE_TIMEZONE,
 } from '@/lib/time';
 import { onEventTouchpointHooks } from '@/lib/cs-touchpoint-rules';
+import { ensureDealFromConversionEvent } from '@/lib/loan-deals';
 import {
   OUTCOME_EVENT_TYPES,
   propagateBookingAgentToOutcomes,
@@ -523,6 +524,22 @@ export async function ingestWebhookEvent(
       });
     } catch (err) {
       console.error('[cs_touchpoints] event hook failed', err);
+    }
+
+    try {
+      await ensureDealFromConversionEvent(service, {
+        eventId: inserted.id,
+        clientId: client_id,
+        eventType: normalizedEventType,
+        occurredAt: occurredAtIso,
+        ghlContactId: ghl_contact_id,
+        leadName: lead_name,
+        leadPhone: lead_phone,
+        leadEmail: lead_email,
+        raw: payload,
+      });
+    } catch (err) {
+      console.error('[loan_deals] conversion event hook failed', err);
     }
   }
 

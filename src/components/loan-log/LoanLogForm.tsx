@@ -50,6 +50,7 @@ export default function LoanLogForm({ token }: Props) {
   const [newPhone, setNewPhone] = useState("");
   const [occurredOn, setOccurredOn] = useState(todayIso);
   const [loanSize, setLoanSize] = useState("");
+  const [transactionLabel, setTransactionLabel] = useState("");
   const [commission, setCommission] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -103,6 +104,7 @@ export default function LoanLogForm({ token }: Props) {
     setNewPhone("");
     setOccurredOn(todayIso());
     setLoanSize("");
+    setTransactionLabel("");
     setCommission("");
     setError(null);
     setDone(null);
@@ -129,6 +131,7 @@ export default function LoanLogForm({ token }: Props) {
           stage,
           occurred_on: occurredOn,
           loan_size: loanSize,
+          transaction_label: transactionLabel || undefined,
           commission_amount: stage === "funded" ? commission : undefined,
           cant_find: cantFind,
           lead_name: cantFind ? newName : picked?.lead_name,
@@ -185,7 +188,7 @@ export default function LoanLogForm({ token }: Props) {
             Logged
           </h1>
           <p style={{ color: WAIZ.muted }}>
-            {done.lead_name} — {loanLogStageLabel(done.stage)}.
+            {done.lead_name} — {loanLogStageLabel(done.stage)}. Same borrower, another transaction? Log it next.
           </p>
           <button
             type="button"
@@ -365,6 +368,21 @@ export default function LoanLogForm({ token }: Props) {
             required
           />
         </label>
+
+        {(stage === "submitted" || stage === "funded") && (
+          <label className="block space-y-2">
+            <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>Transaction</span>
+            <input
+              style={INPUT}
+              placeholder="Optional — 1st loan, cash-out, address"
+              value={transactionLabel}
+              onChange={e => setTransactionLabel(e.target.value)}
+            />
+            <span className="block text-xs" style={{ color: WAIZ.muted }}>
+              One submit per loan. Same house, two loans = two submits. Name it if two files are the same size the same day.
+            </span>
+          </label>
+        )}
 
         {stage === "funded" && (
           <label className="block space-y-2">

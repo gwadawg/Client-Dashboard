@@ -107,6 +107,8 @@ async function fetchFulfillmentMetrics(ctx: AuthContext, filters: DataChatFilter
       hand_raise_rate: m.hand_raise_rate,
       closed: m.closed,
       funded_loans: m.funded_loans,
+      funded_deals: m.funded_deals,
+      loan_volume: m.loan_volume,
     },
     cost: {
       ad_spend: m.ad_spend,

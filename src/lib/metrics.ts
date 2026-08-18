@@ -151,6 +151,14 @@ export type MetricsResult = {
   proposals_made: number;
   submissions_made: number;
   funded_loans: number;
+  /** Loan transactions that reached submitted (includes later-funded files dated in range). */
+  submitted_deals: number;
+  /** Loan transactions that funded in range — production volume, not unique borrowers. */
+  funded_deals: number;
+  /** SUM(loan_size) of funded deals in range. */
+  loan_volume: number;
+  /** Ad spend ÷ funded_deals. */
+  cp_funded_deal: number;
   cp_proposal_made: number;
   cp_submission_made: number;
   cp_loan_funded: number;
@@ -404,6 +412,10 @@ export function calculateMetrics(
     proposals_made,
     submissions_made,
     funded_loans,
+    submitted_deals: 0,
+    funded_deals: 0,
+    loan_volume: 0,
+    cp_funded_deal: 0,
     cp_proposal_made: proposals_made > 0 ? ad_spend / proposals_made : 0,
     cp_submission_made: submissions_made > 0 ? ad_spend / submissions_made : 0,
     cp_loan_funded: funded_loans > 0 ? ad_spend / funded_loans : 0,
@@ -441,6 +453,28 @@ export function attachCommissionRoas(
   const total = Number.isFinite(commissionTotal) ? Math.max(0, commissionTotal) : 0;
   const roas = total > 0 && metrics.ad_spend > 0 ? total / metrics.ad_spend : null;
   return { ...metrics, commission_total: total, roas };
+}
+
+export function attachLoanDealMetrics(
+  metrics: MetricsResult,
+  deals: {
+    submitted_deals: number;
+    funded_deals: number;
+    loan_volume: number;
+    commission_total: number;
+  },
+): MetricsResult {
+  const funded_deals = Math.max(0, Number(deals.funded_deals) || 0);
+  const submitted_deals = Math.max(0, Number(deals.submitted_deals) || 0);
+  const loan_volume = Math.max(0, Number(deals.loan_volume) || 0);
+  const withRoas = attachCommissionRoas(metrics, deals.commission_total);
+  return {
+    ...withRoas,
+    submitted_deals,
+    funded_deals,
+    loan_volume,
+    cp_funded_deal: funded_deals > 0 ? withRoas.ad_spend / funded_deals : 0,
+  };
 }
 
 function utcDateKey(iso: string): string {

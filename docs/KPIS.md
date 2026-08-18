@@ -38,10 +38,13 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 | **Total Conversations** | Meaningful completed calls (2 min+) plus client-claimed conversations | `COUNT(dials WHERE is_conversation = true) + COUNT(claimed events)` | Conversations / Claimed tab |
 | **Proposals Made** | Reached proposal stage **or beyond** | `COUNT(unique leads with proposal_made OR submission_made OR loan_funded)` | MLO / Pipeline |
 | **Submissions** | Reached submission stage **or beyond** | `COUNT(unique leads with submission_made OR loan_funded)` | MLO `Submitted` |
-| **Funded Loans** | Deal closed; client received funds | `COUNT(unique leads with loan_funded)` | MLO `Closed` |
+| **Funded Loans** | Unique borrowers who funded (conversion grain) | `COUNT(unique leads with loan_funded)` | MLO `Closed` |
+| **Funded Transactions** | Each loan file that funded (two loans on the same house count as two) | `COUNT(loan_deals WHERE stage = funded)` | Loan log form + pipeline |
+| **Loan Volume** | Production volume | `SUM(loan_deals.loan_size)` for funded transactions in range | Loan log |
 | **Cost per Proposal** | Spend efficiency at proposal stage | `Ad Spend ÷ Proposals Made` | Spend + Pipeline |
 | **Cost per Submission** | Spend efficiency at submission stage | `Ad Spend ÷ Submissions` | Spend + Pipeline |
-| **Cost per Funded Loan** | Spend efficiency at funded stage | `Ad Spend ÷ Funded Loans` | Spend + Pipeline |
+| **Cost per Funded Borrower** | Spend efficiency at unique-person funded | `Ad Spend ÷ Funded Loans` | Spend + Pipeline |
+| **Cost per Funded Transaction** | Spend efficiency at loan-file funded | `Ad Spend ÷ Funded Transactions` | Spend + `loan_deals` |
 
 ### Formula notes
 
@@ -55,6 +58,7 @@ These are the headline metrics reported to clients (formerly tracked in the Waiz
 - **Reschedules:** When a lead rebooks, ingest upserts by the same GHL `external_id` (time change) or inserts a new booking and auto-marks prior **pending** bookings for that contact as `appointment_rescheduled` (new GHL id / cancel+rebook). Optional Make field: `previous_external_id`. Absolute booked still counts each book event; **Appts to take place** subtracts rescheduled so superseded slots leave the pending backlog.
 - **Appts to take place:** `Booked − Shows − No Shows − Cancellations − Rescheduled − LO bailed` (pending / unresolved slots).
 - **Conversion funnel rollup:** Reaching a later stage implies every earlier stage. A lead with only `loan_funded` still counts toward Submissions and Proposals; a lead with only `submission_made` still counts toward Proposals. Implied stages are derived at read time (in `src/lib/metrics.ts`) — we do **not** insert synthetic proposal/submission rows, and each lead is counted once per stage.
+- **Person vs transaction grain:** Unique funded / submissions / proposals stay **one count per borrower** (`events`). Each loan file is a row in `loan_deals`. Same borrower, two loans (even on the same house) = +1 unique funded borrower and +2 funded transactions. Do not combine dollar amounts onto one close. Log each transaction on the loan-log form (optional name if two files are the same size the same day).
 - **Qualified / Hot:** Manually tagged in GHL or the setter team — there is no automatic qualification rule.
 - **Total conversations:** Do not count failed or zero-duration calls. Use **completed** status and **duration > 120 seconds** (2 minutes), matching the Daily Summary definition. `claimed` events also count because they represent the client manually speaking with or messaging a lead outside the setter workflow.
 

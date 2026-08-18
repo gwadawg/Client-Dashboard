@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { normalizePhone } from '@/lib/contact-key';
 import {
+  insertLoanDeal,
+  loadContactLoanDeals,
+  normalizeTransactionLabel,
+  promoteLoanDeal,
+} from '@/lib/loan-deals';
+import {
   isLoanLogStage,
   parseLoanLogDate,
   parseMoney,
@@ -133,6 +139,10 @@ export async function POST(
     }
   }
 
+  const transactionLabel = normalizeTransactionLabel(
+    body.transaction_label ?? body.property_label,
+  );
+
   try {
     const existing = await loadExistingEvents(
       service,
@@ -141,12 +151,13 @@ export async function POST(
       leadPhone,
     );
 
-    const plan = planLoanLogEvents({
+    const preview = planLoanLogEvents({
       stage,
       createLead,
       occurredDate,
       loanSize,
       commissionAmount,
+      transactionLabel,
       clientId: client.client_id,
       leadName,
       leadPhone,
@@ -154,16 +165,71 @@ export async function POST(
       existing,
     });
 
-    if (plan.rows.length > 0) {
-      const { error } = await service.from('events').insert(plan.rows);
+    const existingDeals = await loadContactLoanDeals(service, client.client_id, preview.ghlContactId);
+    const planned = planLoanLogEvents({
+      stage,
+      createLead,
+      occurredDate,
+      loanSize,
+      commissionAmount,
+      transactionLabel,
+      clientId: client.client_id,
+      leadName,
+      leadPhone,
+      ghlContactId: preview.ghlContactId,
+      existing,
+      existingDeals,
+    });
+
+    if (planned.rows.length > 0) {
+      const { error } = await service.from('events').insert(planned.rows);
       if (error) {
-        return NextResponse.json({ error: "Couldn't save. Try again." }, { status: 500 });
+        if (error.code === '23505') {
+          // Person already has this conversion stage — continue to the deal write.
+        } else {
+          return NextResponse.json({ error: "Couldn't save. Try again." }, { status: 500 });
+        }
       }
     }
 
-    if (plan.duplicateClicked) {
+    if (planned.deal.action === 'promote' && planned.deal.promoteId) {
+      await promoteLoanDeal(service, planned.deal.promoteId, {
+        funded_at: planned.deal.fundedAt ?? planned.deal.submittedAt,
+        loan_size: loanSize,
+        commission_amount: commissionAmount,
+        transaction_label: transactionLabel,
+      });
+    } else if (planned.deal.action === 'insert') {
+      const written = await insertLoanDeal(service, {
+        client_id: client.client_id,
+        ghl_contact_id: planned.ghlContactId,
+        lead_name: leadName,
+        lead_phone: leadPhone,
+        transaction_label: transactionLabel,
+        stage: planned.deal.stage,
+        submitted_at: planned.deal.submittedAt,
+        funded_at: planned.deal.fundedAt,
+        loan_size: loanSize,
+        commission_amount: planned.deal.stage === 'funded' ? commissionAmount : null,
+        source: 'loan_log_form',
+        raw: {
+          source: 'loan_log_form',
+          loan_size: loanSize,
+          ...(transactionLabel ? { transaction_label: transactionLabel } : {}),
+          ...(commissionAmount != null ? { commission_amount: commissionAmount } : {}),
+        },
+      });
+      if ('duplicate' in written) {
+        return NextResponse.json(
+          { error: 'Already logged for this day.', duplicate: true, lead_name: leadName, stage },
+          { status: 409 },
+        );
+      }
+    }
+
+    if (planned.duplicateClicked) {
       return NextResponse.json(
-        { error: 'Already logged for this day.', duplicate: true, lead_name: leadName, stage },
+        { error: 'Already logged for this day. If this is another transaction, add a name or a different loan size.', duplicate: true, lead_name: leadName, stage },
         { status: 409 },
       );
     }

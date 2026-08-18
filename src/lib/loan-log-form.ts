@@ -1,6 +1,12 @@
 import { randomBytes } from 'crypto';
 import { getAppBaseUrl } from '@/lib/app-url';
 import { buildContactKey, normalizePhone } from '@/lib/contact-key';
+import {
+  findDuplicateDeal,
+  findPromotableDeal,
+  type LoanDealRecord,
+  type LoanDealStage,
+} from '@/lib/loan-deals';
 import type { createServiceClient } from '@/lib/supabase';
 
 type Service = ReturnType<typeof createServiceClient>;
@@ -42,17 +48,28 @@ export type PlanLoanLogInput = {
   occurredDate: string;
   loanSize: number;
   commissionAmount: number | null;
+  transactionLabel?: string | null;
   clientId: string;
   leadName: string;
   leadPhone: string;
   ghlContactId: string | null;
   existing: LoanLogExistingEvent[];
+  existingDeals?: LoanDealRecord[];
+};
+
+export type LoanLogDealPlan = {
+  action: 'insert' | 'promote' | 'duplicate' | 'none';
+  stage: LoanDealStage;
+  submittedAt: string;
+  fundedAt: string | null;
+  promoteId: string | null;
 };
 
 export type PlanLoanLogResult = {
   rows: LoanLogEventRow[];
   duplicateClicked: boolean;
   ghlContactId: string;
+  deal: LoanLogDealPlan;
 };
 
 export function isLoanLogStage(value: unknown): value is LoanLogStage {
@@ -119,13 +136,54 @@ export function planLoanLogEvents(input: PlanLoanLogInput): PlanLoanLogResult {
   const hasConversation = hasType(existing, CONVERSATION_TYPES);
   const hasProposal = hasType(existing, PROPOSAL_TYPES);
   const hasSubmission = hasType(existing, SUBMISSION_TYPES);
-  const clickedTypes =
-    input.stage === 'funded'
-      ? FUNDED_TYPES
-      : input.stage === 'submitted'
-        ? SUBMISSION_TYPES
-        : PROPOSAL_TYPES;
-  const duplicateClicked = hasTypeOnDate(existing, clickedTypes, input.occurredDate);
+  const hasFunded = hasType(existing, FUNDED_TYPES);
+  const existingDeals = input.existingDeals ?? [];
+
+  const dealStage: LoanDealStage | null =
+    input.stage === 'funded' ? 'funded' : input.stage === 'submitted' ? 'submitted' : null;
+  const match = dealStage
+    ? {
+        occurredDate: input.occurredDate,
+        loanSize: input.loanSize,
+        transactionLabel: input.transactionLabel ?? null,
+        stage: dealStage,
+      }
+    : null;
+  const duplicateDeal = match ? findDuplicateDeal(existingDeals, match) : null;
+  const promote =
+    dealStage === 'funded' && match && !duplicateDeal
+      ? findPromotableDeal(existingDeals, match)
+      : null;
+
+  const deal: LoanLogDealPlan = !dealStage
+    ? { action: 'none', stage: 'submitted', submittedAt: occurredAt, fundedAt: null, promoteId: null }
+    : duplicateDeal
+      ? {
+          action: 'duplicate',
+          stage: dealStage,
+          submittedAt: occurredAt,
+          fundedAt: dealStage === 'funded' ? occurredAt : null,
+          promoteId: null,
+        }
+      : promote
+        ? {
+            action: 'promote',
+            stage: 'funded',
+            submittedAt: promote.submitted_at,
+            fundedAt: occurredAt,
+            promoteId: promote.id,
+          }
+        : {
+            action: 'insert',
+            stage: dealStage,
+            submittedAt: occurredAt,
+            fundedAt: dealStage === 'funded' ? occurredAt : null,
+            promoteId: null,
+          };
+
+  const duplicateClicked =
+    deal.action === 'duplicate' ||
+    (input.stage === 'proposal' && hasTypeOnDate(existing, PROPOSAL_TYPES, input.occurredDate));
 
   const rows: LoanLogEventRow[] = [];
 
@@ -145,8 +203,10 @@ export function planLoanLogEvents(input: PlanLoanLogInput): PlanLoanLogResult {
     loan_size: input.loanSize,
   };
 
+  // Person grain: at most one conversion event per stage (unique index). Extra
+  // properties are stored as loan_deals, not a second loan_funded row.
   if (input.stage === 'proposal') {
-    if (!duplicateClicked) {
+    if (!hasProposal && !hasTypeOnDate(existing, PROPOSAL_TYPES, input.occurredDate)) {
       push('proposal_made', moneyRaw);
     }
   } else if (!hasProposal) {
@@ -154,14 +214,14 @@ export function planLoanLogEvents(input: PlanLoanLogInput): PlanLoanLogResult {
   }
 
   if (input.stage === 'submitted') {
-    if (!duplicateClicked) {
+    if (!hasSubmission) {
       push('submission_made', moneyRaw);
     }
   } else if (input.stage === 'funded' && !hasSubmission) {
     push('submission_made', moneyRaw);
   }
 
-  if (input.stage === 'funded' && !duplicateClicked) {
+  if (input.stage === 'funded' && !hasFunded) {
     const fundedRaw = { ...moneyRaw };
     if (input.commissionAmount != null) {
       fundedRaw.commission_amount = input.commissionAmount;
@@ -169,7 +229,7 @@ export function planLoanLogEvents(input: PlanLoanLogInput): PlanLoanLogResult {
     push('loan_funded', fundedRaw);
   }
 
-  return { rows, duplicateClicked, ghlContactId };
+  return { rows, duplicateClicked, ghlContactId, deal };
 }
 
 export function extractCommissionTotal(raws: unknown[]): number {

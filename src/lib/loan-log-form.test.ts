@@ -104,21 +104,84 @@ describe('planLoanLogEvents', () => {
     assert.ok(rows.some(r => r.event_type === 'loan_funded'));
   });
 
-  it('same-day funded duplicate skips a second funded but still backfills gaps', () => {
+  it('second transaction for an already-funded borrower does not write another loan_funded', () => {
     const existing: LoanLogExistingEvent[] = [
       { event_type: 'loan_funded', occurred_at: '2026-08-14T08:00:00.000Z' },
     ];
-    const { rows, duplicateClicked } = planLoanLogEvents({
+    const { rows, duplicateClicked, deal } = planLoanLogEvents({
       ...base,
       stage: 'funded',
       createLead: false,
+      loanSize: 200000,
       existing,
+      existingDeals: [
+        {
+          id: 'd1',
+          stage: 'funded',
+          submitted_at: '2026-08-14T12:00:00.000Z',
+          funded_at: '2026-08-14T12:00:00.000Z',
+          loan_size: 350000,
+          commission_amount: null,
+          transaction_label: null,
+          ghl_contact_id: 'ghl-1',
+        },
+      ],
     });
-    assert.equal(duplicateClicked, true);
+    assert.equal(duplicateClicked, false);
+    assert.equal(deal.action, 'insert');
     assert.equal(rows.some(r => r.event_type === 'loan_funded'), false);
     assert.ok(rows.some(r => r.event_type === 'claimed'));
     assert.ok(rows.some(r => r.event_type === 'proposal_made'));
     assert.ok(rows.some(r => r.event_type === 'submission_made'));
+  });
+
+  it('same person, same size, same day is a duplicate deal', () => {
+    const { rows, duplicateClicked, deal } = planLoanLogEvents({
+      ...base,
+      stage: 'funded',
+      createLead: false,
+      existing: [{ event_type: 'loan_funded', occurred_at: '2026-08-14T08:00:00.000Z' }],
+      existingDeals: [
+        {
+          id: 'd1',
+          stage: 'funded',
+          submitted_at: '2026-08-14T12:00:00.000Z',
+          funded_at: '2026-08-14T12:00:00.000Z',
+          loan_size: 350000,
+          commission_amount: null,
+          transaction_label: null,
+          ghl_contact_id: 'ghl-1',
+        },
+      ],
+    });
+    assert.equal(duplicateClicked, true);
+    assert.equal(deal.action, 'duplicate');
+    assert.equal(rows.some(r => r.event_type === 'loan_funded'), false);
+  });
+
+  it('promotes a matching submitted deal when funded', () => {
+    const { deal, rows } = planLoanLogEvents({
+      ...base,
+      stage: 'funded',
+      createLead: false,
+      existing: [{ event_type: 'submission_made', occurred_at: '2026-08-01T12:00:00.000Z' }],
+      existingDeals: [
+        {
+          id: 'open-1',
+          stage: 'submitted',
+          submitted_at: '2026-08-01T12:00:00.000Z',
+          funded_at: null,
+          loan_size: 350000,
+          commission_amount: null,
+          transaction_label: 'cash-out',
+          ghl_contact_id: 'ghl-1',
+        },
+      ],
+      transactionLabel: 'cash-out',
+    });
+    assert.equal(deal.action, 'promote');
+    assert.equal(deal.promoteId, 'open-1');
+    assert.ok(rows.some(r => r.event_type === 'loan_funded'));
   });
 
   it('proposal only backfills conversation, not submitted or funded', () => {
@@ -169,9 +232,19 @@ describe('loan log parsers', () => {
 
 describe('attachCommissionRoas', () => {
   it('hides ROAS when commission is missing and computes revenue / spend when present', async () => {
-    const { attachCommissionRoas, calculateMetrics } = await import('./metrics');
+    const { attachCommissionRoas, attachLoanDealMetrics, calculateMetrics } = await import('./metrics');
     const base = calculateMetrics([], [{ amount: 1000, platform: 'meta' }]);
     assert.equal(attachCommissionRoas(base, 0).roas, null);
     assert.equal(attachCommissionRoas(base, 2500).roas, 2.5);
+    const withDeals = attachLoanDealMetrics(base, {
+      submitted_deals: 3,
+      funded_deals: 2,
+      loan_volume: 500000,
+      commission_total: 2500,
+    });
+    assert.equal(withDeals.funded_deals, 2);
+    assert.equal(withDeals.cp_funded_deal, 500);
+    assert.equal(withDeals.roas, 2.5);
+    assert.equal(withDeals.funded_loans, 0);
   });
 });

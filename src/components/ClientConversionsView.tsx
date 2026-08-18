@@ -196,10 +196,13 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
       <KpiSection title="Pipeline outcomes">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard label="Proposals Made" value={formatKpiValue(metrics.proposals_made, "int")} hint="Unique leads at proposal stage or beyond." />
-          <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} hint="Unique leads submitted or funded." />
-          <KpiCard label="Funded Loans" value={formatKpiValue(metrics.funded_loans, "int")} accent hint="Deals that closed and funded." />
+          <KpiCard label="Submissions" value={formatKpiValue(metrics.submissions_made, "int")} hint="Unique borrowers submitted or funded." />
+          <KpiCard label="Funded Transactions" value={formatKpiValue(metrics.funded_deals, "int")} accent hint="Each loan file that funded. Same borrower or same house, two loans = two transactions." />
+          <KpiCard label="Unique Funded Borrowers" value={formatKpiValue(metrics.funded_loans, "int")} hint="Unique people with at least one funded loan." />
+          <KpiCard label="Loan Volume" value={formatKpiValue(metrics.loan_volume, "money")} hint="Sum of loan size on funded transactions." />
           <KpiCard label="Total Spend" value={formatKpiValue(metrics.ad_spend, "money")} hint="Meta ad spend in this range." />
-          <KpiCard label="Cost per Funded" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Funded Loans." />
+          <KpiCard label="Cost per Funded Transaction" value={formatKpiValue(metrics.cp_funded_deal, "money")} hint="Total Spend ÷ Funded Transactions." />
+          <KpiCard label="Cost per Funded Borrower" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Unique Funded Borrowers." />
           {metrics.roas != null && (
             <KpiCard
               label="ROAS"
