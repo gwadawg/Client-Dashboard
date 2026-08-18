@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ViewHub from "../nav/ViewHub";
 import WorkspaceSubTabs from "./WorkspaceSubTabs";
 import WorkspaceFilterBar from "./WorkspaceFilterBar";
@@ -17,6 +17,7 @@ import {
 } from "@/lib/nav";
 import { isKpiRoiSub, type ConversionStage } from "@/lib/conversion-explorer";
 import type { DashboardClient, DashboardFilters } from "@/lib/use-dashboard-filters";
+import WorkLogComposer from "../WorkLogComposer";
 
 const DialAnalytics = dynamic(() => import("../DialAnalytics"));
 const HeatMap = dynamic(() => import("../HeatMap"));
@@ -71,6 +72,12 @@ export default function ClientWorkspaceHub({
 
   const nestedTabs = CLIENT_WORKSPACE_SUBTABS[activeTab];
   const activeSub = resolveWorkspaceSubTab(activeTab, sub);
+  const [logOpen, setLogOpen] = useState(false);
+  const selected = filters.selectedClient;
+
+  useEffect(() => {
+    if (!selected) setLogOpen(false);
+  }, [selected]);
 
   if (!visibleTabs.length) {
     return (
@@ -92,6 +99,7 @@ export default function ClientWorkspaceHub({
         }
         railOpen={railOpen}
         onToggleRail={onToggleRail}
+        onLogWork={selected ? () => setLogOpen(true) : undefined}
       />
 
       <div className="flex gap-6 pt-6 min-w-0">
@@ -163,6 +171,45 @@ export default function ClientWorkspaceHub({
           />
         )}
       </div>
+
+      {logOpen && selected && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(2,8,20,0.72)" }}
+          onClick={() => setLogOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl p-5"
+            style={{
+              background: "#0a1628",
+              border: "1px solid rgba(255,255,255,0.1)",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-100">Log work</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{selected.name}</p>
+              </div>
+              <button
+                type="button"
+                className="text-xs text-slate-500"
+                onClick={() => setLogOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <WorkLogComposer
+              clientId={selected.id}
+              reportingType={selected.reporting_type}
+              periodStart={filters.dateStart}
+              periodEnd={filters.dateEnd}
+              onSaved={() => setLogOpen(false)}
+              onCancel={() => setLogOpen(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

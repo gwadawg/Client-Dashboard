@@ -8,7 +8,7 @@ import {
   type ActionLogRow,
 } from '@/lib/client-health-interventions';
 import { createClientActionLog } from '@/lib/client-action-log-write';
-import { isBetWorkType } from '@/lib/client-work-log';
+import { isBetWorkType, LOG_WORK_PERMISSIONS } from '@/lib/client-work-log';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { usesCallCenterKpiLayout } from '@/lib/reporting-types';
 import { fetchCombinedSpendForMetrics, fetchMetaClicksSum } from '@/lib/spend';
@@ -17,7 +17,7 @@ import type { EventRow } from '@/lib/metrics';
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requireAnyPermission(ctx, ['client_health', 'admin_clients']);
+  const denied = requireAnyPermission(ctx, ['client_health', 'admin_clients', ...LOG_WORK_PERMISSIONS]);
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, 'client_health');
+  const denied = requireAnyPermission(ctx, [...LOG_WORK_PERMISSIONS]);
   if (denied) return denied;
 
   const body = await req.json().catch(() => null);

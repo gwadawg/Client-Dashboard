@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { AccountPlanTask, AccountWeekPlan } from "@/lib/account-week-plans";
+import type { AccountPlanTask, AccountWeekPlan, AdhocWorkLog } from "@/lib/account-week-plans";
 import { weekStartMondayContaining } from "@/lib/account-week-plans";
 import { addDaysToYmd } from "@/lib/team-meetings";
 import { todayYmdInCallCenterTz } from "@/lib/time";
@@ -39,6 +39,8 @@ export default function AccountWeekPlansWeekList({
   const [completeType, setCompleteType] = useState<WorkType>("cadence");
   const [completeMetric, setCompleteMetric] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [reflectionDraft, setReflectionDraft] = useState<Record<string, string>>({});
+  const [reflectBusy, setReflectBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,6 +54,11 @@ export default function AccountWeekPlansWeekList({
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "Failed");
       setPlans(d.plans ?? []);
+      const drafts: Record<string, string> = {};
+      for (const plan of (d.plans ?? []) as AccountWeekPlan[]) {
+        drafts[plan.id] = plan.reflection ?? "";
+      }
+      setReflectionDraft(drafts);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -88,6 +95,25 @@ export default function AccountWeekPlansWeekList({
     }
   }
 
+  async function saveReflection(plan: AccountWeekPlan) {
+    setReflectBusy(plan.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/account-week-plans/${plan.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reflection: reflectionDraft[plan.id] ?? "" }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "Failed");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setReflectBusy(null);
+    }
+  }
+
   function statusColor(s: string) {
     if (s === "approved") return "#34d399";
     if (s === "pending") return "#fbbf24";
@@ -103,7 +129,7 @@ export default function AccountWeekPlansWeekList({
             Week plans
           </h4>
           <p className="text-xs text-slate-500 mt-0.5">
-            Review execution — open vs done.
+            Review execution — planned tasks, ad-hoc logs, reflection.
           </p>
         </div>
         {!originMeetingId && (
@@ -161,6 +187,50 @@ export default function AccountWeekPlansWeekList({
             <span className="text-[10px] text-slate-500">{p.week_start}</span>
           </div>
           <p className="text-xs text-slate-400">{p.why}</p>
+
+          {(p.adhoc_logs ?? []).length > 0 && (
+            <div className="rounded-md px-2 py-2" style={{ background: "rgba(251,191,36,0.06)" }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-400/80 mb-1">
+                Ad-hoc this week
+              </p>
+              <ul className="space-y-1">
+                {(p.adhoc_logs ?? []).map((log: AdhocWorkLog) => (
+                  <li key={log.id} className="text-[11px] text-slate-300">
+                    <span className="text-slate-500">
+                      {WORK_TYPE_META[parseWorkType(log.work_type, "cadence")].label}
+                    </span>
+                    {" · "}
+                    {log.title}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {p.status !== "rejected" && (
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Thursday reflection
+              </label>
+              <textarea
+                rows={2}
+                placeholder="What we learned — keep / kill / change next week"
+                value={reflectionDraft[p.id] ?? ""}
+                onChange={e =>
+                  setReflectionDraft(prev => ({ ...prev, [p.id]: e.target.value }))
+                }
+                style={fieldStyle}
+              />
+              <button
+                type="button"
+                disabled={reflectBusy === p.id}
+                className="text-[10px] text-sky-400"
+                onClick={() => saveReflection(p)}
+              >
+                {reflectBusy === p.id ? "Saving…" : "Save reflection"}
+              </button>
+            </div>
+          )}
 
           <ul className="space-y-2">
             {(p.tasks ?? []).map((t: AccountPlanTask) => (

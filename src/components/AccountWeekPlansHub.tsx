@@ -28,9 +28,10 @@ export default function AccountWeekPlansHub() {
       <div>
         <h2 className="text-lg font-semibold text-slate-100">Account Work</h2>
         <p className="text-sm text-slate-400 mt-1">
-          Weekly plans per client: tasks assigned and scheduled. Founder approves
-          every plan. Circle back on deployed work by day; optional Client Success
-          promote still only if you opt in on complete.
+          Weekly plans per client: intent before work, then founder approval.
+          Completing an approved task always files the work log. Ad-hoc
+          findings, cadence, and bets are logged from Client Workspace —
+          they do not wait in this queue.
         </p>
       </div>
 

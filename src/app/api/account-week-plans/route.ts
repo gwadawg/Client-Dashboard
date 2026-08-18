@@ -16,6 +16,7 @@ import {
 import {
   PLAN_SELECT,
   TASK_SELECT,
+  attachAdhocLogsForPlans,
   loadTasksForPlans,
   nestTasks,
   requirePlanAccess,
@@ -347,6 +348,7 @@ export async function GET(req: Request) {
         rows.map(r => r.id),
       );
       rows = nestTasks(rows, tasks);
+      rows = await attachAdhocLogsForPlans(ctx.service, rows);
     } catch (e) {
       return NextResponse.json(
         { error: e instanceof Error ? e.message : 'Failed to load tasks' },

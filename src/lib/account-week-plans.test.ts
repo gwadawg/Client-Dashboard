@@ -3,15 +3,20 @@ import { describe, it } from 'node:test';
 import {
   canApprovePlans,
   canCompleteTask,
+  canPatchPlanReflection,
   canTransitionPlan,
   filterActiveWorkTasks,
+  filterAdhocLogsForPlanWeek,
   isAccountPlanTaskStatus,
   isAccountWeekPlanStatus,
+  isReflectionOnlyPatch,
   isTaskOverdue,
   softDuplicatePlanWarn,
   weekPlanModeForTemplateSlug,
   weekStartMondayContaining,
 } from './account-week-plans';
+import { hasPermission } from './permissions';
+import { LOG_WORK_PERMISSIONS } from './client-work-log';
 
 describe('account-week-plans', () => {
   it('weekStartMondayContaining returns Monday for mid-week and Sunday', () => {
@@ -134,6 +139,75 @@ describe('account-week-plans', () => {
         scheduledFor: '2026-08-06',
         todayYmd: '2026-08-06',
       }),
+      false,
+    );
+  });
+
+  it('isReflectionOnlyPatch ignores empty extra keys', () => {
+    assert.equal(isReflectionOnlyPatch({ reflection: 'Keep the offer' }), true);
+    assert.equal(isReflectionOnlyPatch({ reflection: 'Keep', why: 'new why' }), false);
+    assert.equal(isReflectionOnlyPatch({ why: 'x' }), false);
+  });
+
+  it('canPatchPlanReflection blocks rejected plans', () => {
+    assert.equal(canPatchPlanReflection('approved').ok, true);
+    assert.equal(canPatchPlanReflection('pending').ok, true);
+    assert.equal(canPatchPlanReflection('rejected').ok, false);
+  });
+
+  it('filterAdhocLogsForPlanWeek drops linked tasks and other weeks', () => {
+    const logs = [
+      {
+        id: 'linked',
+        client_id: 'c1',
+        title: 'From plan',
+        work_type: 'cadence',
+        change_date: '2026-08-05',
+        planned_date: null,
+        created_at: '2026-08-05T12:00:00.000Z',
+        status: 'in_progress',
+      },
+      {
+        id: 'adhoc',
+        client_id: 'c1',
+        title: 'Killed ads',
+        work_type: 'cadence',
+        change_date: '2026-08-06',
+        planned_date: null,
+        created_at: '2026-08-06T12:00:00.000Z',
+        status: 'in_progress',
+      },
+      {
+        id: 'other-week',
+        client_id: 'c1',
+        title: 'Last week',
+        work_type: 'finding',
+        change_date: '2026-07-28',
+        planned_date: null,
+        created_at: '2026-07-28T12:00:00.000Z',
+        status: 'in_progress',
+      },
+    ];
+    const adhoc = filterAdhocLogsForPlanWeek(logs, {
+      clientId: 'c1',
+      weekStart: '2026-08-03',
+      linkedLogIds: ['linked'],
+    });
+    assert.equal(adhoc.length, 1);
+    assert.equal(adhoc[0].id, 'adhoc');
+  });
+});
+
+describe('log-work permissions', () => {
+  it('client_workspace without client_health can log work', () => {
+    const workspaceOnly = { isOwner: false, allowedPermissions: ['client_workspace'] };
+    assert.equal(
+      LOG_WORK_PERMISSIONS.some(key => hasPermission(key, workspaceOnly)),
+      true,
+    );
+    const agentsOnly = { isOwner: false, allowedPermissions: ['agents'] };
+    assert.equal(
+      LOG_WORK_PERMISSIONS.some(key => hasPermission(key, agentsOnly)),
       false,
     );
   });

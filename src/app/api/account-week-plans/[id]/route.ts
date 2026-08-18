@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import {
+  canPatchPlanReflection,
   canTransitionPlan,
   isAccountWeekPlanStatus,
+  isReflectionOnlyPatch,
   type AccountWeekPlan,
   type AccountWeekPlanSeverity,
 } from '@/lib/account-week-plans';
 import {
   PLAN_SELECT,
+  attachAdhocLogsForPlans,
   loadTasksForPlans,
   nestTasks,
   requirePlanAccess,
@@ -50,13 +53,13 @@ export async function GET(_req: Request, routeCtx: RouteCtx) {
 
   try {
     const tasks = await loadTasksForPlans(ctx.service, [plan.id]);
+    const nested = nestTasks(
+      [{ ...plan, client_name: (client as { name?: string } | null)?.name ?? null }],
+      tasks,
+    );
+    const [withAdhoc] = await attachAdhocLogsForPlans(ctx.service, nested);
     return NextResponse.json({
-      plan: {
-        ...nestTasks(
-          [{ ...plan, client_name: (client as { name?: string } | null)?.name ?? null }],
-          tasks,
-        )[0],
-      },
+      plan: withAdhoc,
       can_approve: userCanApprovePlans(ctx),
     });
   } catch (e) {
@@ -93,6 +96,26 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
 
   const row = existing as AccountWeekPlan;
   const now = new Date().toISOString();
+
+  if (isReflectionOnlyPatch(body)) {
+    const allowed = canPatchPlanReflection(row.status);
+    if (!allowed.ok) {
+      return NextResponse.json({ error: allowed.error }, { status: 400 });
+    }
+    const reflection =
+      typeof body.reflection === 'string' ? body.reflection.trim() || null : null;
+    const { data: updated, error: updErr } = await ctx.service
+      .from('account_week_plans')
+      .update({ reflection, updated_at: now })
+      .eq('id', id)
+      .select(PLAN_SELECT)
+      .single();
+    if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
+    const tasks = await loadTasksForPlans(ctx.service, [id]);
+    const nested = nestTasks([updated as AccountWeekPlan], tasks);
+    const [plan] = await attachAdhocLogsForPlans(ctx.service, nested);
+    return NextResponse.json({ plan });
+  }
 
   if (body.status != null) {
     if (!isAccountWeekPlanStatus(body.status)) {
@@ -189,6 +212,10 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
   }
   if (typeof body.success_signal === 'string') {
     patch.success_signal = body.success_signal.trim() || null;
+  }
+  if (typeof body.reflection === 'string' || body.reflection === null) {
+    patch.reflection =
+      typeof body.reflection === 'string' ? body.reflection.trim() || null : null;
   }
   if (typeof body.week_start === 'string' && /^\d{4}-\d{2}-\d{2}/.test(body.week_start)) {
     patch.week_start = body.week_start.slice(0, 10);

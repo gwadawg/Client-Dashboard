@@ -1161,7 +1161,7 @@ function TeamMeetingRunbook({
             style={{ border: "1px solid rgba(56,189,248,0.2)", background: "rgba(14,116,144,0.08)" }}
           >
             <h4 className="text-xs font-semibold uppercase tracking-wide text-sky-400/90">
-              Account week plans (new)
+              Account week plans
             </h4>
             {!locked && <AccountWeekPlanForm originMeetingId={row.id} compact />}
             {locked && (
@@ -1176,7 +1176,7 @@ function TeamMeetingRunbook({
             style={{ border: "1px solid rgba(56,189,248,0.2)", background: "rgba(14,116,144,0.08)" }}
           >
             <h4 className="text-xs font-semibold uppercase tracking-wide text-sky-400/90 mb-2">
-              Account week plans (new)
+              This week&apos;s plans and reflections
             </h4>
             <AccountWeekPlansWeekList />
           </section>

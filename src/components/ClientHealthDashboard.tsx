@@ -292,6 +292,7 @@ export default function ClientHealthDashboard(_props: Props) {
     follow_up_overdue: 0,
   });
   const [pendingInterventions, setPendingInterventions] = useState<PendingIntervention[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/client-actions", {
@@ -310,6 +311,7 @@ export default function ClientHealthDashboard(_props: Props) {
     type Bundle = {
       clients?: typeof rows;
       maturity?: typeof maturity;
+      error?: string;
       summary?: {
         act_now?: number;
         monitor?: number;
@@ -322,6 +324,12 @@ export default function ClientHealthDashboard(_props: Props) {
     };
 
     const apply = (d: Bundle) => {
+      if (d.error && !d.clients) {
+        setLoadError(d.error);
+        setRows([]);
+        return;
+      }
+      setLoadError(null);
       setRows(d.clients ?? []);
       setMaturity(d.maturity ?? null);
       if (d.summary) {
@@ -357,7 +365,11 @@ export default function ClientHealthDashboard(_props: Props) {
       .then(d => {
         if (!ac.signal.aborted) apply(d);
       })
-      .catch(() => undefined)
+      .catch(err => {
+        if (!ac.signal.aborted) {
+          setLoadError(err instanceof Error ? err.message : "Failed to load client health");
+        }
+      })
       .finally(() => {
         if (!ac.signal.aborted) setLoading(false);
       });
@@ -676,6 +688,14 @@ export default function ClientHealthDashboard(_props: Props) {
 
   return (
     <div className="space-y-6 max-w-[1400px]">
+      {loadError && (
+        <div
+          className="rounded-xl px-4 py-3 text-sm"
+          style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#fca5a5" }}
+        >
+          Could not load Client Success: {loadError}
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
         <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>
@@ -1067,7 +1087,9 @@ export default function ClientHealthDashboard(_props: Props) {
               {sorted.length === 0 ? (
                 <tr>
                   <td colSpan={tableHeaders.length} className="px-4 py-12 text-center" style={{ color: "#334155" }}>
-                    No clients match this filter for the selected period.
+                    {loadError
+                      ? "Client health failed to load — see the error above."
+                      : "No clients match this filter for the selected period."}
                   </td>
                 </tr>
               ) : (

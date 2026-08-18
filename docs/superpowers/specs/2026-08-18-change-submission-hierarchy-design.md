@@ -1,6 +1,6 @@
 ---
 title: Change Submission Hierarchy — Plans vs Action Items
-status: draft
+status: approved
 last_updated: 2026-08-18
 artifact_type: design
 related_docs:

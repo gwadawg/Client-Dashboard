@@ -99,6 +99,21 @@ export function workLogPlotDate(action: {
   return emptyToNull(action.change_date) ?? emptyToNull(action.planned_date);
 }
 
+/** Thursday week match: live, else planned, else created day. */
+export function workLogWeekDate(action: {
+  change_date?: string | null;
+  planned_date?: string | null;
+  created_at?: string | null;
+}): string | null {
+  return workLogPlotDate(action) ?? ymdPrefix(action.created_at);
+}
+
+export const LOG_WORK_PERMISSIONS = [
+  'client_workspace',
+  'client_health',
+  'media_buyer',
+] as const;
+
 export function isGhostMark(action: { change_date?: string | null }): boolean {
   return !emptyToNull(action.change_date);
 }
@@ -121,4 +136,9 @@ function emptyToNull(v: string | null | undefined): string | null {
   if (v == null) return null;
   const t = v.trim();
   return t ? t : null;
+}
+
+function ymdPrefix(v: string | null | undefined): string | null {
+  const t = emptyToNull(v);
+  return t ? t.slice(0, 10) : null;
 }

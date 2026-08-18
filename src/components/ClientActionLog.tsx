@@ -2,13 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  metricValue,
   SUCCESS_METRIC_META,
   type ClientHealthSnapshot,
   type SuccessMetricKey,
 } from "@/lib/client-health";
 import { defaultReviewDateFromTimebox, BASELINE_LOOKBACK_DAYS } from "@/lib/client-health-interventions";
-import { normalizeReportingType } from "@/lib/kpi-layouts";
 import {
   WORK_TYPE_META,
   WORK_TYPES,
@@ -16,6 +14,7 @@ import {
   parseWorkType,
   type WorkType,
 } from "@/lib/client-work-log";
+import WorkLogComposer from "./WorkLogComposer";
 
 export type ActionLog = {
   id: string;
@@ -103,17 +102,6 @@ function formatMetric(key: string | null, value: number | null): string {
   return value.toFixed(3);
 }
 
-function targetInputHint(metric: SuccessMetricKey): { placeholder: string; hint: string } {
-  const meta = SUCCESS_METRIC_META[metric];
-  if (meta.unit === "money") {
-    return { placeholder: "e.g. 450", hint: "Enter dollars (no $ sign), e.g. 450 for $450" };
-  }
-  if (meta.unit === "pct") {
-    return { placeholder: "e.g. 18", hint: "Enter percent as a number, e.g. 18 for 18%" };
-  }
-  return { placeholder: "e.g. 0.35", hint: "Enter the ratio as a decimal, e.g. 0.35" };
-}
-
 function defaultReviewDate(days?: number): string {
   if (days) {
     const d = new Date();
@@ -146,22 +134,10 @@ export default function ClientActionLog({
   const [filter, setFilter] = useState<"all" | WorkType>("all");
   const [promoteId, setPromoteId] = useState<string | null>(null);
 
-  const [workType, setWorkType] = useState<WorkType>("cadence");
-  const [title, setTitle] = useState("");
-  const [changeDescription, setChangeDescription] = useState("");
-  const [hypothesis, setHypothesis] = useState("");
-  const [successMetric, setSuccessMetric] = useState<SuccessMetricKey>("cpconv");
-  const [targetValue, setTargetValue] = useState("");
-  const [changeDate, setChangeDate] = useState(todayYmd);
-  const [plannedDate, setPlannedDate] = useState("");
-  const [reviewDate, setReviewDate] = useState(() => defaultReviewDate(defaultReviewDays));
-
   const [promoteHypothesis, setPromoteHypothesis] = useState("");
   const [promoteMetric, setPromoteMetric] = useState<SuccessMetricKey>("cpconv");
   const [promoteReview, setPromoteReview] = useState(() => defaultReviewDate(7));
   const [promoteLive, setPromoteLive] = useState(todayYmd);
-
-  const targetHint = targetInputHint(successMetric);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -212,57 +188,6 @@ export default function ClientActionLog({
       cancelled = true;
     };
   }, [clientId, reloadKey]);
-
-  const resetForm = () => {
-    setTitle("");
-    setChangeDescription("");
-    setHypothesis("");
-    setSuccessMetric("cpconv");
-    setTargetValue("");
-    setChangeDate(todayYmd());
-    setPlannedDate("");
-    setReviewDate(defaultReviewDate(defaultReviewDays));
-    setWorkType("cadence");
-  };
-
-  const submit = async () => {
-    if (!title.trim()) return;
-    setSaving(true);
-    const betLive = workType === "bet" ? (changeDate || null) : changeDate || null;
-    const status =
-      workType === "bet"
-        ? betLive
-          ? "in_progress"
-          : "planned"
-        : workType === "cadence" && !changeDate
-          ? "planned"
-          : "in_progress";
-    const res = await fetch(`/api/client-actions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: clientId,
-        title: title.trim(),
-        work_type: workType,
-        layer: defaultLayer,
-        constraint_label: defaultConstraintLabel,
-        change_description: changeDescription || null,
-        hypothesis: workType === "bet" ? hypothesis || null : null,
-        success_metric: workType === "bet" ? successMetric : null,
-        target_value: workType === "bet" && targetValue ? Number(targetValue) : null,
-        change_date: workType === "bet" ? betLive : changeDate || null,
-        planned_date: plannedDate || null,
-        review_date: workType === "bet" ? reviewDate || null : null,
-        status,
-      }),
-    });
-    setSaving(false);
-    if (res.ok) {
-      resetForm();
-      setShowForm(false);
-      load();
-    }
-  };
 
   const runEval = async (actionId: string) => {
     setEvaluating(true);
@@ -363,143 +288,24 @@ export default function ClientActionLog({
 
       {showForm && (
         <div
-          className="rounded-lg p-4 mb-4 space-y-3"
+          className="rounded-lg p-4 mb-4"
           style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.05)" }}
         >
-          <div className="flex flex-wrap gap-2">
-            {WORK_TYPES.map(type => {
-              const on = workType === type;
-              const metaT = WORK_TYPE_META[type];
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setWorkType(type)}
-                  className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg"
-                  style={{
-                    color: on ? metaT.color : "#64748b",
-                    background: on ? `${metaT.color}18` : "transparent",
-                    border: `1px solid ${on ? metaT.color : "rgba(255,255,255,0.1)"}`,
-                  }}
-                >
-                  {metaT.label}
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-[10px]" style={{ color: "#475569" }}>
-            {WORK_TYPE_META[workType].hint}
-          </p>
-          <div>
-            <label style={labelStyle}>
-              {workType === "finding" ? "What did you find?" : workType === "cadence" ? "What did you do?" : "What is the bet?"} *
-            </label>
-            <input
-              style={inputStyle}
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder={
-                workType === "finding"
-                  ? "e.g. Pixel firing twice on thank-you page"
-                  : workType === "cadence"
-                    ? "e.g. Killed underperforming ads"
-                    : "e.g. New LTO offer on landing page"
-              }
-            />
-          </div>
-          <div>
-            <label style={labelStyle}>Details</label>
-            <textarea
-              style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
-              value={changeDescription}
-              onChange={e => setChangeDescription(e.target.value)}
-            />
-          </div>
-          {workType === "bet" && (
-            <div>
-              <label style={labelStyle}>Hypothesis (why it should help)</label>
-              <textarea
-                style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
-                value={hypothesis}
-                onChange={e => setHypothesis(e.target.value)}
-              />
-            </div>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label style={labelStyle}>
-                {workType === "finding" ? "Observed date" : "Planned date"}
-              </label>
-              {workType === "finding" ? (
-                <input style={inputStyle} type="date" value={changeDate} onChange={e => setChangeDate(e.target.value)} />
-              ) : (
-                <input style={inputStyle} type="date" value={plannedDate} onChange={e => setPlannedDate(e.target.value)} />
-              )}
-            </div>
-            {workType !== "finding" && (
-              <div>
-                <label style={labelStyle}>{workType === "bet" ? "Went live (leave blank if planned)" : "Done date"}</label>
-                <input
-                  style={inputStyle}
-                  type="date"
-                  value={changeDate}
-                  onChange={e => setChangeDate(e.target.value)}
-                />
-              </div>
-            )}
-          </div>
-          {workType === "bet" && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label style={labelStyle}>Success metric</label>
-                <select
-                  style={inputStyle as React.CSSProperties}
-                  value={successMetric}
-                  onChange={e => setSuccessMetric(e.target.value as SuccessMetricKey)}
-                >
-                  {Object.entries(SUCCESS_METRIC_META).map(([key, meta]) => (
-                    <option key={key} value={key}>
-                      {meta.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
-                  Current period ({periodStart} → {periodEnd}):{" "}
-                  {formatMetric(successMetric, metricValue(snapshot, successMetric, normalizeReportingType(reportingType)))}
-                </p>
-              </div>
-              <div>
-                <label style={labelStyle}>Target value</label>
-                <input
-                  style={inputStyle}
-                  type="number"
-                  value={targetValue}
-                  onChange={e => setTargetValue(e.target.value)}
-                  placeholder={targetHint.placeholder}
-                />
-                <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
-                  {targetHint.hint}
-                </p>
-              </div>
-              <div>
-                <label style={labelStyle}>Review date</label>
-                <input style={inputStyle} type="date" value={reviewDate} onChange={e => setReviewDate(e.target.value)} />
-              </div>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={submit}
-            disabled={saving || !title.trim()}
-            className="px-4 py-2 rounded-lg text-sm font-semibold"
-            style={{
-              background: title.trim() ? "rgba(96,165,250,0.2)" : "rgba(100,116,139,0.15)",
-              color: title.trim() ? "#60a5fa" : "#475569",
-              border: "1px solid rgba(96,165,250,0.3)",
+          <WorkLogComposer
+            clientId={clientId}
+            snapshot={snapshot}
+            defaultLayer={defaultLayer}
+            defaultConstraintLabel={defaultConstraintLabel}
+            periodStart={periodStart}
+            periodEnd={periodEnd}
+            reportingType={reportingType}
+            defaultReviewDays={defaultReviewDays}
+            onSaved={() => {
+              setShowForm(false);
+              load();
             }}
-          >
-            {saving ? "Saving…" : workType === "bet" && !changeDate ? "Save planned bet" : "Save"}
-          </button>
+            onCancel={() => setShowForm(false)}
+          />
         </div>
       )}
 

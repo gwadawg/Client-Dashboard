@@ -1999,6 +1999,7 @@ create table if not exists account_week_plans (
   approved_by         uuid references auth.users(id) on delete set null,
   approved_at         timestamptz,
   founder_note        text,
+  reflection          text,
   created_by          uuid references auth.users(id) on delete set null,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),

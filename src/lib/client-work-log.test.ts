@@ -7,6 +7,7 @@ import {
   shouldFreezeBaseline,
   isBetWorkType,
   workLogPlotDate,
+  workLogWeekDate,
   isGhostMark,
   parseLayerToggles,
   DEFAULT_LAYER_TOGGLES,
@@ -100,6 +101,17 @@ describe('plot date', () => {
     assert.equal(workLogPlotDate({ change_date: null, planned_date: '2026-08-01' }), '2026-08-01');
     assert.equal(isGhostMark({ change_date: null }), true);
     assert.equal(isGhostMark({ change_date: '2026-08-10' }), false);
+  });
+
+  it('week date falls back to created_at day', () => {
+    assert.equal(
+      workLogWeekDate({
+        change_date: null,
+        planned_date: null,
+        created_at: '2026-08-12T15:00:00.000Z',
+      }),
+      '2026-08-12',
+    );
   });
 });
 

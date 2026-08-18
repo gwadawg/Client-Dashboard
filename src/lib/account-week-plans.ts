@@ -5,7 +5,7 @@
 
 import { CALL_CENTER_TIMEZONE } from '@/lib/time';
 import { addDaysToYmd } from '@/lib/team-meetings';
-import type { WorkType } from '@/lib/client-work-log';
+import { workLogWeekDate, type WorkType } from '@/lib/client-work-log';
 
 export type AccountWeekPlanStatus = 'pending' | 'approved' | 'rejected';
 export type AccountPlanTaskStatus = 'open' | 'done' | 'cancelled';
@@ -23,11 +23,24 @@ export type AccountWeekPlan = {
   approved_by: string | null;
   approved_at: string | null;
   founder_note: string | null;
+  reflection: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
   client_name?: string | null;
   tasks?: AccountPlanTask[];
+  adhoc_logs?: AdhocWorkLog[];
+};
+
+export type AdhocWorkLog = {
+  id: string;
+  client_id: string;
+  title: string;
+  work_type: string | null;
+  change_date: string | null;
+  planned_date: string | null;
+  created_at: string;
+  status: string;
 };
 
 export type AccountPlanTaskReviewVerdict =
@@ -219,3 +232,60 @@ export type CalendarTaskItem = AccountPlanTask & {
   why: string;
   overdue: boolean;
 };
+
+const REFLECTION_ONLY_KEYS = new Set([
+  'reflection',
+  'status',
+  'why',
+  'tasks',
+  'week_start',
+  'severity',
+  'success_signal',
+  'founder_note',
+  'origin_meeting_id',
+]);
+
+/** True when the PATCH body is only a reflection (no plan-field edits). */
+export function isReflectionOnlyPatch(body: Record<string, unknown>): boolean {
+  if (!('reflection' in body)) return false;
+  if (typeof body.reflection !== 'string' && body.reflection !== null) return false;
+  for (const key of Object.keys(body)) {
+    if (key === 'reflection') continue;
+    if (REFLECTION_ONLY_KEYS.has(key) && body[key] != null && body[key] !== '') {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function canPatchPlanReflection(
+  status: AccountWeekPlanStatus,
+): { ok: true } | { ok: false; error: string } {
+  if (status === 'rejected') {
+    return { ok: false, error: 'Cannot reflect on a rejected plan' };
+  }
+  return { ok: true };
+}
+
+/** Ad-hoc work-log rows for a plan week, excluding tasks already filed from the plan. */
+export function filterAdhocLogsForPlanWeek<T extends AdhocWorkLog>(
+  logs: T[],
+  opts: {
+    clientId: string;
+    weekStart: string;
+    linkedLogIds: Iterable<string | null | undefined>;
+  },
+): T[] {
+  const weekStart = opts.weekStart.slice(0, 10);
+  const weekEnd = addDaysToYmd(weekStart, 6);
+  const linked = new Set(
+    [...opts.linkedLogIds].filter((id): id is string => typeof id === 'string' && id.length > 0),
+  );
+  return logs.filter(log => {
+    if (log.client_id !== opts.clientId) return false;
+    if (linked.has(log.id)) return false;
+    const plot = workLogWeekDate(log);
+    if (!plot) return false;
+    return plot >= weekStart && plot <= weekEnd;
+  });
+}

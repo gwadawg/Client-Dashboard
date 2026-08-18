@@ -13,6 +13,7 @@ type Props = {
   showCompare: boolean;
   railOpen: boolean;
   onToggleRail: () => void;
+  onLogWork?: () => void;
 };
 
 /**
@@ -26,6 +27,7 @@ export default function WorkspaceFilterBar({
   showCompare,
   railOpen,
   onToggleRail,
+  onLogWork,
 }: Props) {
   const { selectedClient } = filters;
   const tenure = selectedClient ? describeClientTenure(selectedClient, filters.todayYmd) : null;
@@ -92,6 +94,20 @@ export default function WorkspaceFilterBar({
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          {onLogWork && (
+            <button
+              type="button"
+              onClick={onLogWork}
+              className="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                background: "rgba(52,211,153,0.12)",
+                color: "#34d399",
+                border: "1px solid rgba(52,211,153,0.35)",
+              }}
+            >
+              Log work
+            </button>
+          )}
           <DateRangeFilter
             preset={filters.preset}
             customStart={filters.customStart}

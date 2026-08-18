@@ -362,7 +362,11 @@ export async function loadClientHealthBundle(
     fetchMetaSpendByClient(service, spendFilters),
   ]);
 
-  if (actionsError) throw new Error(actionsError.message);
+  // Interventions are additive. A missing column/query must not blank the roster.
+  if (actionsError) {
+    console.error('[client-health] action logs query failed:', actionsError.message);
+  }
+  const safeActionRows = (actionsError ? [] : actionRows) ?? [];
 
   const sqlReady =
     verdictCounts != null &&
@@ -386,7 +390,7 @@ export async function loadClientHealthBundle(
       : new Map<string, SpendRow[]>();
 
     const actionsByClient = new Map<string, ActionRow[]>();
-    for (const a of actionRows ?? []) {
+    for (const a of safeActionRows) {
       const list = actionsByClient.get(a.client_id) ?? [];
       list.push(a as ActionRow);
       actionsByClient.set(a.client_id, list);
@@ -531,7 +535,7 @@ export async function loadClientHealthBundle(
     return assembleBundle(
       clients ?? [],
       rows,
-      (actionRows ?? []) as ActionRow[],
+      safeActionRows as ActionRow[],
       start_date,
       end_date,
       verdictPrior,
@@ -594,7 +598,7 @@ export async function loadClientHealthBundle(
   const freshCostPriorSpendByClient = spendByClient(recentPriorSpend);
 
   const actionsByClient = new Map<string, ActionRow[]>();
-  for (const a of actionRows ?? []) {
+  for (const a of safeActionRows) {
     const list = actionsByClient.get(a.client_id) ?? [];
     list.push(a as ActionRow);
     actionsByClient.set(a.client_id, list);
@@ -678,7 +682,7 @@ export async function loadClientHealthBundle(
   return assembleBundle(
     clients ?? [],
     rows,
-    (actionRows ?? []) as ActionRow[],
+    safeActionRows as ActionRow[],
     start_date,
     end_date,
     verdictPrior,
