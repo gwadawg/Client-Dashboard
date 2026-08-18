@@ -21,6 +21,7 @@ import {
 } from "recharts";
 import {
   COMPARE_PRESET_LABELS,
+  COMPARE_TABLE_COLUMNS,
   barsForChart,
   costChartsCaption,
   costMapPoints,
@@ -28,14 +29,19 @@ import {
   lineColorForIndex,
   mapMedians,
   medianForBars,
+  nextSortState,
   parseIdList,
   parseOfferFilter,
+  parseSortDir,
+  parseTableSortKey,
   pivotCostHistory,
   rangeForComparePreset,
   rateMapPoints,
   rosterIdsForOffer,
   shouldDefaultToRateMap,
   showPendingCaveat,
+  sortCompareRows,
+  tableValueFor,
   visibleChartKeys,
   type ClientCompareRow,
   type CompareBar,
@@ -45,6 +51,8 @@ import {
   type CompareKpiKey,
   type CompareMapPoint,
   type CompareOfferFilter,
+  type CompareSortDir,
+  type CompareTableColumnKey,
 } from "@/lib/client-compare";
 import type { HealthTier } from "@/lib/client-health";
 import { getReportingTypeLabel, type ReportingType } from "@/lib/kpi-layouts";
@@ -135,6 +143,75 @@ const CHART_META: Record<
   },
 };
 
+const TABLE_META: Record<
+  CompareTableColumnKey,
+  { title: string; format: "money" | "pct" | "int" | "ratio" | "text"; hint?: string; formula?: string }
+> = {
+  name: { title: "Client", format: "text" },
+  spend: {
+    title: "Spend",
+    format: "money",
+    hint: "Meta ad spend in the selected window. Call Center is —.",
+    formula: "SUM(ad spend)",
+  },
+  cpl: {
+    title: "CPL",
+    format: "money",
+    hint: "Cost per lead.",
+    formula: "Ad Spend ÷ Total Leads",
+  },
+  cpql: {
+    title: "CPQL",
+    format: "money",
+    hint: "Cost per qualified lead.",
+    formula: "Ad Spend ÷ Qualified Leads",
+  },
+  hand_raise: {
+    title: "Hand-raise",
+    format: "pct",
+    hint: "Paid ads: ÷ qualified. Call Center: ÷ total leads.",
+    formula: "Unique booked ∪ claimed ∪ LT ÷ Qualified (or Total Leads for CC)",
+  },
+  conversation_rate: {
+    title: "Conv %",
+    format: "pct",
+    hint: "Unique conversations per qualified lead. Not pickup→conversation.",
+    formula: "Unique Conversations ÷ Qualified Leads",
+  },
+  show_rate: {
+    title: "Show %",
+    format: "pct",
+    hint: "Unique booked leads who spoke to the LO.",
+    formula: "Unique (booked ∩ show∪claimed∪LT) ÷ Unique booked",
+  },
+  cpconv: {
+    title: "CPConv",
+    format: "money",
+    hint: "Cost per unique conversation (show ∪ claimed ∪ live transfer).",
+    formula: "Ad Spend ÷ Unique Conversations",
+  },
+  dials: {
+    title: "Dials",
+    format: "int",
+    hint: "Outbound dial events in the window. Zero is a real number.",
+    formula: "COUNT(dial)",
+  },
+  dials_per_qualified: {
+    title: "Dials / QL",
+    format: "ratio",
+    hint: "How many dials it took to produce each qualified lead. Display only — not graded.",
+    formula: "Outbound Dials ÷ Qualified Leads",
+  },
+};
+
+const GRADED_TABLE_KEYS = new Set<CompareTableColumnKey>([
+  "cpl",
+  "cpql",
+  "cpconv",
+  "hand_raise",
+  "show_rate",
+]);
+
 type DirectoryClient = {
   id: string;
   name: string;
@@ -154,6 +231,24 @@ function formatValue(n: number, format: "money" | "pct" | "int"): string {
   if (format === "int") return n.toLocaleString();
   if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`;
   return `$${Math.round(n)}`;
+}
+
+function formatTableCell(n: number, format: "money" | "pct" | "int" | "ratio" | "text"): string {
+  if (format === "pct") return `${n.toFixed(0)}%`;
+  if (format === "int") return n.toLocaleString();
+  if (format === "ratio") return n.toFixed(1);
+  if (format === "text") return String(n);
+  return `$${Math.round(n).toLocaleString()}`;
+}
+
+function gradeForColumn(row: ClientCompareRow, key: CompareTableColumnKey): HealthTier | null {
+  if (!GRADED_TABLE_KEYS.has(key)) return null;
+  if (key === "cpl") return row.grades.cpl ?? null;
+  if (key === "cpql") return row.grades.cpql ?? null;
+  if (key === "cpconv") return row.grades.cpconv ?? null;
+  if (key === "hand_raise") return row.grades.hand_raise ?? null;
+  if (key === "show_rate") return row.grades.show_rate ?? null;
+  return null;
 }
 
 function idFromChartEvent(data: unknown): string | null {
@@ -194,6 +289,8 @@ export default function ClientCompareDashboard({ directory }: Props) {
   const customEnd = searchParams.get("end") ?? "";
   const offer = parseOfferFilter(searchParams.get("product"));
   const urlClientIds = parseIdList(searchParams.get("clients"));
+  const sortKey = parseTableSortKey(searchParams.get("sort"));
+  const sortDir = parseSortDir(searchParams.get("dir"), sortKey);
 
   const derivedRange = rangeForComparePreset(
     preset,
@@ -276,6 +373,11 @@ export default function ClientCompareDashboard({ directory }: Props) {
     [allRows, effectiveIds],
   );
 
+  const sortedVisible = useMemo(
+    () => sortCompareRows(visible, sortKey, sortDir),
+    [visible, sortKey, sortDir],
+  );
+
   const missingKey = effectiveIds.filter(id => !allRows.some(r => r.id === id)).join(",");
   useEffect(() => {
     if (!missingKey) return;
@@ -326,6 +428,14 @@ export default function ClientCompareDashboard({ directory }: Props) {
 
   function goClient(id: string) {
     router.push(workspaceHref(id, start, end));
+  }
+
+  function setSort(clicked: CompareTableColumnKey) {
+    const next = nextSortState(sortKey, sortDir, clicked);
+    replaceParams({
+      sort: next.key,
+      dir: next.dir,
+    });
   }
 
   const chartKeys = visibleChartKeys(visible);
@@ -405,6 +515,13 @@ export default function ClientCompareDashboard({ directory }: Props) {
             granularity={bundle?.granularity ?? "week"}
             onClient={goClient}
           />
+          <CompareKpiTable
+            rows={sortedVisible}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={setSort}
+            onRow={goClient}
+          />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {chartKeys.map(key => (
               <RankedBarCard
@@ -431,9 +548,137 @@ function EmptyWall() {
         Add a client or pick an offer
       </p>
       <p className="text-xs mt-1" style={{ color: "#64748b" }}>
-        The map and bars stay empty until someone is on the wall.
+        The map, table, and bars stay empty until someone is on the wall.
       </p>
     </div>
+  );
+}
+
+function CompareKpiTable({
+  rows,
+  sortKey,
+  sortDir,
+  onSort,
+  onRow,
+}: {
+  rows: ClientCompareRow[];
+  sortKey: CompareTableColumnKey;
+  sortDir: CompareSortDir;
+  onSort: (key: CompareTableColumnKey) => void;
+  onRow: (id: string) => void;
+}) {
+  return (
+    <section className="rounded-xl overflow-hidden" style={CARD}>
+      <div className="px-4 pt-4 pb-2">
+        <h2 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>
+          KPI table
+        </h2>
+        <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
+          Same window as the map. Click a column to rank. Click a row for the workspace.
+        </p>
+      </div>
+      <div className="overflow-auto max-h-[min(70vh,560px)]">
+        <table className="w-full text-sm border-separate border-spacing-0">
+          <thead>
+            <tr>
+              {COMPARE_TABLE_COLUMNS.map(key => {
+                const meta = TABLE_META[key];
+                const active = sortKey === key;
+                const align = key === "name" ? "left" : "right";
+                return (
+                  <th
+                    key={key}
+                    className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest whitespace-nowrap"
+                    style={{
+                      color: active ? "#e2e8f0" : "#475569",
+                      textAlign: align,
+                      position: "sticky",
+                      top: 0,
+                      left: key === "name" ? 0 : undefined,
+                      zIndex: key === "name" ? 4 : 3,
+                      background: "#0a1628",
+                      borderBottom: "1px solid rgba(255,255,255,0.08)",
+                      boxShadow: key === "name" ? "4px 0 8px rgba(0,0,0,0.25)" : undefined,
+                    }}
+                  >
+                    <div
+                      className="inline-flex items-center gap-1"
+                      style={{ justifyContent: key === "name" ? "flex-start" : "flex-end", width: "100%" }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onSort(key)}
+                        className="inline-flex items-center gap-1"
+                        style={{ color: "inherit" }}
+                      >
+                        {meta.title}
+                        <span className="inline-block w-2 text-[9px]" style={{ color: active ? "#38bdf8" : "#334155" }}>
+                          {active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+                        </span>
+                      </button>
+                      {meta.hint && meta.formula ? (
+                        <MetricInfoTip
+                          hint={{ definition: meta.hint, source: "Events + Meta spend", formula: meta.formula }}
+                        />
+                      ) : null}
+                    </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => (
+              <tr
+                key={row.id}
+                onClick={() => onRow(row.id)}
+                className="cursor-pointer group"
+              >
+                {COMPARE_TABLE_COLUMNS.map(key => {
+                  const meta = TABLE_META[key];
+                  const raw = tableValueFor(row, key);
+                  const grade = gradeForColumn(row, key);
+                  const isName = key === "name";
+                  const display =
+                    isName
+                      ? row.name
+                      : typeof raw === "number"
+                        ? formatTableCell(raw, meta.format)
+                        : "—";
+                  return (
+                    <td
+                      key={key}
+                      className="px-3 py-2 whitespace-nowrap tabular-nums bg-[#0a1628] group-hover:bg-[#0f2040]"
+                      style={{
+                        textAlign: isName ? "left" : "right",
+                        color: grade ? TIER_FILL[grade] : isName ? "#e2e8f0" : "#cbd5e1",
+                        position: isName ? "sticky" : undefined,
+                        left: isName ? 0 : undefined,
+                        zIndex: isName ? 1 : undefined,
+                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                        boxShadow: isName ? "4px 0 8px rgba(0,0,0,0.25)" : undefined,
+                        fontWeight: isName ? 500 : 400,
+                      }}
+                    >
+                      {isName ? (
+                        <span className="flex items-center gap-2">
+                          <span>{display}</span>
+                          <span className="text-[10px] font-normal" style={{ color: "#64748b" }}>
+                            {getReportingTypeLabel(row.reporting_type)}
+                          </span>
+                        </span>
+                      ) : (
+                        display
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

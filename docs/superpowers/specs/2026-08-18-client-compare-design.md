@@ -20,7 +20,8 @@ relative to peers** on the KPIs that drive unit economics and conversion
 quality.
 
 Client Success remains the 911 list (tiers, Act now, drill-down).
-Client Compare is the peer wall: an efficiency map plus ranked bars.
+Client Compare is the peer wall: an efficiency map, cost-history lines,
+a sortable KPI table, and ranked bars.
 It does not invent formulas. It re-reads `calculateMetrics` and the
 existing Client Success grade bands.
 
@@ -61,8 +62,8 @@ existing Client Success grade bands.
 | Default roster | Lifecycle-active clients (not churned, not billing-paused). Zero events in range still appear as `—`; the operator removes them. This is not Client Success `has_activity` hide. |
 | Chrome | Existing dashboard shell (dark navy, tabular numbers, existing tier colors). Not a separate brand island. |
 
-URL state in v1: `start`, `end`, `offer`, `clients` (comma-separated
-ids). Refresh and copy-link restore the same wall.
+URL state: `start`, `end`, `product`, `clients` (comma-separated ids),
+`sort`, `dir`. Refresh and copy-link restore the same wall.
 
 ## Controls
 
@@ -99,9 +100,11 @@ an offer.”
 
 1. Top bar: date, offer, client picker, pending-window caveat.
 2. Hero: efficiency map (one card, two modes).
-3. Ranked bar wall: one chart per KPI, 2×4 on desktop, stacked on
+3. Cost history lines (CPL / CPQL / CPConv).
+4. Sortable KPI table (Spend through Dials/QL; click headers to rank;
+   nulls last). Click a row for Workspace KPIs with the same dates.
+5. Ranked bar wall: one chart per KPI, 2×4 on desktop, stacked on
    narrow screens.
-4. No summary table in v1.
 
 Click target for map points and bars:
 `/dashboard?view=client_workspace&tab=kpis&client=<id>` plus the same

@@ -60,7 +60,10 @@ export type ClientCompareRow = {
   cpql: number | null;
   cpconv: number | null;
   hand_raise: number | null;
+  conversation_rate: number | null;
   show_rate: number | null;
+  dials: number;
+  dials_per_qualified: number | null;
   grades: CompareGradeMap;
   north_star_grade: HealthTier;
   has_custom_cpl_benchmark: boolean;
@@ -135,7 +138,10 @@ export function compareRowFromMetrics(input: {
   const handRaise = isCc
     ? nullIfEmptyDenom(m.lead_hand_raise_rate, m.new_leads)
     : nullIfEmptyDenom(m.hand_raise_rate, m.qualified_leads);
+  const conversationRate = nullIfEmptyDenom(m.conversation_rate, m.qualified_leads);
   const showRate = nullIfEmptyDenom(m.booked_to_conversation_rate, m.unique_booked_appointments);
+  const dials = m.outbound_dials;
+  const dialsPerQualified = m.qualified_leads > 0 ? dials / m.qualified_leads : null;
 
   const grades: CompareGradeMap = {
     hand_raise: gradeOf(snap.grades, 'hand_raise_rate'),
@@ -168,7 +174,10 @@ export function compareRowFromMetrics(input: {
     cpql,
     cpconv,
     hand_raise: handRaise,
+    conversation_rate: conversationRate,
     show_rate: showRate,
+    dials,
+    dials_per_qualified: dialsPerQualified,
     grades,
     north_star_grade: northStar,
     has_custom_cpl_benchmark: Boolean(input.benchmarks?.cpl),
@@ -439,6 +448,124 @@ export function parseIdList(raw: string | null | undefined): string[] {
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
+}
+
+export type CompareTableColumnKey =
+  | 'name'
+  | 'spend'
+  | 'cpl'
+  | 'cpql'
+  | 'hand_raise'
+  | 'conversation_rate'
+  | 'show_rate'
+  | 'cpconv'
+  | 'dials'
+  | 'dials_per_qualified';
+
+export type CompareSortDir = 'asc' | 'desc';
+
+export const COMPARE_TABLE_COLUMNS: CompareTableColumnKey[] = [
+  'name',
+  'spend',
+  'cpl',
+  'cpql',
+  'hand_raise',
+  'conversation_rate',
+  'show_rate',
+  'cpconv',
+  'dials',
+  'dials_per_qualified',
+];
+
+const TABLE_COLUMN_SET = new Set<string>(COMPARE_TABLE_COLUMNS);
+
+export function defaultSortDir(key: CompareTableColumnKey): CompareSortDir {
+  if (
+    key === 'spend' ||
+    key === 'cpl' ||
+    key === 'cpql' ||
+    key === 'cpconv' ||
+    key === 'dials_per_qualified' ||
+    key === 'name'
+  ) {
+    return 'asc';
+  }
+  return 'desc';
+}
+
+export function parseTableSortKey(raw: string | null | undefined): CompareTableColumnKey {
+  const v = String(raw ?? '').trim();
+  if (TABLE_COLUMN_SET.has(v)) return v as CompareTableColumnKey;
+  return 'name';
+}
+
+export function parseSortDir(
+  raw: string | null | undefined,
+  key: CompareTableColumnKey,
+): CompareSortDir {
+  if (raw === 'asc' || raw === 'desc') return raw;
+  return defaultSortDir(key);
+}
+
+export function nextSortState(
+  currentKey: CompareTableColumnKey,
+  currentDir: CompareSortDir,
+  clicked: CompareTableColumnKey,
+): { key: CompareTableColumnKey; dir: CompareSortDir } {
+  if (clicked === currentKey) {
+    return { key: currentKey, dir: currentDir === 'asc' ? 'desc' : 'asc' };
+  }
+  return { key: clicked, dir: defaultSortDir(clicked) };
+}
+
+export function tableValueFor(
+  row: ClientCompareRow,
+  key: CompareTableColumnKey,
+): number | string | null {
+  switch (key) {
+    case 'name':
+      return row.name;
+    case 'spend':
+      return row.spend;
+    case 'cpl':
+      return row.cpl;
+    case 'cpql':
+      return row.cpql;
+    case 'hand_raise':
+      return row.hand_raise;
+    case 'conversation_rate':
+      return row.conversation_rate;
+    case 'show_rate':
+      return row.show_rate;
+    case 'cpconv':
+      return row.cpconv;
+    case 'dials':
+      return row.dials;
+    case 'dials_per_qualified':
+      return row.dials_per_qualified;
+  }
+}
+
+export function sortCompareRows(
+  rows: ClientCompareRow[],
+  key: CompareTableColumnKey,
+  dir: CompareSortDir,
+): ClientCompareRow[] {
+  const sign = dir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    if (key === 'name') {
+      return sign * a.name.localeCompare(b.name);
+    }
+    const av = tableValueFor(a, key);
+    const bv = tableValueFor(b, key);
+    const aNull = typeof av !== 'number';
+    const bNull = typeof bv !== 'number';
+    if (aNull && bNull) return a.name.localeCompare(b.name);
+    if (aNull) return 1;
+    if (bNull) return -1;
+    if (av !== bv) return sign * (av - bv);
+    return a.name.localeCompare(b.name);
+  });
 }
 
 export type CompareCostMetric = 'cpl' | 'cpql' | 'cpconv';

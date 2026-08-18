@@ -5,14 +5,18 @@ import {
   compareRowFromMetrics,
   costHistoryFromDailySeries,
   costMapPoints,
+  defaultSortDir,
   isDefaultRosterClient,
   mapMedians,
   medianOf,
+  nextSortState,
+  parseTableSortKey,
   pivotCostHistory,
   rangeForComparePreset,
   rateMapPoints,
   rosterIdsForOffer,
   showPendingCaveat,
+  sortCompareRows,
   visibleChartKeys,
   type ClientCompareRow,
 } from './client-compare';
@@ -93,6 +97,9 @@ describe('client-compare null vs zero', () => {
     assert.equal(paid.cpconv, null);
     assert.equal(paid.hand_raise, null);
     assert.equal(paid.show_rate, null);
+    assert.equal(paid.conversation_rate, null);
+    assert.equal(paid.dials_per_qualified, null);
+    assert.equal(paid.dials, 0);
     assert.equal(paid.spend, 0);
   });
 
@@ -318,6 +325,69 @@ describe('client-compare cost history', () => {
     assert.equal(pivoted[0].a, 50);
     assert.equal(pivoted[0].b, 80);
     assert.equal(series[0].points[0].cpl, null);
+  });
+});
+
+function dial(id = 'a'): EventRow {
+  return {
+    client_id: 'c1',
+    event_type: 'dial',
+    ghl_contact_id: id,
+    occurred_at: '2026-07-01T13:00:00.000Z',
+    is_pickup: true,
+    is_conversation: true,
+    speed_to_lead_seconds: null,
+  };
+}
+
+describe('client-compare table metrics', () => {
+  it('keeps Call Center dials while omitting cost', () => {
+    const cc = row(
+      'CALL_CENTER',
+      [...fiveLeads, dial('a'), dial('b'), dial('c')],
+      [{ amount: 999 }],
+      { id: 'cc' },
+    );
+    assert.equal(cc.spend, null);
+    assert.equal(cc.cpl, null);
+    assert.equal(cc.cpql, null);
+    assert.equal(cc.cpconv, null);
+    assert.equal(cc.dials, 3);
+    assert.equal(cc.dials_per_qualified, 3 / 5);
+    assert.ok(cc.conversation_rate != null);
+  });
+
+  it('nulls conversation rate and dials/QL when there are no qualified leads', () => {
+    const unpaid = row('RM', [lead('x', false), dial('x'), dial('x')], []);
+    assert.equal(unpaid.qualified, 0);
+    assert.equal(unpaid.dials, 2);
+    assert.equal(unpaid.conversation_rate, null);
+    assert.equal(unpaid.dials_per_qualified, null);
+  });
+
+  it('sorts nulls last in both directions and uses first-click dirs', () => {
+    assert.equal(defaultSortDir('cpl'), 'asc');
+    assert.equal(defaultSortDir('cpconv'), 'asc');
+    assert.equal(defaultSortDir('dials_per_qualified'), 'asc');
+    assert.equal(defaultSortDir('hand_raise'), 'desc');
+    assert.equal(defaultSortDir('conversation_rate'), 'desc');
+    assert.equal(defaultSortDir('dials'), 'desc');
+
+    const cheap = row('RM', fiveLeads, [{ amount: 50 }], { id: 'cheap', name: 'Cheap' });
+    const pricey = row('RM', fiveLeads, [{ amount: 200 }], { id: 'pricey', name: 'Pricey' });
+    const cc = row('CALL_CENTER', fiveLeads, [], { id: 'cc', name: 'Call Co' });
+    const asc = sortCompareRows([pricey, cc, cheap], 'cpl', 'asc').map(r => r.id);
+    const desc = sortCompareRows([pricey, cc, cheap], 'cpl', 'desc').map(r => r.id);
+    assert.deepEqual(asc, ['cheap', 'pricey', 'cc']);
+    assert.deepEqual(desc, ['pricey', 'cheap', 'cc']);
+  });
+
+  it('first click on a new column uses the default direction', () => {
+    assert.deepEqual(nextSortState('name', 'asc', 'cpl'), { key: 'cpl', dir: 'asc' });
+    assert.deepEqual(nextSortState('name', 'asc', 'hand_raise'), { key: 'hand_raise', dir: 'desc' });
+    assert.deepEqual(nextSortState('cpl', 'asc', 'cpl'), { key: 'cpl', dir: 'desc' });
+    assert.equal(parseTableSortKey('cpconv'), 'cpconv');
+    assert.equal(parseTableSortKey('nope'), 'name');
   });
 });
 
