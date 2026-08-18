@@ -50,3 +50,6 @@ next-env.d.ts
 
 # Brainstorm visual companion sessions
 .superpowers/
+
+# Local git worktrees
+.worktrees/
