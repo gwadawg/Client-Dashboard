@@ -495,6 +495,9 @@ export default function DashboardView({
     // revisiting Appointments / Sales Calls does not re-scroll to an old row.
     params.delete("appointment_id");
     params.delete("call_id");
+    // Hub tab change resets Explorer to its default (Leads); drop conv so a
+    // prior Conversions stage filter does not still apply.
+    params.delete("conv");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
