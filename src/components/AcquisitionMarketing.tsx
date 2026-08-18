@@ -108,6 +108,12 @@ const inputCls =
   "w-full rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-amber-500/40";
 const inputStyle = { background: "#050c18", border: "1px solid rgba(255,255,255,0.08)", color: "#e2e8f0" };
 
+function matchesAdQuery(haystacks: Array<string | null | undefined>, q: string): boolean {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return true;
+  return haystacks.some((h) => (h ?? "").toLowerCase().includes(needle));
+}
+
 // ── Performance ───────────────────────────────────────────────────────────────
 function AdPerformance({
   startDate,
@@ -129,6 +135,7 @@ function AdPerformance({
   const [linkLibraryId, setLinkLibraryId] = useState("");
   const [linkSaving, setLinkSaving] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const { labels: formatLabels } = useAdFormats();
 
   const loadAds = useCallback(() => {
@@ -161,8 +168,25 @@ function AdPerformance({
   }, [loadAds]);
 
   const unsourcedAds = useMemo(
-    () => ads.filter((a) => !a.is_sourced && (a.spend > 0 || a.has_meta)),
-    [ads],
+    () =>
+      ads.filter(
+        (a) =>
+          !a.is_sourced &&
+          (a.spend > 0 || a.has_meta) &&
+          matchesAdQuery([a.ad_name, ...(a.variant_names ?? [])], search),
+      ),
+    [ads, search],
+  );
+
+  const filteredAds = useMemo(
+    () =>
+      ads.filter((a) =>
+        matchesAdQuery(
+          [a.ad_name, ...(a.variant_names ?? []), a.library?.angle_label],
+          search,
+        ),
+      ),
+    [ads, search],
   );
 
   const openLinkModal = useCallback((adName: string) => {
@@ -230,7 +254,7 @@ function AdPerformance({
     );
   }
 
-  const totals = ads.reduce(
+  const totals = filteredAds.reduce(
     (t, a) => {
       t.spend += a.spend;
       t.leads += a.leads;
@@ -244,6 +268,25 @@ function AdPerformance({
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setSearch("");
+          }}
+          placeholder="Search ad name…"
+          aria-label="Search ads"
+          className="w-full sm:w-72 px-3 py-1.5 rounded-lg text-xs outline-none"
+          style={{
+            background: "#050c18",
+            border: "1px solid rgba(255,255,255,0.1)",
+            color: "#e2e8f0",
+            fontFamily: "var(--font-plex-mono)",
+          }}
+        />
+      </div>
       {unsourcedAds.length > 0 ? (
         <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(251,191,36,0.2)" }}>
           <button
@@ -326,7 +369,14 @@ function AdPerformance({
               </tr>
             </thead>
             <tbody>
-              {ads.map((ad) => {
+              {filteredAds.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-sm" style={{ color: "#64748b" }}>
+                    {search.trim() ? `No ads match “${search.trim()}”.` : "No ads in this range."}
+                  </td>
+                </tr>
+              ) : (
+              filteredAds.map((ad) => {
                 const isOpen = expanded === ad.row_key;
                 const dd = drill[ad.row_key];
                 return (
@@ -444,7 +494,8 @@ function AdPerformance({
                     ) : null}
                   </Fragment>
                 );
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>
@@ -514,6 +565,7 @@ function AdLibrary({ libraryNav, onNavClear }: { libraryNav: LibraryNav; onNavCl
   const [newAngleLabel, setNewAngleLabel] = useState("");
   const [addingAngle, setAddingAngle] = useState(false);
   const [showInlineAngle, setShowInlineAngle] = useState(false);
+  const [search, setSearch] = useState("");
   const { formats, labels: formatLabels, createFormat, loading: formatsLoading } = useAdFormats();
 
   const loadAngles = useCallback(() => {
@@ -646,12 +698,45 @@ function AdLibrary({ libraryNav, onNavClear }: { libraryNav: LibraryNav; onNavCl
     load();
   }
 
+  const visibleEntries = useMemo(
+    () =>
+      entries.filter((e) =>
+        matchesAdQuery(
+          [
+            e.ad_name,
+            e.angle_label,
+            ...(e.aliases ?? []).map((a) => a.alias_name),
+          ],
+          search,
+        ),
+      ),
+    [entries, search],
+  );
+
   if (loading) return <p className="text-sm py-10 text-center" style={{ color: "#475569" }}>Loading library…</p>;
   if (error) return <p className="text-sm py-10 text-center" style={{ color: "#f87171" }}>{error}</p>;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setSearch("");
+          }}
+          placeholder="Search ad name…"
+          aria-label="Search ads"
+          className="w-full sm:w-72 px-3 py-1.5 rounded-lg text-xs outline-none"
+          style={{
+            background: "#050c18",
+            border: "1px solid rgba(255,255,255,0.1)",
+            color: "#e2e8f0",
+            fontFamily: "var(--font-plex-mono)",
+          }}
+        />
+        <div className="flex items-center gap-3">
         <button
           type="button"
           className="px-4 py-2 rounded-lg text-sm font-medium"
@@ -671,6 +756,7 @@ function AdLibrary({ libraryNav, onNavClear }: { libraryNav: LibraryNav; onNavCl
         >
           {anglesOpen ? "Hide angle settings" : "Angle settings"}
         </button>
+        </div>
       </div>
 
       {anglesOpen ? (
@@ -723,9 +809,13 @@ function AdLibrary({ libraryNav, onNavClear }: { libraryNav: LibraryNav; onNavCl
         <p className="text-sm py-8 text-center" style={{ color: "#475569" }}>
           No ads in the library yet. Add one with its Meta ad name and Google Drive link.
         </p>
+      ) : visibleEntries.length === 0 ? (
+        <p className="text-sm py-8 text-center" style={{ color: "#64748b" }}>
+          {search.trim() ? `No ads match “${search.trim()}”.` : "No ads to show."}
+        </p>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
-          {entries.map((e) => (
+          {visibleEntries.map((e) => (
             <div
               key={e.id}
               className="rounded-xl p-4 space-y-2"

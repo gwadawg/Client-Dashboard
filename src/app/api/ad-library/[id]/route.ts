@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
+import { replaceLibraryTags, resolveTagSlugs, withLibraryTags } from '@/lib/ad-tags-db';
 
 const VALID_STATUS = ['active', 'winner', 'paused', 'archived'] as const;
 const VALID_PRODUCT = ['reverse', 'dscr', 'broad_forward'] as const;
@@ -80,6 +81,15 @@ export async function PATCH(
     if (key in body) updates[key] = cleanString(body[key]);
   }
 
+  let nextTags: string[] | null = null;
+  if ('tags' in body) {
+    const tagResult = await resolveTagSlugs(ctx.service, body.tags);
+    if (tagResult.error) {
+      return NextResponse.json({ error: tagResult.error }, { status: 400 });
+    }
+    nextTags = tagResult.slugs;
+  }
+
   const { data, error } = await ctx.service
     .from('ad_library')
     .update(updates)
@@ -94,7 +104,16 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!data) return NextResponse.json({ error: 'Ad not found' }, { status: 404 });
-  return NextResponse.json(data);
+
+  if (nextTags !== null) {
+    const tagWrite = await replaceLibraryTags(ctx.service, id, nextTags);
+    if (tagWrite.error) {
+      return NextResponse.json({ error: tagWrite.error }, { status: 500 });
+    }
+  }
+
+  const withTags = await withLibraryTags(ctx.service, [data]);
+  return NextResponse.json(withTags.data[0] ?? { ...data, tags: [] });
 }
 
 export async function DELETE(

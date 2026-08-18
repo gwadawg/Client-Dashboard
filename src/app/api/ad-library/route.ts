@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
+import { replaceLibraryTags, resolveTagSlugs, withLibraryTags } from '@/lib/ad-tags-db';
 
 const VALID_STATUS = ['active', 'winner', 'paused', 'archived'] as const;
 const VALID_PRODUCT = ['reverse', 'dscr', 'broad_forward'] as const;
@@ -43,7 +44,15 @@ export async function GET() {
     aliasesByLibrary.set(a.library_id, list);
   }
 
-  const data = (library ?? []).map((entry) => ({
+  const tagged = await withLibraryTags(ctx.service, library ?? []);
+  if (tagged.error) {
+    const hint = tagged.error.includes('does not exist')
+      ? ' Run migration add_ad_tags_catalog.sql on Supabase.'
+      : '';
+    return NextResponse.json({ error: tagged.error + hint }, { status: 500 });
+  }
+
+  const data = tagged.data.map((entry) => ({
     ...entry,
     aliases: aliasesByLibrary.get(entry.id) ?? [],
   }));
@@ -92,6 +101,11 @@ export async function POST(req: Request) {
     }
   }
 
+  const tagResult = await resolveTagSlugs(ctx.service, 'tags' in body ? body.tags : []);
+  if (tagResult.error) {
+    return NextResponse.json({ error: tagResult.error }, { status: 400 });
+  }
+
   const row = {
     ad_name,
     platform: cleanString(body.platform) ?? 'facebook',
@@ -121,5 +135,12 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json(data, { status: 201 });
+  if (!data) return NextResponse.json({ error: 'Failed to create ad' }, { status: 500 });
+
+  const tagWrite = await replaceLibraryTags(ctx.service, data.id, tagResult.slugs);
+  if (tagWrite.error) {
+    return NextResponse.json({ error: tagWrite.error }, { status: 500 });
+  }
+  const withTags = await withLibraryTags(ctx.service, [data]);
+  return NextResponse.json(withTags.data[0] ?? { ...data, tags: [] }, { status: 201 });
 }
