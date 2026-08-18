@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission, type AuthContext } from '@/lib/api-auth';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import { buildContactKey, eventPhone } from '@/lib/contact-key';
+import { profilesForConversionExplorer } from '@/lib/conversion-explorer';
 
 const PAGE_SIZE = 50;
 /** Cap rows loaded for in-memory grouping (historical backfills). */
@@ -599,8 +600,13 @@ export async function GET(req: Request) {
     }
   }
 
-  const leadProfiles = Array.from(profiles.values()).filter((p) => p.has_lead_in_period);
-  const orphanCandidates = Array.from(profiles.values()).filter(
+  const allProfiles = Array.from(profiles.values());
+  const leadProfiles = allProfiles.filter((p) => p.has_lead_in_period);
+  const conversionRows = profilesForConversionExplorer(
+    allProfiles,
+    conversion_event,
+  );
+  const orphanCandidates = allProfiles.filter(
     (p) => !p.has_lead_in_period && p.timeline.some((t) => t.event_type !== 'lead'),
   );
 
@@ -627,17 +633,9 @@ export async function GET(req: Request) {
   mappingSummary.unmapped_events = unmappedStats.unmapped_events;
   mappingSummary.unmapped_by_type = unmappedStats.unmapped_by_type;
 
-  let sortedLeads = leadProfiles.sort(
+  let sortedLeads = conversionRows.sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
-
-  if (conversion_event === 'proposal_made') {
-    sortedLeads = sortedLeads.filter((p) => p.has_proposal_made);
-  } else if (conversion_event === 'submission_made') {
-    sortedLeads = sortedLeads.filter((p) => p.has_submission_made);
-  } else if (conversion_event === 'loan_funded') {
-    sortedLeads = sortedLeads.filter((p) => p.has_loan_funded);
-  }
 
   const activeRows = view === 'unmapped' ? unmappedContacts : sortedLeads;
   const total = activeRows.length;
