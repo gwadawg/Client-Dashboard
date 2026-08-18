@@ -70,6 +70,8 @@ const VIEW_ALIASES: Record<string, string[]> = {
   team_dashboard_ccm: ["team_dashboard", "ops_overview", "client_health", "ceo"],
   team_dashboard_media: ["team_dashboard", "ops_overview", "media_buyer", "client_health", "ceo"],
   ops_overview: ["team_dashboard", "ceo"],
+  // Anyone who can see Client Success can open the peer wall.
+  client_compare: ["client_health", "team_dashboard", "team_dashboard_ccm", "team_dashboard_media", "ops_overview", "ceo"],
   // Lead seats with Call Library / Team Command / CEO can open Team Meetings.
   team_meetings: ["call_library", "team_dashboard", "team_dashboard_ccm", "ops_overview", "ceo"],
   // Weekly account plans: anyone in meetings / CS / ops / ceo.

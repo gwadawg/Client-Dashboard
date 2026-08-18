@@ -287,7 +287,7 @@ export const DEFAULT_KPI_BANDS: Record<KpiKey, KpiBandSpec> = {
 };
 
 /** Minimum denominator per KPI before it can be graded (volume guard). */
-const KPI_MIN_DENOMINATOR: Record<KpiKey, number> = {
+export const KPI_MIN_DENOMINATOR: Record<KpiKey, number> = {
   lead_to_qualified: 5,
   pickup_rate: 20,
   booking_rate: 5,

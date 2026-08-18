@@ -32,6 +32,7 @@ export type View =
   | "state_looker"
   | "team_dashboard_ccm"
   | "team_dashboard_media"
+  | "client_compare"
   // Folded into the Client Workspace hub. Retained so stored permissions,
   // bookmarks and icon maps keep resolving; redirected on the way in.
   | "dashboard"
@@ -348,6 +349,7 @@ export const NAV: NavItem[] = [
   { view: "client_report_builder", label: "Client Reports",     group: "Clients"      },
   { view: "media_buyer",        label: "Ad Performance",        group: "Clients"      },
   { view: "client_health",      label: "Client Success",        group: "Clients"      },
+  { view: "client_compare",     label: "Client Compare",        group: "Clients"      },
   { view: "state_looker",       label: "Client Directory",      group: "Clients"      },
   { view: "ceo",                label: "CEO Dashboard",         group: "Executive"    },
   { view: "ceo_raw",            label: "Raw Data",              group: "Executive"    },
