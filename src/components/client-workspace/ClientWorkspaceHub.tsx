@@ -15,6 +15,7 @@ import {
   type DataExplorerTab,
   type HeatmapTab,
 } from "@/lib/nav";
+import { isKpiRoiSub } from "@/lib/conversion-explorer";
 import type { DashboardClient, DashboardFilters } from "@/lib/use-dashboard-filters";
 
 const DialAnalytics = dynamic(() => import("../DialAnalytics"));
@@ -109,8 +110,8 @@ export default function ClientWorkspaceHub({
                 data={kpi}
                 filters={filters}
                 selectedClient={filters.selectedClient}
-                showConversions={sub === "conversions"}
-                onOpenConversions={() => onSubChange("conversions")}
+                showConversions={isKpiRoiSub(sub)}
+                onOpenConversions={() => onSubChange("roi")}
                 onCloseConversions={() => onSubChange(null)}
                 onReviewOverdue={() => {
                   onTabChange("explorer");

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { MetricsResult } from "@/lib/metrics";
+import { shouldShowConversionCosts } from "@/lib/conversion-explorer";
 import { formatKpiValue } from "@/lib/kpi-layouts";
 import ConversionFunnel from "./ConversionFunnel";
 import KpiCard from "./kpi/KpiCard";
@@ -165,6 +166,7 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
   );
 
   const hasCommission = avgCommission > 0;
+  const showCosts = shouldShowConversionCosts(metrics.ad_spend);
 
   return (
     <div className="space-y-8">
@@ -188,7 +190,9 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
             {clientLabel
               ? `Pipeline outcomes for ${clientLabel} in the selected date range.`
               : "Pipeline outcomes for the selected client and date range."}
-            {" "}Use the scenario planner to estimate revenue if spend or close rates improve.
+            {showCosts
+              ? " Use the scenario planner to estimate revenue if spend or close rates improve."
+              : ""}
           </p>
         </div>
       </div>
@@ -200,23 +204,27 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
           <KpiCard label="Funded Transactions" value={formatKpiValue(metrics.funded_deals, "int")} accent hint="Each loan file that funded. Same borrower or same house, two loans = two transactions." />
           <KpiCard label="Unique Funded Borrowers" value={formatKpiValue(metrics.funded_loans, "int")} hint="Unique people with at least one funded loan." />
           <KpiCard label="Loan Volume" value={formatKpiValue(metrics.loan_volume, "money")} hint="Sum of loan size on funded transactions." />
-          <KpiCard label="Total Spend" value={formatKpiValue(metrics.ad_spend, "money")} hint="Meta ad spend in this range." />
-          <KpiCard label="Cost per Funded Transaction" value={formatKpiValue(metrics.cp_funded_deal, "money")} hint="Total Spend ÷ Funded Transactions." />
-          <KpiCard label="Cost per Funded Borrower" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Unique Funded Borrowers." />
-          {metrics.roas != null && (
-            <KpiCard
-              label="ROAS"
-              value={`${metrics.roas.toFixed(2)}x`}
-              accent
-              hint="Logged funded earnings ÷ ad spend."
-            />
+          {showCosts && (
+            <>
+              <KpiCard label="Total Spend" value={formatKpiValue(metrics.ad_spend, "money")} hint="Meta ad spend in this range." />
+              <KpiCard label="Cost per Funded Transaction" value={formatKpiValue(metrics.cp_funded_deal, "money")} hint="Total Spend ÷ Funded Transactions." />
+              <KpiCard label="Cost per Funded Borrower" value={formatKpiValue(metrics.cp_loan_funded, "money")} hint="Total Spend ÷ Unique Funded Borrowers." />
+              {metrics.roas != null && (
+                <KpiCard
+                  label="ROAS"
+                  value={`${metrics.roas.toFixed(2)}x`}
+                  accent
+                  hint="Logged funded earnings ÷ ad spend."
+                />
+              )}
+              <KpiCard
+                label="Est. Commission Rev."
+                value={hasCommission ? money(current.revenue) : "—"}
+                accent={hasCommission}
+                hint={hasCommission ? `Funded Loans × $${avgCommission.toLocaleString()} avg commission.` : "Enter average commission below to estimate revenue."}
+              />
+            </>
           )}
-          <KpiCard
-            label="Est. Commission Rev."
-            value={hasCommission ? money(current.revenue) : "—"}
-            accent={hasCommission}
-            hint={hasCommission ? `Funded Loans × $${avgCommission.toLocaleString()} avg commission.` : "Enter average commission below to estimate revenue."}
-          />
         </div>
       </KpiSection>
 
@@ -248,44 +256,46 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
       </KpiSection>
 
       <KpiSection title="Funnel">
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className={`grid gap-4 ${showCosts ? "lg:grid-cols-2" : "lg:grid-cols-1"}`}>
           <ConversionFunnel metrics={metrics} />
-          <div
-            className="rounded-xl p-5"
-            style={{ background: "linear-gradient(135deg, #0f2040 0%, #0c1a30 100%)", border: "1px solid rgba(255,255,255,0.07)" }}
-          >
-            <h3 className="text-sm font-semibold mb-1" style={{ color: "#e2e8f0" }}>Stage costs</h3>
-            <p className="text-[10px] mb-4" style={{ color: MUTED }}>
-              Marketing efficiency at each conversion milestone.
-            </p>
-            <div className="space-y-3">
-              {[
-                { label: "Cost per Proposal", value: metrics.cp_proposal_made },
-                { label: "Cost per Submission", value: metrics.cp_submission_made },
-                { label: "Cost per Funded", value: metrics.cp_loan_funded },
-              ].map(row => (
-                <div key={row.label} className="flex items-center justify-between text-sm">
-                  <span style={{ color: "#94a3b8" }}>{row.label}</span>
-                  <span className="font-semibold tabular-nums" style={{ color: "#e2e8f0" }}>
-                    {formatKpiValue(row.value, "money")}
-                  </span>
-                </div>
-              ))}
-            </div>
-            {hasCommission && (
-              <div className="mt-5 pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="flex items-center justify-between text-sm">
-                  <span style={{ color: "#94a3b8" }}>ROAS (commission)</span>
-                  <span className="font-bold text-lg tabular-nums" style={{ color: current.roas != null && current.roas >= 1 ? GOOD : AMBER }}>
-                    {ratio(current.roas)}
-                  </span>
-                </div>
-                <p className="text-[10px] mt-1" style={{ color: MUTED }}>
-                  Est. commission revenue ÷ ad spend
-                </p>
+          {showCosts && (
+            <div
+              className="rounded-xl p-5"
+              style={{ background: "linear-gradient(135deg, #0f2040 0%, #0c1a30 100%)", border: "1px solid rgba(255,255,255,0.07)" }}
+            >
+              <h3 className="text-sm font-semibold mb-1" style={{ color: "#e2e8f0" }}>Stage costs</h3>
+              <p className="text-[10px] mb-4" style={{ color: MUTED }}>
+                Marketing efficiency at each conversion milestone.
+              </p>
+              <div className="space-y-3">
+                {[
+                  { label: "Cost per Proposal", value: metrics.cp_proposal_made },
+                  { label: "Cost per Submission", value: metrics.cp_submission_made },
+                  { label: "Cost per Funded", value: metrics.cp_loan_funded },
+                ].map(row => (
+                  <div key={row.label} className="flex items-center justify-between text-sm">
+                    <span style={{ color: "#94a3b8" }}>{row.label}</span>
+                    <span className="font-semibold tabular-nums" style={{ color: "#e2e8f0" }}>
+                      {formatKpiValue(row.value, "money")}
+                    </span>
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
+              {hasCommission && (
+                <div className="mt-5 pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span style={{ color: "#94a3b8" }}>ROAS (commission)</span>
+                    <span className="font-bold text-lg tabular-nums" style={{ color: current.roas != null && current.roas >= 1 ? GOOD : AMBER }}>
+                      {ratio(current.roas)}
+                    </span>
+                  </div>
+                  <p className="text-[10px] mt-1" style={{ color: MUTED }}>
+                    Est. commission revenue ÷ ad spend
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </KpiSection>
 
@@ -320,123 +330,124 @@ export default function ClientConversionsView({ metrics, clientLabel, onBack }: 
         </div>
       </KpiSection>
 
-      <KpiSection
-        title="What-if scenario"
-       
-        footnote="Assumes CPL stays flat when spend increases (more spend → proportionally more leads). Conversion lift applies evenly across pipeline stages."
-      >
-        <div
-          className="rounded-xl p-5 space-y-6"
-          style={{ background: "linear-gradient(135deg, #0f2040 0%, #0c1a30 100%)", border: "1px solid rgba(255,255,255,0.07)" }}
+      {showCosts && (
+        <KpiSection
+          title="What-if scenario"
+          footnote="Assumes CPL stays flat when spend increases (more spend → proportionally more leads). Conversion lift applies evenly across pipeline stages."
         >
-          <div className="grid gap-6 md:grid-cols-2">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label htmlFor="spend-slider" className="text-sm font-medium" style={{ color: "#cbd5e1" }}>
-                  Increase ad spend
-                </label>
-                <span className="text-sm font-bold tabular-nums" style={{ color: AMBER }}>
-                  +{spendIncreasePct}%
-                </span>
+          <div
+            className="rounded-xl p-5 space-y-6"
+            style={{ background: "linear-gradient(135deg, #0f2040 0%, #0c1a30 100%)", border: "1px solid rgba(255,255,255,0.07)" }}
+          >
+            <div className="grid gap-6 md:grid-cols-2">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label htmlFor="spend-slider" className="text-sm font-medium" style={{ color: "#cbd5e1" }}>
+                    Increase ad spend
+                  </label>
+                  <span className="text-sm font-bold tabular-nums" style={{ color: AMBER }}>
+                    +{spendIncreasePct}%
+                  </span>
+                </div>
+                <input
+                  id="spend-slider"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={spendIncreasePct}
+                  onChange={e => setSpendIncreasePct(Number(e.target.value))}
+                  className="w-full accent-amber-500"
+                />
+                <p className="text-[10px] mt-1" style={{ color: MUTED }}>
+                  {money(metrics.ad_spend)} → {money(projected.spend)}
+                </p>
               </div>
-              <input
-                id="spend-slider"
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={spendIncreasePct}
-                onChange={e => setSpendIncreasePct(Number(e.target.value))}
-                className="w-full accent-amber-500"
-              />
-              <p className="text-[10px] mt-1" style={{ color: MUTED }}>
-                {money(metrics.ad_spend)} → {money(projected.spend)}
-              </p>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label htmlFor="conv-slider" className="text-sm font-medium" style={{ color: "#cbd5e1" }}>
-                  Improve conversion rates
-                </label>
-                <span className="text-sm font-bold tabular-nums" style={{ color: GOOD }}>
-                  +{conversionLiftPct}%
-                </span>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label htmlFor="conv-slider" className="text-sm font-medium" style={{ color: "#cbd5e1" }}>
+                    Improve conversion rates
+                  </label>
+                  <span className="text-sm font-bold tabular-nums" style={{ color: GOOD }}>
+                    +{conversionLiftPct}%
+                  </span>
+                </div>
+                <input
+                  id="conv-slider"
+                  type="range"
+                  min={0}
+                  max={50}
+                  step={5}
+                  value={conversionLiftPct}
+                  onChange={e => setConversionLiftPct(Number(e.target.value))}
+                  className="w-full accent-emerald-500"
+                />
+                <p className="text-[10px] mt-1" style={{ color: MUTED }}>
+                  Applies to proposal, submission, and funded stage rates.
+                </p>
               </div>
-              <input
-                id="conv-slider"
-                type="range"
-                min={0}
-                max={50}
-                step={5}
-                value={conversionLiftPct}
-                onChange={e => setConversionLiftPct(Number(e.target.value))}
-                className="w-full accent-emerald-500"
-              />
-              <p className="text-[10px] mt-1" style={{ color: MUTED }}>
-                Applies to proposal, submission, and funded stage rates.
-              </p>
             </div>
-          </div>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg p-4" style={{ background: "#0a1628" }}>
-              <p className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>Projected funded</p>
-              <p className="text-2xl font-bold mt-1 tabular-nums" style={{ color: "#e2e8f0" }}>
-                {Math.round(projected.funded).toLocaleString()}
-              </p>
-              <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
-                vs {metrics.funded_loans} now
-              </p>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg p-4" style={{ background: "#0a1628" }}>
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>Projected funded</p>
+                <p className="text-2xl font-bold mt-1 tabular-nums" style={{ color: "#e2e8f0" }}>
+                  {Math.round(projected.funded).toLocaleString()}
+                </p>
+                <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
+                  vs {metrics.funded_loans} now
+                </p>
+              </div>
+              <div className="rounded-lg p-4" style={{ background: "#0a1628" }}>
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>Projected spend</p>
+                <p className="text-2xl font-bold mt-1 tabular-nums" style={{ color: "#e2e8f0" }}>
+                  {money(projected.spend)}
+                </p>
+                <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
+                  CP funded {money(projected.cpFunded)}
+                </p>
+              </div>
+              <div className="rounded-lg p-4" style={{ background: "#0a1628" }}>
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>Est. commission rev.</p>
+                <p className="text-2xl font-bold mt-1 tabular-nums" style={{ color: hasCommission ? AMBER : "#334155" }}>
+                  {hasCommission ? money(projected.revenue) : "—"}
+                </p>
+                <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
+                  {hasCommission ? `vs ${money(current.revenue)} now` : "Set avg commission"}
+                </p>
+              </div>
+              <div className="rounded-lg p-4" style={{ background: "#0a1628" }}>
+                <p className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>Projected ROAS</p>
+                <p
+                  className="text-2xl font-bold mt-1 tabular-nums"
+                  style={{ color: hasCommission && projected.roas != null && projected.roas >= 1 ? GOOD : hasCommission ? AMBER : "#334155" }}
+                >
+                  {hasCommission ? ratio(projected.roas) : "—"}
+                </p>
+                <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
+                  {hasCommission ? `vs ${ratio(current.roas)} now` : "Set avg commission"}
+                </p>
+              </div>
             </div>
-            <div className="rounded-lg p-4" style={{ background: "#0a1628" }}>
-              <p className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>Projected spend</p>
-              <p className="text-2xl font-bold mt-1 tabular-nums" style={{ color: "#e2e8f0" }}>
-                {money(projected.spend)}
-              </p>
-              <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
-                CP funded {money(projected.cpFunded)}
-              </p>
-            </div>
-            <div className="rounded-lg p-4" style={{ background: "#0a1628" }}>
-              <p className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>Est. commission rev.</p>
-              <p className="text-2xl font-bold mt-1 tabular-nums" style={{ color: hasCommission ? AMBER : "#334155" }}>
-                {hasCommission ? money(projected.revenue) : "—"}
-              </p>
-              <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
-                {hasCommission ? `vs ${money(current.revenue)} now` : "Set avg commission"}
-              </p>
-            </div>
-            <div className="rounded-lg p-4" style={{ background: "#0a1628" }}>
-              <p className="text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>Projected ROAS</p>
-              <p
-                className="text-2xl font-bold mt-1 tabular-nums"
-                style={{ color: hasCommission && projected.roas != null && projected.roas >= 1 ? GOOD : hasCommission ? AMBER : "#334155" }}
-              >
-                {hasCommission ? ratio(projected.roas) : "—"}
-              </p>
-              <p className="text-[11px] mt-0.5" style={{ color: "#64748b" }}>
-                {hasCommission ? `vs ${ratio(current.roas)} now` : "Set avg commission"}
-              </p>
-            </div>
-          </div>
 
-          {hasCommission && (
-            <div className="space-y-4 pt-2">
-              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#64748b" }}>
-                Current vs projected
-              </p>
-              <CompareBar label="Funded loans" current={metrics.funded_loans} projected={projected.funded} format="int" />
-              <CompareBar label="Commission revenue" current={current.revenue} projected={projected.revenue} format="money" />
-              <CompareBar
-                label="ROAS"
-                current={current.roas ?? 0}
-                projected={projected.roas ?? 0}
-                format="ratio"
-              />
-            </div>
-          )}
-        </div>
-      </KpiSection>
+            {hasCommission && (
+              <div className="space-y-4 pt-2">
+                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#64748b" }}>
+                  Current vs projected
+                </p>
+                <CompareBar label="Funded loans" current={metrics.funded_loans} projected={projected.funded} format="int" />
+                <CompareBar label="Commission revenue" current={current.revenue} projected={projected.revenue} format="money" />
+                <CompareBar
+                  label="ROAS"
+                  current={current.roas ?? 0}
+                  projected={projected.roas ?? 0}
+                  format="ratio"
+                />
+              </div>
+            )}
+          </div>
+        </KpiSection>
+      )}
     </div>
   );
 }
