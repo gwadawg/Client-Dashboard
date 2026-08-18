@@ -504,6 +504,8 @@ export default function DashboardView({
     const params = new URLSearchParams(searchParams.toString());
     if (sub) params.set("sub", sub);
     else params.delete("sub");
+    // Conversion stage filter is only valid on Conversions; clear when leaving.
+    if (sub !== "conversions") params.delete("conv");
     params.delete("appointment_id");
     params.delete("call_id");
     const qs = params.toString();
@@ -845,7 +847,11 @@ export default function DashboardView({
     params.set("tab", nav.tab);
     params.set("sub", nav.sub);
     params.set("conv", nav.conv);
+    // Drop stale table filters so KPI drill-down uses date/client/live only.
     params.delete("sim");
+    params.delete("q");
+    params.delete("rows");
+    params.delete("page");
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     setView(nav.view);
     setHubTab(nav.tab);
