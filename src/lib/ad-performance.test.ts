@@ -111,6 +111,27 @@ describe('aggregateAdPerformance unique funnel', () => {
     assert.equal(rows[0].cost_per_qualified, 400);
     assert.equal(rows[0].qualified_rate, 50);
   });
+
+  it('rolls funded borrowers into submissions and proposals without double-counting', () => {
+    const rows = aggregateAdPerformance(
+      [meta({ spend: 600 })],
+      [
+        evt({ event_type: 'lead', ghl_contact_id: 'a', is_qualified: true }),
+        evt({ event_type: 'lead', ghl_contact_id: 'b', is_qualified: true }),
+        evt({ event_type: 'proposal_made', ghl_contact_id: 'a', ad_name: null }),
+        evt({ event_type: 'loan_funded', ghl_contact_id: 'b', ad_name: null }),
+        evt({ event_type: 'loan_funded', ghl_contact_id: 'b', ad_name: null, occurred_at: '2026-08-08T12:00:00.000Z' }),
+      ],
+    );
+    const row = rows[0];
+    assert.equal(row.unique_proposals, 2);
+    assert.equal(row.unique_submissions, 1);
+    assert.equal(row.unique_funded, 1);
+    assert.equal(row.closes, 2);
+    assert.equal(row.cp_proposal, 300);
+    assert.equal(row.cp_submission, 600);
+    assert.equal(row.cp_funded, 600);
+  });
 });
 
 describe('buildAdDrilldown', () => {

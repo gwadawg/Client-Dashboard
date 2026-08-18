@@ -43,12 +43,18 @@ type AdRow = {
   closes: number;
   unique_hand_raises: number;
   unique_conversations: number;
+  unique_proposals: number;
+  unique_submissions: number;
+  unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
   cost_per_appointment: number | null;
   cost_per_show: number | null;
   cost_per_close: number | null;
   cp_conversation: number | null;
+  cp_proposal: number | null;
+  cp_submission: number | null;
+  cp_funded: number | null;
   booking_rate: number | null;
   qualified_rate: number | null;
   show_rate: number | null;
@@ -121,6 +127,8 @@ function productMatches(product: string | null | undefined, filter: ProductFilte
 
 function rollupAds(list: AdRow[]) {
   const spend = list.reduce((s, a) => s + a.spend, 0);
+  const impressions = list.reduce((s, a) => s + a.impressions, 0);
+  const clicks = list.reduce((s, a) => s + a.clicks, 0);
   const leads = list.reduce((s, a) => s + a.leads, 0);
   const qualified = list.reduce((s, a) => s + a.qualified, 0);
   const appointments = list.reduce((s, a) => s + a.appointments, 0);
@@ -128,9 +136,17 @@ function rollupAds(list: AdRow[]) {
   const closes = list.reduce((s, a) => s + a.closes, 0);
   const unique_conversations = list.reduce((s, a) => s + (a.unique_conversations ?? 0), 0);
   const unique_hand_raises = list.reduce((s, a) => s + (a.unique_hand_raises ?? 0), 0);
+  const unique_proposals = list.reduce((s, a) => s + (a.unique_proposals ?? 0), 0);
+  const unique_submissions = list.reduce((s, a) => s + (a.unique_submissions ?? 0), 0);
+  const unique_funded = list.reduce((s, a) => s + (a.unique_funded ?? 0), 0);
   return {
     ads: list.length,
     spend,
+    impressions,
+    clicks,
+    ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
+    cpc: clicks > 0 ? spend / clicks : null,
+    cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
     leads,
     qualified,
     appointments,
@@ -139,6 +155,12 @@ function rollupAds(list: AdRow[]) {
     cpl: leads > 0 ? spend / leads : null,
     cost_per_qualified: qualified > 0 ? spend / qualified : null,
     cp_conversation: unique_conversations > 0 ? spend / unique_conversations : null,
+    unique_proposals,
+    unique_submissions,
+    unique_funded,
+    cp_proposal: unique_proposals > 0 ? spend / unique_proposals : null,
+    cp_submission: unique_submissions > 0 ? spend / unique_submissions : null,
+    cp_funded: unique_funded > 0 ? spend / unique_funded : null,
     qualified_rate: leads > 0 ? (qualified / leads) * 100 : null,
     hand_raise_rate: qualified > 0 ? (unique_hand_raises / qualified) * 100 : null,
     conversation_rate: qualified > 0 ? (unique_conversations / qualified) * 100 : null,
@@ -402,6 +424,12 @@ type SortKey =
   | "cpl"
   | "cost_per_qualified"
   | "cp_conversation"
+  | "cp_proposal"
+  | "cp_submission"
+  | "cp_funded"
+  | "unique_proposals"
+  | "unique_submissions"
+  | "unique_funded"
   | "hand_raise_rate"
   | "conversation_rate"
   | "cost_per_show";
@@ -484,7 +512,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   const [formatFilter, setFormatFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [minSpendOn, setMinSpendOn] = useState(true);
-  const [showPlatform, setShowPlatform] = useState(false);
+  const [showPlatform, setShowPlatform] = useState(true);
   const [search, setSearch] = useState("");
   const [linkSearch, setLinkSearch] = useState("");
   const { labels: formatLabels } = useAdFormats();
@@ -760,7 +788,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
     );
 
   const totals = rollupAds(filteredAds);
-  const colCount = showPlatform ? 16 : 10;
+  const colCount = showPlatform ? 20 : 14;
 
   return (
     <div className="space-y-4">
@@ -778,6 +806,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
           { label: "Best CPCONV", key: "cp_conversation" as const, nextAsc: true },
           { label: "Best CPQL", key: "cost_per_qualified" as const, nextAsc: true },
           { label: "Best CPL", key: "cpl" as const, nextAsc: true },
+          { label: "Best CPF", key: "cp_funded" as const, nextAsc: true },
           { label: "Best hand-raise", key: "hand_raise_rate" as const, nextAsc: false },
         ]).map((p) => {
           const on = sortKey === p.key && asc === p.nextAsc;
@@ -822,7 +851,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
             border: showPlatform ? "1px solid rgba(96,165,250,0.45)" : "1px solid rgba(255,255,255,0.08)",
           }}
         >
-          {showPlatform ? "Hide platform" : "Platform"}
+          {showPlatform ? "Hide CPC · CPM" : "Show CPC · CPM"}
         </button>
       </div>
 
@@ -897,7 +926,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                 {lane.label}
                 <span className="ml-2 font-normal" style={{ color: "#64748b" }}>{lane.stats.ads} ads</span>
               </p>
-              <div className="mt-3 grid grid-cols-4 gap-3">
+              <div className="mt-3 grid grid-cols-3 sm:grid-cols-7 gap-3">
                 <div>
                   <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>Spend</p>
                   <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(Math.round(lane.stats.spend))}</p>
@@ -907,12 +936,24 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                   <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{num(lane.stats.leads)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>CPL</p>
-                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(lane.stats.cpl)}</p>
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>CTR</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{pct(lane.stats.ctr)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>CPC</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(lane.stats.cpc)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>CPM</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(lane.stats.cpm)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>CPCONV</p>
                   <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(lane.stats.cp_conversation)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>Funded</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{num(lane.stats.unique_funded)}</p>
                 </div>
               </div>
             </button>
@@ -995,14 +1036,23 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-12 gap-3">
         {[
           { label: "Total Spend", value: money(Math.round(totals.spend)) },
+          { label: "Impr", value: num(totals.impressions) },
+          { label: "Clicks", value: num(totals.clicks) },
+          { label: "CTR", value: pct(totals.ctr) },
+          { label: "CPC", value: money(totals.cpc) },
+          { label: "CPM", value: money(totals.cpm) },
           { label: "Leads", value: num(totals.leads) },
           { label: "Qual %", value: pct(totals.qualified_rate) },
           { label: "CPL", value: money(totals.cpl) },
           { label: "CPQL", value: money(totals.cost_per_qualified) },
           { label: "CPCONV", value: money(totals.cp_conversation) },
+          { label: "Proposals", value: num(totals.unique_proposals) },
+          { label: "Submissions", value: num(totals.unique_submissions) },
+          { label: "Funded", value: num(totals.unique_funded) },
+          { label: "CPF", value: money(totals.cp_funded) },
           { label: "Hand-raise", value: pct(totals.hand_raise_rate) },
         ].map((s) => (
           <div key={s.label} className="rounded-xl p-4" style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -1037,6 +1087,10 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                 <SortHeader label="CPCONV" k="cp_conversation" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="HR %" k="hand_raise_rate" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Conv %" k="conversation_rate" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="Prop" k="unique_proposals" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="Sub" k="unique_submissions" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="Funded" k="unique_funded" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="CPF" k="cp_funded" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                   Clients
                 </th>
@@ -1276,6 +1330,10 @@ function FragmentRow({
       <td className="px-3 py-3 text-right font-semibold" style={{ color: "#fbbf24" }}>{money(ad.cp_conversation)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{pct(ad.hand_raise_rate)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{pct(ad.conversation_rate)}</td>
+      <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.unique_proposals ?? 0)}</td>
+      <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.unique_submissions ?? 0)}</td>
+      <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{num(ad.unique_funded ?? 0)}</td>
+      <td className="px-3 py-3 text-right font-semibold" style={{ color: "#34d399" }}>{money(ad.cp_funded)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#475569" }}>{ad.client_count}</td>
     </tr>
   );

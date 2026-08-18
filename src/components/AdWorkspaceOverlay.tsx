@@ -41,11 +41,17 @@ export type AdWorkspaceAd = {
   cpl: number | null;
   cost_per_qualified: number | null;
   cp_conversation: number | null;
+  cp_proposal: number | null;
+  cp_submission: number | null;
+  cp_funded: number | null;
   cost_per_show: number | null;
   hand_raise_rate: number | null;
   conversation_rate: number | null;
   unique_hand_raises: number;
   unique_conversations: number;
+  unique_proposals: number;
+  unique_submissions: number;
+  unique_funded: number;
   client_count: number;
   library: AdWorkspaceLibrary | null;
   variant_names: string[];
@@ -61,9 +67,15 @@ export type AdWorkspaceClientRow = {
   shows: number;
   unique_hand_raises: number;
   unique_conversations: number;
+  unique_proposals: number;
+  unique_submissions: number;
+  unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
   cp_conversation: number | null;
+  cp_proposal: number | null;
+  cp_submission: number | null;
+  cp_funded: number | null;
   cost_per_show: number | null;
   qualified_rate: number | null;
   hand_raise_rate: number | null;
@@ -76,9 +88,15 @@ export type AdWorkspaceDaily = {
   leads: number;
   qualified: number;
   unique_conversations: number;
+  unique_proposals: number;
+  unique_submissions: number;
+  unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
   cp_conversation: number | null;
+  cp_proposal: number | null;
+  cp_submission: number | null;
+  cp_funded: number | null;
   qualified_rate: number | null;
   hand_raise_rate: number | null;
   conversation_rate: number | null;
@@ -94,9 +112,15 @@ export type AdWorkspaceVariant = {
   appointments: number;
   shows: number;
   unique_conversations: number;
+  unique_proposals: number;
+  unique_submissions: number;
+  unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
   cp_conversation: number | null;
+  cp_proposal: number | null;
+  cp_submission: number | null;
+  cp_funded: number | null;
 };
 
 export type AdWorkspaceDrilldown = {
@@ -141,13 +165,19 @@ const CLIENT_LINE_COLORS = [
   "#c084fc",
 ];
 
-type CostKey = "cpl" | "cost_per_qualified" | "cp_conversation";
+type CostKey = "cpl" | "cost_per_qualified" | "cp_conversation" | "cp_proposal" | "cp_submission" | "cp_funded";
 type RateKey = "qualified_rate" | "hand_raise_rate" | "conversation_rate";
 
 const COST_CHARTS: { key: CostKey; title: string; subtitle: string }[] = [
   { key: "cpl", title: "CPL", subtitle: "Spend ÷ leads" },
   { key: "cost_per_qualified", title: "CPQL", subtitle: "Spend ÷ qualified" },
   { key: "cp_conversation", title: "CPCONV", subtitle: "Spend ÷ unique conversations" },
+];
+
+const BACKEND_COST_CHARTS: { key: CostKey; title: string; subtitle: string }[] = [
+  { key: "cp_proposal", title: "CPP", subtitle: "Spend ÷ unique proposals" },
+  { key: "cp_submission", title: "CPS", subtitle: "Spend ÷ unique submissions" },
+  { key: "cp_funded", title: "CPF", subtitle: "Spend ÷ unique funded borrowers" },
 ];
 
 const RATE_CHARTS: { key: RateKey; title: string; subtitle: string; color: string }[] = [
@@ -298,7 +328,7 @@ export default function AdWorkspaceOverlay({
 }: Props) {
   const [mode, setMode] = useState<ChartMode>("blended");
   const [pinned, setPinned] = useState<string[]>([]);
-  const [platformOpen, setPlatformOpen] = useState(false);
+  const [platformOpen, setPlatformOpen] = useState(true);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -461,9 +491,14 @@ export default function AdWorkspaceOverlay({
             <p className="text-sm py-16 text-center" style={{ color: "#475569" }}>Loading ad workspace…</p>
           ) : (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-12 gap-2">
                 {[
                   { label: "Spend", value: money(ad.spend), tip: "Meta spend in range" },
+                  { label: "Impr", value: num(ad.impressions), tip: "Impressions in range" },
+                  { label: "Clicks", value: num(ad.clicks), tip: "Link clicks in range" },
+                  { label: "CTR", value: pct(ad.ctr), tip: "Clicks ÷ impressions" },
+                  { label: "CPC", value: moneyExact(ad.cpc), tip: "Spend ÷ clicks" },
+                  { label: "CPM", value: moneyExact(ad.cpm), tip: "Spend ÷ impressions × 1000" },
                   { label: "Leads", value: num(ad.leads), tip: "Attributed lead events" },
                   { label: "Qual %", value: pct(ad.qualified_rate), tip: "Qualified ÷ leads", spark: daily.map((p) => p.qualified_rate) },
                   { label: "CPL", value: moneyExact(ad.cpl), tip: "Spend ÷ leads", spark: daily.map((p) => p.cpl) },
@@ -471,6 +506,12 @@ export default function AdWorkspaceOverlay({
                   { label: "CPCONV", value: moneyExact(ad.cp_conversation), tip: "Spend ÷ unique (show ∪ claimed ∪ LT)", spark: daily.map((p) => p.cp_conversation) },
                   { label: "Hand-raise", value: pct(ad.hand_raise_rate), tip: "Unique booked ∪ claimed ∪ LT ÷ qualified", spark: daily.map((p) => p.hand_raise_rate) },
                   { label: "Conv %", value: pct(ad.conversation_rate), tip: "Unique conversations ÷ qualified", spark: daily.map((p) => p.conversation_rate) },
+                  { label: "Proposals", value: num(ad.unique_proposals ?? 0), tip: "Unique proposal ∪ submission ∪ funded" },
+                  { label: "Submissions", value: num(ad.unique_submissions ?? 0), tip: "Unique submission ∪ funded" },
+                  { label: "Funded", value: num(ad.unique_funded ?? 0), tip: "Unique funded borrowers" },
+                  { label: "CPP", value: moneyExact(ad.cp_proposal), tip: "Spend ÷ unique proposals", spark: daily.map((p) => p.cp_proposal) },
+                  { label: "CPS", value: moneyExact(ad.cp_submission), tip: "Spend ÷ unique submissions", spark: daily.map((p) => p.cp_submission) },
+                  { label: "CPF", value: moneyExact(ad.cp_funded), tip: "Spend ÷ unique funded", spark: daily.map((p) => p.cp_funded) },
                 ].map((tile) => (
                   <div
                     key={tile.label}
@@ -539,6 +580,17 @@ export default function AdWorkspaceOverlay({
               </div>
 
               <div>
+                <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "#475569", fontFamily: "var(--font-plex-mono)" }}>
+                  Backend conversions
+                </p>
+                <div className="grid gap-4 md:grid-cols-3">
+                  {BACKEND_COST_CHARTS.map((chart) => (
+                    <CostPanel key={chart.key} chart={chart} data={blendedChartData} granularity={granularity} />
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#475569" }}>
                   Accounts using this ad
                 </p>
@@ -549,7 +601,7 @@ export default function AdWorkspaceOverlay({
                   <table className="w-full text-xs">
                     <thead>
                       <tr style={{ background: "#050c18" }}>
-                        {["Client", "Spend", "Leads", "Qual %", "CPL", "CPQL", "CPCONV", "Δ vs ad", "HR %", "Conv %"].map((h, i) => (
+                        {["Client", "Spend", "Leads", "Qual %", "CPL", "CPQL", "CPCONV", "Δ vs ad", "Prop", "Sub", "Funded", "CPF"].map((h, i) => (
                           <th
                             key={h}
                             className={`px-3 py-2 ${i === 0 ? "text-left" : "text-right"} text-[10px] font-semibold uppercase tracking-wider`}
@@ -563,7 +615,7 @@ export default function AdWorkspaceOverlay({
                     <tbody>
                       {clients.length === 0 ? (
                         <tr>
-                          <td colSpan={10} className="px-3 py-4 text-center" style={{ color: "#475569" }}>No client data.</td>
+                          <td colSpan={12} className="px-3 py-4 text-center" style={{ color: "#475569" }}>No client data.</td>
                         </tr>
                       ) : (
                         clients.map((c) => {
@@ -613,8 +665,10 @@ export default function AdWorkspaceOverlay({
                               >
                                 {delta == null ? "—" : `${delta > 0 ? "+" : ""}${moneyExact(delta)}`}
                               </td>
-                              <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{pct(c.hand_raise_rate)}</td>
-                              <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{pct(c.conversation_rate)}</td>
+                              <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(c.unique_proposals ?? 0)}</td>
+                              <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(c.unique_submissions ?? 0)}</td>
+                              <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{num(c.unique_funded ?? 0)}</td>
+                              <td className="px-3 py-2 text-right font-semibold" style={{ color: "#34d399" }}>{moneyExact(c.cp_funded)}</td>
                             </tr>
                           );
                         })
@@ -631,7 +685,7 @@ export default function AdWorkspaceOverlay({
                     <table className="w-full text-xs">
                       <thead>
                         <tr style={{ background: "#050c18" }}>
-                          {["Ad name", "Spend", "Leads", "CPL", "CPQL", "CPCONV"].map((h, i) => (
+                          {["Ad name", "Spend", "Leads", "CPL", "CPCONV", "Prop", "Sub", "Funded", "CPF"].map((h, i) => (
                             <th key={h} className={`px-3 py-2 ${i === 0 ? "text-left" : "text-right"} text-[10px] font-semibold uppercase tracking-wider`} style={{ color: "#475569" }}>
                               {h}
                             </th>
@@ -645,8 +699,11 @@ export default function AdWorkspaceOverlay({
                             <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{moneyExact(v.spend)}</td>
                             <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(v.leads)}</td>
                             <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{moneyExact(v.cpl)}</td>
-                            <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{moneyExact(v.cost_per_qualified)}</td>
                             <td className="px-3 py-2 text-right" style={{ color: "#fbbf24" }}>{moneyExact(v.cp_conversation)}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(v.unique_proposals ?? 0)}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(v.unique_submissions ?? 0)}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{num(v.unique_funded ?? 0)}</td>
+                            <td className="px-3 py-2 text-right font-semibold" style={{ color: "#34d399" }}>{moneyExact(v.cp_funded)}</td>
                           </tr>
                         ))}
                       </tbody>

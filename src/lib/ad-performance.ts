@@ -27,6 +27,9 @@ export type AdEventRow = {
 
 const HAND_RAISE_TYPES = new Set(['appointment_booked', 'claimed', 'live_transfer']);
 const CONVERSATION_TYPES = new Set(['show', 'claimed', 'live_transfer']);
+const PROPOSAL_TYPES = new Set(['proposal_made', 'proposal_sent']);
+const SUBMISSION_TYPES = new Set(['submission_made', 'loan_processing']);
+const FUNDED_TYPES = new Set(['loan_funded', 'closed']);
 
 export type AdPerformanceRow = {
   ad_name: string;
@@ -46,12 +49,18 @@ export type AdPerformanceRow = {
   unique_booked: number;
   unique_hand_raises: number;
   unique_conversations: number;
+  unique_proposals: number;
+  unique_submissions: number;
+  unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
   cost_per_appointment: number | null;
   cost_per_show: number | null;
   cost_per_close: number | null;
   cp_conversation: number | null;
+  cp_proposal: number | null;
+  cp_submission: number | null;
+  cp_funded: number | null;
   booking_rate: number | null;
   /** Qualified leads ÷ total leads × 100. */
   qualified_rate: number | null;
@@ -185,6 +194,9 @@ type Acc = {
   bookedKeys: Set<string>;
   handRaiseKeys: Set<string>;
   conversationKeys: Set<string>;
+  proposalKeys: Set<string>;
+  submissionKeys: Set<string>;
+  fundedKeys: Set<string>;
   clients: Set<string>;
   has_meta: boolean;
 };
@@ -205,6 +217,9 @@ function blankAcc(displayName: string): Acc {
     bookedKeys: new Set(),
     handRaiseKeys: new Set(),
     conversationKeys: new Set(),
+    proposalKeys: new Set(),
+    submissionKeys: new Set(),
+    fundedKeys: new Set(),
     clients: new Set(),
     has_meta: false,
   };
@@ -222,6 +237,9 @@ function applyFunnelEvent(
     bookedKeys: Set<string>;
     handRaiseKeys: Set<string>;
     conversationKeys: Set<string>;
+    proposalKeys: Set<string>;
+    submissionKeys: Set<string>;
+    fundedKeys: Set<string>;
   },
   e: AdEventRow,
 ): void {
@@ -242,6 +260,7 @@ function applyFunnelEvent(
       acc.no_shows += 1;
       break;
     case 'loan_funded':
+    case 'closed':
       acc.closes += 1;
       break;
     default:
@@ -251,6 +270,13 @@ function applyFunnelEvent(
   if (e.event_type === 'appointment_booked') acc.bookedKeys.add(id);
   if (HAND_RAISE_TYPES.has(e.event_type)) acc.handRaiseKeys.add(id);
   if (CONVERSATION_TYPES.has(e.event_type)) acc.conversationKeys.add(id);
+  if (PROPOSAL_TYPES.has(e.event_type) || SUBMISSION_TYPES.has(e.event_type) || FUNDED_TYPES.has(e.event_type)) {
+    acc.proposalKeys.add(id);
+  }
+  if (SUBMISSION_TYPES.has(e.event_type) || FUNDED_TYPES.has(e.event_type)) {
+    acc.submissionKeys.add(id);
+  }
+  if (FUNDED_TYPES.has(e.event_type)) acc.fundedKeys.add(id);
 }
 
 /**
@@ -296,7 +322,18 @@ function pct(numerator: number, denominator: number): number | null {
   return round(ratio(numerator, denominator) != null ? (numerator / denominator) * 100 : null, 1);
 }
 
-function costMetrics(spend: number, leads: number, qualified: number, conversations: number, shows: number, appointments: number, closes: number) {
+function costMetrics(
+  spend: number,
+  leads: number,
+  qualified: number,
+  conversations: number,
+  shows: number,
+  appointments: number,
+  closes: number,
+  unique_proposals: number,
+  unique_submissions: number,
+  unique_funded: number,
+) {
   return {
     cpl: round(ratio(spend, leads), 2),
     cost_per_qualified: round(ratio(spend, qualified), 2),
@@ -304,6 +341,9 @@ function costMetrics(spend: number, leads: number, qualified: number, conversati
     cost_per_show: round(ratio(spend, shows), 2),
     cost_per_close: round(ratio(spend, closes), 2),
     cp_conversation: round(ratio(spend, conversations), 2),
+    cp_proposal: round(ratio(spend, unique_proposals), 2),
+    cp_submission: round(ratio(spend, unique_submissions), 2),
+    cp_funded: round(ratio(spend, unique_funded), 2),
   };
 }
 
@@ -360,6 +400,9 @@ function accToRow(acc: Acc): AdPerformanceRow {
   const unique_booked = acc.bookedKeys.size;
   const unique_hand_raises = acc.handRaiseKeys.size;
   const unique_conversations = acc.conversationKeys.size;
+  const unique_proposals = acc.proposalKeys.size;
+  const unique_submissions = acc.submissionKeys.size;
+  const unique_funded = acc.fundedKeys.size;
   const costs = costMetrics(
     acc.spend,
     acc.leads,
@@ -368,6 +411,9 @@ function accToRow(acc: Acc): AdPerformanceRow {
     acc.shows,
     acc.appointments,
     acc.closes,
+    unique_proposals,
+    unique_submissions,
+    unique_funded,
   );
   return {
     ad_name: acc.ad_name,
@@ -387,6 +433,9 @@ function accToRow(acc: Acc): AdPerformanceRow {
     unique_booked,
     unique_hand_raises,
     unique_conversations,
+    unique_proposals,
+    unique_submissions,
+    unique_funded,
     ...costs,
     booking_rate: pct(unique_booked, acc.qualified),
     qualified_rate: pct(acc.qualified, acc.leads),
@@ -420,6 +469,9 @@ type RollupAcc = {
   unique_booked: number;
   unique_hand_raises: number;
   unique_conversations: number;
+  unique_proposals: number;
+  unique_submissions: number;
+  unique_funded: number;
   clients: Set<string>;
   has_meta: boolean;
 };
@@ -441,6 +493,9 @@ function rollupAccToRow(acc: RollupAcc): RolledUpAdPerformanceRow {
     bookedKeys: numberedSet(acc.unique_booked),
     handRaiseKeys: numberedSet(acc.unique_hand_raises),
     conversationKeys: numberedSet(acc.unique_conversations),
+    proposalKeys: numberedSet(acc.unique_proposals),
+    submissionKeys: numberedSet(acc.unique_submissions),
+    fundedKeys: numberedSet(acc.unique_funded),
     clients: acc.clients,
     has_meta: acc.has_meta,
   });
@@ -500,6 +555,9 @@ export function rollupAdPerformanceByLibrary(
       unique_booked: 0,
       unique_hand_raises: 0,
       unique_conversations: 0,
+      unique_proposals: 0,
+      unique_submissions: 0,
+      unique_funded: 0,
       clients: new Set<string>(),
       has_meta: false,
     }));
@@ -518,6 +576,9 @@ export function rollupAdPerformanceByLibrary(
     acc.unique_booked += row.unique_booked;
     acc.unique_hand_raises += row.unique_hand_raises;
     acc.unique_conversations += row.unique_conversations;
+    acc.unique_proposals += row.unique_proposals;
+    acc.unique_submissions += row.unique_submissions;
+    acc.unique_funded += row.unique_funded;
     if (row.has_meta) acc.has_meta = true;
     for (const id of row.client_ids ?? []) acc.clients.add(id);
   }
@@ -537,9 +598,15 @@ export type AdClientBreakdownRow = {
   closes: number;
   unique_hand_raises: number;
   unique_conversations: number;
+  unique_proposals: number;
+  unique_submissions: number;
+  unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
   cp_conversation: number | null;
+  cp_proposal: number | null;
+  cp_submission: number | null;
+  cp_funded: number | null;
   cost_per_show: number | null;
   qualified_rate: number | null;
   hand_raise_rate: number | null;
@@ -555,9 +622,15 @@ export type AdDailyPoint = {
   shows: number;
   unique_hand_raises: number;
   unique_conversations: number;
+  unique_proposals: number;
+  unique_submissions: number;
+  unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
   cp_conversation: number | null;
+  cp_proposal: number | null;
+  cp_submission: number | null;
+  cp_funded: number | null;
   qualified_rate: number | null;
   hand_raise_rate: number | null;
   conversation_rate: number | null;
@@ -574,9 +647,15 @@ export type AdVariantBreakdown = {
   shows: number;
   closes: number;
   unique_conversations: number;
+  unique_proposals: number;
+  unique_submissions: number;
+  unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
   cp_conversation: number | null;
+  cp_proposal: number | null;
+  cp_submission: number | null;
+  cp_funded: number | null;
 };
 
 export type AdDrilldown = {
@@ -607,6 +686,9 @@ type RawBucket = {
   bookedKeys: Set<string>;
   handRaiseKeys: Set<string>;
   conversationKeys: Set<string>;
+  proposalKeys: Set<string>;
+  submissionKeys: Set<string>;
+  fundedKeys: Set<string>;
 };
 
 function blankBucket(): RawBucket {
@@ -622,13 +704,36 @@ function blankBucket(): RawBucket {
     bookedKeys: new Set(),
     handRaiseKeys: new Set(),
     conversationKeys: new Set(),
+    proposalKeys: new Set(),
+    submissionKeys: new Set(),
+    fundedKeys: new Set(),
+  };
+}
+
+function backendUniques(b: RawBucket) {
+  return {
+    unique_hand_raises: b.handRaiseKeys.size,
+    unique_conversations: b.conversationKeys.size,
+    unique_proposals: b.proposalKeys.size,
+    unique_submissions: b.submissionKeys.size,
+    unique_funded: b.fundedKeys.size,
   };
 }
 
 function finalizeDailyPoint(date: string, b: RawBucket): AdDailyPoint {
-  const unique_hand_raises = b.handRaiseKeys.size;
-  const unique_conversations = b.conversationKeys.size;
-  const costs = costMetrics(b.spend, b.leads, b.qualified, unique_conversations, b.shows, b.appointments, b.closes);
+  const u = backendUniques(b);
+  const costs = costMetrics(
+    b.spend,
+    b.leads,
+    b.qualified,
+    u.unique_conversations,
+    b.shows,
+    b.appointments,
+    b.closes,
+    u.unique_proposals,
+    u.unique_submissions,
+    u.unique_funded,
+  );
   return {
     date,
     spend: round(b.spend) ?? 0,
@@ -636,21 +741,37 @@ function finalizeDailyPoint(date: string, b: RawBucket): AdDailyPoint {
     qualified: b.qualified,
     appointments: b.appointments,
     shows: b.shows,
-    unique_hand_raises,
-    unique_conversations,
+    unique_hand_raises: u.unique_hand_raises,
+    unique_conversations: u.unique_conversations,
+    unique_proposals: u.unique_proposals,
+    unique_submissions: u.unique_submissions,
+    unique_funded: u.unique_funded,
     cpl: costs.cpl,
     cost_per_qualified: costs.cost_per_qualified,
     cp_conversation: costs.cp_conversation,
+    cp_proposal: costs.cp_proposal,
+    cp_submission: costs.cp_submission,
+    cp_funded: costs.cp_funded,
     qualified_rate: pct(b.qualified, b.leads),
-    hand_raise_rate: pct(unique_hand_raises, b.qualified),
-    conversation_rate: pct(unique_conversations, b.qualified),
+    hand_raise_rate: pct(u.unique_hand_raises, b.qualified),
+    conversation_rate: pct(u.unique_conversations, b.qualified),
   };
 }
 
 function finalizeClientRow(client_id: string, b: RawBucket): AdClientBreakdownRow {
-  const unique_hand_raises = b.handRaiseKeys.size;
-  const unique_conversations = b.conversationKeys.size;
-  const costs = costMetrics(b.spend, b.leads, b.qualified, unique_conversations, b.shows, b.appointments, b.closes);
+  const u = backendUniques(b);
+  const costs = costMetrics(
+    b.spend,
+    b.leads,
+    b.qualified,
+    u.unique_conversations,
+    b.shows,
+    b.appointments,
+    b.closes,
+    u.unique_proposals,
+    u.unique_submissions,
+    u.unique_funded,
+  );
   return {
     client_id,
     spend: round(b.spend) ?? 0,
@@ -659,15 +780,21 @@ function finalizeClientRow(client_id: string, b: RawBucket): AdClientBreakdownRo
     appointments: b.appointments,
     shows: b.shows,
     closes: b.closes,
-    unique_hand_raises,
-    unique_conversations,
+    unique_hand_raises: u.unique_hand_raises,
+    unique_conversations: u.unique_conversations,
+    unique_proposals: u.unique_proposals,
+    unique_submissions: u.unique_submissions,
+    unique_funded: u.unique_funded,
     cpl: costs.cpl,
     cost_per_qualified: costs.cost_per_qualified,
     cp_conversation: costs.cp_conversation,
+    cp_proposal: costs.cp_proposal,
+    cp_submission: costs.cp_submission,
+    cp_funded: costs.cp_funded,
     cost_per_show: costs.cost_per_show,
     qualified_rate: pct(b.qualified, b.leads),
-    hand_raise_rate: pct(unique_hand_raises, b.qualified),
-    conversation_rate: pct(unique_conversations, b.qualified),
+    hand_raise_rate: pct(u.unique_hand_raises, b.qualified),
+    conversation_rate: pct(u.unique_conversations, b.qualified),
   };
 }
 
@@ -757,8 +884,19 @@ export function buildMultiAdDrilldown(
   }
 
   const variantRows: AdVariantBreakdown[] = [...variants.entries()].map(([ad_name, b]) => {
-    const unique_conversations = b.conversationKeys.size;
-    const costs = costMetrics(b.spend, b.leads, b.qualified, unique_conversations, b.shows, b.appointments, b.closes);
+    const u = backendUniques(b);
+    const costs = costMetrics(
+      b.spend,
+      b.leads,
+      b.qualified,
+      u.unique_conversations,
+      b.shows,
+      b.appointments,
+      b.closes,
+      u.unique_proposals,
+      u.unique_submissions,
+      u.unique_funded,
+    );
     return {
       ad_name,
       spend: round(b.spend) ?? 0,
@@ -767,10 +905,16 @@ export function buildMultiAdDrilldown(
       appointments: b.appointments,
       shows: b.shows,
       closes: b.closes,
-      unique_conversations,
+      unique_conversations: u.unique_conversations,
+      unique_proposals: u.unique_proposals,
+      unique_submissions: u.unique_submissions,
+      unique_funded: u.unique_funded,
       cpl: costs.cpl,
       cost_per_qualified: costs.cost_per_qualified,
       cp_conversation: costs.cp_conversation,
+      cp_proposal: costs.cp_proposal,
+      cp_submission: costs.cp_submission,
+      cp_funded: costs.cp_funded,
     };
   }).sort((a, b) => b.spend - a.spend);
 

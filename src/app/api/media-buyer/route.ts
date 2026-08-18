@@ -21,9 +21,14 @@ const FUNNEL_EVENT_TYPES = [
   'appointment_booked',
   'show',
   'no_show',
-  'loan_funded',
   'claimed',
   'live_transfer',
+  'proposal_made',
+  'proposal_sent',
+  'submission_made',
+  'loan_processing',
+  'loan_funded',
+  'closed',
 ];
 
 const EVENT_SELECT =
