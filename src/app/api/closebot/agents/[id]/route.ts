@@ -7,11 +7,13 @@ import {
 import {
   AGENT_LIST_SELECT,
   agentConfigKeysPresent,
+  attachAssignedClients,
   parseAgentConfigFields,
+  replaceAgentClients,
   resolvePersonaSnapshot,
   upsertPendingVersion,
 } from "@/lib/closebot-store";
-import { snapshotFromAgent, type ClosebotAgent } from "@/lib/closebot";
+import { parseUuidList, snapshotFromAgent, type ClosebotAgent } from "@/lib/closebot";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -39,7 +41,9 @@ export async function GET(_req: Request, { params }: Params) {
     .eq("status", "pending")
     .maybeSingle();
 
-  return NextResponse.json({ ...data, pending_version: pending ?? null });
+  const withClients = await attachAssignedClients(ctx.service, [data as ClosebotAgent]);
+  const agent = withClients.agents?.[0] ?? data;
+  return NextResponse.json({ ...agent, pending_version: pending ?? null });
 }
 
 export async function PATCH(req: Request, { params }: Params) {
@@ -85,8 +89,29 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   const wantsConfig = agentConfigKeysPresent(body);
-  if (!wantsConfig && Object.keys(livePatch).length <= 1) {
+  const wantsClients = "client_ids" in body;
+  if (!wantsConfig && !wantsClients && Object.keys(livePatch).length <= 1) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+  }
+
+  if (wantsClients) {
+    const parsedIds = parseUuidList(body.client_ids);
+    if (parsedIds.error || !parsedIds.ids) {
+      return NextResponse.json({ error: parsedIds.error ?? "client_ids is invalid" }, { status: 400 });
+    }
+    const assigned = await replaceAgentClients(ctx.service, id, parsedIds.ids);
+    if (assigned.error) {
+      return NextResponse.json({ error: assigned.error }, { status: assigned.status ?? 500 });
+    }
+  }
+
+  async function respond(agent: ClosebotAgent | null, pendingVersion: unknown) {
+    if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    const withClients = await attachAssignedClients(ctx.service, [agent]);
+    return NextResponse.json({
+      ...(withClients.agents?.[0] ?? agent),
+      pending_version: pendingVersion ?? null,
+    });
   }
 
   if (wantsConfig) {
@@ -132,7 +157,23 @@ export async function PATCH(req: Request, { params }: Params) {
       .eq("id", id)
       .maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ...data, pending_version: pending.version ?? null });
+    return respond(data as ClosebotAgent, pending.version ?? null);
+  }
+
+  if (Object.keys(livePatch).length <= 1 && wantsClients) {
+    const { data, error } = await ctx.service
+      .from("closebot_agents")
+      .select(AGENT_LIST_SELECT)
+      .eq("id", id)
+      .maybeSingle();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const { data: pending } = await ctx.service
+      .from("closebot_agent_versions")
+      .select("*")
+      .eq("agent_id", id)
+      .eq("status", "pending")
+      .maybeSingle();
+    return respond((data as ClosebotAgent) ?? null, pending ?? null);
   }
 
   const { data, error } = await ctx.service
@@ -144,5 +185,11 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-  return NextResponse.json(data);
+  const { data: pending } = await ctx.service
+    .from("closebot_agent_versions")
+    .select("*")
+    .eq("agent_id", id)
+    .eq("status", "pending")
+    .maybeSingle();
+  return respond(data as ClosebotAgent, pending ?? null);
 }

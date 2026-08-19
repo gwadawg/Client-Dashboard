@@ -130,6 +130,7 @@ export type ClosebotAgent = {
   updated_at: string;
   log_count?: number;
   open_ticket_count?: number;
+  assigned_clients?: { id: string; name: string }[];
   persona?: Pick<ClosebotPersona, "id" | "name" | "slug" | "is_active"> | Pick<ClosebotPersona, "id" | "name" | "slug" | "is_active">[] | null;
   pending_version?: ClosebotAgentVersion | null;
 };
@@ -187,34 +188,32 @@ export const CLOSEBOT_TICKET_STATUS_META: Record<
   },
 };
 
-export const CLOSEBOT_BUG_TYPES = [
-  "wrong_reply",
-  "booking_fail",
-  "transfer_fail",
-  "loop_stuck",
-  "persona_tone",
-  "compliance",
-  "integration",
-  "other",
+export const CLOSEBOT_DEFAULT_BUG_TYPES = [
+  { slug: "wrong_reply", name: "Wrong reply", short_code: "WRONG" },
+  { slug: "booking_fail", name: "Booking failed", short_code: "BOOK" },
+  { slug: "transfer_fail", name: "Transfer failed", short_code: "XFER" },
+  { slug: "loop_stuck", name: "Loop / stuck", short_code: "LOOP" },
+  { slug: "persona_tone", name: "Persona / tone", short_code: "TONE" },
+  { slug: "compliance", name: "Compliance", short_code: "COMP" },
+  { slug: "integration", name: "Integration", short_code: "INTG" },
+  { slug: "other", name: "Other", short_code: "OTHR" },
 ] as const;
 
-export type ClosebotBugType = (typeof CLOSEBOT_BUG_TYPES)[number];
-
-export const CLOSEBOT_BUG_TYPE_META: Record<ClosebotBugType, { label: string }> = {
-  wrong_reply: { label: "Wrong reply" },
-  booking_fail: { label: "Booking failed" },
-  transfer_fail: { label: "Transfer failed" },
-  loop_stuck: { label: "Loop / stuck" },
-  persona_tone: { label: "Persona / tone" },
-  compliance: { label: "Compliance" },
-  integration: { label: "Integration" },
-  other: { label: "Other" },
+export type ClosebotBugTypeRow = {
+  slug: string;
+  name: string;
+  short_code: string;
+  description: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type ClosebotTicket = {
   id: string;
   occurred_at: string;
-  bug_type: ClosebotBugType;
+  bug_type: string | null;
   description: string;
   contact_url: string;
   client_id: string;
@@ -269,8 +268,42 @@ export function isClosebotTicketStatus(v: unknown): v is ClosebotTicketStatus {
   return typeof v === "string" && (CLOSEBOT_TICKET_STATUSES as readonly string[]).includes(v);
 }
 
-export function isClosebotBugType(v: unknown): v is ClosebotBugType {
-  return typeof v === "string" && (CLOSEBOT_BUG_TYPES as readonly string[]).includes(v);
+const BUG_TYPE_SLUG_RE = /^[a-z][a-z0-9_]{0,63}$/;
+
+export function isClosebotBugTypeSlug(v: unknown): v is string {
+  return typeof v === "string" && BUG_TYPE_SLUG_RE.test(v);
+}
+
+export function slugifyClosebotBugType(name: string): string {
+  const base = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64);
+  return base || "type";
+}
+
+export function shortCodeFromName(name: string): string {
+  const letters = name.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  if (letters.length >= 4) return letters.slice(0, 4);
+  if (letters.length >= 2) return letters.padEnd(4, "X");
+  return "TYPE";
+}
+
+export function parseUuidList(v: unknown): { ids?: string[]; error?: string } {
+  if (v == null) return { ids: [] };
+  if (!Array.isArray(v)) return { error: "client_ids must be an array" };
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const item of v) {
+    const id = cleanUuid(item);
+    if (!id) return { error: "client_ids must be valid ids" };
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return { ids };
 }
 
 export function isOpenTicketStatus(status: ClosebotTicketStatus): boolean {

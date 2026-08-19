@@ -4,13 +4,15 @@ import {
   cleanHttpUrl,
   cleanHttpUrls,
   changedAtFromDateInput,
-  isClosebotBugType,
+  isClosebotBugTypeSlug,
   isClosebotLogStatus,
   isClosebotTicketStatus,
   parseAgentNodes,
   parseFollowUps,
   parseToneChips,
   pickVersionAt,
+  shortCodeFromName,
+  slugifyClosebotBugType,
   slugifyClosebotName,
 } from "./closebot";
 
@@ -83,11 +85,13 @@ describe("closebot helpers", () => {
     assert.deepEqual(tone, ["Warm", "Direct"]);
   });
 
-  it("validates ticket status and bug type", () => {
+  it("validates ticket status and bug type slugs", () => {
     assert.equal(isClosebotTicketStatus("investigating"), true);
     assert.equal(isClosebotTicketStatus("watching"), false);
-    assert.equal(isClosebotBugType("booking_fail"), true);
-    assert.equal(isClosebotBugType("typo"), false);
+    assert.equal(isClosebotBugTypeSlug("booking_fail"), true);
+    assert.equal(isClosebotBugTypeSlug("Typo"), false);
+    assert.equal(slugifyClosebotBugType("Wrong Product"), "wrong_product");
+    assert.equal(shortCodeFromName("Wrong Product"), "WRON");
   });
 
   it("requires a single contact url", () => {

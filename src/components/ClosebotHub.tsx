@@ -37,7 +37,7 @@ export default function ClosebotHub({ canWrite = false }: Props) {
           </h2>
           <p className="text-sm mt-1 max-w-xl" style={{ color: "#64748b" }}>
             {tab === "tickets"
-              ? "Open cases, grouped by failure type. Separate from the prompt-change log."
+              ? "Open cases, grouped by type after ops tags them. The report form only asks for the client."
               : "What we changed in each agent, and whether it worked."}
           </p>
         </div>

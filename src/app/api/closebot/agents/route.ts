@@ -6,12 +6,15 @@ import {
 } from "@/lib/closebot-auth";
 import {
   AGENT_LIST_SELECT,
+  attachAssignedClients,
   attachPendingVersions,
   insertLiveVersion,
   parseAgentConfigFields,
+  replaceAgentClients,
   resolvePersonaSnapshot,
 } from "@/lib/closebot-store";
 import {
+  parseUuidList,
   slugifyClosebotName,
   uniqueClosebotSlug,
   type ClosebotAgent,
@@ -47,6 +50,10 @@ export async function GET(req: Request) {
   const attached = await attachPendingVersions(ctx.service, rows);
   if (attached.error) return NextResponse.json({ error: attached.error }, { status: 500 });
   rows = attached.agents ?? rows;
+
+  const withClients = await attachAssignedClients(ctx.service, rows);
+  if (withClients.error) return NextResponse.json({ error: withClients.error }, { status: 500 });
+  rows = withClients.agents ?? rows;
 
   if (withCounts && rows.length > 0) {
     const ids = rows.map((r) => r.id);
@@ -162,5 +169,19 @@ export async function POST(req: Request) {
   const live = await insertLiveVersion(ctx.service, data.id, snapshot, ctx.userId);
   if (live.error) return NextResponse.json({ error: live.error }, { status: 500 });
 
-  return NextResponse.json({ ...data, pending_version: null }, { status: 201 });
+  if ("client_ids" in body) {
+    const parsedIds = parseUuidList(body.client_ids);
+    if (parsedIds.error || !parsedIds.ids) {
+      return NextResponse.json({ error: parsedIds.error ?? "client_ids is invalid" }, { status: 400 });
+    }
+    const assigned = await replaceAgentClients(ctx.service, data.id, parsedIds.ids);
+    if (assigned.error) {
+      return NextResponse.json({ error: assigned.error }, { status: assigned.status ?? 500 });
+    }
+  }
+
+  const withClients = await attachAssignedClients(ctx.service, [data as ClosebotAgent]);
+  const agent = withClients.agents?.[0] ?? data;
+
+  return NextResponse.json({ ...agent, pending_version: null }, { status: 201 });
 }

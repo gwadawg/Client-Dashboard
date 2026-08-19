@@ -59,6 +59,7 @@ type AgentForm = {
   persona_id: string;
   nodes: ClosebotAgentNode[];
   follow_ups: ClosebotFollowUp[];
+  client_ids: string[];
 };
 
 function emptyForm(): AgentForm {
@@ -69,6 +70,7 @@ function emptyForm(): AgentForm {
     persona_id: "",
     nodes: [],
     follow_ups: [],
+    client_ids: [],
   };
 }
 
@@ -90,6 +92,7 @@ function formFromSnapshot(
     description: source.description ?? "",
     job_information: source.job_information ?? "",
     persona_id: source.persona_id ?? "",
+    client_ids: [],
     nodes: Array.isArray(source.nodes)
       ? source.nodes.map((n) => ({
           type: n.type,
@@ -133,15 +136,17 @@ export default function ClosebotAgentsSection({
   const [versions, setVersions] = useState<ClosebotAgentVersion[]>([]);
   const [historyTickets, setHistoryTickets] = useState<ClosebotTicket[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
+  const [clientOptions, setClientOptions] = useState<{ id: string; name: string; is_live?: boolean }[]>([]);
+  const [clientQuery, setClientQuery] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [agentsRes, personasRes] = await Promise.all([
+      const [agentsRes, personasRes, clientsRes] = await Promise.all([
         fetch("/api/closebot/agents?counts=1"),
         fetch("/api/closebot/personas"),
+        fetch("/api/clients"),
       ]);
       if (!agentsRes.ok) {
         const data = await agentsRes.json().catch(() => ({}));
@@ -154,6 +159,10 @@ export default function ClosebotAgentsSection({
       if (personasRes.ok) {
         const p = await personasRes.json();
         setPersonas(Array.isArray(p) ? p : []);
+      }
+      if (clientsRes.ok) {
+        const c = await clientsRes.json();
+        setClientOptions(Array.isArray(c.clients) ? c.clients : []);
       }
     } catch {
       setError("Failed to load agents");
@@ -172,13 +181,18 @@ export default function ClosebotAgentsSection({
   function openAdd() {
     setEditing(null);
     setForm(emptyForm());
+    setClientQuery("");
     setFormError(null);
     setModalOpen(true);
   }
 
   function openEdit(agent: ClosebotAgent) {
     setEditing(agent);
-    setForm(formFromSnapshot(agent.pending_version ?? agent));
+    setForm({
+      ...formFromSnapshot(agent.pending_version ?? agent),
+      client_ids: (agent.assigned_clients ?? []).map((c) => c.id),
+    });
+    setClientQuery("");
     setFormError(null);
     setModalOpen(true);
   }
@@ -216,6 +230,7 @@ export default function ClosebotAgentsSection({
         description: form.description.trim() || null,
         job_information: form.job_information.trim() || null,
         persona_id: form.persona_id || null,
+        client_ids: form.client_ids,
         nodes: form.nodes
           .filter((n) => n.name.trim())
           .map((n) => ({
@@ -234,12 +249,53 @@ export default function ClosebotAgentsSection({
               .map((t) => ({ after: t.after, unit: t.unit })),
           })),
       };
+
+      let body: Record<string, unknown> = payload;
+      if (editing) {
+        const base = formFromSnapshot(editing.pending_version ?? editing);
+        const configChanged =
+          payload.name !== (base.name ?? "").trim() ||
+          payload.description !== ((base.description ?? "").trim() || null) ||
+          payload.job_information !== ((base.job_information ?? "").trim() || null) ||
+          payload.persona_id !== (base.persona_id || null) ||
+          JSON.stringify(payload.nodes) !==
+            JSON.stringify(
+              base.nodes
+                .filter((n) => n.name.trim())
+                .map((n) => ({
+                  ...n,
+                  name: n.name.trim(),
+                  description: n.description.trim(),
+                  prompt: (n.prompt ?? "").trim(),
+                })),
+            ) ||
+          JSON.stringify(payload.follow_ups) !==
+            JSON.stringify(
+              base.follow_ups
+                .filter((fu) => fu.name.trim())
+                .map((fu) => ({
+                  name: fu.name.trim(),
+                  prompt: fu.prompt.trim(),
+                  types: fu.types
+                    .filter((t) => Number.isFinite(t.after) && t.after > 0)
+                    .map((t) => ({ after: t.after, unit: t.unit })),
+                })),
+            );
+        const prevClients = (editing.assigned_clients ?? []).map((c) => c.id).sort();
+        const nextClients = [...form.client_ids].sort();
+        const clientsChanged = JSON.stringify(prevClients) !== JSON.stringify(nextClients);
+        if (!configChanged && !clientsChanged) {
+          setFormError("No changes to save");
+          return;
+        }
+        body = configChanged ? payload : { client_ids: form.client_ids };
+      }
       const res = await fetch(
         editing ? `/api/closebot/agents/${editing.id}` : "/api/closebot/agents",
         {
           method: editing ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(body),
         },
       );
       if (!res.ok) {
@@ -296,7 +352,7 @@ export default function ClosebotAgentsSection({
             Agents
           </h3>
           <p className="text-sm mt-0.5" style={{ color: "#64748b" }}>
-            Job info, persona, nodes, and follow-ups for each Closebot agent.
+            Job info, persona, clients on this bot, nodes, and follow-ups.
           </p>
         </div>
         {canManage && (
@@ -387,10 +443,18 @@ export default function ClosebotAgentsSection({
                   <p className="text-xs mt-1" style={{ color: "#64748b" }}>
                     {personaName ? `Persona: ${personaName}` : "No persona"}
                     {" · "}
+                    {(agent.assigned_clients ?? []).length} client
+                    {(agent.assigned_clients ?? []).length === 1 ? "" : "s"}
+                    {" · "}
                     {nodeCount} node{nodeCount === 1 ? "" : "s"}
                     {" · "}
                     {fuCount} follow-up{fuCount === 1 ? "" : "s"}
                   </p>
+                  {(agent.assigned_clients ?? []).length > 0 && (
+                    <p className="text-xs mt-1 truncate" style={{ color: "#94a3b8" }}>
+                      {(agent.assigned_clients ?? []).map((c) => c.name).join(" · ")}
+                    </p>
+                  )}
                   {agent.description && (
                     <p className="text-xs mt-1" style={{ color: "#64748b" }}>
                       {agent.description}
@@ -499,6 +563,65 @@ export default function ClosebotAgentsSection({
                 ))}
               </select>
             </label>
+
+            <div className="space-y-2">
+              <span style={labelStyle}>Clients on this agent</span>
+              <p className="text-xs" style={{ color: "#64748b" }}>
+                Tickets are filed by client. Whoever you add here routes to this agent automatically.
+              </p>
+              <input
+                style={inputStyle}
+                value={clientQuery}
+                onChange={(e) => setClientQuery(e.target.value)}
+                placeholder="Search clients…"
+              />
+              <div
+                className="max-h-44 overflow-y-auto rounded-lg p-2 space-y-1"
+                style={{ border: "1px solid rgba(255,255,255,0.08)", background: "#050c18" }}
+              >
+                {clientOptions
+                  .filter((c) => c.is_live !== false)
+                  .filter((c) =>
+                    clientQuery.trim()
+                      ? c.name.toLowerCase().includes(clientQuery.trim().toLowerCase())
+                      : true,
+                  )
+                  .map((c) => {
+                    const checked = form.client_ids.includes(c.id);
+                    const elsewhere = agents.find(
+                      (a) =>
+                        a.id !== editing?.id &&
+                        (a.assigned_clients ?? []).some((ac) => ac.id === c.id),
+                    );
+                    return (
+                      <label
+                        key={c.id}
+                        className="flex items-center gap-2 px-1 py-1 rounded text-sm cursor-pointer"
+                        style={{ color: "#e2e8f0" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setForm((f) => ({
+                              ...f,
+                              client_ids: checked
+                                ? f.client_ids.filter((id) => id !== c.id)
+                                : [...f.client_ids, c.id],
+                            }))
+                          }
+                        />
+                        <span className="min-w-0 truncate">{c.name}</span>
+                        {elsewhere && !checked && (
+                          <span className="text-[10px] shrink-0" style={{ color: "#fbbf24" }}>
+                            on {elsewhere.name}
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
+              </div>
+            </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">

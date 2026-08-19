@@ -2,12 +2,12 @@ import {
   cleanHttpUrl,
   cleanString,
   cleanUuid,
-  isClosebotBugType,
   isClosebotTicketStatus,
   parseAgentNodes,
   parseChangedAt,
   parseFollowUps,
   personaToSnapshot,
+  isClosebotBugTypeSlug,
   type AgentConfigSnapshot,
   type ClosebotAgent,
   type ClosebotAgentVersion,
@@ -374,6 +374,101 @@ export async function resolveVersionAt(
   };
 }
 
+export async function attachAssignedClients(
+  db: ClosebotDb,
+  agents: ClosebotAgent[],
+): Promise<{ agents?: ClosebotAgent[]; error?: string }> {
+  if (agents.length === 0) return { agents };
+  const ids = agents.map((a) => a.id);
+  const { data, error } = await db
+    .from("closebot_agent_clients")
+    .select("agent_id, client:clients(id, name)")
+    .in("agent_id", ids);
+  if (error) return { error: error.message };
+  const byAgent = new Map<string, { id: string; name: string }[]>();
+  for (const row of data ?? []) {
+    const rec = row as { agent_id: string; client: { id: string; name: string } | { id: string; name: string }[] | null };
+    const client = Array.isArray(rec.client) ? rec.client[0] ?? null : rec.client;
+    if (!client) continue;
+    const list = byAgent.get(rec.agent_id) ?? [];
+    list.push({ id: client.id, name: client.name });
+    byAgent.set(rec.agent_id, list);
+  }
+  return {
+    agents: agents.map((a) => ({
+      ...a,
+      assigned_clients: (byAgent.get(a.id) ?? []).sort((x, y) => x.name.localeCompare(y.name)),
+    })),
+  };
+}
+
+export async function replaceAgentClients(
+  db: ClosebotDb,
+  agentId: string,
+  clientIds: string[],
+): Promise<{ error?: string; status?: number }> {
+  if (clientIds.length > 0) {
+    const { data: clients, error: clientErr } = await db
+      .from("clients")
+      .select("id")
+      .in("id", clientIds);
+    if (clientErr) return { error: clientErr.message, status: 500 };
+    if ((clients ?? []).length !== clientIds.length) {
+      return { error: "One or more clients were not found", status: 400 };
+    }
+  }
+
+  const { error: clearThis } = await db.from("closebot_agent_clients").delete().eq("agent_id", agentId);
+  if (clearThis) return { error: clearThis.message, status: 500 };
+
+  if (clientIds.length === 0) return {};
+
+  const { error: stealErr } = await db.from("closebot_agent_clients").delete().in("client_id", clientIds);
+  if (stealErr) return { error: stealErr.message, status: 500 };
+
+  const { error: insertErr } = await db.from("closebot_agent_clients").insert(
+    clientIds.map((client_id) => ({ agent_id: agentId, client_id })),
+  );
+  if (insertErr) return { error: insertErr.message, status: 500 };
+  return {};
+}
+
+export async function resolveAgentForClient(
+  db: ClosebotDb,
+  clientId: string,
+): Promise<{ agentId?: string; error?: string; status?: number }> {
+  const { data, error } = await db
+    .from("closebot_agent_clients")
+    .select("agent_id, agent:closebot_agents(id, is_active, name)")
+    .eq("client_id", clientId)
+    .maybeSingle();
+  if (error) return { error: error.message, status: 500 };
+  if (!data) {
+    return {
+      error: "This client is not assigned to a Closebot agent yet. Add them on the agent in Closebot → Updates.",
+      status: 400,
+    };
+  }
+  const agentRaw = (data as { agent: { id: string; is_active: boolean; name: string } | { id: string; is_active: boolean; name: string }[] | null }).agent;
+  const agent = Array.isArray(agentRaw) ? agentRaw[0] ?? null : agentRaw;
+  if (!agent) return { error: "Assigned agent was not found", status: 400 };
+  if (!agent.is_active) {
+    return { error: `Cannot file a ticket: ${agent.name} is archived`, status: 400 };
+  }
+  return { agentId: agent.id };
+}
+
+export async function assertBugTypeSlug(
+  db: ClosebotDb,
+  slug: string,
+): Promise<{ error?: string; status?: number }> {
+  if (!isClosebotBugTypeSlug(slug)) return { error: "bug_type is invalid", status: 400 };
+  const { data, error } = await db.from("closebot_bug_types").select("slug, is_active").eq("slug", slug).maybeSingle();
+  if (error) return { error: error.message, status: 500 };
+  if (!data) return { error: "Unknown bug type. Add it to the type library first.", status: 400 };
+  return {};
+}
+
 export async function assertVersionBelongsToAgent(
   db: ClosebotDb,
   agentId: string,
@@ -400,14 +495,29 @@ export async function createClosebotTicket(
   const reporterName = cleanString(body.reporter_name);
   if (!reporterName) return { error: "reporter_name is required", status: 400 };
 
-  const agentId = cleanUuid(body.agent_id);
-  if (!agentId) return { error: "agent_id is required", status: 400 };
-
   const clientId = cleanUuid(body.client_id);
   if (!clientId) return { error: "client_id is required", status: 400 };
 
-  if (!isClosebotBugType(body.bug_type)) {
-    return { error: "bug_type is invalid", status: 400 };
+  const { data: client, error: clientErr } = await db
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .maybeSingle();
+  if (clientErr) return { error: clientErr.message, status: 500 };
+  if (!client) return { error: "Client not found", status: 400 };
+
+  const mapped = await resolveAgentForClient(db, clientId);
+  if (mapped.error || !mapped.agentId) {
+    return { error: mapped.error ?? "Could not resolve agent", status: mapped.status ?? 400 };
+  }
+  const agentId = mapped.agentId;
+
+  let bugType: string | null = null;
+  if (body.bug_type != null && body.bug_type !== "") {
+    const slug = typeof body.bug_type === "string" ? body.bug_type.trim() : "";
+    const checked = await assertBugTypeSlug(db, slug);
+    if (checked.error) return { error: checked.error, status: checked.status ?? 400 };
+    bugType = slug;
   }
 
   const description = cleanString(body.description);
@@ -431,25 +541,6 @@ export async function createClosebotTicket(
     status = body.status;
   }
 
-  const { data: agent, error: agentErr } = await db
-    .from("closebot_agents")
-    .select("id, is_active")
-    .eq("id", agentId)
-    .maybeSingle();
-  if (agentErr) return { error: agentErr.message, status: 500 };
-  if (!agent) return { error: "Agent not found", status: 400 };
-  if (!agent.is_active) {
-    return { error: "Cannot file a ticket against an archived agent", status: 400 };
-  }
-
-  const { data: client, error: clientErr } = await db
-    .from("clients")
-    .select("id")
-    .eq("id", clientId)
-    .maybeSingle();
-  if (clientErr) return { error: clientErr.message, status: 500 };
-  if (!client) return { error: "Client not found", status: 400 };
-
   let versionId: string | null = null;
   if ("agent_version_id" in body && body.agent_version_id != null && body.agent_version_id !== "") {
     const id = cleanUuid(body.agent_version_id);
@@ -468,7 +559,7 @@ export async function createClosebotTicket(
     .from("closebot_tickets")
     .insert({
       occurred_at: occurredAt,
-      bug_type: body.bug_type,
+      bug_type: bugType,
       description,
       contact_url: contact.url,
       client_id: clientId,

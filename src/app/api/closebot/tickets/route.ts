@@ -6,7 +6,7 @@ import {
 } from "@/lib/closebot-auth";
 import {
   CLOSEBOT_OPEN_TICKET_STATUSES,
-  isClosebotBugType,
+  isClosebotBugTypeSlug,
   isClosebotTicketStatus,
   parseChangedAt,
 } from "@/lib/closebot";
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   if (status && !isClosebotTicketStatus(status)) {
     return NextResponse.json({ error: "Invalid status filter" }, { status: 400 });
   }
-  if (bugType && !isClosebotBugType(bugType)) {
+  if (bugType && bugType !== "none" && !isClosebotBugTypeSlug(bugType)) {
     return NextResponse.json({ error: "Invalid bug_type filter" }, { status: 400 });
   }
 
@@ -54,7 +54,8 @@ export async function GET(req: Request) {
   else if (versionId) query = query.eq("agent_version_id", versionId);
   if (status) query = query.eq("status", status);
   else if (openOnly) query = query.in("status", [...CLOSEBOT_OPEN_TICKET_STATUSES]);
-  if (bugType) query = query.eq("bug_type", bugType);
+  if (bugType === "none") query = query.is("bug_type", null);
+  else if (bugType) query = query.eq("bug_type", bugType);
   if (from) {
     const fromIso = parseChangedAt(from);
     if (!fromIso) return NextResponse.json({ error: "Invalid from date" }, { status: 400 });

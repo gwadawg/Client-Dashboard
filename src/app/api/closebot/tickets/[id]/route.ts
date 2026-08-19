@@ -8,12 +8,13 @@ import {
   cleanHttpUrl,
   cleanString,
   cleanUuid,
-  isClosebotBugType,
   isClosebotTicketStatus,
   parseChangedAt,
 } from "@/lib/closebot";
 import {
+  assertBugTypeSlug,
   assertVersionBelongsToAgent,
+  resolveAgentForClient,
   resolveVersionAt,
   TICKET_SELECT,
 } from "@/lib/closebot-store";
@@ -83,10 +84,16 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   if ("bug_type" in body) {
-    if (!isClosebotBugType(body.bug_type)) {
-      return NextResponse.json({ error: "Invalid bug_type" }, { status: 400 });
+    if (body.bug_type === null || body.bug_type === "") {
+      patch.bug_type = null;
+    } else {
+      const slug = typeof body.bug_type === "string" ? body.bug_type.trim() : "";
+      const checked = await assertBugTypeSlug(ctx.service, slug);
+      if (checked.error) {
+        return NextResponse.json({ error: checked.error }, { status: checked.status ?? 400 });
+      }
+      patch.bug_type = slug;
     }
-    patch.bug_type = body.bug_type;
   }
 
   if ("contact_url" in body) {
@@ -122,6 +129,11 @@ export async function PATCH(req: Request, { params }: Params) {
     if (clientErr) return NextResponse.json({ error: clientErr.message }, { status: 500 });
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 400 });
     patch.client_id = clientId;
+    const mapped = await resolveAgentForClient(ctx.service, clientId);
+    if (mapped.error || !mapped.agentId) {
+      return NextResponse.json({ error: mapped.error ?? "Could not resolve agent" }, { status: mapped.status ?? 400 });
+    }
+    patch.agent_id = mapped.agentId;
   }
 
   if ("agent_id" in body) {
@@ -184,7 +196,7 @@ export async function PATCH(req: Request, { params }: Params) {
       if (owned.error) return NextResponse.json({ error: owned.error }, { status: 400 });
       patch.agent_version_id = versionId;
     }
-  } else if ("agent_id" in body || "occurred_at" in body) {
+  } else if ("agent_id" in body || "occurred_at" in body || "client_id" in body) {
     const resolved = await resolveVersionAt(ctx.service, agentId, occurredAt);
     if (resolved.error) return NextResponse.json({ error: resolved.error }, { status: 500 });
     patch.agent_version_id = resolved.versionId;

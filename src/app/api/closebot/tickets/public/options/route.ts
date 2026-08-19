@@ -4,25 +4,26 @@ import { createServiceClient } from "@/lib/supabase";
 export async function GET() {
   const db = createServiceClient();
 
-  const [{ data: agents, error: agentErr }, { data: clients, error: clientErr }] = await Promise.all([
-    db
-      .from("closebot_agents")
-      .select("id, name")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true }),
-    db
-      .from("clients")
-      .select("id, name")
-      .eq("is_live", true)
-      .order("name", { ascending: true }),
-  ]);
+  const { data: links, error } = await db
+    .from("closebot_agent_clients")
+    .select("client_id, agent:closebot_agents(is_active), client:clients(id, name, is_live)")
+    .order("client_id");
 
-  if (agentErr) return NextResponse.json({ error: agentErr.message }, { status: 500 });
-  if (clientErr) return NextResponse.json({ error: clientErr.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({
-    agents: agents ?? [],
-    clients: clients ?? [],
-  });
+  const clients = (links ?? [])
+    .map((row) => {
+      const rec = row as {
+        client: { id: string; name: string; is_live: boolean } | { id: string; name: string; is_live: boolean }[] | null;
+        agent: { is_active: boolean } | { is_active: boolean }[] | null;
+      };
+      const client = Array.isArray(rec.client) ? rec.client[0] ?? null : rec.client;
+      const agent = Array.isArray(rec.agent) ? rec.agent[0] ?? null : rec.agent;
+      if (!client || !client.is_live || !agent?.is_active) return null;
+      return { id: client.id, name: client.name };
+    })
+    .filter((c): c is { id: string; name: string } => Boolean(c))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return NextResponse.json({ clients });
 }

@@ -1,10 +1,6 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
-import {
-  CLOSEBOT_BUG_TYPES,
-  CLOSEBOT_BUG_TYPE_META,
-} from "@/lib/closebot";
 
 const inputStyle: CSSProperties = {
   background: "#0f2040",
@@ -15,7 +11,6 @@ const inputStyle: CSSProperties = {
 type Option = { id: string; name: string };
 
 export default function ClosebotTicketForm() {
-  const [agents, setAgents] = useState<Option[]>([]);
   const [clients, setClients] = useState<Option[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -25,8 +20,6 @@ export default function ClosebotTicketForm() {
   const [reporterName, setReporterName] = useState("");
   const [occurredAt, setOccurredAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [clientId, setClientId] = useState("");
-  const [agentId, setAgentId] = useState("");
-  const [bugType, setBugType] = useState<(typeof CLOSEBOT_BUG_TYPES)[number]>("wrong_reply");
   const [description, setDescription] = useState("");
   const [contactUrl, setContactUrl] = useState("");
   const [faxNumber, setFaxNumber] = useState("");
@@ -44,7 +37,6 @@ export default function ClosebotTicketForm() {
           return;
         }
         if (!cancelled) {
-          setAgents(Array.isArray(data.agents) ? data.agents : []);
           setClients(Array.isArray(data.clients) ? data.clients : []);
         }
       } catch {
@@ -71,8 +63,6 @@ export default function ClosebotTicketForm() {
           reporter_name: reporterName,
           occurred_at: occurredAt,
           client_id: clientId,
-          agent_id: agentId,
-          bug_type: bugType,
           description,
           contact_url: contactUrl,
           fax_number: faxNumber,
@@ -96,7 +86,7 @@ export default function ClosebotTicketForm() {
       <div className="max-w-xl mx-auto rounded-2xl p-8 text-center space-y-3" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.08)" }}>
         <p className="text-lg font-semibold text-slate-100">Ticket submitted</p>
         <p className="text-sm text-slate-400">
-          Ops will see this under Closebot → Tickets, attached to the agent version that was live that day.
+          Ops will see this under Closebot → Tickets, routed to the agent for that client.
         </p>
         <button
           type="button"
@@ -106,7 +96,6 @@ export default function ClosebotTicketForm() {
             setDone(false);
             setDescription("");
             setContactUrl("");
-            setBugType("wrong_reply");
           }}
         >
           Submit another
@@ -120,7 +109,7 @@ export default function ClosebotTicketForm() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-100">Closebot incident ticket</h1>
         <p className="text-sm mt-2 text-slate-500">
-          Log when Closebot got something wrong so we can track it by client, agent, and version.
+          Pick the client and describe what went wrong. You do not need to know which agent is live.
         </p>
       </div>
 
@@ -128,6 +117,10 @@ export default function ClosebotTicketForm() {
         <p className="text-sm text-slate-500">Loading form…</p>
       ) : loadError ? (
         <p className="text-sm text-red-400">{loadError}</p>
+      ) : clients.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          No clients are assigned to a Closebot agent yet. Ask ops to add clients on the agent in Closebot → Updates.
+        </p>
       ) : (
         <form onSubmit={(e) => void onSubmit(e)} className="relative space-y-4 rounded-2xl p-5" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.08)" }}>
           <label className="block space-y-1">
@@ -164,39 +157,6 @@ export default function ClosebotTicketForm() {
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block space-y-1">
-            <span className="text-xs font-medium text-slate-400">Closebot agent</span>
-            <select
-              required
-              value={agentId}
-              onChange={(e) => setAgentId(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm"
-              style={inputStyle}
-            >
-              <option value="">Select agent</option>
-              {agents.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block space-y-1">
-            <span className="text-xs font-medium text-slate-400">Type of bug</span>
-            <select
-              required
-              value={bugType}
-              onChange={(e) => setBugType(e.target.value as (typeof CLOSEBOT_BUG_TYPES)[number])}
-              className="w-full rounded-lg px-3 py-2 text-sm"
-              style={inputStyle}
-            >
-              {CLOSEBOT_BUG_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {CLOSEBOT_BUG_TYPE_META[t].label}
                 </option>
               ))}
             </select>

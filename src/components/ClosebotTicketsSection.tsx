@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CLOSEBOT_BUG_TYPES,
-  CLOSEBOT_BUG_TYPE_META,
   CLOSEBOT_TICKET_STATUSES,
   CLOSEBOT_TICKET_STATUS_META,
   embedOne,
@@ -12,22 +10,11 @@ import {
   isOpenTicketStatus,
   type ClosebotAgent,
   type ClosebotAgentVersion,
-  type ClosebotBugType,
+  type ClosebotBugTypeRow,
   type ClosebotPromptLog,
   type ClosebotTicket,
   type ClosebotTicketStatus,
 } from "@/lib/closebot";
-
-const TYPE_CODE: Record<ClosebotBugType, string> = {
-  wrong_reply: "WRONG",
-  booking_fail: "BOOK",
-  transfer_fail: "XFER",
-  loop_stuck: "LOOP",
-  persona_tone: "TONE",
-  compliance: "COMP",
-  integration: "INTG",
-  other: "OTHR",
-};
 
 const inputStyle: React.CSSProperties = {
   background: "#080604",
@@ -70,6 +57,10 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [versionsByAgent, setVersionsByAgent] = useState<Record<string, ClosebotAgentVersion[]>>({});
   const [logsByAgent, setLogsByAgent] = useState<Record<string, ClosebotPromptLog[]>>({});
+  const [bugTypes, setBugTypes] = useState<ClosebotBugTypeRow[]>([]);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
+  const [savingType, setSavingType] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,10 +73,11 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
       else if (filterVersion) params.set("agent_version_id", filterVersion);
       if (openOnly) params.set("open", "1");
       params.set("limit", "200");
-      const [ticketsRes, optionsRes, agentsRes] = await Promise.all([
+      const [ticketsRes, clientsRes, agentsRes, typesRes] = await Promise.all([
         fetch(`/api/closebot/tickets?${params}`),
-        fetch("/api/closebot/tickets/public/options"),
+        fetch("/api/clients"),
         fetch("/api/closebot/agents"),
+        fetch("/api/closebot/bug-types"),
       ]);
       const ticketsData = await ticketsRes.json().catch(() => ({}));
       if (!ticketsRes.ok) {
@@ -94,13 +86,17 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
         return;
       }
       setTickets(Array.isArray(ticketsData.tickets) ? ticketsData.tickets : []);
-      if (optionsRes.ok) {
-        const options = await optionsRes.json().catch(() => ({}));
-        setClients(Array.isArray(options.clients) ? options.clients : []);
+      if (clientsRes.ok) {
+        const clientData = await clientsRes.json().catch(() => ({}));
+        setClients(Array.isArray(clientData.clients) ? clientData.clients : []);
       }
       if (agentsRes.ok) {
         const agentData = await agentsRes.json().catch(() => []);
         setAgents(Array.isArray(agentData) ? agentData : []);
+      }
+      if (typesRes.ok) {
+        const typeData = await typesRes.json().catch(() => ({}));
+        setBugTypes(Array.isArray(typeData.types) ? typeData.types : []);
       }
     } catch {
       setError("Failed to load tickets");
@@ -168,18 +164,62 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
     }
   }
 
-  const grouped = useMemo(() => {
-    const byType = new Map<ClosebotBugType, ClosebotTicket[]>();
-    for (const type of CLOSEBOT_BUG_TYPES) byType.set(type, []);
-    for (const ticket of tickets) {
-      const list = byType.get(ticket.bug_type) ?? byType.get("other")!;
-      list.push(ticket);
+  async function addBugType() {
+    const name = newTypeName.trim();
+    if (!name) return;
+    setSavingType(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/closebot/bug-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || "Could not add type");
+        return;
+      }
+      setNewTypeName("");
+      setBugTypes((prev) => [...prev, data as ClosebotBugTypeRow].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)));
+    } catch {
+      setError("Could not add type");
+    } finally {
+      setSavingType(false);
     }
-    return CLOSEBOT_BUG_TYPES.map((type) => ({
-      type,
-      tickets: byType.get(type) ?? [],
-    })).filter((g) => g.tickets.length > 0);
-  }, [tickets]);
+  }
+
+  const grouped = useMemo(() => {
+    const byType = new Map<string, ClosebotTicket[]>();
+    for (const ticket of tickets) {
+      const key = ticket.bug_type || "__unclassified__";
+      const list = byType.get(key) ?? [];
+      list.push(ticket);
+      byType.set(key, list);
+    }
+    const ordered: { type: string; label: string; code: string; tickets: ClosebotTicket[] }[] = [];
+    const unclassified = byType.get("__unclassified__") ?? [];
+    if (unclassified.length) {
+      ordered.push({ type: "__unclassified__", label: "Unclassified", code: "NEW", tickets: unclassified });
+    }
+    const seen = new Set<string>(["__unclassified__"]);
+    for (const t of bugTypes) {
+      const list = byType.get(t.slug) ?? [];
+      if (list.length === 0) continue;
+      ordered.push({ type: t.slug, label: t.name, code: t.short_code, tickets: list });
+      seen.add(t.slug);
+    }
+    for (const [slug, list] of byType) {
+      if (seen.has(slug) || list.length === 0) continue;
+      ordered.push({
+        type: slug,
+        label: slug.replace(/_/g, " "),
+        code: slug.slice(0, 4).toUpperCase(),
+        tickets: list,
+      });
+    }
+    return ordered;
+  }, [tickets, bugTypes]);
 
   const openCount = tickets.filter((t) => isOpenTicketStatus(t.status)).length;
 
@@ -255,8 +295,73 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
           >
             Report form
           </a>
+          {canWrite && (
+            <button
+              type="button"
+              onClick={() => setLibraryOpen((v) => !v)}
+              className="text-[11px] font-semibold uppercase tracking-wider px-3 py-2 rounded-lg"
+              style={{
+                color: libraryOpen ? "#fbbf24" : "#a8a29e",
+                border: "1px solid rgba(245,158,11,0.28)",
+                fontFamily: "var(--font-archivo)",
+              }}
+            >
+              Type library
+            </button>
+          )}
         </div>
       </div>
+
+      {libraryOpen && canWrite && (
+        <div
+          className="rounded-xl p-4 space-y-3"
+          style={{
+            background: "rgba(245,158,11,0.05)",
+            border: "1px solid rgba(245,158,11,0.2)",
+          }}
+        >
+          <p className="text-xs" style={{ color: "#a8a29e" }}>
+            Types live here, not on the report form. Add one when a new failure pattern shows up, then tag tickets.
+          </p>
+          <form
+            className="flex flex-wrap gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void addBugType();
+            }}
+          >
+            <input
+              style={{ ...inputStyle, maxWidth: "16rem" }}
+              value={newTypeName}
+              onChange={(e) => setNewTypeName(e.target.value)}
+              placeholder="New type name"
+            />
+            <button
+              type="submit"
+              disabled={savingType || !newTypeName.trim()}
+              className="text-[11px] font-semibold uppercase tracking-wider px-3 py-2 rounded-lg disabled:opacity-50"
+              style={{ background: "#f59e0b", color: "#1a1206", fontFamily: "var(--font-archivo)" }}
+            >
+              {savingType ? "Adding…" : "Add type"}
+            </button>
+          </form>
+          <ul className="flex flex-wrap gap-2">
+            {bugTypes.map((t) => (
+              <li
+                key={t.slug}
+                className="text-[11px] px-2 py-1 rounded"
+                style={{
+                  background: t.is_active ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.04)",
+                  color: t.is_active ? "#fde68a" : "#78716c",
+                  fontFamily: "var(--font-plex-mono)",
+                }}
+              >
+                {t.short_code} · {t.name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div
         className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5 rounded-xl p-3"
@@ -352,13 +457,13 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
                     className="text-[11px] font-semibold tabular-nums"
                     style={{ color: "#f59e0b", fontFamily: "var(--font-plex-mono)" }}
                   >
-                    {TYPE_CODE[group.type]}
+                    {group.code}
                   </span>
                   <h3
                     className="text-2xl uppercase leading-none tracking-wide"
                     style={{ color: "#fef3c7", fontFamily: "var(--font-report-display)" }}
                   >
-                    {CLOSEBOT_BUG_TYPE_META[group.type].label}
+                    {group.label}
                   </h3>
                 </div>
                 <span
@@ -436,6 +541,26 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
                           </div>
                           {canWrite ? (
                             <div className="grid gap-3 sm:grid-cols-2 max-w-2xl">
+                              <label className="space-y-1">
+                                <span style={labelStyle}>Type</span>
+                                <select
+                                  style={inputStyle}
+                                  disabled={savingId === ticket.id}
+                                  value={ticket.bug_type ?? ""}
+                                  onChange={(e) =>
+                                    void patchTicket(ticket.id, {
+                                      bug_type: e.target.value || null,
+                                    })
+                                  }
+                                >
+                                  <option value="">Unclassified</option>
+                                  {bugTypes.filter((t) => t.is_active || t.slug === ticket.bug_type).map((t) => (
+                                    <option key={t.slug} value={t.slug}>
+                                      {t.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
                               <label className="space-y-1">
                                 <span style={labelStyle}>Status</span>
                                 <select
