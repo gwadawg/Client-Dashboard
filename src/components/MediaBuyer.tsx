@@ -253,32 +253,18 @@ function ProductFilterBar({
   counts: Record<ProductFilter, number>;
 }) {
   return (
-    <div className="min-w-0">
-      <ChannelLabel kicker="Product" live={value !== "all"} onClear={() => onChange("all")} />
-      <div className="flex gap-1" role="group" aria-label="Product">
-        {PRODUCT_FILTERS.filter((f) => f.value !== "all").map((f) => {
-          const selected = value === f.value;
-          return (
-            <button
-              key={f.value}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => onChange(selected ? "all" : f.value)}
-              className="flex-1 px-2.5 py-1.5 rounded-md text-[11px] tracking-wide transition-colors"
-              style={{
-                fontFamily: "var(--font-plex-mono)",
-                background: selected ? `${f.color}22` : "rgba(255,255,255,0.03)",
-                color: selected ? f.color : "#94a3b8",
-                border: selected ? `1px solid ${f.color}88` : "1px solid rgba(255,255,255,0.08)",
-              }}
-            >
-              {f.label}
-              <span className="ml-1.5 tabular-nums" style={{ opacity: 0.7 }}>{counts[f.value]}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <FilterSelect
+      label="Product"
+      value={value}
+      onChange={(slug) => onChange(slug as ProductFilter)}
+      options={PRODUCT_FILTERS.filter((f) => f.value !== "all").map((f) => ({
+        slug: f.value,
+        label: f.label,
+        count: counts[f.value],
+      }))}
+      anyLabel="Any product"
+      accent="#38bdf8"
+    />
   );
 }
 
@@ -332,6 +318,7 @@ function FilterSelect({
   options,
   anyLabel,
   accent = "#6ee7b7",
+  hideCounts = false,
 }: {
   label: string;
   value: string;
@@ -339,6 +326,7 @@ function FilterSelect({
   options: { slug: string; label: string; count: number }[];
   anyLabel: string;
   accent?: string;
+  hideCounts?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -381,11 +369,13 @@ function FilterSelect({
         }}
       >
         <span className="truncate flex-1">{live ? (selected?.label ?? value) : anyLabel}</span>
-        {live && selected ? (
-          <span className="tabular-nums" style={{ opacity: 0.7 }}>{selected.count}</span>
-        ) : (
-          <span className="tabular-nums" style={{ opacity: 0.45 }}>{options.length}</span>
-        )}
+        {!hideCounts ? (
+          live && selected ? (
+            <span className="tabular-nums" style={{ opacity: 0.7 }}>{selected.count}</span>
+          ) : (
+            <span className="tabular-nums" style={{ opacity: 0.45 }}>{options.length}</span>
+          )
+        ) : null}
         <span aria-hidden style={{ opacity: 0.5 }}>{open ? "▴" : "▾"}</span>
       </button>
       {open ? (
@@ -437,54 +427,15 @@ function FilterSelect({
                   }}
                 >
                   <span className="truncate">{opt.label}</span>
-                  <span className="tabular-nums" style={{ opacity: 0.55 }}>{opt.count}</span>
+                  {!hideCounts ? (
+                    <span className="tabular-nums" style={{ opacity: 0.55 }}>{opt.count}</span>
+                  ) : null}
                 </button>
               </li>
             );
           })}
         </ul>
       ) : null}
-    </div>
-  );
-}
-
-function StatusKeys({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (slug: string) => void;
-  options: { slug: string; label: string; count: number }[];
-}) {
-  if (options.length === 0 && value === "all") return null;
-  return (
-    <div className="min-w-0">
-      <ChannelLabel kicker="Status" live={value !== "all"} onClear={() => onChange("all")} />
-      <div className="flex flex-wrap gap-1" role="group" aria-label="Status">
-        {options.map((opt) => {
-          const selected = value === opt.slug;
-          const color = STATUS_STYLES[opt.slug]?.text ?? "#fbbf24";
-          return (
-            <button
-              key={opt.slug}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => onChange(selected ? "all" : opt.slug)}
-              className="px-2.5 py-1.5 rounded-md text-[11px] tracking-wide"
-              style={{
-                fontFamily: "var(--font-plex-mono)",
-                background: selected ? `${color}22` : "rgba(255,255,255,0.03)",
-                color: selected ? color : "#94a3b8",
-                border: selected ? `1px solid ${color}88` : "1px solid rgba(255,255,255,0.08)",
-              }}
-            >
-              {opt.label}
-              <span className="ml-1.5 tabular-nums" style={{ opacity: 0.7 }}>{opt.count}</span>
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -944,7 +895,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
           </p>
         </div>
 
-        <div className="grid gap-x-4 gap-y-3 px-4 py-3 [grid-template-columns:repeat(auto-fit,minmax(11rem,1fr))]">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-x-3 gap-y-3 px-4 py-3">
           <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={filterCounts} />
           <FilterSelect
             label="Topic"
@@ -962,48 +913,47 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
             anyLabel="Any format"
             accent="#60a5fa"
           />
-          <StatusKeys value={statusFilter} onChange={setStatusFilter} options={statusFilterOptions} />
-          <div className="min-w-0 [grid-column:span_2]">
+          <FilterSelect
+            label="Status"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={statusFilterOptions}
+            anyLabel="Any status"
+            accent="#fbbf24"
+          />
+          <div className="col-span-2 lg:col-span-1 min-w-0">
             <AdSearchInput value={search} onChange={setSearch} placeholder="Name, alias, topic…" />
           </div>
         </div>
 
         <div
-          className="flex flex-wrap items-end gap-x-6 gap-y-3 px-4 py-3"
+          className="grid grid-cols-2 lg:grid-cols-5 gap-x-3 gap-y-3 px-4 py-3"
           style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.18)" }}
         >
-          <div className="min-w-0 flex-1">
-            <ChannelLabel kicker="Rank by" live={rankPresets.some((p) => sortKey === p.key && asc === p.nextAsc)} />
-            <div className="flex flex-wrap gap-1" role="group" aria-label="Rank by">
-              {rankPresets.map((p) => {
-                const on = sortKey === p.key && asc === p.nextAsc;
-                return (
-                  <button
-                    key={p.label}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => applyPreset(p.key, p.nextAsc)}
-                    className="px-2.5 py-1.5 rounded-md text-[11px]"
-                    style={{
-                      fontFamily: "var(--font-plex-mono)",
-                      background: on ? "rgba(245,158,11,0.16)" : "rgba(255,255,255,0.03)",
-                      color: on ? "#fbbf24" : "#94a3b8",
-                      border: on ? "1px solid rgba(245,158,11,0.45)" : "1px solid rgba(255,255,255,0.08)",
-                    }}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div>
+          <FilterSelect
+            label="Rank by"
+            value={rankPresets.some((p) => sortKey === p.key && asc === p.nextAsc) ? sortKey : "all"}
+            onChange={(slug) => {
+              const preset = rankPresets.find((p) => p.key === slug);
+              if (!preset) {
+                setSortKey("spend");
+                setAsc(false);
+                return;
+              }
+              applyPreset(preset.key, preset.nextAsc);
+            }}
+            options={rankPresets.map((p) => ({ slug: p.key, label: p.label, count: 0 }))}
+            anyLabel="Spend (default)"
+            accent="#fbbf24"
+            hideCounts
+          />
+          <div className="min-w-0">
             <ChannelLabel kicker="Floor" live={minSpendOn} />
             <button
               type="button"
               aria-pressed={minSpendOn}
               onClick={() => setMinSpendOn((v) => !v)}
-              className="px-2.5 py-1.5 rounded-md text-[11px]"
+              className="w-full px-2.5 py-1.5 rounded-md text-[11px] text-left"
               style={{
                 fontFamily: "var(--font-plex-mono)",
                 background: minSpendOn ? "rgba(52,211,153,0.14)" : "rgba(255,255,255,0.03)",
@@ -1011,16 +961,16 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                 border: minSpendOn ? "1px solid rgba(52,211,153,0.45)" : "1px solid rgba(255,255,255,0.08)",
               }}
             >
-              ${MIN_SPEND}+
+              {minSpendOn ? `$${MIN_SPEND}+ on` : `$${MIN_SPEND}+ off`}
             </button>
           </div>
-          <div>
+          <div className="min-w-0">
             <ChannelLabel kicker="Columns" live={showPlatform} />
             <button
               type="button"
               aria-pressed={showPlatform}
               onClick={() => setShowPlatform((v) => !v)}
-              className="px-2.5 py-1.5 rounded-md text-[11px]"
+              className="w-full px-2.5 py-1.5 rounded-md text-[11px] text-left"
               style={{
                 fontFamily: "var(--font-plex-mono)",
                 background: showPlatform ? "rgba(96,165,250,0.16)" : "rgba(255,255,255,0.03)",
@@ -1032,25 +982,27 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
             </button>
           </div>
           {sliceActive ? (
-            <button
-              type="button"
-              onClick={() => {
-                setProductFilter("all");
-                setTagFilter("all");
-                setFormatFilter("all");
-                setStatusFilter("all");
-                setSearch("");
-              }}
-              className="ml-auto px-2.5 py-1.5 rounded-md text-[10px] uppercase tracking-wider"
-              style={{
-                fontFamily: "var(--font-archivo), sans-serif",
-                color: FILTER_INK.live,
-                border: "1px solid rgba(245,158,11,0.35)",
-                background: "rgba(245,158,11,0.08)",
-              }}
-            >
-              Clear slice
-            </button>
+            <div className="col-span-2 lg:col-span-2 flex items-end justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setProductFilter("all");
+                  setTagFilter("all");
+                  setFormatFilter("all");
+                  setStatusFilter("all");
+                  setSearch("");
+                }}
+                className="px-2.5 py-1.5 rounded-md text-[10px] uppercase tracking-wider"
+                style={{
+                  fontFamily: "var(--font-archivo), sans-serif",
+                  color: FILTER_INK.live,
+                  border: "1px solid rgba(245,158,11,0.35)",
+                  background: "rgba(245,158,11,0.08)",
+                }}
+              >
+                Clear slice
+              </button>
+            </div>
           ) : null}
         </div>
       </div>
