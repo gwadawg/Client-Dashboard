@@ -87,7 +87,12 @@ export async function DELETE(_req: Request, { params }: Params) {
 
   const { error: ticketErr } = await ctx.service
     .from("closebot_tickets")
-    .update({ bug_type: null, updated_at: new Date().toISOString() })
+    .update({
+      bug_type: null,
+      coverage: "actionable",
+      covered_by_log_id: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("bug_type", slug);
   if (ticketErr) return NextResponse.json({ error: ticketErr.message }, { status: 500 });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import { formatLogDate } from "@/lib/closebot";
 
 const inputStyle: CSSProperties = {
   background: "#0f2040",
@@ -10,6 +11,8 @@ const inputStyle: CSSProperties = {
 
 type Option = { id: string; name: string };
 type TypeOption = { slug: string; name: string; description: string | null };
+type CoveringFix = { id?: string; changed_at: string; problem_solved: string };
+type DoneState = "actionable" | "pre_fix" | null;
 
 export default function ClosebotTicketForm() {
   const [clients, setClients] = useState<Option[]>([]);
@@ -18,7 +21,8 @@ export default function ClosebotTicketForm() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<DoneState>(null);
+  const [doneFix, setDoneFix] = useState<CoveringFix | null>(null);
   const [reporterName, setReporterName] = useState("");
   const [occurredAt, setOccurredAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [clientId, setClientId] = useState("");
@@ -26,6 +30,8 @@ export default function ClosebotTicketForm() {
   const [description, setDescription] = useState("");
   const [contactUrl, setContactUrl] = useState("");
   const [faxNumber, setFaxNumber] = useState("");
+  const [previewCoverage, setPreviewCoverage] = useState<"actionable" | "pre_fix" | null>(null);
+  const [previewFix, setPreviewFix] = useState<CoveringFix | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +61,49 @@ export default function ClosebotTicketForm() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!clientId || !bugType || !occurredAt) {
+      setPreviewCoverage(null);
+      setPreviewFix(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const params = new URLSearchParams({
+            client_id: clientId,
+            bug_type: bugType,
+            occurred_at: occurredAt,
+          });
+          const res = await fetch(`/api/closebot/tickets/public/coverage?${params}`);
+          const data = await res.json().catch(() => ({}));
+          if (cancelled || !res.ok) return;
+          if (data.coverage === "pre_fix") {
+            setPreviewCoverage("pre_fix");
+            setPreviewFix(
+              data.covering_fix && typeof data.covering_fix.problem_solved === "string"
+                ? data.covering_fix
+                : null,
+            );
+          } else {
+            setPreviewCoverage("actionable");
+            setPreviewFix(null);
+          }
+        } catch {
+          if (!cancelled) {
+            setPreviewCoverage(null);
+            setPreviewFix(null);
+          }
+        }
+      })();
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [clientId, bugType, occurredAt]);
+
   const selectedType = useMemo(
     () => types.find((t) => t.slug === bugType) ?? null,
     [types, bugType],
@@ -83,7 +132,13 @@ export default function ClosebotTicketForm() {
         setError(data.error || "Could not submit ticket");
         return;
       }
-      setDone(true);
+      const coverage = data.coverage === "pre_fix" ? "pre_fix" : "actionable";
+      setDone(coverage);
+      setDoneFix(
+        coverage === "pre_fix" && data.covering_fix && typeof data.covering_fix.problem_solved === "string"
+          ? data.covering_fix
+          : null,
+      );
     } catch {
       setError("Could not submit ticket");
     } finally {
@@ -92,21 +147,46 @@ export default function ClosebotTicketForm() {
   }
 
   if (done) {
+    const historical = done === "pre_fix";
     return (
-      <div className="max-w-xl mx-auto rounded-2xl p-8 text-center space-y-3" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.08)" }}>
-        <p className="text-lg font-semibold text-slate-100">Ticket submitted</p>
-        <p className="text-sm text-slate-400">
-          Ops will see this under Closebot → Tickets, routed to the agent for that client.
+      <div
+        className="max-w-xl mx-auto rounded-2xl p-8 text-center space-y-3"
+        style={{
+          background: historical ? "#140e08" : "#0a1628",
+          border: historical ? "1px solid rgba(245,158,11,0.45)" : "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <p
+          className="text-[10px] font-bold uppercase tracking-[0.22em]"
+          style={{ color: "#f59e0b", fontFamily: "var(--font-archivo)" }}
+        >
+          {historical ? "Already in the books" : "Filed"}
         </p>
+        <p className="text-lg font-semibold text-slate-100">
+          {historical ? "Logged as historical" : "Ticket submitted"}
+        </p>
+        <p className="text-sm text-slate-400">
+          {historical
+            ? "This error type was already fixed after that date. Ops will see it under Already shipped, not as a new live bug."
+            : "Ops will see this under Closebot → Tickets, routed to the agent for that client."}
+        </p>
+        {historical && doneFix && (
+          <p className="text-xs" style={{ color: "#fde68a" }}>
+            Covering update {formatLogDate(doneFix.changed_at)} — {doneFix.problem_solved}
+          </p>
+        )}
         <button
           type="button"
           className="text-sm font-semibold px-4 py-2 rounded-lg"
           style={{ background: "#f59e0b", color: "#1a1206" }}
           onClick={() => {
-            setDone(false);
+            setDone(null);
+            setDoneFix(null);
             setDescription("");
             setContactUrl("");
             setBugType("");
+            setPreviewCoverage(null);
+            setPreviewFix(null);
           }}
         >
           Submit another
@@ -243,6 +323,30 @@ export default function ClosebotTicketForm() {
               ))}
             </select>
           </label>
+          {previewCoverage === "pre_fix" && (
+            <div
+              className="rounded-xl px-4 py-3 space-y-1"
+              style={{
+                background: "#140e08",
+                border: "1px dashed rgba(245,158,11,0.55)",
+              }}
+            >
+              <p
+                className="text-[10px] font-bold uppercase tracking-[0.18em]"
+                style={{ color: "#f59e0b", fontFamily: "var(--font-archivo)" }}
+              >
+                Already shipped
+              </p>
+              <p className="text-sm" style={{ color: "#fde68a" }}>
+                This error type was already fixed after that date. Submitting files it as historical, not as a new bug.
+              </p>
+              {previewFix && (
+                <p className="text-xs" style={{ color: "#a8a29e" }}>
+                  {formatLogDate(previewFix.changed_at)} — {previewFix.problem_solved}
+                </p>
+              )}
+            </div>
+          )}
           <label className="block space-y-1">
             <span className="text-xs font-medium text-slate-400">What happened</span>
             <textarea
@@ -284,7 +388,7 @@ export default function ClosebotTicketForm() {
             className="w-full rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
             style={{ background: "#f59e0b", color: "#1a1206" }}
           >
-            {saving ? "Submitting…" : "Submit ticket"}
+            {saving ? "Submitting…" : previewCoverage === "pre_fix" ? "Log as historical" : "Submit ticket"}
           </button>
         </form>
       )}

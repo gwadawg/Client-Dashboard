@@ -8,12 +8,16 @@ import {
   cleanHttpUrl,
   cleanString,
   cleanUuid,
+  isClosebotTicketCoverage,
   isClosebotTicketStatus,
   parseChangedAt,
 } from "@/lib/closebot";
 import {
+  addLogBugType,
   assertBugTypeSlug,
   assertVersionBelongsToAgent,
+  classifyTicketCoverage,
+  reclassifyOpenTicketsForAgent,
   resolveAgentForClient,
   resolveVersionAt,
   TICKET_SELECT,
@@ -59,7 +63,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
   const { data: existing, error: loadErr } = await ctx.service
     .from("closebot_tickets")
-    .select("id, agent_id, occurred_at, agent_version_id")
+    .select("id, agent_id, occurred_at, agent_version_id, bug_type, prompt_log_id, status, coverage, coverage_manual")
     .eq("id", id)
     .maybeSingle();
   if (loadErr) return NextResponse.json({ error: loadErr.message }, { status: 500 });
@@ -109,6 +113,29 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
     patch.status = body.status;
+  }
+
+  if ("coverage" in body) {
+    if (!isClosebotTicketCoverage(body.coverage)) {
+      return NextResponse.json({ error: "Invalid coverage" }, { status: 400 });
+    }
+    patch.coverage = body.coverage;
+    patch.coverage_manual = true;
+    if (body.coverage === "actionable") {
+      patch.covered_by_log_id = null;
+    }
+  }
+
+  if ("covered_by_log_id" in body && !("coverage" in body && body.coverage === "actionable")) {
+    if (body.covered_by_log_id === null || body.covered_by_log_id === "") {
+      patch.covered_by_log_id = null;
+    } else {
+      const logId = cleanUuid(body.covered_by_log_id);
+      if (!logId) {
+        return NextResponse.json({ error: "covered_by_log_id must be a valid id" }, { status: 400 });
+      }
+      patch.covered_by_log_id = logId;
+    }
   }
 
   if ("status_notes" in body) {
@@ -202,6 +229,39 @@ export async function PATCH(req: Request, { params }: Params) {
     patch.agent_version_id = resolved.versionId;
   }
 
+  const nextBugType = (
+    "bug_type" in patch ? (patch.bug_type as string | null) : existing.bug_type
+  ) as string | null;
+  const shouldReclassify =
+    !("coverage" in patch) &&
+    ("occurred_at" in patch || "bug_type" in patch || "agent_id" in patch || "client_id" in patch);
+
+  if (shouldReclassify && !existing.coverage_manual) {
+    const classified = await classifyTicketCoverage(ctx.service, {
+      agentId,
+      bugType: nextBugType,
+      occurredAt,
+    });
+    if (classified.error) return NextResponse.json({ error: classified.error }, { status: 500 });
+    patch.coverage = classified.coverage;
+    patch.covered_by_log_id = classified.coveredByLogId;
+  }
+
+  const nextPromptLogId = (
+    "prompt_log_id" in patch ? (patch.prompt_log_id as string | null) : existing.prompt_log_id
+  ) as string | null;
+  const nextStatus = ("status" in patch ? patch.status : existing.status) as string;
+  if (
+    nextPromptLogId &&
+    nextBugType &&
+    nextStatus === "resolved_updated_agent"
+  ) {
+    const added = await addLogBugType(ctx.service, nextPromptLogId, nextBugType);
+    if (added.error) {
+      return NextResponse.json({ error: added.error }, { status: added.status ?? 500 });
+    }
+  }
+
   if (Object.keys(patch).length <= 1) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
@@ -215,5 +275,11 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+
+  if (nextPromptLogId && nextBugType && nextStatus === "resolved_updated_agent") {
+    const reclass = await reclassifyOpenTicketsForAgent(ctx.service, agentId);
+    if (reclass.error) return NextResponse.json({ error: reclass.error }, { status: 500 });
+  }
+
   return NextResponse.json(data);
 }

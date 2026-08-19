@@ -9,6 +9,7 @@ import {
   dateInputFromIso,
   formatLogDate,
   type ClosebotAgent,
+  type ClosebotBugTypeRow,
   type ClosebotLogStatus,
   type ClosebotPromptLog,
 } from "@/lib/closebot";
@@ -48,6 +49,7 @@ type FormState = {
   status: ClosebotLogStatus;
   outcome_notes: string;
   attach_pending_version: boolean;
+  fixes_bug_types: string[];
 };
 
 function emptyForm(): FormState {
@@ -63,6 +65,7 @@ function emptyForm(): FormState {
     status: "watching",
     outcome_notes: "",
     attach_pending_version: true,
+    fixes_bug_types: [],
   };
 }
 
@@ -99,6 +102,7 @@ export default function ClosebotPromptLog({ canWrite = false, embedded = false }
   const [formError, setFormError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [bugTypes, setBugTypes] = useState<ClosebotBugTypeRow[]>([]);
 
   const activeAgents = useMemo(() => agents.filter((a) => a.is_active), [agents]);
 
@@ -107,6 +111,13 @@ export default function ClosebotPromptLog({ canWrite = false, embedded = false }
     if (!res.ok) return;
     const data = await res.json();
     setAgents(Array.isArray(data) ? data : []);
+  }, []);
+
+  const loadBugTypes = useCallback(async () => {
+    const res = await fetch("/api/closebot/bug-types");
+    if (!res.ok) return;
+    const data = await res.json().catch(() => ({}));
+    setBugTypes(Array.isArray(data.types) ? data.types : []);
   }, []);
 
   const loadLogs = useCallback(async () => {
@@ -138,7 +149,8 @@ export default function ClosebotPromptLog({ canWrite = false, embedded = false }
 
   useEffect(() => {
     void loadAgents();
-  }, [loadAgents]);
+    void loadBugTypes();
+  }, [loadAgents, loadBugTypes]);
 
   useEffect(() => {
     void loadLogs();
@@ -164,6 +176,7 @@ export default function ClosebotPromptLog({ canWrite = false, embedded = false }
       status: log.status,
       outcome_notes: log.outcome_notes ?? "",
       attach_pending_version: Boolean(log.agent_version_id),
+      fixes_bug_types: log.fixes_bug_types ?? [],
     });
     setFormError(null);
     setModalOpen(true);
@@ -183,6 +196,7 @@ export default function ClosebotPromptLog({ canWrite = false, embedded = false }
         prompt_body: form.prompt_body,
         status: form.status,
         outcome_notes: form.outcome_notes.trim() || null,
+        fixes_bug_types: form.fixes_bug_types,
       };
       if (hasPending) {
         payload.attach_pending_version = form.attach_pending_version;
@@ -455,6 +469,22 @@ export default function ClosebotPromptLog({ canWrite = false, embedded = false }
                   <p className="text-sm font-medium" style={{ color: "#f1f5f9" }}>
                     {log.problem_solved}
                   </p>
+                  {(log.fixes_bug_types?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {log.fixes_bug_types.map((slug) => {
+                        const t = bugTypes.find((b) => b.slug === slug);
+                        return (
+                          <span
+                            key={slug}
+                            className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                            style={{ background: "rgba(245,158,11,0.12)", color: "#fbbf24" }}
+                          >
+                            {t?.name ?? slug.replace(/_/g, " ")}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                   <p
                     className="text-xs mt-1 line-clamp-2"
                     style={{ color: "#64748b" }}
@@ -631,6 +661,47 @@ export default function ClosebotPromptLog({ canWrite = false, embedded = false }
                 placeholder="Short problem statement"
               />
             </label>
+
+            <div className="space-y-1">
+              <span style={labelStyle}>Error types this change addresses</span>
+              <p className="text-[11px]" style={{ color: "#64748b" }}>
+                Optional. Empty means this update will not auto-label old tickets.
+              </p>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {bugTypes
+                  .filter((t) => t.is_active || form.fixes_bug_types.includes(t.slug))
+                  .map((t) => {
+                    const on = form.fixes_bug_types.includes(t.slug);
+                    return (
+                      <button
+                        key={t.slug}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            fixes_bug_types: on
+                              ? f.fixes_bug_types.filter((s) => s !== t.slug)
+                              : [...f.fixes_bug_types, t.slug],
+                          }))
+                        }
+                        className="text-[11px] px-2 py-1 rounded"
+                        style={{
+                          background: on ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.04)",
+                          color: on ? "#fde68a" : "#94a3b8",
+                          border: on ? "1px solid rgba(245,158,11,0.45)" : "1px solid rgba(255,255,255,0.08)",
+                        }}
+                      >
+                        {t.name}
+                      </button>
+                    );
+                  })}
+                {bugTypes.length === 0 && (
+                  <span className="text-[11px]" style={{ color: "#64748b" }}>
+                    Add types under Closebot → Tickets → Type library.
+                  </span>
+                )}
+              </div>
+            </div>
 
             <label className="block space-y-1">
               <span style={labelStyle}>Why we changed it</span>

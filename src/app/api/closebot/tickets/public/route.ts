@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
-import { createClosebotTicket } from "@/lib/closebot-store";
+import { coveringFixFromTicket, createClosebotTicket } from "@/lib/closebot-store";
+import type { ClosebotTicket } from "@/lib/closebot";
 
 const RATE_LIMIT_MS = 15_000;
 const recentSubmits = new Map<string, number>();
@@ -37,5 +38,10 @@ export async function POST(req: Request) {
   if (created.error) {
     return NextResponse.json({ error: created.error }, { status: created.status });
   }
-  return NextResponse.json({ ok: true });
+  const ticket = created.ticket as ClosebotTicket | undefined;
+  return NextResponse.json({
+    ok: true,
+    coverage: ticket?.coverage === "pre_fix" ? "pre_fix" : "actionable",
+    covering_fix: ticket ? coveringFixFromTicket(ticket) : null,
+  });
 }

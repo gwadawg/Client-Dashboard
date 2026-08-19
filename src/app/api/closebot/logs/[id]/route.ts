@@ -8,11 +8,15 @@ import {
   cleanHttpUrls,
   cleanString,
   isClosebotLogStatus,
+  parseBugTypeSlugs,
   parseChangedAt,
 } from "@/lib/closebot";
 import {
   applyLogStatusToVersion,
+  hydratePromptLog,
   LOG_SELECT,
+  reclassifyOpenTicketsForAgent,
+  replaceLogBugTypes,
   resolveVersionForLog,
 } from "@/lib/closebot-store";
 
@@ -35,7 +39,7 @@ export async function GET(_req: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Log not found" }, { status: 404 });
-  return NextResponse.json(data);
+  return NextResponse.json(hydratePromptLog(data));
 }
 
 export async function PATCH(req: Request, { params }: Params) {
@@ -135,7 +139,14 @@ export async function PATCH(req: Request, { params }: Params) {
     patch.agent_version_id = versionRes.versionId;
   }
 
-  if (Object.keys(patch).length <= 2) {
+  let fixesBugTypes: string[] | null = null;
+  if ("fixes_bug_types" in body) {
+    const parsed = parseBugTypeSlugs(body.fixes_bug_types);
+    if (parsed.error) return NextResponse.json({ error: parsed.error }, { status: 400 });
+    fixesBugTypes = parsed.slugs ?? [];
+  }
+
+  if (Object.keys(patch).length <= 2 && fixesBugTypes == null) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
@@ -145,9 +156,15 @@ export async function PATCH(req: Request, { params }: Params) {
     .eq("id", id)
     .select(LOG_SELECT)
     .maybeSingle();
-
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Log not found" }, { status: 404 });
+
+  if (fixesBugTypes) {
+    const replaced = await replaceLogBugTypes(ctx.service, id, fixesBugTypes);
+    if (replaced.error) {
+      return NextResponse.json({ error: replaced.error }, { status: replaced.status ?? 500 });
+    }
+  }
 
   const versionId = (data.agent_version_id as string | null) ?? null;
   if ("status" in body && isClosebotLogStatus(data.status)) {
@@ -155,5 +172,27 @@ export async function PATCH(req: Request, { params }: Params) {
     if (applied.error) return NextResponse.json({ error: applied.error }, { status: 500 });
   }
 
-  return NextResponse.json(data);
+  const shouldReclassify =
+    fixesBugTypes != null ||
+    "status" in body ||
+    "changed_at" in body ||
+    "agent_id" in body;
+  if (shouldReclassify) {
+    const agentId = (typeof patch.agent_id === "string" ? patch.agent_id : existing.agent_id) as string;
+    const reclass = await reclassifyOpenTicketsForAgent(ctx.service, agentId);
+    if (reclass.error) return NextResponse.json({ error: reclass.error }, { status: 500 });
+    if (typeof patch.agent_id === "string" && patch.agent_id !== existing.agent_id) {
+      const previous = await reclassifyOpenTicketsForAgent(ctx.service, existing.agent_id);
+      if (previous.error) return NextResponse.json({ error: previous.error }, { status: 500 });
+    }
+  }
+
+  const { data: hydrated, error: reloadErr } = await ctx.service
+    .from("closebot_prompt_log")
+    .select(LOG_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  if (reloadErr) return NextResponse.json({ error: reloadErr.message }, { status: 500 });
+  if (!hydrated) return NextResponse.json({ error: "Log not found" }, { status: 404 });
+  return NextResponse.json(hydratePromptLog(hydrated));
 }

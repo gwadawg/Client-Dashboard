@@ -8,12 +8,17 @@ import {
   cleanHttpUrls,
   cleanString,
   isClosebotLogStatus,
+  parseBugTypeSlugs,
   parseChangedAt,
   type ClosebotLogStatus,
 } from "@/lib/closebot";
 import {
   applyLogStatusToVersion,
+  hydratePromptLog,
+  hydratePromptLogs,
   LOG_SELECT,
+  reclassifyOpenTicketsForAgent,
+  replaceLogBugTypes,
   resolveVersionForLog,
 } from "@/lib/closebot-store";
 
@@ -66,7 +71,7 @@ export async function GET(req: Request) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ logs: data ?? [], offset, limit });
+  return NextResponse.json({ logs: hydratePromptLogs(data ?? []), offset, limit });
 }
 
 export async function POST(req: Request) {
@@ -118,6 +123,9 @@ export async function POST(req: Request) {
   }
 
   const outcomeNotes = cleanString(body.outcome_notes);
+  const typesParsed = parseBugTypeSlugs(body.fixes_bug_types);
+  if (typesParsed.error) return NextResponse.json({ error: typesParsed.error }, { status: 400 });
+  const fixesBugTypes = typesParsed.slugs ?? [];
 
   const { data: agent, error: agentErr } = await ctx.service
     .from("closebot_agents")
@@ -160,5 +168,21 @@ export async function POST(req: Request) {
   const applied = await applyLogStatusToVersion(ctx.service, versionRes.versionId, status);
   if (applied.error) return NextResponse.json({ error: applied.error }, { status: 500 });
 
-  return NextResponse.json(data, { status: 201 });
+  if (data?.id) {
+    const replaced = await replaceLogBugTypes(ctx.service, data.id as string, fixesBugTypes);
+    if (replaced.error) {
+      return NextResponse.json({ error: replaced.error }, { status: replaced.status ?? 500 });
+    }
+    const reclass = await reclassifyOpenTicketsForAgent(ctx.service, agentId);
+    if (reclass.error) return NextResponse.json({ error: reclass.error }, { status: 500 });
+    const { data: hydrated, error: reloadErr } = await ctx.service
+      .from("closebot_prompt_log")
+      .select(LOG_SELECT)
+      .eq("id", data.id)
+      .maybeSingle();
+    if (reloadErr) return NextResponse.json({ error: reloadErr.message }, { status: 500 });
+    return NextResponse.json(hydratePromptLog(hydrated), { status: 201 });
+  }
+
+  return NextResponse.json(hydratePromptLog(data), { status: 201 });
 }

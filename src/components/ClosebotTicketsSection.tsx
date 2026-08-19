@@ -83,6 +83,8 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeDescription, setNewTypeDescription] = useState("");
   const [savingType, setSavingType] = useState(false);
+  const [shippedTickets, setShippedTickets] = useState<ClosebotTicket[]>([]);
+  const [shippedOpen, setShippedOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,8 +97,12 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
       else if (filterVersion) params.set("agent_version_id", filterVersion);
       if (openOnly) params.set("open", "1");
       params.set("limit", "200");
-      const [ticketsRes, clientsRes, agentsRes, typesRes] = await Promise.all([
+      const shippedParams = new URLSearchParams(params);
+      shippedParams.set("coverage", "pre_fix");
+      shippedParams.delete("open");
+      const [ticketsRes, shippedRes, clientsRes, agentsRes, typesRes] = await Promise.all([
         fetch(`/api/closebot/tickets?${params}`),
+        fetch(`/api/closebot/tickets?${shippedParams}`),
         fetch("/api/clients"),
         fetch("/api/closebot/agents"),
         fetch("/api/closebot/bug-types"),
@@ -108,6 +114,12 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
         return;
       }
       setTickets(Array.isArray(ticketsData.tickets) ? ticketsData.tickets : []);
+      if (shippedRes.ok) {
+        const shippedData = await shippedRes.json().catch(() => ({}));
+        setShippedTickets(Array.isArray(shippedData.tickets) ? shippedData.tickets : []);
+      } else {
+        setShippedTickets([]);
+      }
       if (clientsRes.ok) {
         const clientData = await clientsRes.json().catch(() => ({}));
         setClients(Array.isArray(clientData.clients) ? clientData.clients : []);
@@ -179,6 +191,9 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
         return;
       }
       setTickets((prev) => prev.map((t) => (t.id === id ? (data as ClosebotTicket) : t)));
+      if ("coverage" in body) {
+        await load();
+      }
     } catch {
       setError("Could not update ticket");
     } finally {
@@ -568,7 +583,9 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
         <p className="text-sm py-10" style={{ color: "#78716c" }}>
           Pulling the case file…
         </p>
-      ) : grouped.length === 0 ? (
+      ) : (
+        <>
+      {grouped.length === 0 ? (
         <div
           className="rounded-xl px-6 py-14 text-center"
           style={{ border: "1px dashed rgba(245,158,11,0.28)", background: "rgba(245,158,11,0.04)" }}
@@ -780,6 +797,19 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
                                   }}
                                 />
                               </label>
+                              <div className="sm:col-span-2">
+                                <button
+                                  type="button"
+                                  disabled={savingId === ticket.id}
+                                  onClick={() =>
+                                    void patchTicket(ticket.id, { coverage: "pre_fix" })
+                                  }
+                                  className="text-[11px] font-semibold uppercase tracking-wider"
+                                  style={{ color: "#b45309", fontFamily: "var(--font-archivo)" }}
+                                >
+                                  Mark already shipped
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             ticket.status_notes && (
@@ -797,6 +827,89 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
             </section>
           ))}
         </div>
+      )}
+
+      {shippedTickets.length > 0 && (
+        <section
+          className="rounded-xl overflow-hidden"
+          style={{
+            border: "1px dashed rgba(180,83,9,0.4)",
+            background: "rgba(20,14,8,0.55)",
+            opacity: 0.92,
+          }}
+        >
+          <button
+            type="button"
+            className="w-full text-left px-4 py-3 flex items-center justify-between gap-3"
+            onClick={() => setShippedOpen((v) => !v)}
+          >
+            <div>
+              <p
+                className="text-[10px] font-bold uppercase tracking-[0.2em]"
+                style={{ color: "#b45309", fontFamily: "var(--font-archivo)" }}
+              >
+                Already shipped
+              </p>
+              <p className="text-sm mt-0.5" style={{ color: "#a8a29e" }}>
+                Same error type, later update already claimed the fix. Not live work.
+              </p>
+            </div>
+            <span
+              className="text-xs tabular-nums"
+              style={{ color: "#fbbf24", fontFamily: "var(--font-plex-mono)" }}
+            >
+              {String(shippedTickets.length).padStart(2, "0")}
+            </span>
+          </button>
+          {shippedOpen && (
+            <ul className="px-4 pb-3 divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+              {shippedTickets.map((ticket) => {
+                const agent = embedOne(ticket.agent);
+                const client = embedOne(ticket.client);
+                const cover = embedOne(ticket.covered_by_log);
+                return (
+                  <li key={ticket.id} className="py-3">
+                    <div className="grid grid-cols-[5.5rem_minmax(0,1fr)_auto] gap-3 items-start">
+                      <span
+                        className="text-[11px] tabular-nums pt-0.5"
+                        style={{ color: "#78716c", fontFamily: "var(--font-plex-mono)" }}
+                      >
+                        {formatLogDate(ticket.occurred_at)}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm truncate" style={{ color: "#d6d3d1" }}>
+                          {client?.name ?? "Unknown client"}
+                          <span style={{ color: "#78716c" }}> · {agent?.name ?? "Unknown agent"}</span>
+                        </p>
+                        <p className="text-sm mt-0.5 line-clamp-2" style={{ color: "#a8a29e" }}>
+                          {ticket.description}
+                        </p>
+                        {cover && (
+                          <p className="text-[11px] mt-1" style={{ color: "#fbbf24", fontFamily: "var(--font-plex-mono)" }}>
+                            Covering {formatLogDate(cover.changed_at)} — {cover.problem_solved}
+                          </p>
+                        )}
+                      </div>
+                      {canWrite && (
+                        <button
+                          type="button"
+                          disabled={savingId === ticket.id}
+                          onClick={() => void patchTicket(ticket.id, { coverage: "actionable" })}
+                          className="text-[10px] font-bold uppercase tracking-wide shrink-0"
+                          style={{ color: "#fde68a", fontFamily: "var(--font-archivo)" }}
+                        >
+                          Treat as live bug
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
+        </>
       )}
     </div>
   );

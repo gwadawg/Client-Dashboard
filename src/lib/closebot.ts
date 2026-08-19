@@ -146,6 +146,7 @@ export type ClosebotPromptLog = {
   reference_urls: string[];
   status: ClosebotLogStatus;
   outcome_notes: string | null;
+  fixes_bug_types: string[];
   created_by: string | null;
   updated_by: string | null;
   created_at: string;
@@ -199,6 +200,35 @@ export type ClosebotBugTypeRow = {
   updated_at?: string;
 };
 
+export const CLOSEBOT_COVERING_LOG_STATUSES: readonly ClosebotLogStatus[] = [
+  "watching",
+  "worked",
+];
+
+export const CLOSEBOT_TICKET_COVERAGES = ["actionable", "pre_fix"] as const;
+
+export type ClosebotTicketCoverage = (typeof CLOSEBOT_TICKET_COVERAGES)[number];
+
+export const CLOSEBOT_TICKET_COVERAGE_META: Record<
+  ClosebotTicketCoverage,
+  { label: string; help: string }
+> = {
+  actionable: {
+    label: "Live case",
+    help: "Still a work item — this problem was not claimed as fixed after it happened",
+  },
+  pre_fix: {
+    label: "Already shipped",
+    help: "Same error type, later update already claimed this fix",
+  },
+};
+
+export type ClosebotCoveringFix = {
+  id: string;
+  changed_at: string;
+  problem_solved: string;
+};
+
 export type ClosebotTicket = {
   id: string;
   occurred_at: string;
@@ -209,8 +239,11 @@ export type ClosebotTicket = {
   agent_id: string;
   agent_version_id: string | null;
   status: ClosebotTicketStatus;
+  coverage: ClosebotTicketCoverage;
+  coverage_manual: boolean;
   reporter_name: string;
   prompt_log_id: string | null;
+  covered_by_log_id: string | null;
   status_notes: string | null;
   created_at: string;
   updated_at: string;
@@ -220,6 +253,7 @@ export type ClosebotTicket = {
     ClosebotAgentVersion,
     "id" | "status" | "name" | "went_live_at" | "superseded_at"
   > | Pick<ClosebotAgentVersion, "id" | "status" | "name" | "went_live_at" | "superseded_at">[] | null;
+  covered_by_log?: ClosebotCoveringFix | ClosebotCoveringFix[] | null;
 };
 
 export type VersionEffectiveWindow = {
@@ -253,8 +287,88 @@ export function pickVersionAt(
   return matches[0]?.id ?? null;
 }
 
+export type CoveringLogWindow = {
+  id: string;
+  agent_id: string;
+  status: string;
+  changed_at: string;
+  bug_types: string[];
+};
+
+export function utcDateKey(iso: string): string | null {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+/** True when the log shipped after the incident, or on the same UTC calendar day. */
+export function logCoversOccurrence(changedAt: string, occurredAt: string): boolean {
+  const changed = new Date(changedAt).getTime();
+  const occurred = new Date(occurredAt).getTime();
+  if (!Number.isFinite(changed) || !Number.isFinite(occurred)) return false;
+  if (changed > occurred) return true;
+  const changedDay = utcDateKey(changedAt);
+  const occurredDay = utcDateKey(occurredAt);
+  return Boolean(changedDay && occurredDay && changedDay === occurredDay);
+}
+
+export function classifyClosebotCoverage(
+  logs: CoveringLogWindow[],
+  opts: { agentId: string; bugType: string | null; occurredAt: string },
+): { coverage: ClosebotTicketCoverage; coveredByLogId: string | null } {
+  if (!opts.bugType) return { coverage: "actionable", coveredByLogId: null };
+  const covering = logs.filter((log) => {
+    if (log.agent_id !== opts.agentId) return false;
+    if (!(CLOSEBOT_COVERING_LOG_STATUSES as readonly string[]).includes(log.status)) return false;
+    if (!log.bug_types.includes(opts.bugType!)) return false;
+    return logCoversOccurrence(log.changed_at, opts.occurredAt);
+  });
+  covering.sort(
+    (a, b) => new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime(),
+  );
+  const first = covering[0];
+  if (!first) return { coverage: "actionable", coveredByLogId: null };
+  return { coverage: "pre_fix", coveredByLogId: first.id };
+}
+
+export function isClosebotTicketCoverage(v: unknown): v is ClosebotTicketCoverage {
+  return typeof v === "string" && (CLOSEBOT_TICKET_COVERAGES as readonly string[]).includes(v);
+}
+
 export function isClosebotTicketStatus(v: unknown): v is ClosebotTicketStatus {
   return typeof v === "string" && (CLOSEBOT_TICKET_STATUSES as readonly string[]).includes(v);
+}
+
+export function parseBugTypeSlugs(v: unknown): { slugs?: string[]; error?: string } {
+  if (v == null) return { slugs: [] };
+  if (!Array.isArray(v)) return { error: "fixes_bug_types must be an array" };
+  const slugs: string[] = [];
+  const seen = new Set<string>();
+  for (const item of v) {
+    if (typeof item !== "string") return { error: "fixes_bug_types must be slugs" };
+    const slug = item.trim();
+    if (!slug) continue;
+    if (!isClosebotBugTypeSlug(slug)) return { error: "fixes_bug_types contains an invalid slug" };
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    slugs.push(slug);
+  }
+  return { slugs };
+}
+
+export function embedFixesBugTypes(
+  value: { bug_type: string }[] | null | undefined,
+): string[] {
+  if (!Array.isArray(value)) return [];
+  const slugs: string[] = [];
+  const seen = new Set<string>();
+  for (const row of value) {
+    const slug = typeof row?.bug_type === "string" ? row.bug_type : "";
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    slugs.push(slug);
+  }
+  return slugs;
 }
 
 const BUG_TYPE_SLUG_RE = /^[a-z][a-z0-9_]{0,63}$/;

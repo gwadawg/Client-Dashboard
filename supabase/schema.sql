@@ -2241,6 +2241,16 @@ create index if not exists closebot_prompt_log_version_idx
   on closebot_prompt_log (agent_version_id)
   where agent_version_id is not null;
 
+create table if not exists closebot_log_bug_types (
+  log_id     uuid not null references closebot_prompt_log (id) on delete cascade,
+  bug_type   text not null references closebot_bug_types (slug) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (log_id, bug_type)
+);
+
+create index if not exists closebot_log_bug_types_type_idx
+  on closebot_log_bug_types (bug_type);
+
 create table if not exists closebot_tickets (
   id                 uuid primary key default gen_random_uuid(),
   occurred_at        timestamptz not null,
@@ -2253,6 +2263,9 @@ create table if not exists closebot_tickets (
   status             text not null default 'new',
   reporter_name      text not null,
   prompt_log_id      uuid references closebot_prompt_log (id) on delete set null,
+  covered_by_log_id  uuid references closebot_prompt_log (id) on delete set null,
+  coverage           text not null default 'actionable',
+  coverage_manual    boolean not null default false,
   status_notes       text,
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
@@ -2264,6 +2277,9 @@ create table if not exists closebot_tickets (
       'resolved_no_change',
       'resolved_updated_agent'
     )
+  ),
+  constraint closebot_tickets_coverage_check check (
+    coverage in ('actionable', 'pre_fix')
   )
 );
 
@@ -2271,12 +2287,29 @@ create index if not exists closebot_tickets_open_status_idx
   on closebot_tickets (status, occurred_at desc)
   where status in ('new', 'investigating', 'ticket_open');
 
+create index if not exists closebot_tickets_open_actionable_idx
+  on closebot_tickets (status, occurred_at desc)
+  where status in ('new', 'investigating', 'ticket_open')
+    and coverage = 'actionable';
+
+create index if not exists closebot_tickets_pre_fix_idx
+  on closebot_tickets (occurred_at desc)
+  where coverage = 'pre_fix';
+
 create index if not exists closebot_tickets_agent_occurred_idx
   on closebot_tickets (agent_id, occurred_at desc);
+
+create index if not exists closebot_tickets_agent_type_occurred_idx
+  on closebot_tickets (agent_id, bug_type, occurred_at)
+  where bug_type is not null;
 
 create index if not exists closebot_tickets_version_idx
   on closebot_tickets (agent_version_id)
   where agent_version_id is not null;
+
+create index if not exists closebot_tickets_covered_by_log_idx
+  on closebot_tickets (covered_by_log_id)
+  where covered_by_log_id is not null;
 
 create index if not exists closebot_tickets_client_occurred_idx
   on closebot_tickets (client_id, occurred_at desc);
