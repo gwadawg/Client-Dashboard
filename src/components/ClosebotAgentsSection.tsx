@@ -7,6 +7,8 @@ import {
   emptyAgentNode,
   emptyFollowUp,
   emptyFollowUpType,
+  CLOSEBOT_FOLLOWUP_UNITS,
+  CLOSEBOT_FOLLOWUP_UNIT_META,
   type ClosebotAgent,
   type ClosebotAgentNode,
   type ClosebotAgentVersion,
@@ -93,7 +95,20 @@ function formFromSnapshot(
           prompt: n.prompt ?? "",
         }))
       : [],
-    follow_ups: Array.isArray(source.follow_ups) ? source.follow_ups : [],
+    follow_ups: Array.isArray(source.follow_ups)
+      ? source.follow_ups.map((fu) => ({
+          name: fu.name ?? "",
+          prompt: fu.prompt ?? "",
+          types: Array.isArray(fu.types)
+            ? fu.types.map((t) => ({
+                after: typeof t.after === "number" && t.after > 0 ? t.after : 6,
+                unit: (CLOSEBOT_FOLLOWUP_UNITS as readonly string[]).includes(t.unit)
+                  ? t.unit
+                  : "hours",
+              }))
+            : [],
+        }))
+      : [],
   };
 }
 
@@ -202,8 +217,8 @@ export default function ClosebotAgentsSection({
             name: fu.name.trim(),
             prompt: fu.prompt.trim(),
             types: fu.types
-              .filter((t) => t.label.trim())
-              .map((t) => ({ label: t.label.trim(), details: t.details.trim() })),
+              .filter((t) => Number.isFinite(t.after) && t.after > 0)
+              .map((t) => ({ after: t.after, unit: t.unit })),
           })),
       };
       const res = await fetch(
@@ -634,7 +649,7 @@ export default function ClosebotAgentsSection({
                     }
                   />
                   <div className="flex items-center justify-between">
-                    <span style={labelStyle}>Settings types</span>
+                    <span style={labelStyle}>Follow up after</span>
                     <button
                       type="button"
                       className="text-[11px] font-semibold"
@@ -650,54 +665,54 @@ export default function ClosebotAgentsSection({
                         }))
                       }
                     >
-                      Add type
+                      Add delay
                     </button>
                   </div>
                   {fu.types.map((t, j) => (
-                    <div key={j} className="space-y-1 pl-2" style={{ borderLeft: "2px solid rgba(96,165,250,0.25)" }}>
-                      <div className="flex gap-2">
-                        <input
-                          style={inputStyle}
-                          placeholder="Type label"
-                          value={t.label}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              follow_ups: f.follow_ups.map((row, idx) =>
-                                idx === i
-                                  ? {
-                                      ...row,
-                                      types: row.types.map((tr, tidx) =>
-                                        tidx === j ? { ...tr, label: e.target.value } : tr,
-                                      ),
-                                    }
-                                  : row,
-                              ),
-                            }))
-                          }
-                        />
-                        <button
-                          type="button"
-                          className="text-[11px] shrink-0"
-                          style={{ color: "#f87171" }}
-                          onClick={() =>
-                            setForm((f) => ({
-                              ...f,
-                              follow_ups: f.follow_ups.map((row, idx) =>
-                                idx === i
-                                  ? { ...row, types: row.types.filter((_, tidx) => tidx !== j) }
-                                  : row,
-                              ),
-                            }))
-                          }
-                        >
-                          Remove
-                        </button>
-                      </div>
-                      <textarea
-                        style={{ ...inputStyle, minHeight: "3rem", resize: "vertical" }}
-                        placeholder="Details / settings paste"
-                        value={t.details}
+                    <div
+                      key={j}
+                      className="flex flex-wrap items-center gap-2 rounded-lg px-2 py-2"
+                      style={{
+                        background: "rgba(255,255,255,0.03)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      <span
+                        className="text-[11px] font-bold tabular-nums px-2 py-1 rounded"
+                        style={{ background: "rgba(148,163,184,0.18)", color: "#cbd5e1" }}
+                      >
+                        {j + 1}
+                      </span>
+                      <span className="text-xs" style={{ color: "#94a3b8" }}>
+                        Follow up after
+                      </span>
+                      <input
+                        style={{ ...inputStyle, width: "4.5rem" }}
+                        type="number"
+                        min={1}
+                        value={t.after}
+                        onChange={(e) => {
+                          const after = Number(e.target.value);
+                          setForm((f) => ({
+                            ...f,
+                            follow_ups: f.follow_ups.map((row, idx) =>
+                              idx === i
+                                ? {
+                                    ...row,
+                                    types: row.types.map((tr, tidx) =>
+                                      tidx === j
+                                        ? { ...tr, after: Number.isFinite(after) ? after : 0 }
+                                        : tr,
+                                    ),
+                                  }
+                                : row,
+                            ),
+                          }));
+                        }}
+                      />
+                      <select
+                        style={{ ...inputStyle, width: "7.5rem" }}
+                        value={t.unit}
                         onChange={(e) =>
                           setForm((f) => ({
                             ...f,
@@ -706,14 +721,42 @@ export default function ClosebotAgentsSection({
                                 ? {
                                     ...row,
                                     types: row.types.map((tr, tidx) =>
-                                      tidx === j ? { ...tr, details: e.target.value } : tr,
+                                      tidx === j
+                                        ? {
+                                            ...tr,
+                                            unit: e.target.value as (typeof CLOSEBOT_FOLLOWUP_UNITS)[number],
+                                          }
+                                        : tr,
                                     ),
                                   }
                                 : row,
                             ),
                           }))
                         }
-                      />
+                      >
+                        {CLOSEBOT_FOLLOWUP_UNITS.map((u) => (
+                          <option key={u} value={u}>
+                            {CLOSEBOT_FOLLOWUP_UNIT_META[u].label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="text-[11px] ml-auto"
+                        style={{ color: "#f87171" }}
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            follow_ups: f.follow_ups.map((row, idx) =>
+                              idx === i
+                                ? { ...row, types: row.types.filter((_, tidx) => tidx !== j) }
+                                : row,
+                            ),
+                          }))
+                        }
+                      >
+                        Remove
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -843,6 +886,17 @@ export default function ClosebotAgentsSection({
                                 <pre className="whitespace-pre-wrap mt-1" style={{ color: "#64748b" }}>
                                   {fu.prompt}
                                 </pre>
+                              )}
+                              {(fu.types ?? []).length > 0 && (
+                                <p className="mt-1">
+                                  After{" "}
+                                  {fu.types
+                                    .map(
+                                      (t) =>
+                                        `${t.after} ${CLOSEBOT_FOLLOWUP_UNIT_META[t.unit]?.label ?? t.unit}`,
+                                    )
+                                    .join(", ")}
+                                </p>
                               )}
                             </div>
                           ))}

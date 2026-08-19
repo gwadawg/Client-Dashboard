@@ -55,9 +55,19 @@ export type ClosebotAgentNode = {
   prompt: string;
 };
 
+export const CLOSEBOT_FOLLOWUP_UNITS = ["minutes", "hours", "days"] as const;
+
+export type ClosebotFollowUpUnit = (typeof CLOSEBOT_FOLLOWUP_UNITS)[number];
+
+export const CLOSEBOT_FOLLOWUP_UNIT_META: Record<ClosebotFollowUpUnit, { label: string }> = {
+  minutes: { label: "Minutes" },
+  hours: { label: "Hours" },
+  days: { label: "Days" },
+};
+
 export type ClosebotFollowUpTypeRow = {
-  label: string;
-  details: string;
+  after: number;
+  unit: ClosebotFollowUpUnit;
 };
 
 export type ClosebotFollowUp = {
@@ -342,10 +352,15 @@ export function parseFollowUps(v: unknown): { followUps: ClosebotFollowUp[]; err
         return { followUps: [], error: `follow_ups[${i}].types[${j}] must be an object` };
       }
       const tr = t as Record<string, unknown>;
-      const label = typeof tr.label === "string" ? tr.label.trim() : "";
-      if (!label) return { followUps: [], error: `follow_ups[${i}].types[${j}].label is required` };
-      const details = typeof tr.details === "string" ? tr.details.trim() : "";
-      types.push({ label, details });
+      const afterRaw = typeof tr.after === "number" ? tr.after : Number(tr.after);
+      if (!Number.isFinite(afterRaw) || afterRaw <= 0) {
+        return { followUps: [], error: `follow_ups[${i}].types[${j}].after must be a positive number` };
+      }
+      const unit = typeof tr.unit === "string" ? tr.unit.trim().toLowerCase() : "";
+      if (!(CLOSEBOT_FOLLOWUP_UNITS as readonly string[]).includes(unit)) {
+        return { followUps: [], error: `follow_ups[${i}].types[${j}].unit is invalid` };
+      }
+      types.push({ after: afterRaw, unit: unit as ClosebotFollowUpUnit });
     }
     followUps.push({ name, prompt, types });
   }
@@ -361,7 +376,7 @@ export function emptyFollowUp(): ClosebotFollowUp {
 }
 
 export function emptyFollowUpType(): ClosebotFollowUpTypeRow {
-  return { label: "", details: "" };
+  return { after: 6, unit: "hours" };
 }
 
 export function personaToSnapshot(p: ClosebotPersonaSnapshot): ClosebotPersonaSnapshot {

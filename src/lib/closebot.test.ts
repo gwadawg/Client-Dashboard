@@ -66,11 +66,12 @@ describe("closebot helpers", () => {
       {
         name: "No reply",
         prompt: "Nudge them",
-        types: [{ label: "SMS 2h", details: "Delay 2 hours" }],
+        types: [{ after: 6, unit: "hours" }, { after: 24, unit: "hours" }],
       },
     ]);
     assert.equal(error, undefined);
-    assert.equal(followUps[0].types[0].label, "SMS 2h");
+    assert.equal(followUps[0].types[0].after, 6);
+    assert.equal(followUps[0].types[1].unit, "hours");
   });
 
   it("parses tone chips without duplicates", () => {
