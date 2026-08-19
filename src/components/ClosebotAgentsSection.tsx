@@ -14,7 +14,10 @@ import {
   type ClosebotAgentVersion,
   type ClosebotFollowUp,
   type ClosebotPersona,
+  type ClosebotTicket,
   type ClosebotVersionStatus,
+  embedOne,
+  formatLogDate,
 } from "@/lib/closebot";
 
 const inputStyle: React.CSSProperties = {
@@ -128,6 +131,7 @@ export default function ClosebotAgentsSection({
   const [formError, setFormError] = useState<string | null>(null);
   const [historyAgent, setHistoryAgent] = useState<ClosebotAgent | null>(null);
   const [versions, setVersions] = useState<ClosebotAgentVersion[]>([]);
+  const [historyTickets, setHistoryTickets] = useState<ClosebotTicket[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
 
@@ -183,12 +187,21 @@ export default function ClosebotAgentsSection({
     setHistoryAgent(agent);
     setHistoryLoading(true);
     setExpandedVersion(null);
+    setHistoryTickets([]);
     try {
-      const res = await fetch(`/api/closebot/agents/${agent.id}/versions`);
-      const data = await res.json().catch(() => ({}));
+      const [versionsRes, ticketsRes] = await Promise.all([
+        fetch(`/api/closebot/agents/${agent.id}/versions`),
+        fetch(`/api/closebot/tickets?agent_id=${encodeURIComponent(agent.id)}&limit=100`),
+      ]);
+      const data = await versionsRes.json().catch(() => ({}));
       setVersions(Array.isArray(data.versions) ? data.versions : []);
+      if (ticketsRes.ok) {
+        const ticketData = await ticketsRes.json().catch(() => ({}));
+        setHistoryTickets(Array.isArray(ticketData.tickets) ? ticketData.tickets : []);
+      }
     } catch {
       setVersions([]);
+      setHistoryTickets([]);
     } finally {
       setHistoryLoading(false);
     }
@@ -361,6 +374,15 @@ export default function ClosebotAgentsSection({
                     <span className="text-xs" style={{ color: "#475569" }}>
                       {agent.log_count ?? 0} log{(agent.log_count ?? 0) === 1 ? "" : "s"}
                     </span>
+                    {(agent.open_ticket_count ?? 0) > 0 && (
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(251,191,36,0.18)", color: "#fbbf24" }}
+                      >
+                        {agent.open_ticket_count} open ticket
+                        {(agent.open_ticket_count ?? 0) === 1 ? "" : "s"}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs mt-1" style={{ color: "#64748b" }}>
                     {personaName ? `Persona: ${personaName}` : "No persona"}
@@ -838,11 +860,18 @@ export default function ClosebotAgentsSection({
                             {meta.label}
                           </span>
                           <span className="text-xs" style={{ color: "#94a3b8" }}>
-                            {new Date(v.updated_at).toLocaleString()}
+                            {v.went_live_at
+                              ? `Live ${new Date(v.went_live_at).toLocaleString()}`
+                              : new Date(v.updated_at).toLocaleString()}
                           </span>
                           <span className="text-xs" style={{ color: "#e2e8f0" }}>
                             {v.name}
                           </span>
+                          {((v.open_ticket_count ?? 0) > 0 || (v.resolved_ticket_count ?? 0) > 0) && (
+                            <span className="text-[10px]" style={{ color: "#fbbf24" }}>
+                              {v.open_ticket_count ?? 0} open · {v.resolved_ticket_count ?? 0} resolved tickets
+                            </span>
+                          )}
                         </div>
                       </button>
                       {open && (
@@ -860,6 +889,9 @@ export default function ClosebotAgentsSection({
                           )}
                           <p>
                             {v.nodes?.length ?? 0} nodes · {v.follow_ups?.length ?? 0} follow-ups
+                            {(v.open_ticket_count ?? 0) + (v.resolved_ticket_count ?? 0) > 0
+                              ? ` · ${v.open_ticket_count ?? 0} open / ${v.resolved_ticket_count ?? 0} resolved tickets`
+                              : ""}
                           </p>
                           {(v.nodes ?? []).map((n, i) => (
                             <div key={i}>
@@ -900,6 +932,24 @@ export default function ClosebotAgentsSection({
                               )}
                             </div>
                           ))}
+                          {historyTickets.filter((t) => t.agent_version_id === v.id).length > 0 && (
+                            <div className="space-y-1 pt-1">
+                              <p className="font-medium" style={{ color: "#fbbf24" }}>
+                                Tickets on this version
+                              </p>
+                              {historyTickets
+                                .filter((t) => t.agent_version_id === v.id)
+                                .slice(0, 8)
+                                .map((t) => {
+                                  const client = embedOne(t.client);
+                                  return (
+                                    <p key={t.id}>
+                                      {formatLogDate(t.occurred_at)} · {client?.name ?? "Client"} · {t.status.replaceAll("_", " ")}
+                                    </p>
+                                  );
+                                })}
+                            </div>
+                          )}
                         </div>
                       )}
                     </li>

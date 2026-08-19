@@ -38,6 +38,15 @@ export const INTERNAL_FORMS: InternalFormDef[] = [
     tags: ["eod", "ccm", "daily"],
   },
   {
+    slug: "closebot-tickets",
+    title: "Closebot incident ticket",
+    description:
+      "Report a Closebot error: date, client, agent, bug type, what happened, and a contact link. Ops triages these on Closebot Log.",
+    href: "/forms/closebot-tickets",
+    audience: "Setters / CCM / ops",
+    tags: ["closebot", "tickets", "bugs"],
+  },
+  {
     slug: "acquisition-demo-booked",
     title: "Demo Booking Credit",
     description:

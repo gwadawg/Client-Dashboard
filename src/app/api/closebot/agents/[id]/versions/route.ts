@@ -28,5 +28,34 @@ export async function GET(_req: Request, { params }: Params) {
     .order("updated_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ versions: data ?? [] });
+
+  const versions = (data ?? []) as { id: string }[];
+  const versionIds = versions.map((v) => v.id);
+  const counts = new Map<string, { open: number; resolved: number }>();
+  if (versionIds.length > 0) {
+    const { data: tickets, error: ticketErr } = await ctx.service
+      .from("closebot_tickets")
+      .select("agent_version_id, status")
+      .eq("agent_id", id);
+    if (ticketErr) return NextResponse.json({ error: ticketErr.message }, { status: 500 });
+    for (const row of tickets ?? []) {
+      const vid = (row as { agent_version_id: string | null }).agent_version_id;
+      if (!vid) continue;
+      const status = (row as { status: string }).status;
+      const current = counts.get(vid) ?? { open: 0, resolved: 0 };
+      if (status === "new" || status === "investigating" || status === "ticket_open") {
+        current.open += 1;
+      } else {
+        current.resolved += 1;
+      }
+      counts.set(vid, current);
+    }
+  }
+
+  return NextResponse.json({
+    versions: versions.map((v) => {
+      const c = counts.get(v.id) ?? { open: 0, resolved: 0 };
+      return { ...v, open_ticket_count: c.open, resolved_ticket_count: c.resolved };
+    }),
+  });
 }

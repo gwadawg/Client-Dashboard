@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ClosebotAgentsSection from "@/components/ClosebotAgentsSection";
 import ClosebotPersonasSection from "@/components/ClosebotPersonasSection";
+import ClosebotTicketsSection from "@/components/ClosebotTicketsSection";
 import {
   CLOSEBOT_LOG_STATUSES,
   CLOSEBOT_STATUS_META,
@@ -244,7 +245,7 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
             Prompt Log
           </h2>
           <p className="text-sm mt-1 max-w-xl" style={{ color: "#64748b" }}>
-            What we changed, why, and whether it worked — tied to each Closebot agent.
+            Incident tickets from the team, plus what we changed and whether it worked.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -306,6 +307,8 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
           </div>
         </div>
       )}
+
+      <ClosebotTicketsSection agents={agents} canWrite={canWrite} />
 
       {/* Filters */}
       <div

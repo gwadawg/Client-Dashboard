@@ -129,6 +129,8 @@ export type ClosebotAgent = {
   created_at: string;
   updated_at: string;
   log_count?: number;
+  open_ticket_count?: number;
+  open_ticket_count?: number;
   persona?: Pick<ClosebotPersona, "id" | "name" | "slug" | "is_active"> | Pick<ClosebotPersona, "id" | "name" | "slug" | "is_active">[] | null;
   pending_version?: ClosebotAgentVersion | null;
 };
@@ -150,6 +152,157 @@ export type ClosebotPromptLog = {
   updated_at: string;
   agent?: Pick<ClosebotAgent, "id" | "name" | "slug" | "is_active"> | null;
 };
+
+export const CLOSEBOT_TICKET_STATUSES = [
+  "new",
+  "investigating",
+  "ticket_open",
+  "resolved_no_change",
+  "resolved_updated_agent",
+] as const;
+
+export type ClosebotTicketStatus = (typeof CLOSEBOT_TICKET_STATUSES)[number];
+
+export const CLOSEBOT_OPEN_TICKET_STATUSES: readonly ClosebotTicketStatus[] = [
+  "new",
+  "investigating",
+  "ticket_open",
+];
+
+export const CLOSEBOT_TICKET_STATUS_META: Record<
+  ClosebotTicketStatus,
+  { label: string; color: string; help: string }
+> = {
+  new: { label: "New", color: "#94a3b8", help: "Just reported; not triaged yet" },
+  investigating: { label: "Investigating", color: "#60a5fa", help: "Ops is looking into it" },
+  ticket_open: { label: "Ticket open", color: "#fbbf24", help: "Filed with Closebot / vendor; still watching" },
+  resolved_no_change: {
+    label: "Resolved (no changes)",
+    color: "#34d399",
+    help: "Closed without changing the agent",
+  },
+  resolved_updated_agent: {
+    label: "Resolved (updated agent)",
+    color: "#a78bfa",
+    help: "Closed after shipping an agent change",
+  },
+};
+
+export const CLOSEBOT_BUG_TYPES = [
+  "wrong_reply",
+  "booking_fail",
+  "transfer_fail",
+  "loop_stuck",
+  "persona_tone",
+  "compliance",
+  "integration",
+  "other",
+] as const;
+
+export type ClosebotBugType = (typeof CLOSEBOT_BUG_TYPES)[number];
+
+export const CLOSEBOT_BUG_TYPE_META: Record<ClosebotBugType, { label: string }> = {
+  wrong_reply: { label: "Wrong reply" },
+  booking_fail: { label: "Booking failed" },
+  transfer_fail: { label: "Transfer failed" },
+  loop_stuck: { label: "Loop / stuck" },
+  persona_tone: { label: "Persona / tone" },
+  compliance: { label: "Compliance" },
+  integration: { label: "Integration" },
+  other: { label: "Other" },
+};
+
+export type ClosebotTicket = {
+  id: string;
+  occurred_at: string;
+  bug_type: ClosebotBugType;
+  description: string;
+  contact_url: string;
+  client_id: string;
+  agent_id: string;
+  agent_version_id: string | null;
+  status: ClosebotTicketStatus;
+  reporter_name: string;
+  prompt_log_id: string | null;
+  status_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  client?: { id: string; name: string } | { id: string; name: string }[] | null;
+  agent?: Pick<ClosebotAgent, "id" | "name" | "slug" | "is_active"> | Pick<ClosebotAgent, "id" | "name" | "slug" | "is_active">[] | null;
+  agent_version?: Pick<
+    ClosebotAgentVersion,
+    "id" | "status" | "name" | "went_live_at" | "superseded_at"
+  > | Pick<ClosebotAgentVersion, "id" | "status" | "name" | "went_live_at" | "superseded_at">[] | null;
+};
+
+export type VersionEffectiveWindow = {
+  id: string;
+  status: string;
+  went_live_at: string | null;
+  superseded_at: string | null;
+};
+
+/** Pick the agent version that was live at occurredAt. Overlaps prefer latest went_live_at. */
+export function pickVersionAt(
+  versions: VersionEffectiveWindow[],
+  occurredAtIso: string,
+): string | null {
+  const t = new Date(occurredAtIso).getTime();
+  if (!Number.isFinite(t)) return null;
+  const matches = versions.filter((v) => {
+    if (v.status !== "live" && v.status !== "superseded") return false;
+    if (!v.went_live_at) return false;
+    const from = new Date(v.went_live_at).getTime();
+    if (!Number.isFinite(from) || from > t) return false;
+    if (v.superseded_at) {
+      const until = new Date(v.superseded_at).getTime();
+      if (Number.isFinite(until) && until <= t) return false;
+    }
+    return true;
+  });
+  matches.sort(
+    (a, b) => new Date(b.went_live_at!).getTime() - new Date(a.went_live_at!).getTime(),
+  );
+  return matches[0]?.id ?? null;
+}
+
+export function isClosebotTicketStatus(v: unknown): v is ClosebotTicketStatus {
+  return typeof v === "string" && (CLOSEBOT_TICKET_STATUSES as readonly string[]).includes(v);
+}
+
+export function isClosebotBugType(v: unknown): v is ClosebotBugType {
+  return typeof v === "string" && (CLOSEBOT_BUG_TYPES as readonly string[]).includes(v);
+}
+
+export function isOpenTicketStatus(status: ClosebotTicketStatus): boolean {
+  return (CLOSEBOT_OPEN_TICKET_STATUSES as readonly string[]).includes(status);
+}
+
+export function embedOne<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+export function cleanHttpUrl(v: unknown): { url?: string; error?: string } {
+  const raw = cleanString(v);
+  if (!raw) return { error: "contact_url is required" };
+  const { urls, error } = cleanHttpUrls([raw]);
+  if (error) return { error };
+  if (urls.length === 0) return { error: "contact_url is required" };
+  return { url: urls[0] };
+}
+
+export function formatVersionLabel(version: {
+  id: string;
+  went_live_at?: string | null;
+  created_at?: string;
+} | null | undefined): string {
+  if (!version) return "Unknown version";
+  const when = version.went_live_at || version.created_at;
+  const date = when ? formatLogDate(when) : null;
+  const short = version.id.slice(0, 8);
+  return date ? `${date} · ${short}` : short;
+}
 
 export function isClosebotLogStatus(v: unknown): v is ClosebotLogStatus {
   return typeof v === "string" && (CLOSEBOT_LOG_STATUSES as readonly string[]).includes(v);

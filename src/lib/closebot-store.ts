@@ -1,7 +1,11 @@
 import {
+  cleanHttpUrl,
   cleanString,
   cleanUuid,
+  isClosebotBugType,
+  isClosebotTicketStatus,
   parseAgentNodes,
+  parseChangedAt,
   parseFollowUps,
   personaToSnapshot,
   type AgentConfigSnapshot,
@@ -10,6 +14,8 @@ import {
   type ClosebotLogStatus,
   type ClosebotPersona,
   type ClosebotPersonaSnapshot,
+  type ClosebotTicketStatus,
+  pickVersionAt,
 } from "@/lib/closebot";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,6 +26,9 @@ export const AGENT_LIST_SELECT =
 
 export const LOG_SELECT =
   "id, agent_id, agent_version_id, changed_at, prompt_body, problem_solved, change_reason, reference_urls, status, outcome_notes, created_by, updated_by, created_at, updated_at, agent:closebot_agents(id, name, slug, is_active)";
+
+export const TICKET_SELECT =
+  "id, occurred_at, bug_type, description, contact_url, client_id, agent_id, agent_version_id, status, reporter_name, prompt_log_id, status_notes, created_at, updated_at, client:clients(id, name), agent:closebot_agents(id, name, slug, is_active), agent_version:closebot_agent_versions(id, status, name, went_live_at, superseded_at)";
 
 const PERSONA_SELECT =
   "id, name, slug, description, how_to_respond, tone, custom_delay_enabled, typo_frequency, custom_delay_seconds, is_active, sort_order, created_at, updated_at";
@@ -130,6 +139,8 @@ export function versionRowFromSnapshot(
     follow_ups: snapshot.follow_ups,
     created_by: userId,
     updated_at: now,
+    went_live_at: status === "live" ? now : null,
+    superseded_at: null,
   };
 }
 
@@ -262,7 +273,7 @@ export async function applyLogStatusToVersion(
 
     const { error: superErr } = await db
       .from("closebot_agent_versions")
-      .update({ status: "superseded", updated_at: now })
+      .update({ status: "superseded", superseded_at: now, updated_at: now })
       .eq("agent_id", version.agent_id)
       .eq("status", "live")
       .neq("id", version.id);
@@ -284,7 +295,12 @@ export async function applyLogStatusToVersion(
 
     const { error: liveErr } = await db
       .from("closebot_agent_versions")
-      .update({ status: "live", updated_at: now })
+      .update({
+        status: "live",
+        went_live_at: version.went_live_at ?? now,
+        superseded_at: null,
+        updated_at: now,
+      })
       .eq("id", version.id);
     if (liveErr) return { error: liveErr.message };
     return {};
@@ -337,4 +353,136 @@ export async function resolveVersionForLog(
     return { versionId: version?.id ?? null };
   }
   return { versionId: null };
+}
+
+export async function resolveVersionAt(
+  db: ClosebotDb,
+  agentId: string,
+  occurredAt: string,
+): Promise<{ versionId: string | null; error?: string }> {
+  const { data, error } = await db
+    .from("closebot_agent_versions")
+    .select("id, status, went_live_at, superseded_at")
+    .eq("agent_id", agentId)
+    .in("status", ["live", "superseded"]);
+  if (error) return { versionId: null, error: error.message };
+  return {
+    versionId: pickVersionAt(
+      (data ?? []) as { id: string; status: string; went_live_at: string | null; superseded_at: string | null }[],
+      occurredAt,
+    ),
+  };
+}
+
+export async function assertVersionBelongsToAgent(
+  db: ClosebotDb,
+  agentId: string,
+  versionId: string,
+): Promise<{ error?: string }> {
+  const { data, error } = await db
+    .from("closebot_agent_versions")
+    .select("id, agent_id")
+    .eq("id", versionId)
+    .maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { error: "Agent version not found" };
+  if (data.agent_id !== agentId) {
+    return { error: "Agent version does not belong to this agent" };
+  }
+  return {};
+}
+
+export async function createClosebotTicket(
+  db: ClosebotDb,
+  body: Record<string, unknown>,
+  opts: { defaultStatus: ClosebotTicketStatus; allowStatus: boolean },
+): Promise<{ ticket?: unknown; error?: string; status: number }> {
+  const reporterName = cleanString(body.reporter_name);
+  if (!reporterName) return { error: "reporter_name is required", status: 400 };
+
+  const agentId = cleanUuid(body.agent_id);
+  if (!agentId) return { error: "agent_id is required", status: 400 };
+
+  const clientId = cleanUuid(body.client_id);
+  if (!clientId) return { error: "client_id is required", status: 400 };
+
+  if (!isClosebotBugType(body.bug_type)) {
+    return { error: "bug_type is invalid", status: 400 };
+  }
+
+  const description = cleanString(body.description);
+  if (!description) return { error: "description is required", status: 400 };
+
+  const contact = cleanHttpUrl(body.contact_url);
+  if (contact.error || !contact.url) {
+    return { error: contact.error ?? "contact_url is required", status: 400 };
+  }
+
+  const occurredAt = parseChangedAt(body.occurred_at);
+  if (!occurredAt) {
+    return { error: "occurred_at is required (YYYY-MM-DD or ISO datetime)", status: 400 };
+  }
+
+  let status: ClosebotTicketStatus = opts.defaultStatus;
+  if (opts.allowStatus && body.status != null) {
+    if (!isClosebotTicketStatus(body.status)) {
+      return { error: "Invalid status", status: 400 };
+    }
+    status = body.status;
+  }
+
+  const { data: agent, error: agentErr } = await db
+    .from("closebot_agents")
+    .select("id, is_active")
+    .eq("id", agentId)
+    .maybeSingle();
+  if (agentErr) return { error: agentErr.message, status: 500 };
+  if (!agent) return { error: "Agent not found", status: 400 };
+  if (!agent.is_active) {
+    return { error: "Cannot file a ticket against an archived agent", status: 400 };
+  }
+
+  const { data: client, error: clientErr } = await db
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .maybeSingle();
+  if (clientErr) return { error: clientErr.message, status: 500 };
+  if (!client) return { error: "Client not found", status: 400 };
+
+  let versionId: string | null = null;
+  if ("agent_version_id" in body && body.agent_version_id != null && body.agent_version_id !== "") {
+    const id = cleanUuid(body.agent_version_id);
+    if (!id) return { error: "agent_version_id must be a valid id", status: 400 };
+    const owned = await assertVersionBelongsToAgent(db, agentId, id);
+    if (owned.error) return { error: owned.error, status: 400 };
+    versionId = id;
+  } else {
+    const resolved = await resolveVersionAt(db, agentId, occurredAt);
+    if (resolved.error) return { error: resolved.error, status: 500 };
+    versionId = resolved.versionId;
+  }
+
+  const now = new Date().toISOString();
+  const { data, error } = await db
+    .from("closebot_tickets")
+    .insert({
+      occurred_at: occurredAt,
+      bug_type: body.bug_type,
+      description,
+      contact_url: contact.url,
+      client_id: clientId,
+      agent_id: agentId,
+      agent_version_id: versionId,
+      status,
+      reporter_name: reporterName,
+      status_notes: cleanString(body.status_notes),
+      created_at: now,
+      updated_at: now,
+    })
+    .select(TICKET_SELECT)
+    .maybeSingle();
+
+  if (error) return { error: error.message, status: 500 };
+  return { ticket: data, status: 201 };
 }

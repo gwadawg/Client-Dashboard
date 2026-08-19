@@ -64,6 +64,22 @@ export async function GET(req: Request) {
       ...r,
       log_count: counts.get(r.id) ?? 0,
     }));
+
+    const { data: ticketRows, error: ticketErr } = await ctx.service
+      .from("closebot_tickets")
+      .select("agent_id")
+      .in("agent_id", ids)
+      .in("status", ["new", "investigating", "ticket_open"]);
+    if (ticketErr) return NextResponse.json({ error: ticketErr.message }, { status: 500 });
+    const ticketCounts = new Map<string, number>();
+    for (const row of ticketRows ?? []) {
+      const id = (row as { agent_id: string }).agent_id;
+      ticketCounts.set(id, (ticketCounts.get(id) ?? 0) + 1);
+    }
+    rows = rows.map((r) => ({
+      ...r,
+      open_ticket_count: ticketCounts.get(r.id) ?? 0,
+    }));
   }
 
   return NextResponse.json(rows);
