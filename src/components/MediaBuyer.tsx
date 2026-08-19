@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { AdFormatPicker, useAdFormats } from "./AdFormatPicker";
 import { AdTagPicker, useAdTags } from "./AdTagPicker";
 import AdWorkspaceOverlay, { type AdWorkspaceDrilldown } from "./AdWorkspaceOverlay";
+import CreativeCommand from "./creative-command/CreativeCommand";
 import { adFormatLabel } from "@/lib/ad-formats";
 import type { AdTagRef } from "@/lib/ad-tags";
 
@@ -2205,7 +2206,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ── Shell with sub-tabs ───────────────────────────────────────────────────────
 export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
-  const [tab, setTab] = useState<"performance" | "library">("performance");
+  const [tab, setTab] = useState<"command" | "performance" | "library">("command");
   const [libraryNav, setLibraryNav] = useState<LibraryNav>(null);
 
   const handleAddToLibrary = useCallback((adName: string) => {
@@ -2222,6 +2223,7 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
     <div className="space-y-5">
       <div className="flex gap-2">
         {([
+          ["command", "Creative Command"],
           ["performance", "Ad Performance"],
           ["library", "Ad Library"],
         ] as const).map(([key, label]) => {
@@ -2243,7 +2245,15 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
         })}
       </div>
 
-      {tab === "performance" ? (
+      {tab === "command" ? (
+        <CreativeCommand
+          startDate={startDate}
+          endDate={endDate}
+          clientId={clientId}
+          onAddToLibrary={handleAddToLibrary}
+          onViewInLibrary={handleViewInLibrary}
+        />
+      ) : tab === "performance" ? (
         <AdPerformance
           startDate={startDate}
           endDate={endDate}
