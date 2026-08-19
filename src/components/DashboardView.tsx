@@ -99,7 +99,7 @@ const AcquisitionMarketing = lazyTab(() => import("./AcquisitionMarketing"));
 const CeoDashboard = lazyTab(() => import("./CeoDashboard"));
 const AcquisitionSalesReps = lazyTab(() => import("./AcquisitionSalesReps"));
 const ResourcesLibrary = lazyTab(() => import("./ResourcesLibrary"), "Loading library…");
-const ClosebotPromptLog = lazyTab(() => import("./ClosebotPromptLog"), "Loading Closebot log…");
+const ClosebotHub = lazyTab(() => import("./ClosebotHub"), "Loading Closebot…");
 const CallLibrary = lazyTab(() => import("./CallLibrary"));
 const TeamMeetings = lazyTab(() => import("./TeamMeetings"));
 const AccountWeekPlansHub = lazyTab(() => import("./AccountWeekPlansHub"));
@@ -1131,8 +1131,8 @@ export default function DashboardView({
           )}
 
           {view === "closebot_log" && (
-            <Suspense fallback={<p className="text-sm text-slate-500 py-12">Loading Closebot log…</p>}>
-              <ClosebotPromptLog
+            <Suspense fallback={<p className="text-sm text-slate-500 py-12">Loading Closebot…</p>}>
+              <ClosebotHub
                 canWrite={
                   isOwner
                   || isAdmin

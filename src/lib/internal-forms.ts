@@ -41,7 +41,7 @@ export const INTERNAL_FORMS: InternalFormDef[] = [
     slug: "closebot-tickets",
     title: "Closebot incident ticket",
     description:
-      "Report a Closebot error: date, client, agent, bug type, what happened, and a contact link. Ops triages these on Closebot Log.",
+      "Report a Closebot error: date, client, agent, bug type, what happened, and a contact link. Ops triages these under Closebot → Tickets.",
     href: "/forms/closebot-tickets",
     audience: "Setters / CCM / ops",
     tags: ["closebot", "tickets", "bugs"],

@@ -5,14 +5,15 @@ import {
   requireClosebotLogWrite,
 } from "@/lib/closebot-auth";
 import {
+  CLOSEBOT_OPEN_TICKET_STATUSES,
   isClosebotBugType,
   isClosebotTicketStatus,
   parseChangedAt,
 } from "@/lib/closebot";
 import { createClosebotTicket, TICKET_SELECT } from "@/lib/closebot-store";
 
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 100;
+const DEFAULT_LIMIT = 80;
+const MAX_LIMIT = 200;
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -25,6 +26,7 @@ export async function GET(req: Request) {
   const clientId = url.searchParams.get("client_id");
   const versionId = url.searchParams.get("agent_version_id");
   const status = url.searchParams.get("status");
+  const openOnly = url.searchParams.get("open") === "1";
   const bugType = url.searchParams.get("bug_type");
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
@@ -51,6 +53,7 @@ export async function GET(req: Request) {
   if (versionId === "none") query = query.is("agent_version_id", null);
   else if (versionId) query = query.eq("agent_version_id", versionId);
   if (status) query = query.eq("status", status);
+  else if (openOnly) query = query.in("status", [...CLOSEBOT_OPEN_TICKET_STATUSES]);
   if (bugType) query = query.eq("bug_type", bugType);
   if (from) {
     const fromIso = parseChangedAt(from);

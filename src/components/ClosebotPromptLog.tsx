@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ClosebotAgentsSection from "@/components/ClosebotAgentsSection";
 import ClosebotPersonasSection from "@/components/ClosebotPersonasSection";
-import ClosebotTicketsSection from "@/components/ClosebotTicketsSection";
 import {
   CLOSEBOT_LOG_STATUSES,
   CLOSEBOT_STATUS_META,
@@ -35,6 +34,7 @@ const labelStyle: React.CSSProperties = {
 
 type Props = {
   canWrite?: boolean;
+  embedded?: boolean;
 };
 
 type FormState = {
@@ -81,7 +81,7 @@ function urlsFromTextarea(text: string): string[] {
     .filter(Boolean);
 }
 
-export default function ClosebotPromptLog({ canWrite = false }: Props) {
+export default function ClosebotPromptLog({ canWrite = false, embedded = false }: Props) {
   const [agents, setAgents] = useState<ClosebotAgent[]>([]);
   const [logs, setLogs] = useState<ClosebotPromptLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -228,8 +228,9 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
   }, [form.id, form.agent_id, activeAgents, agents]);
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className={embedded ? "space-y-6 max-w-4xl" : "max-w-4xl space-y-6"}>
       <div className="flex flex-wrap items-end justify-between gap-4">
+        {!embedded && (
         <div>
           <span
             className="inline-block rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] mb-3"
@@ -245,10 +246,11 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
             Prompt Log
           </h2>
           <p className="text-sm mt-1 max-w-xl" style={{ color: "#64748b" }}>
-            Incident tickets from the team, plus what we changed and whether it worked.
+            What we changed, why, and whether it worked — tied to each Closebot agent.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        )}
+        <div className={`flex flex-wrap items-center gap-2 ${embedded ? "ml-auto" : ""}`}>
           <button
             type="button"
             onClick={() => setAgentsOpen((v) => !v)}
@@ -307,8 +309,6 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
           </div>
         </div>
       )}
-
-      <ClosebotTicketsSection agents={agents} canWrite={canWrite} />
 
       {/* Filters */}
       <div

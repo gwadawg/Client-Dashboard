@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CLOSEBOT_BUG_TYPES,
   CLOSEBOT_BUG_TYPE_META,
@@ -18,44 +18,54 @@ import {
   type ClosebotTicketStatus,
 } from "@/lib/closebot";
 
+const TYPE_CODE: Record<ClosebotBugType, string> = {
+  wrong_reply: "WRONG",
+  booking_fail: "BOOK",
+  transfer_fail: "XFER",
+  loop_stuck: "LOOP",
+  persona_tone: "TONE",
+  compliance: "COMP",
+  integration: "INTG",
+  other: "OTHR",
+};
+
 const inputStyle: React.CSSProperties = {
-  background: "#050c18",
-  border: "1px solid rgba(255,255,255,0.12)",
-  color: "#e2e8f0",
-  borderRadius: "0.5rem",
-  padding: "0.5rem 0.75rem",
-  fontSize: "0.8125rem",
+  background: "#080604",
+  border: "1px solid rgba(245,158,11,0.18)",
+  color: "#f8fafc",
+  borderRadius: "0.35rem",
+  padding: "0.45rem 0.7rem",
+  fontSize: "0.75rem",
   outline: "none",
   width: "100%",
+  fontFamily: "var(--font-plex-mono)",
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: "0.625rem",
+  fontSize: "0.6rem",
   fontWeight: 700,
-  letterSpacing: "0.08em",
+  letterSpacing: "0.14em",
   textTransform: "uppercase",
-  color: "#64748b",
+  color: "#92400e",
+  fontFamily: "var(--font-archivo)",
 };
 
 type Props = {
-  agents: ClosebotAgent[];
   canWrite?: boolean;
 };
 
 type ClientOption = { id: string; name: string };
 
-export default function ClosebotTicketsSection({ agents, canWrite = false }: Props) {
+export default function ClosebotTicketsSection({ canWrite = false }: Props) {
   const [tickets, setTickets] = useState<ClosebotTicket[]>([]);
+  const [agents, setAgents] = useState<ClosebotAgent[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openOnly, setOpenOnly] = useState(true);
   const [filterAgent, setFilterAgent] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"" | ClosebotTicketStatus>("");
-  const [filterType, setFilterType] = useState<"" | ClosebotBugType>("");
   const [filterClient, setFilterClient] = useState("");
   const [filterVersion, setFilterVersion] = useState("");
-  const [filterFrom, setFilterFrom] = useState("");
-  const [filterTo, setFilterTo] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [versionsByAgent, setVersionsByAgent] = useState<Record<string, ClosebotAgentVersion[]>>({});
@@ -67,17 +77,15 @@ export default function ClosebotTicketsSection({ agents, canWrite = false }: Pro
     try {
       const params = new URLSearchParams();
       if (filterAgent) params.set("agent_id", filterAgent);
-      if (filterStatus) params.set("status", filterStatus);
-      if (filterType) params.set("bug_type", filterType);
       if (filterClient) params.set("client_id", filterClient);
       if (filterVersion === "none") params.set("agent_version_id", "none");
       else if (filterVersion) params.set("agent_version_id", filterVersion);
-      if (filterFrom) params.set("from", filterFrom);
-      if (filterTo) params.set("to", filterTo);
-      params.set("limit", "100");
-      const [ticketsRes, optionsRes] = await Promise.all([
+      if (openOnly) params.set("open", "1");
+      params.set("limit", "200");
+      const [ticketsRes, optionsRes, agentsRes] = await Promise.all([
         fetch(`/api/closebot/tickets?${params}`),
         fetch("/api/closebot/tickets/public/options"),
+        fetch("/api/closebot/agents"),
       ]);
       const ticketsData = await ticketsRes.json().catch(() => ({}));
       if (!ticketsRes.ok) {
@@ -90,13 +98,17 @@ export default function ClosebotTicketsSection({ agents, canWrite = false }: Pro
         const options = await optionsRes.json().catch(() => ({}));
         setClients(Array.isArray(options.clients) ? options.clients : []);
       }
+      if (agentsRes.ok) {
+        const agentData = await agentsRes.json().catch(() => []);
+        setAgents(Array.isArray(agentData) ? agentData : []);
+      }
     } catch {
       setError("Failed to load tickets");
       setTickets([]);
     } finally {
       setLoading(false);
     }
-  }, [filterAgent, filterStatus, filterType, filterClient, filterVersion, filterFrom, filterTo]);
+  }, [filterAgent, filterClient, filterVersion, openOnly]);
 
   useEffect(() => {
     void load();
@@ -156,35 +168,105 @@ export default function ClosebotTicketsSection({ agents, canWrite = false }: Pro
     }
   }
 
+  const grouped = useMemo(() => {
+    const byType = new Map<ClosebotBugType, ClosebotTicket[]>();
+    for (const type of CLOSEBOT_BUG_TYPES) byType.set(type, []);
+    for (const ticket of tickets) {
+      const list = byType.get(ticket.bug_type) ?? byType.get("other")!;
+      list.push(ticket);
+    }
+    return CLOSEBOT_BUG_TYPES.map((type) => ({
+      type,
+      tickets: byType.get(type) ?? [],
+    })).filter((g) => g.tickets.length > 0);
+  }, [tickets]);
+
   const openCount = tickets.filter((t) => isOpenTicketStatus(t.status)).length;
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h3 className="text-base font-semibold" style={{ color: "#f1f5f9" }}>
-            Incident tickets
-          </h3>
-          <p className="text-sm mt-0.5" style={{ color: "#64748b" }}>
-            Team reports from the public form, rolled up to the agent version live that day.
+    <div className="space-y-5 max-w-5xl">
+      <style>{`
+        @keyframes closebotLedgerIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: none; }
+        }
+      `}</style>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-baseline gap-3">
+          <p
+            className="text-4xl tabular-nums leading-none"
+            style={{ color: "#fbbf24", fontFamily: "var(--font-plex-mono)" }}
+          >
+            {String(openCount).padStart(2, "0")}
           </p>
+          <div>
+            <p
+              className="text-[11px] font-semibold uppercase tracking-[0.18em]"
+              style={{ color: "#b45309", fontFamily: "var(--font-archivo)" }}
+            >
+              Open cases
+            </p>
+            <p className="text-xs" style={{ color: "#64748b" }}>
+              {tickets.length} in this view · grouped by type
+            </p>
+          </div>
         </div>
-        <a
-          href="/forms/closebot-tickets"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs font-semibold px-3 py-2 rounded-lg"
-          style={{ border: "1px solid rgba(255,255,255,0.12)", color: "#93c5fd" }}
-        >
-          Open report form
-        </a>
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            className="flex rounded-lg p-0.5"
+            style={{ background: "#080604", border: "1px solid rgba(245,158,11,0.22)" }}
+          >
+            <button
+              type="button"
+              onClick={() => setOpenOnly(true)}
+              className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider rounded-md"
+              style={{
+                background: openOnly ? "rgba(245,158,11,0.2)" : "transparent",
+                color: openOnly ? "#fbbf24" : "#64748b",
+                fontFamily: "var(--font-archivo)",
+              }}
+            >
+              Open
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpenOnly(false)}
+              className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider rounded-md"
+              style={{
+                background: !openOnly ? "rgba(245,158,11,0.2)" : "transparent",
+                color: !openOnly ? "#fbbf24" : "#64748b",
+                fontFamily: "var(--font-archivo)",
+              }}
+            >
+              All history
+            </button>
+          </div>
+          <a
+            href="/forms/closebot-tickets"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] font-semibold uppercase tracking-wider px-3 py-2 rounded-lg"
+            style={{
+              background: "#f59e0b",
+              color: "#1a1206",
+              fontFamily: "var(--font-archivo)",
+            }}
+          >
+            Report form
+          </a>
+        </div>
       </div>
 
       <div
-        className="flex flex-wrap gap-3 rounded-xl p-3"
-        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}
+        className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5 rounded-xl p-3"
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(245,158,11,0.06) 0%, rgba(8,6,4,0.4) 100%)",
+          border: "1px solid rgba(245,158,11,0.16)",
+        }}
       >
-        <label className="space-y-1 min-w-[9rem] flex-1">
+        <label className="space-y-1 min-w-0">
           <span style={labelStyle}>Agent</span>
           <select
             style={inputStyle}
@@ -194,7 +276,7 @@ export default function ClosebotTicketsSection({ agents, canWrite = false }: Pro
               setFilterVersion("");
             }}
           >
-            <option value="">Any agent</option>
+            <option value="">All agents</option>
             {agents.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
@@ -202,7 +284,7 @@ export default function ClosebotTicketsSection({ agents, canWrite = false }: Pro
             ))}
           </select>
         </label>
-        <label className="space-y-1 min-w-[11rem] flex-1">
+        <label className="space-y-1 min-w-0">
           <span style={labelStyle}>Version</span>
           <select
             style={inputStyle}
@@ -210,7 +292,7 @@ export default function ClosebotTicketsSection({ agents, canWrite = false }: Pro
             disabled={!filterAgent}
             onChange={(e) => setFilterVersion(e.target.value)}
           >
-            <option value="">{filterAgent ? "Any version" : "Pick an agent first"}</option>
+            <option value="">{filterAgent ? "All versions" : "Agent first"}</option>
             <option value="none">Unknown version</option>
             {(versionsByAgent[filterAgent] ?? []).map((v) => (
               <option key={v.id} value={v.id}>
@@ -219,54 +301,16 @@ export default function ClosebotTicketsSection({ agents, canWrite = false }: Pro
             ))}
           </select>
         </label>
-        <label className="space-y-1 min-w-[9rem]">
-          <span style={labelStyle}>Status</span>
-          <select
-            style={inputStyle}
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as "" | ClosebotTicketStatus)}
-          >
-            <option value="">Any status</option>
-            {CLOSEBOT_TICKET_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {CLOSEBOT_TICKET_STATUS_META[s].label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="space-y-1 min-w-[9rem]">
-          <span style={labelStyle}>Type</span>
-          <select
-            style={inputStyle}
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as "" | ClosebotBugType)}
-          >
-            <option value="">Any type</option>
-            {CLOSEBOT_BUG_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {CLOSEBOT_BUG_TYPE_META[t].label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="space-y-1 min-w-[9rem] flex-1">
+        <label className="space-y-1 min-w-0 sm:col-span-1 lg:col-span-2">
           <span style={labelStyle}>Client</span>
           <select style={inputStyle} value={filterClient} onChange={(e) => setFilterClient(e.target.value)}>
-            <option value="">Any client</option>
+            <option value="">All clients</option>
             {clients.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
-        </label>
-        <label className="space-y-1 min-w-[8rem]">
-          <span style={labelStyle}>From</span>
-          <input type="date" style={inputStyle} value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} />
-        </label>
-        <label className="space-y-1 min-w-[8rem]">
-          <span style={labelStyle}>To</span>
-          <input type="date" style={inputStyle} value={filterTo} onChange={(e) => setFilterTo(e.target.value)} />
         </label>
       </div>
 
@@ -277,188 +321,215 @@ export default function ClosebotTicketsSection({ agents, canWrite = false }: Pro
       )}
 
       {loading ? (
-        <p className="text-sm py-8" style={{ color: "#64748b" }}>
-          Loading tickets…
+        <p className="text-sm py-10" style={{ color: "#78716c" }}>
+          Pulling the case file…
         </p>
-      ) : tickets.length === 0 ? (
+      ) : grouped.length === 0 ? (
         <div
-          className="rounded-xl px-6 py-10 text-center"
-          style={{ border: "1px dashed rgba(255,255,255,0.1)" }}
+          className="rounded-xl px-6 py-14 text-center"
+          style={{ border: "1px dashed rgba(245,158,11,0.28)", background: "rgba(245,158,11,0.04)" }}
         >
-          <p className="text-sm font-medium" style={{ color: "#94a3b8" }}>
-            No tickets yet
+          <p
+            className="text-lg uppercase tracking-[0.2em]"
+            style={{ color: "#fbbf24", fontFamily: "var(--font-report-display)" }}
+          >
+            No open cases
           </p>
-          <p className="text-xs mt-2" style={{ color: "#64748b" }}>
-            Share /forms/closebot-tickets with the team. {openCount} open in this view.
+          <p className="text-sm mt-2" style={{ color: "#78716c" }}>
+            Share the report form. New tickets land here, not on prompt updates.
           </p>
         </div>
       ) : (
-        <ul className="space-y-2">
-          {tickets.map((ticket) => {
-            const agent = embedOne(ticket.agent);
-            const client = embedOne(ticket.client);
-            const version = embedOne(ticket.agent_version);
-            const meta = CLOSEBOT_TICKET_STATUS_META[ticket.status] ?? CLOSEBOT_TICKET_STATUS_META.new;
-            const expanded = expandedId === ticket.id;
-            return (
-              <li
-                key={ticket.id}
-                className="rounded-xl overflow-hidden"
-                style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.07)",
-                }}
-              >
-                <button
-                  type="button"
-                  className="w-full text-left px-4 py-3"
-                  onClick={() => {
-                    const next = expanded ? null : ticket.id;
-                    setExpandedId(next);
-                    if (next) {
-                      void ensureVersions(ticket.agent_id);
-                      if (ticket.status === "resolved_updated_agent" || canWrite) {
-                        void ensureLogs(ticket.agent_id);
-                      }
-                    }
-                  }}
+        <div className="space-y-8">
+          {grouped.map((group, gi) => (
+            <section
+              key={group.type}
+              style={{ animation: `closebotLedgerIn 420ms ease ${gi * 70}ms both` }}
+            >
+              <header className="flex items-end justify-between gap-3 mb-2 pb-2" style={{ borderBottom: "2px solid rgba(245,158,11,0.35)" }}>
+                <div className="flex items-baseline gap-3 min-w-0">
+                  <span
+                    className="text-[11px] font-semibold tabular-nums"
+                    style={{ color: "#f59e0b", fontFamily: "var(--font-plex-mono)" }}
+                  >
+                    {TYPE_CODE[group.type]}
+                  </span>
+                  <h3
+                    className="text-2xl uppercase leading-none tracking-wide"
+                    style={{ color: "#fef3c7", fontFamily: "var(--font-report-display)" }}
+                  >
+                    {CLOSEBOT_BUG_TYPE_META[group.type].label}
+                  </h3>
+                </div>
+                <span
+                  className="text-xs tabular-nums"
+                  style={{ color: "#b45309", fontFamily: "var(--font-plex-mono)" }}
                 >
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className="text-xs font-medium tabular-nums" style={{ color: "#94a3b8" }}>
-                      {formatLogDate(ticket.occurred_at)}
-                    </span>
-                    <span className="text-xs font-semibold" style={{ color: "#e2e8f0" }}>
-                      {client?.name ?? "Unknown client"}
-                    </span>
-                    <span className="text-xs" style={{ color: "#94a3b8" }}>
-                      {agent?.name ?? "Unknown agent"}
-                    </span>
-                    <span
-                      className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
-                      style={{ color: meta.color, background: `${meta.color}22` }}
-                    >
-                      {meta.label}
-                    </span>
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color: "#cbd5e1", background: "rgba(255,255,255,0.06)" }}>
-                      {CLOSEBOT_BUG_TYPE_META[ticket.bug_type]?.label ?? ticket.bug_type}
-                    </span>
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ color: "#fbbf24", background: "rgba(251,191,36,0.12)" }}>
-                      {formatVersionLabel(
-                        version ?? (ticket.agent_version_id ? { id: ticket.agent_version_id } : null),
-                      )}
-                    </span>
-                  </div>
-                  <p className="text-sm line-clamp-2" style={{ color: "#cbd5e1" }}>
-                    {ticket.description}
-                  </p>
-                  <p className="text-xs mt-1" style={{ color: "#64748b" }}>
-                    Reported by {ticket.reporter_name}
-                  </p>
-                </button>
-                {expanded && (
-                  <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                    <a
-                      href={ticket.contact_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-medium"
-                      style={{ color: "#93c5fd" }}
-                    >
-                      Open contact →
-                    </a>
-                    {canWrite ? (
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="space-y-1">
-                          <span style={labelStyle}>Status</span>
-                          <select
-                            style={inputStyle}
-                            disabled={savingId === ticket.id}
-                            value={ticket.status}
-                            onChange={(e) => {
-                              const status = e.target.value as ClosebotTicketStatus;
-                              void patchTicket(ticket.id, { status });
-                              if (status === "resolved_updated_agent") void ensureLogs(ticket.agent_id);
-                            }}
-                          >
-                            {CLOSEBOT_TICKET_STATUSES.map((s) => (
-                              <option key={s} value={s}>
-                                {CLOSEBOT_TICKET_STATUS_META[s].label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="space-y-1">
-                          <span style={labelStyle}>Agent version</span>
-                          <select
-                            style={inputStyle}
-                            disabled={savingId === ticket.id}
-                            value={ticket.agent_version_id ?? ""}
-                            onChange={(e) =>
-                              void patchTicket(ticket.id, {
-                                agent_version_id: e.target.value || null,
-                              })
+                  {String(group.tickets.length).padStart(2, "0")}
+                </span>
+              </header>
+              <ul className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+                {group.tickets.map((ticket) => {
+                  const agent = embedOne(ticket.agent);
+                  const client = embedOne(ticket.client);
+                  const version = embedOne(ticket.agent_version);
+                  const meta = CLOSEBOT_TICKET_STATUS_META[ticket.status] ?? CLOSEBOT_TICKET_STATUS_META.new;
+                  const expanded = expandedId === ticket.id;
+                  return (
+                    <li key={ticket.id}>
+                      <button
+                        type="button"
+                        className="w-full text-left py-3 px-1 hover:bg-white/[0.02] transition-colors"
+                        onClick={() => {
+                          const next = expanded ? null : ticket.id;
+                          setExpandedId(next);
+                          if (next) {
+                            void ensureVersions(ticket.agent_id);
+                            if (ticket.status === "resolved_updated_agent" || canWrite) {
+                              void ensureLogs(ticket.agent_id);
                             }
+                          }
+                        }}
+                      >
+                        <div className="grid grid-cols-[5.5rem_minmax(0,1fr)_auto] gap-3 items-start">
+                          <span
+                            className="text-[11px] tabular-nums pt-0.5"
+                            style={{ color: "#a8a29e", fontFamily: "var(--font-plex-mono)" }}
                           >
-                            <option value="">Unknown version</option>
-                            {(versionsByAgent[ticket.agent_id] ?? []).map((v) => (
-                              <option key={v.id} value={v.id}>
-                                {v.status} · {formatVersionLabel(v)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        {ticket.status === "resolved_updated_agent" && (
-                          <label className="space-y-1 sm:col-span-2">
-                            <span style={labelStyle}>Linked prompt log</span>
-                            <select
-                              style={inputStyle}
-                              disabled={savingId === ticket.id}
-                              value={ticket.prompt_log_id ?? ""}
-                              onChange={(e) =>
-                                void patchTicket(ticket.id, {
-                                  prompt_log_id: e.target.value || null,
-                                })
-                              }
+                            {formatLogDate(ticket.occurred_at)}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate" style={{ color: "#f5f5f4" }}>
+                              {client?.name ?? "Unknown client"}
+                              <span style={{ color: "#78716c" }}> · {agent?.name ?? "Unknown agent"}</span>
+                            </p>
+                            <p className="text-sm mt-0.5 line-clamp-2" style={{ color: "#a8a29e" }}>
+                              {ticket.description}
+                            </p>
+                          </div>
+                          <span
+                            className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded shrink-0"
+                            style={{ color: meta.color, background: `${meta.color}22`, fontFamily: "var(--font-archivo)" }}
+                          >
+                            {meta.label}
+                          </span>
+                        </div>
+                      </button>
+                      {expanded && (
+                        <div className="pb-4 pl-[5.5rem] space-y-3">
+                          <div className="flex flex-wrap gap-3 text-[11px]" style={{ fontFamily: "var(--font-plex-mono)", color: "#a8a29e" }}>
+                            <span>
+                              v {formatVersionLabel(
+                                version ?? (ticket.agent_version_id ? { id: ticket.agent_version_id } : null),
+                              )}
+                            </span>
+                            <span>by {ticket.reporter_name}</span>
+                            <a
+                              href={ticket.contact_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline decoration-amber-700/60"
+                              style={{ color: "#fbbf24" }}
                             >
-                              <option value="">None</option>
-                              {(logsByAgent[ticket.agent_id] ?? []).map((log) => (
-                                <option key={log.id} value={log.id}>
-                                  {formatLogDate(log.changed_at)} — {log.problem_solved.slice(0, 60)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        )}
-                        <label className="space-y-1 sm:col-span-2">
-                          <span style={labelStyle}>Status notes</span>
-                          <textarea
-                            rows={2}
-                            style={inputStyle}
-                            defaultValue={ticket.status_notes ?? ""}
-                            disabled={savingId === ticket.id}
-                            onBlur={(e) => {
-                              const next = e.target.value.trim();
-                              const prev = ticket.status_notes ?? "";
-                              if (next !== prev) {
-                                void patchTicket(ticket.id, { status_notes: next || null });
-                              }
-                            }}
-                          />
-                        </label>
-                      </div>
-                    ) : (
-                      ticket.status_notes && (
-                        <p className="text-xs" style={{ color: "#94a3b8" }}>
-                          {ticket.status_notes}
-                        </p>
-                      )
-                    )}
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                              Contact
+                            </a>
+                          </div>
+                          {canWrite ? (
+                            <div className="grid gap-3 sm:grid-cols-2 max-w-2xl">
+                              <label className="space-y-1">
+                                <span style={labelStyle}>Status</span>
+                                <select
+                                  style={inputStyle}
+                                  disabled={savingId === ticket.id}
+                                  value={ticket.status}
+                                  onChange={(e) => {
+                                    const status = e.target.value as ClosebotTicketStatus;
+                                    void patchTicket(ticket.id, { status });
+                                    if (status === "resolved_updated_agent") void ensureLogs(ticket.agent_id);
+                                  }}
+                                >
+                                  {CLOSEBOT_TICKET_STATUSES.map((s) => (
+                                    <option key={s} value={s}>
+                                      {CLOSEBOT_TICKET_STATUS_META[s].label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="space-y-1">
+                                <span style={labelStyle}>Agent version</span>
+                                <select
+                                  style={inputStyle}
+                                  disabled={savingId === ticket.id}
+                                  value={ticket.agent_version_id ?? ""}
+                                  onChange={(e) =>
+                                    void patchTicket(ticket.id, {
+                                      agent_version_id: e.target.value || null,
+                                    })
+                                  }
+                                >
+                                  <option value="">Unknown version</option>
+                                  {(versionsByAgent[ticket.agent_id] ?? []).map((v) => (
+                                    <option key={v.id} value={v.id}>
+                                      {v.status} · {formatVersionLabel(v)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              {ticket.status === "resolved_updated_agent" && (
+                                <label className="space-y-1 sm:col-span-2">
+                                  <span style={labelStyle}>Linked update</span>
+                                  <select
+                                    style={inputStyle}
+                                    disabled={savingId === ticket.id}
+                                    value={ticket.prompt_log_id ?? ""}
+                                    onChange={(e) =>
+                                      void patchTicket(ticket.id, {
+                                        prompt_log_id: e.target.value || null,
+                                      })
+                                    }
+                                  >
+                                    <option value="">None</option>
+                                    {(logsByAgent[ticket.agent_id] ?? []).map((log) => (
+                                      <option key={log.id} value={log.id}>
+                                        {formatLogDate(log.changed_at)} — {log.problem_solved.slice(0, 60)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              )}
+                              <label className="space-y-1 sm:col-span-2">
+                                <span style={labelStyle}>Notes</span>
+                                <textarea
+                                  rows={2}
+                                  style={inputStyle}
+                                  defaultValue={ticket.status_notes ?? ""}
+                                  disabled={savingId === ticket.id}
+                                  onBlur={(e) => {
+                                    const next = e.target.value.trim();
+                                    const prev = ticket.status_notes ?? "";
+                                    if (next !== prev) {
+                                      void patchTicket(ticket.id, { status_notes: next || null });
+                                    }
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          ) : (
+                            ticket.status_notes && (
+                              <p className="text-xs" style={{ color: "#a8a29e" }}>
+                                {ticket.status_notes}
+                              </p>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
       )}
     </div>
   );

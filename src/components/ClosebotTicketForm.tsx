@@ -96,7 +96,7 @@ export default function ClosebotTicketForm() {
       <div className="max-w-xl mx-auto rounded-2xl p-8 text-center space-y-3" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.08)" }}>
         <p className="text-lg font-semibold text-slate-100">Ticket submitted</p>
         <p className="text-sm text-slate-400">
-          Ops will see this on Closebot Log and attach it to the agent version that was live that day.
+          Ops will see this under Closebot → Tickets, attached to the agent version that was live that day.
         </p>
         <button
           type="button"
