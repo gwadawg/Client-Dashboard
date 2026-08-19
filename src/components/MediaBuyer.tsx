@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AdFormatPicker, useAdFormats } from "./AdFormatPicker";
 import { AdTagPicker, useAdTags } from "./AdTagPicker";
 import AdWorkspaceOverlay, { type AdWorkspaceDrilldown } from "./AdWorkspaceOverlay";
@@ -329,37 +330,138 @@ function FilterSelect({
   hideCounts?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
   const live = value !== "all";
   const selected = options.find((o) => o.slug === value);
 
+  const placeMenu = useCallback(() => {
+    const btn = btnRef.current;
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    const pad = 10;
+    const width = Math.min(Math.max(r.width, 196), window.innerWidth - pad * 2);
+    const spaceBelow = window.innerHeight - r.bottom - pad;
+    const spaceAbove = r.top - pad;
+    const openUp = spaceBelow < 168 && spaceAbove > spaceBelow;
+    const maxHeight = Math.min(280, Math.max(140, openUp ? spaceAbove : spaceBelow));
+    const left = Math.min(Math.max(pad, r.left), window.innerWidth - width - pad);
+    setMenuPos({
+      top: openUp ? Math.max(pad, r.top - maxHeight - 4) : r.bottom + 4,
+      left,
+      width,
+      maxHeight,
+    });
+  }, []);
+
   useEffect(() => {
     if (!open) return;
+    placeMenu();
     function onDoc(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", placeMenu);
+    document.addEventListener("scroll", placeMenu, true);
     return () => {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", placeMenu);
+      document.removeEventListener("scroll", placeMenu, true);
     };
-  }, [open]);
+  }, [open, placeMenu]);
 
   if (options.length === 0 && value === "all") return null;
 
+  const menu =
+    open &&
+    menuPos &&
+    createPortal(
+      <ul
+        ref={menuRef}
+        role="listbox"
+        className="fixed z-[220] overflow-y-auto overscroll-contain rounded-md py-1"
+        style={{
+          top: menuPos.top,
+          left: menuPos.left,
+          width: menuPos.width,
+          maxHeight: menuPos.maxHeight,
+          background: "#071018",
+          border: "1px solid rgba(255,255,255,0.12)",
+          boxShadow: "0 18px 40px rgba(0,0,0,0.45)",
+        }}
+      >
+        <li>
+          <button
+            type="button"
+            role="option"
+            aria-selected={!live}
+            className="w-full px-3 py-1.5 text-left text-[11px]"
+            style={{
+              fontFamily: "var(--font-plex-mono)",
+              color: !live ? accent : "#94a3b8",
+              background: !live ? `${accent}14` : "transparent",
+            }}
+            onClick={() => {
+              onChange("all");
+              setOpen(false);
+            }}
+          >
+            {anyLabel}
+          </button>
+        </li>
+        {options.map((opt) => {
+          const on = value === opt.slug;
+          return (
+            <li key={opt.slug}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={on}
+                className="w-full flex items-center justify-between gap-3 px-3 py-1.5 text-left text-[11px]"
+                style={{
+                  fontFamily: "var(--font-plex-mono)",
+                  color: on ? accent : FILTER_INK.body,
+                  background: on ? `${accent}14` : "transparent",
+                }}
+                onClick={() => {
+                  onChange(opt.slug);
+                  setOpen(false);
+                }}
+              >
+                <span className="truncate">{opt.label}</span>
+                {!hideCounts ? (
+                  <span className="tabular-nums" style={{ opacity: 0.55 }}>{opt.count}</span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>,
+      document.body,
+    );
+
   return (
-    <div ref={ref} className="relative min-w-0">
+    <div ref={wrapRef} className="relative min-w-0">
       <ChannelLabel kicker={label} live={live} onClear={() => onChange("all")} />
       <button
+        ref={btnRef}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={label}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => !v);
+          if (!open) placeMenu();
+        }}
         className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] text-left"
         style={{
           fontFamily: "var(--font-plex-mono)",
@@ -378,64 +480,7 @@ function FilterSelect({
         ) : null}
         <span aria-hidden style={{ opacity: 0.5 }}>{open ? "▴" : "▾"}</span>
       </button>
-      {open ? (
-        <ul
-          role="listbox"
-          className="absolute z-40 mt-1 w-full min-w-[12rem] max-h-64 overflow-auto rounded-md py-1"
-          style={{
-            background: "#071018",
-            border: "1px solid rgba(255,255,255,0.12)",
-            boxShadow: "0 18px 40px rgba(0,0,0,0.45)",
-          }}
-        >
-          <li>
-            <button
-              type="button"
-              role="option"
-              aria-selected={!live}
-              className="w-full px-3 py-1.5 text-left text-[11px]"
-              style={{
-                fontFamily: "var(--font-plex-mono)",
-                color: !live ? accent : "#94a3b8",
-                background: !live ? `${accent}14` : "transparent",
-              }}
-              onClick={() => {
-                onChange("all");
-                setOpen(false);
-              }}
-            >
-              {anyLabel}
-            </button>
-          </li>
-          {options.map((opt) => {
-            const on = value === opt.slug;
-            return (
-              <li key={opt.slug}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={on}
-                  className="w-full flex items-center justify-between gap-3 px-3 py-1.5 text-left text-[11px]"
-                  style={{
-                    fontFamily: "var(--font-plex-mono)",
-                    color: on ? accent : FILTER_INK.body,
-                    background: on ? `${accent}14` : "transparent",
-                  }}
-                  onClick={() => {
-                    onChange(opt.slug);
-                    setOpen(false);
-                  }}
-                >
-                  <span className="truncate">{opt.label}</span>
-                  {!hideCounts ? (
-                    <span className="tabular-nums" style={{ opacity: 0.55 }}>{opt.count}</span>
-                  ) : null}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
+      {menu}
     </div>
   );
 }
@@ -869,7 +914,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   return (
     <div className="space-y-4">
       <div
-        className="rounded-xl overflow-hidden"
+        className="rounded-xl overflow-visible"
         style={{
           background: "linear-gradient(180deg, #0c182c 0%, #08111e 100%)",
           border: "1px solid rgba(255,255,255,0.08)",
