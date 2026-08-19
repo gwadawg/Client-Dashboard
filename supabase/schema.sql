@@ -2107,36 +2107,91 @@ create index if not exists account_plan_tasks_completed_at_idx
   on account_plan_tasks (completed_at desc)
   where completed_at is not null;
 
--- Closebot agent directory + prompt change log
+-- Closebot personas, agent directory, versions, prompt change log
+create table if not exists closebot_personas (
+  id                     uuid primary key default gen_random_uuid(),
+  name                   text not null,
+  slug                   text not null,
+  description            text,
+  how_to_respond         text,
+  tone                   text[] not null default '{}',
+  custom_delay_enabled   boolean not null default false,
+  typo_frequency         numeric,
+  custom_delay_seconds   integer,
+  is_active              boolean not null default true,
+  sort_order             integer not null default 0,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now(),
+  constraint closebot_personas_slug_unique unique (slug)
+);
+
+create index if not exists closebot_personas_active_sort_idx
+  on closebot_personas (is_active, sort_order, name);
+
 create table if not exists closebot_agents (
-  id          uuid primary key default gen_random_uuid(),
-  name        text not null,
-  slug        text not null,
-  description text,
-  is_active   boolean not null default true,
-  sort_order  integer not null default 0,
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now(),
+  id               uuid primary key default gen_random_uuid(),
+  name             text not null,
+  slug             text not null,
+  description      text,
+  job_information  text,
+  persona_id       uuid references closebot_personas (id) on delete set null,
+  nodes            jsonb not null default '[]'::jsonb,
+  follow_ups       jsonb not null default '[]'::jsonb,
+  is_active        boolean not null default true,
+  sort_order       integer not null default 0,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
   constraint closebot_agents_slug_unique unique (slug)
 );
 
 create index if not exists closebot_agents_active_sort_idx
   on closebot_agents (is_active, sort_order, name);
 
+create index if not exists closebot_agents_persona_id_idx
+  on closebot_agents (persona_id)
+  where persona_id is not null;
+
+create table if not exists closebot_agent_versions (
+  id                 uuid primary key default gen_random_uuid(),
+  agent_id           uuid not null references closebot_agents (id) on delete restrict,
+  status             text not null,
+  name               text not null,
+  description        text,
+  job_information    text,
+  persona_id         uuid references closebot_personas (id) on delete set null,
+  persona_snapshot   jsonb,
+  nodes              jsonb not null default '[]'::jsonb,
+  follow_ups         jsonb not null default '[]'::jsonb,
+  created_by         uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  constraint closebot_agent_versions_status_check check (
+    status in ('pending', 'live', 'superseded', 'rejected')
+  )
+);
+
+create index if not exists closebot_agent_versions_agent_updated_idx
+  on closebot_agent_versions (agent_id, updated_at desc);
+
+create unique index if not exists closebot_agent_versions_one_pending_idx
+  on closebot_agent_versions (agent_id)
+  where status = 'pending';
+
 create table if not exists closebot_prompt_log (
-  id              uuid primary key default gen_random_uuid(),
-  agent_id        uuid not null references closebot_agents (id) on delete restrict,
-  changed_at      timestamptz not null,
-  prompt_body     text not null,
-  problem_solved  text not null,
-  change_reason   text not null,
-  reference_urls  text[] not null default '{}',
-  status          text not null default 'watching',
-  outcome_notes   text,
-  created_by      uuid references auth.users (id) on delete set null,
-  updated_by      uuid references auth.users (id) on delete set null,
-  created_at      timestamptz not null default now(),
-  updated_at      timestamptz not null default now(),
+  id                uuid primary key default gen_random_uuid(),
+  agent_id          uuid not null references closebot_agents (id) on delete restrict,
+  agent_version_id  uuid references closebot_agent_versions (id) on delete set null,
+  changed_at        timestamptz not null,
+  prompt_body       text not null,
+  problem_solved    text not null,
+  change_reason     text not null,
+  reference_urls    text[] not null default '{}',
+  status            text not null default 'watching',
+  outcome_notes     text,
+  created_by        uuid references auth.users (id) on delete set null,
+  updated_by        uuid references auth.users (id) on delete set null,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
   constraint closebot_prompt_log_status_check check (
     status in ('open', 'watching', 'worked', 'did_not_work', 'reverted')
   )
@@ -2151,6 +2206,10 @@ create index if not exists closebot_prompt_log_agent_changed_idx
 create index if not exists closebot_prompt_log_open_status_idx
   on closebot_prompt_log (status)
   where status in ('open', 'watching');
+
+create index if not exists closebot_prompt_log_version_idx
+  on closebot_prompt_log (agent_version_id)
+  where agent_version_id is not null;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Client month disposition overrides (CS payment-streak timeline)

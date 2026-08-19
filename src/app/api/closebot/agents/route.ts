@@ -4,24 +4,18 @@ import {
   requireClosebotAgentsRead,
   requireClosebotLogWrite,
 } from "@/lib/closebot-auth";
-import { cleanString, slugifyClosebotName } from "@/lib/closebot";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function uniqueSlug(service: { from: (t: string) => any }, base: string): Promise<string> {
-  let candidate = base;
-  let n = 2;
-  for (;;) {
-    const { data } = await service
-      .from("closebot_agents")
-      .select("id")
-      .eq("slug", candidate)
-      .maybeSingle();
-    if (!data) return candidate;
-    candidate = `${base}-${n}`;
-    n += 1;
-    if (n > 50) return `${base}-${Date.now()}`;
-  }
-}
+import {
+  AGENT_LIST_SELECT,
+  attachPendingVersions,
+  insertLiveVersion,
+  parseAgentConfigFields,
+  resolvePersonaSnapshot,
+} from "@/lib/closebot-store";
+import {
+  slugifyClosebotName,
+  uniqueClosebotSlug,
+  type ClosebotAgent,
+} from "@/lib/closebot";
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -37,7 +31,7 @@ export async function GET(req: Request) {
 
   let query = ctx.service
     .from("closebot_agents")
-    .select("*")
+    .select(AGENT_LIST_SELECT)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 
@@ -48,10 +42,14 @@ export async function GET(req: Request) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  let rows = data ?? [];
+  let rows = (data ?? []) as unknown as ClosebotAgent[];
+
+  const attached = await attachPendingVersions(ctx.service, rows);
+  if (attached.error) return NextResponse.json({ error: attached.error }, { status: 500 });
+  rows = attached.agents ?? rows;
 
   if (withCounts && rows.length > 0) {
-    const ids = rows.map((r: { id: string }) => r.id);
+    const ids = rows.map((r) => r.id);
     const { data: logRows, error: logErr } = await ctx.service
       .from("closebot_prompt_log")
       .select("agent_id")
@@ -62,7 +60,7 @@ export async function GET(req: Request) {
       const id = (row as { agent_id: string }).agent_id;
       counts.set(id, (counts.get(id) ?? 0) + 1);
     }
-    rows = rows.map((r: { id: string }) => ({
+    rows = rows.map((r) => ({
       ...r,
       log_count: counts.get(r.id) ?? 0,
     }));
@@ -84,35 +82,69 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const name = cleanString(body.name);
-  if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
+  const parsed = parseAgentConfigFields(body, {
+    name: "",
+    description: null,
+    job_information: null,
+    persona_id: null,
+    persona_snapshot: null,
+    nodes: [],
+    follow_ups: [],
+  });
+  if (parsed.error) return NextResponse.json({ error: parsed.error }, { status: 400 });
+  const snapshot = parsed.snapshot!;
+  if (!snapshot.name) return NextResponse.json({ error: "name is required" }, { status: 400 });
 
-  const description = cleanString(body.description);
+  if (snapshot.persona_id) {
+    const resolved = await resolvePersonaSnapshot(ctx.service, snapshot.persona_id);
+    if (resolved.error) {
+      const status = resolved.error === "Persona not found" ? 400 : 500;
+      return NextResponse.json({ error: resolved.error }, { status });
+    }
+    snapshot.persona_snapshot = resolved.snapshot;
+  }
+
   const sortOrder =
     typeof body.sort_order === "number" && Number.isFinite(body.sort_order)
       ? Math.trunc(body.sort_order)
       : 0;
 
   const baseSlug = slugifyClosebotName(
-    typeof body.slug === "string" && body.slug.trim() ? body.slug : name,
+    typeof body.slug === "string" && body.slug.trim() ? body.slug : snapshot.name,
   );
-  const slug = await uniqueSlug(ctx.service, baseSlug);
+  const slug = await uniqueClosebotSlug(async (candidate) => {
+    const { data } = await ctx.service
+      .from("closebot_agents")
+      .select("id")
+      .eq("slug", candidate)
+      .maybeSingle();
+    return Boolean(data);
+  }, baseSlug);
 
   const now = new Date().toISOString();
   const { data, error } = await ctx.service
     .from("closebot_agents")
     .insert({
-      name,
+      name: snapshot.name,
       slug,
-      description,
+      description: snapshot.description,
+      job_information: snapshot.job_information,
+      persona_id: snapshot.persona_id,
+      nodes: snapshot.nodes,
+      follow_ups: snapshot.follow_ups,
       is_active: body.is_active === false ? false : true,
       sort_order: sortOrder,
       created_at: now,
       updated_at: now,
     })
-    .select()
+    .select(AGENT_LIST_SELECT)
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data, { status: 201 });
+  if (!data) return NextResponse.json({ error: "Could not create agent" }, { status: 500 });
+
+  const live = await insertLiveVersion(ctx.service, data.id, snapshot, ctx.userId);
+  if (live.error) return NextResponse.json({ error: live.error }, { status: 500 });
+
+  return NextResponse.json({ ...data, pending_version: null }, { status: 201 });
 }

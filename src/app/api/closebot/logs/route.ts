@@ -11,12 +11,14 @@ import {
   parseChangedAt,
   type ClosebotLogStatus,
 } from "@/lib/closebot";
+import {
+  applyLogStatusToVersion,
+  LOG_SELECT,
+  resolveVersionForLog,
+} from "@/lib/closebot-store";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
-
-const LOG_SELECT =
-  "id, agent_id, changed_at, prompt_body, problem_solved, change_reason, reference_urls, status, outcome_notes, created_by, updated_by, created_at, updated_at, agent:closebot_agents(id, name, slug, is_active)";
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -52,7 +54,6 @@ export async function GET(req: Request) {
     query = query.gte("changed_at", fromIso);
   }
   if (to) {
-    // Inclusive end day: date-only means end of UTC day
     if (/^\d{4}-\d{2}-\d{2}$/.test(to.trim())) {
       query = query.lte("changed_at", `${to.trim()}T23:59:59.999Z`);
     } else {
@@ -130,11 +131,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Cannot log against an archived agent" }, { status: 400 });
   }
 
+  const versionRes = await resolveVersionForLog(ctx.service, agentId, body);
+  if (versionRes.error) return NextResponse.json({ error: versionRes.error }, { status: 400 });
+
   const now = new Date().toISOString();
   const { data, error } = await ctx.service
     .from("closebot_prompt_log")
     .insert({
       agent_id: agentId,
+      agent_version_id: versionRes.versionId,
       changed_at: changedAt,
       prompt_body: promptBody,
       problem_solved: problemSolved,
@@ -151,5 +156,9 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const applied = await applyLogStatusToVersion(ctx.service, versionRes.versionId, status);
+  if (applied.error) return NextResponse.json({ error: applied.error }, { status: 500 });
+
   return NextResponse.json(data, { status: 201 });
 }

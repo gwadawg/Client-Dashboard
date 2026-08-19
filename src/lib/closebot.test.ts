@@ -1,34 +1,70 @@
-import { describe, expect, it } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import {
   cleanHttpUrls,
   changedAtFromDateInput,
   isClosebotLogStatus,
+  parseAgentNodes,
+  parseFollowUps,
+  parseToneChips,
   slugifyClosebotName,
 } from "./closebot";
 
 describe("closebot helpers", () => {
   it("slugifies agent names", () => {
-    expect(slugifyClosebotName("Qualifier Bot")).toBe("qualifier-bot");
-    expect(slugifyClosebotName("  Hello!!!  ")).toBe("hello");
+    assert.equal(slugifyClosebotName("Qualifier Bot"), "qualifier-bot");
+    assert.equal(slugifyClosebotName("  Hello!!!  "), "hello");
   });
 
   it("parses date-only changed_at as UTC midnight", () => {
-    expect(changedAtFromDateInput("2026-08-07")).toBe("2026-08-07T00:00:00.000Z");
+    assert.equal(changedAtFromDateInput("2026-08-07"), "2026-08-07T00:00:00.000Z");
   });
 
   it("validates status enum", () => {
-    expect(isClosebotLogStatus("watching")).toBe(true);
-    expect(isClosebotLogStatus("nope")).toBe(false);
+    assert.equal(isClosebotLogStatus("watching"), true);
+    assert.equal(isClosebotLogStatus("nope"), false);
   });
 
   it("normalizes http urls", () => {
     const { urls, error } = cleanHttpUrls(["example.com/ticket/1", "https://x.test/a"]);
-    expect(error).toBeUndefined();
-    expect(urls).toEqual(["https://example.com/ticket/1", "https://x.test/a"]);
+    assert.equal(error, undefined);
+    assert.deepEqual(urls, ["https://example.com/ticket/1", "https://x.test/a"]);
   });
 
   it("rejects invalid urls", () => {
     const { error } = cleanHttpUrls(["not a url!!!"]);
-    expect(error).toMatch(/Invalid URL/);
+    assert.match(String(error), /Invalid URL/);
+  });
+
+  it("parses agent nodes", () => {
+    const { nodes, error } = parseAgentNodes([
+      { type: "branch", name: "Credit split", description: "Route by credit" },
+    ]);
+    assert.equal(error, undefined);
+    assert.deepEqual(nodes, [
+      { type: "branch", name: "Credit split", description: "Route by credit" },
+    ]);
+  });
+
+  it("rejects unknown node types", () => {
+    const { error } = parseAgentNodes([{ type: "webhook", name: "X", description: "" }]);
+    assert.match(String(error), /type is invalid/);
+  });
+
+  it("parses nested follow-ups", () => {
+    const { followUps, error } = parseFollowUps([
+      {
+        name: "No reply",
+        prompt: "Nudge them",
+        types: [{ label: "SMS 2h", details: "Delay 2 hours" }],
+      },
+    ]);
+    assert.equal(error, undefined);
+    assert.equal(followUps[0].types[0].label, "SMS 2h");
+  });
+
+  it("parses tone chips without duplicates", () => {
+    const { tone } = parseToneChips(["Warm", "warm", " Direct "]);
+    assert.deepEqual(tone, ["Warm", "Direct"]);
   });
 });

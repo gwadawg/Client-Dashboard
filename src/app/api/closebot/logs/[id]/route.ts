@@ -10,11 +10,13 @@ import {
   isClosebotLogStatus,
   parseChangedAt,
 } from "@/lib/closebot";
+import {
+  applyLogStatusToVersion,
+  LOG_SELECT,
+  resolveVersionForLog,
+} from "@/lib/closebot-store";
 
 type Params = { params: Promise<{ id: string }> };
-
-const LOG_SELECT =
-  "id, agent_id, changed_at, prompt_body, problem_solved, change_reason, reference_urls, status, outcome_notes, created_by, updated_by, created_at, updated_at, agent:closebot_agents(id, name, slug, is_active)";
 
 export async function GET(_req: Request, { params }: Params) {
   const ctx = await getAuthContext();
@@ -52,6 +54,14 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  const { data: existing, error: loadErr } = await ctx.service
+    .from("closebot_prompt_log")
+    .select("id, agent_id, agent_version_id, status")
+    .eq("id", id)
+    .maybeSingle();
+  if (loadErr) return NextResponse.json({ error: loadErr.message }, { status: 500 });
+  if (!existing) return NextResponse.json({ error: "Log not found" }, { status: 404 });
+
   const patch: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
     updated_by: ctx.userId,
@@ -67,7 +77,6 @@ export async function PATCH(req: Request, { params }: Params) {
       .maybeSingle();
     if (agentErr) return NextResponse.json({ error: agentErr.message }, { status: 500 });
     if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 400 });
-    // Allow reassignment to archived agents only for historical edits — agent must exist.
     patch.agent_id = agentId;
   }
 
@@ -119,6 +128,13 @@ export async function PATCH(req: Request, { params }: Params) {
         : cleanString(body.outcome_notes);
   }
 
+  const agentIdForVersion = (typeof patch.agent_id === "string" ? patch.agent_id : existing.agent_id) as string;
+  if ("agent_version_id" in body || "attach_pending_version" in body) {
+    const versionRes = await resolveVersionForLog(ctx.service, agentIdForVersion, body);
+    if (versionRes.error) return NextResponse.json({ error: versionRes.error }, { status: 400 });
+    patch.agent_version_id = versionRes.versionId;
+  }
+
   if (Object.keys(patch).length <= 2) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
@@ -132,5 +148,12 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Log not found" }, { status: 404 });
+
+  const versionId = (data.agent_version_id as string | null) ?? null;
+  if ("status" in body && isClosebotLogStatus(data.status)) {
+    const applied = await applyLogStatusToVersion(ctx.service, versionId, data.status);
+    if (applied.error) return NextResponse.json({ error: applied.error }, { status: 500 });
+  }
+
   return NextResponse.json(data);
 }

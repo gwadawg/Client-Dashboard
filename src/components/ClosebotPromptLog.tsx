@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ClosebotAgentsSection from "@/components/ClosebotAgentsSection";
+import ClosebotPersonasSection from "@/components/ClosebotPersonasSection";
 import {
   CLOSEBOT_LOG_STATUSES,
   CLOSEBOT_STATUS_META,
@@ -45,6 +46,7 @@ type FormState = {
   prompt_body: string;
   status: ClosebotLogStatus;
   outcome_notes: string;
+  attach_pending_version: boolean;
 };
 
 function emptyForm(): FormState {
@@ -59,6 +61,7 @@ function emptyForm(): FormState {
     prompt_body: "",
     status: "watching",
     outcome_notes: "",
+    attach_pending_version: true,
   };
 }
 
@@ -159,6 +162,7 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
       prompt_body: log.prompt_body,
       status: log.status,
       outcome_notes: log.outcome_notes ?? "",
+      attach_pending_version: Boolean(log.agent_version_id),
     });
     setFormError(null);
     setModalOpen(true);
@@ -168,7 +172,8 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
     setSaving(true);
     setFormError(null);
     try {
-      const payload = {
+      const hasPending = Boolean(agents.find((a) => a.id === form.agent_id)?.pending_version);
+      const payload: Record<string, unknown> = {
         agent_id: form.agent_id,
         changed_at: form.changed_at,
         problem_solved: form.problem_solved,
@@ -178,6 +183,9 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
         status: form.status,
         outcome_notes: form.outcome_notes.trim() || null,
       };
+      if (hasPending) {
+        payload.attach_pending_version = form.attach_pending_version;
+      }
       const res = await fetch(form.id ? `/api/closebot/logs/${form.id}` : "/api/closebot/logs", {
         method: form.id ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -190,6 +198,7 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
       }
       setModalOpen(false);
       await loadLogs();
+      await loadAgents();
     } catch {
       setFormError("Could not save log");
     } finally {
@@ -249,7 +258,7 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
               background: agentsOpen ? "rgba(96,165,250,0.12)" : "transparent",
             }}
           >
-            {agentsOpen ? "Hide agents" : `Agents (${agents.length})`}
+            {agentsOpen ? "Hide directory" : `Directory (${agents.length})`}
           </button>
           {canWrite && (
             <button
@@ -278,14 +287,23 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
             border: "1px solid rgba(255,255,255,0.06)",
           }}
         >
-          <ClosebotAgentsSection
+          <ClosebotPersonasSection
             canManage={canWrite}
-            embedded
-            onAgentsChanged={() => {
+            onPersonasChanged={() => {
               void loadAgents();
               setAgentsOpen(true);
             }}
           />
+          <div className="mt-8">
+            <ClosebotAgentsSection
+              canManage={canWrite}
+              embedded
+              onAgentsChanged={() => {
+                void loadAgents();
+                setAgentsOpen(true);
+              }}
+            />
+          </div>
         </div>
       )}
 
@@ -422,6 +440,14 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
                     >
                       {meta.label}
                     </span>
+                    {log.agent_version_id && (
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                        style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24" }}
+                      >
+                        Agent config
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm font-medium" style={{ color: "#f1f5f9" }}>
                     {log.problem_solved}
@@ -562,6 +588,26 @@ export default function ClosebotPromptLog({ canWrite = false }: Props) {
                 </button>
               )}
             </label>
+
+            {Boolean(agents.find((a) => a.id === form.agent_id)?.pending_version) && (
+              <label className="flex items-start gap-2 text-sm" style={{ color: "#cbd5e1" }}>
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={form.attach_pending_version}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, attach_pending_version: e.target.checked }))
+                  }
+                />
+                <span>
+                  Attach pending agent config to this update.
+                  <span className="block text-xs mt-0.5" style={{ color: "#64748b" }}>
+                    Marking this log Worked will make that config live. Didn’t work or Reverted
+                    rejects it.
+                  </span>
+                </span>
+              </label>
+            )}
 
             <label className="block space-y-1">
               <span style={labelStyle}>Live date</span>
