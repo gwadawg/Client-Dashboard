@@ -130,7 +130,6 @@ export type ClosebotAgent = {
   updated_at: string;
   log_count?: number;
   open_ticket_count?: number;
-  open_ticket_count?: number;
   persona?: Pick<ClosebotPersona, "id" | "name" | "slug" | "is_active"> | Pick<ClosebotPersona, "id" | "name" | "slug" | "is_active">[] | null;
   pending_version?: ClosebotAgentVersion | null;
 };
