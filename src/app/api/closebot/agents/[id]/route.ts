@@ -51,6 +51,8 @@ export async function PATCH(req: Request, { params }: Params) {
   if (isAuthError(ctx)) return ctx;
   const denied = requireClosebotLogWrite(ctx);
   if (denied) return denied;
+  const db = ctx.service;
+  const userId = ctx.userId;
 
   const { id } = await params;
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
@@ -62,7 +64,7 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { data: existing, error: loadErr } = await ctx.service
+  const { data: existing, error: loadErr } = await db
     .from("closebot_agents")
     .select("*")
     .eq("id", id)
@@ -99,7 +101,7 @@ export async function PATCH(req: Request, { params }: Params) {
     if (parsedIds.error || !parsedIds.ids) {
       return NextResponse.json({ error: parsedIds.error ?? "client_ids is invalid" }, { status: 400 });
     }
-    const assigned = await replaceAgentClients(ctx.service, id, parsedIds.ids);
+    const assigned = await replaceAgentClients(db, id, parsedIds.ids);
     if (assigned.error) {
       return NextResponse.json({ error: assigned.error }, { status: assigned.status ?? 500 });
     }
@@ -107,7 +109,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
   async function respond(agent: ClosebotAgent | null, pendingVersion: unknown) {
     if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-    const withClients = await attachAssignedClients(ctx.service, [agent]);
+    const withClients = await attachAssignedClients(db, [agent]);
     return NextResponse.json({
       ...(withClients.agents?.[0] ?? agent),
       pending_version: pendingVersion ?? null,
@@ -115,7 +117,7 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   if (wantsConfig) {
-    const { data: pendingRow } = await ctx.service
+    const { data: pendingRow } = await db
       .from("closebot_agent_versions")
       .select("*")
       .eq("agent_id", id)
@@ -129,29 +131,29 @@ export async function PATCH(req: Request, { params }: Params) {
     const snapshot = parsed.snapshot!;
 
     if ("persona_id" in body) {
-      const resolved = await resolvePersonaSnapshot(ctx.service, snapshot.persona_id);
+      const resolved = await resolvePersonaSnapshot(db, snapshot.persona_id);
       if (resolved.error) {
         const status = resolved.error === "Persona not found" ? 400 : 500;
         return NextResponse.json({ error: resolved.error }, { status });
       }
       snapshot.persona_snapshot = resolved.snapshot;
     } else if (snapshot.persona_id && !snapshot.persona_snapshot) {
-      const resolved = await resolvePersonaSnapshot(ctx.service, snapshot.persona_id);
+      const resolved = await resolvePersonaSnapshot(db, snapshot.persona_id);
       if (resolved.error && resolved.error !== "Persona not found") {
         return NextResponse.json({ error: resolved.error }, { status: 500 });
       }
       snapshot.persona_snapshot = resolved.snapshot;
     }
 
-    const pending = await upsertPendingVersion(ctx.service, id, snapshot, ctx.userId);
+    const pending = await upsertPendingVersion(db, id, snapshot, userId);
     if (pending.error) return NextResponse.json({ error: pending.error }, { status: 500 });
 
     if (Object.keys(livePatch).length > 1) {
-      const { error } = await ctx.service.from("closebot_agents").update(livePatch).eq("id", id);
+      const { error } = await db.from("closebot_agents").update(livePatch).eq("id", id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const { data, error } = await ctx.service
+    const { data, error } = await db
       .from("closebot_agents")
       .select(AGENT_LIST_SELECT)
       .eq("id", id)
@@ -161,13 +163,13 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   if (Object.keys(livePatch).length <= 1 && wantsClients) {
-    const { data, error } = await ctx.service
+    const { data, error } = await db
       .from("closebot_agents")
       .select(AGENT_LIST_SELECT)
       .eq("id", id)
       .maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    const { data: pending } = await ctx.service
+    const { data: pending } = await db
       .from("closebot_agent_versions")
       .select("*")
       .eq("agent_id", id)
@@ -176,7 +178,7 @@ export async function PATCH(req: Request, { params }: Params) {
     return respond((data as ClosebotAgent) ?? null, pending ?? null);
   }
 
-  const { data, error } = await ctx.service
+  const { data, error } = await db
     .from("closebot_agents")
     .update(livePatch)
     .eq("id", id)
@@ -185,7 +187,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-  const { data: pending } = await ctx.service
+  const { data: pending } = await db
     .from("closebot_agent_versions")
     .select("*")
     .eq("agent_id", id)

@@ -136,6 +136,7 @@ export default function ClosebotAgentsSection({
   const [versions, setVersions] = useState<ClosebotAgentVersion[]>([]);
   const [historyTickets, setHistoryTickets] = useState<ClosebotTicket[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
   const [clientOptions, setClientOptions] = useState<{ id: string; name: string; is_live?: boolean }[]>([]);
   const [clientQuery, setClientQuery] = useState("");
 
