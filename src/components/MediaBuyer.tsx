@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AdFormatPicker, useAdFormats } from "./AdFormatPicker";
 import { AdTagPicker, useAdTags } from "./AdTagPicker";
 import AdWorkspaceOverlay, { type AdWorkspaceDrilldown } from "./AdWorkspaceOverlay";
@@ -126,6 +126,36 @@ function productMatches(product: string | null | undefined, filter: ProductFilte
   return product === filter;
 }
 
+type AdSlice = {
+  product: ProductFilter;
+  tag: string;
+  format: string;
+  status: string;
+  search: string;
+};
+
+function adPassesSlice(a: AdRow, slice: AdSlice, skip?: keyof AdSlice): boolean {
+  if (skip !== "product" && !productMatches(a.library?.product, slice.product)) return false;
+  if (skip !== "tag" && slice.tag !== "all" && !(a.library?.tags ?? []).some((t) => t.slug === slice.tag)) return false;
+  if (skip !== "format" && slice.format !== "all" && a.library?.ad_format !== slice.format) return false;
+  if (skip !== "status" && slice.status !== "all" && a.library?.status !== slice.status) return false;
+  if (
+    skip !== "search" &&
+    !matchesAdQuery(
+      [
+        a.ad_name,
+        ...(a.variant_names ?? []),
+        a.library?.summary,
+        ...(a.library?.tags ?? []).flatMap((t) => [t.label, t.slug]),
+      ],
+      slice.search,
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function rollupAds(list: AdRow[]) {
   const spend = list.reduce((s, a) => s + a.spend, 0);
   const impressions = list.reduce((s, a) => s + a.impressions, 0);
@@ -169,6 +199,50 @@ function rollupAds(list: AdRow[]) {
   };
 }
 
+const FILTER_INK = {
+  rail: "#64748b",
+  live: "#f59e0b",
+  muted: "#475569",
+  body: "#cbd5e1",
+  panel: "#070f1c",
+  cell: "#0a1526",
+} as const;
+
+function ChannelLabel({
+  kicker,
+  live,
+  onClear,
+}: {
+  kicker: string;
+  live?: boolean;
+  onClear?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 mb-1.5 min-h-[14px]">
+      <span
+        className="text-[9px] uppercase tracking-[0.2em] leading-none"
+        style={{
+          color: live ? FILTER_INK.live : FILTER_INK.rail,
+          fontFamily: "var(--font-archivo), var(--font-display), sans-serif",
+          fontWeight: 600,
+        }}
+      >
+        {kicker}
+      </span>
+      {live && onClear ? (
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-[9px] leading-none uppercase tracking-wider"
+          style={{ color: FILTER_INK.rail, fontFamily: "var(--font-plex-mono)" }}
+        >
+          any
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ProductFilterBar({
   value,
   onChange,
@@ -179,33 +253,31 @@ function ProductFilterBar({
   counts: Record<ProductFilter, number>;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span
-        className="text-[10px] uppercase tracking-wider mr-1"
-        style={{ color: "#475569", fontFamily: "var(--font-plex-mono)" }}
-      >
-        Product
-      </span>
-      {PRODUCT_FILTERS.map((f) => {
-        const selected = value === f.value;
-        return (
-          <button
-            key={f.value}
-            type="button"
-            onClick={() => onChange(f.value)}
-            className="px-2.5 py-1 rounded-md text-[11px] tracking-wide transition-colors"
-            style={{
-              fontFamily: "var(--font-plex-mono)",
-              background: selected ? `${f.color}22` : "rgba(255,255,255,0.03)",
-              color: selected ? f.color : "#94a3b8",
-              border: selected ? `1px solid ${f.color}88` : "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            {f.label}
-            <span className="ml-1.5 tabular-nums" style={{ opacity: 0.7 }}>{counts[f.value]}</span>
-          </button>
-        );
-      })}
+    <div className="min-w-0">
+      <ChannelLabel kicker="Product" live={value !== "all"} onClear={() => onChange("all")} />
+      <div className="flex gap-1" role="group" aria-label="Product">
+        {PRODUCT_FILTERS.filter((f) => f.value !== "all").map((f) => {
+          const selected = value === f.value;
+          return (
+            <button
+              key={f.value}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onChange(selected ? "all" : f.value)}
+              className="flex-1 px-2.5 py-1.5 rounded-md text-[11px] tracking-wide transition-colors"
+              style={{
+                fontFamily: "var(--font-plex-mono)",
+                background: selected ? `${f.color}22` : "rgba(255,255,255,0.03)",
+                color: selected ? f.color : "#94a3b8",
+                border: selected ? `1px solid ${f.color}88` : "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              {f.label}
+              <span className="ml-1.5 tabular-nums" style={{ opacity: 0.7 }}>{counts[f.value]}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -230,7 +302,8 @@ function AdSearchInput({
   placeholder?: string;
 }) {
   return (
-    <div className="relative min-w-[14rem] w-full sm:w-72">
+    <div className="relative w-full min-w-[12rem]">
+      <ChannelLabel kicker="Find" live={!!value} onClear={value ? () => onChange("") : undefined} />
       <input
         type="search"
         value={value}
@@ -240,138 +313,178 @@ function AdSearchInput({
         }}
         placeholder={placeholder}
         aria-label="Search ads"
-        className="w-full px-3 py-1.5 rounded-lg text-xs outline-none"
+        className="w-full px-3 py-1.5 rounded-md text-xs outline-none"
         style={{
-          background: "#050c18",
-          border: "1px solid rgba(255,255,255,0.1)",
+          background: FILTER_INK.panel,
+          border: value ? "1px solid rgba(245,158,11,0.45)" : "1px solid rgba(255,255,255,0.1)",
           color: "#e2e8f0",
           fontFamily: "var(--font-plex-mono)",
         }}
       />
-      {value ? (
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] uppercase tracking-wider"
-          style={{ color: "#64748b" }}
-        >
-          Clear
-        </button>
-      ) : null}
     </div>
   );
 }
 
-function TagFilterBar({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (slug: string) => void;
-  options: { slug: string; label: string; count: number }[];
-}) {
-  if (options.length === 0 && value === "all") return null;
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span
-        className="text-[10px] uppercase tracking-wider mr-1"
-        style={{ color: "#475569", fontFamily: "var(--font-plex-mono)" }}
-      >
-        Topic
-      </span>
-      <button
-        type="button"
-        onClick={() => onChange("all")}
-        className="px-2.5 py-1 rounded-md text-[11px] tracking-wide transition-colors"
-        style={{
-          fontFamily: "var(--font-plex-mono)",
-          background: value === "all" ? "rgba(148,163,184,0.18)" : "rgba(255,255,255,0.03)",
-          color: value === "all" ? "#cbd5e1" : "#94a3b8",
-          border: value === "all" ? "1px solid rgba(148,163,184,0.45)" : "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
-        All
-      </button>
-      {options.map((opt) => {
-        const selected = value === opt.slug;
-        return (
-          <button
-            key={opt.slug}
-            type="button"
-            onClick={() => onChange(opt.slug)}
-            className="px-2.5 py-1 rounded-md text-[11px] tracking-wide transition-colors"
-            style={{
-              fontFamily: "var(--font-plex-mono)",
-              background: selected ? "rgba(52,211,153,0.16)" : "rgba(255,255,255,0.03)",
-              color: selected ? "#6ee7b7" : "#94a3b8",
-              border: selected ? "1px solid rgba(52,211,153,0.55)" : "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            {opt.label}
-            <span className="ml-1.5 tabular-nums" style={{ opacity: 0.7 }}>{opt.count}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function ChipFilterBar({
+function FilterSelect({
   label,
   value,
   onChange,
   options,
-  activeColor = "#60a5fa",
+  anyLabel,
+  accent = "#6ee7b7",
 }: {
   label: string;
   value: string;
   onChange: (slug: string) => void;
   options: { slug: string; label: string; count: number }[];
-  activeColor?: string;
+  anyLabel: string;
+  accent?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const live = value !== "all";
+  const selected = options.find((o) => o.slug === value);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  if (options.length === 0 && value === "all") return null;
+
+  return (
+    <div ref={ref} className="relative min-w-0">
+      <ChannelLabel kicker={label} live={live} onClear={() => onChange("all")} />
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] text-left"
+        style={{
+          fontFamily: "var(--font-plex-mono)",
+          background: live ? `${accent}18` : "rgba(255,255,255,0.03)",
+          color: live ? accent : "#94a3b8",
+          border: live ? `1px solid ${accent}77` : "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <span className="truncate flex-1">{live ? (selected?.label ?? value) : anyLabel}</span>
+        {live && selected ? (
+          <span className="tabular-nums" style={{ opacity: 0.7 }}>{selected.count}</span>
+        ) : (
+          <span className="tabular-nums" style={{ opacity: 0.45 }}>{options.length}</span>
+        )}
+        <span aria-hidden style={{ opacity: 0.5 }}>{open ? "▴" : "▾"}</span>
+      </button>
+      {open ? (
+        <ul
+          role="listbox"
+          className="absolute z-40 mt-1 w-full min-w-[12rem] max-h-64 overflow-auto rounded-md py-1"
+          style={{
+            background: "#071018",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: "0 18px 40px rgba(0,0,0,0.45)",
+          }}
+        >
+          <li>
+            <button
+              type="button"
+              role="option"
+              aria-selected={!live}
+              className="w-full px-3 py-1.5 text-left text-[11px]"
+              style={{
+                fontFamily: "var(--font-plex-mono)",
+                color: !live ? accent : "#94a3b8",
+                background: !live ? `${accent}14` : "transparent",
+              }}
+              onClick={() => {
+                onChange("all");
+                setOpen(false);
+              }}
+            >
+              {anyLabel}
+            </button>
+          </li>
+          {options.map((opt) => {
+            const on = value === opt.slug;
+            return (
+              <li key={opt.slug}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  className="w-full flex items-center justify-between gap-3 px-3 py-1.5 text-left text-[11px]"
+                  style={{
+                    fontFamily: "var(--font-plex-mono)",
+                    color: on ? accent : FILTER_INK.body,
+                    background: on ? `${accent}14` : "transparent",
+                  }}
+                  onClick={() => {
+                    onChange(opt.slug);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="truncate">{opt.label}</span>
+                  <span className="tabular-nums" style={{ opacity: 0.55 }}>{opt.count}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function StatusKeys({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (slug: string) => void;
+  options: { slug: string; label: string; count: number }[];
 }) {
   if (options.length === 0 && value === "all") return null;
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span
-        className="text-[10px] uppercase tracking-wider mr-1"
-        style={{ color: "#475569", fontFamily: "var(--font-plex-mono)" }}
-      >
-        {label}
-      </span>
-      <button
-        type="button"
-        onClick={() => onChange("all")}
-        className="px-2.5 py-1 rounded-md text-[11px] tracking-wide transition-colors"
-        style={{
-          fontFamily: "var(--font-plex-mono)",
-          background: value === "all" ? "rgba(148,163,184,0.18)" : "rgba(255,255,255,0.03)",
-          color: value === "all" ? "#cbd5e1" : "#94a3b8",
-          border: value === "all" ? "1px solid rgba(148,163,184,0.45)" : "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
-        All
-      </button>
-      {options.map((opt) => {
-        const selected = value === opt.slug;
-        return (
-          <button
-            key={opt.slug}
-            type="button"
-            onClick={() => onChange(opt.slug)}
-            className="px-2.5 py-1 rounded-md text-[11px] tracking-wide transition-colors"
-            style={{
-              fontFamily: "var(--font-plex-mono)",
-              background: selected ? `${activeColor}22` : "rgba(255,255,255,0.03)",
-              color: selected ? activeColor : "#94a3b8",
-              border: selected ? `1px solid ${activeColor}88` : "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            {opt.label}
-            <span className="ml-1.5 tabular-nums" style={{ opacity: 0.7 }}>{opt.count}</span>
-          </button>
-        );
-      })}
+    <div className="min-w-0">
+      <ChannelLabel kicker="Status" live={value !== "all"} onClear={() => onChange("all")} />
+      <div className="flex flex-wrap gap-1" role="group" aria-label="Status">
+        {options.map((opt) => {
+          const selected = value === opt.slug;
+          const color = STATUS_STYLES[opt.slug]?.text ?? "#fbbf24";
+          return (
+            <button
+              key={opt.slug}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onChange(selected ? "all" : opt.slug)}
+              className="px-2.5 py-1.5 rounded-md text-[11px] tracking-wide"
+              style={{
+                fontFamily: "var(--font-plex-mono)",
+                background: selected ? `${color}22` : "rgba(255,255,255,0.03)",
+                color: selected ? color : "#94a3b8",
+                border: selected ? `1px solid ${color}88` : "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              {opt.label}
+              <span className="ml-1.5 tabular-nums" style={{ opacity: 0.7 }}>{opt.count}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -567,26 +680,18 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
     setMinSpendOn(true);
   }
 
-  const scopedAds = useMemo(
-    () =>
-      ads.filter(
-        (a) =>
-          productMatches(a.library?.product, productFilter) &&
-          (tagFilter === "all" || (a.library?.tags ?? []).some((t) => t.slug === tagFilter)) &&
-          (formatFilter === "all" || a.library?.ad_format === formatFilter) &&
-          (statusFilter === "all" || a.library?.status === statusFilter) &&
-          matchesAdQuery(
-            [
-              a.ad_name,
-              ...(a.variant_names ?? []),
-              a.library?.summary,
-              ...(a.library?.tags ?? []).flatMap((t) => [t.label, t.slug]),
-            ],
-            search,
-          ),
-      ),
-    [ads, productFilter, tagFilter, formatFilter, statusFilter, search],
+  const slice: AdSlice = useMemo(
+    () => ({
+      product: productFilter,
+      tag: tagFilter,
+      format: formatFilter,
+      status: statusFilter,
+      search,
+    }),
+    [productFilter, tagFilter, formatFilter, statusFilter, search],
   );
+
+  const scopedAds = useMemo(() => ads.filter((a) => adPassesSlice(a, slice)), [ads, slice]);
 
   const filteredAds = useMemo(
     () => (minSpendOn ? scopedAds.filter((a) => a.spend >= MIN_SPEND) : scopedAds),
@@ -606,33 +711,37 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
     return copy;
   }, [filteredAds, sortKey, asc]);
 
-  const filterCounts = useMemo(
-    () => ({
-      all: ads.length,
-      reverse: ads.filter((a) => a.library?.product === "reverse").length,
-      dscr: ads.filter((a) => a.library?.product === "dscr").length,
-    }),
-    [ads],
-  );
+  const filterCounts = useMemo(() => {
+    const pool = ads.filter((a) => adPassesSlice(a, slice, "product"));
+    return {
+      all: pool.length,
+      reverse: pool.filter((a) => a.library?.product === "reverse").length,
+      dscr: pool.filter((a) => a.library?.product === "dscr").length,
+    };
+  }, [ads, slice]);
 
   const tagFilterOptions = useMemo(() => {
     const counts = new Map<string, { slug: string; label: string; count: number }>();
-    for (const a of ads) {
+    for (const a of ads.filter((row) => adPassesSlice(row, slice, "tag"))) {
       for (const t of a.library?.tags ?? []) {
         const prev = counts.get(t.slug);
         counts.set(t.slug, { slug: t.slug, label: t.label, count: (prev?.count ?? 0) + 1 });
       }
     }
+    if (tagFilter !== "all" && !counts.has(tagFilter)) {
+      counts.set(tagFilter, { slug: tagFilter, label: tagFilter, count: 0 });
+    }
     return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-  }, [ads]);
+  }, [ads, slice, tagFilter]);
 
   const formatFilterOptions = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const a of ads) {
+    for (const a of ads.filter((row) => adPassesSlice(row, slice, "format"))) {
       const slug = a.library?.ad_format;
       if (!slug) continue;
       counts.set(slug, (counts.get(slug) ?? 0) + 1);
     }
+    if (formatFilter !== "all" && !counts.has(formatFilter)) counts.set(formatFilter, 0);
     return [...counts.entries()]
       .map(([slug, count]) => ({
         slug,
@@ -640,11 +749,11 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
         count,
       }))
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-  }, [ads, formatLabels]);
+  }, [ads, slice, formatLabels, formatFilter]);
 
   const statusFilterOptions = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const a of ads) {
+    for (const a of ads.filter((row) => adPassesSlice(row, slice, "status"))) {
       const s = a.library?.status;
       if (!s) continue;
       counts.set(s, (counts.get(s) ?? 0) + 1);
@@ -656,7 +765,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
         label: STATUS_STYLES[slug]?.label ?? slug,
         count: counts.get(slug) ?? 0,
       }));
-  }, [ads, statusFilter]);
+  }, [ads, slice, statusFilter]);
 
   const conceptStrip = useMemo(() => {
     const tags = new Map<string, { label: string; spend: number; conversations: number }>();
@@ -789,72 +898,161 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
       </p>
     );
 
+  const sliceActive =
+    productFilter !== "all" ||
+    tagFilter !== "all" ||
+    formatFilter !== "all" ||
+    statusFilter !== "all" ||
+    !!search.trim();
+
   const totals = rollupAds(filteredAds);
   const colCount = showPlatform ? 20 : 14;
+  const rankPresets = [
+    { label: "CPCONV", key: "cp_conversation" as const, nextAsc: true },
+    { label: "CPQL", key: "cost_per_qualified" as const, nextAsc: true },
+    { label: "CPL", key: "cpl" as const, nextAsc: true },
+    { label: "CPF", key: "cp_funded" as const, nextAsc: true },
+    { label: "Hand-raise", key: "hand_raise_rate" as const, nextAsc: false },
+  ];
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={filterCounts} />
-        <TagFilterBar value={tagFilter} onChange={setTagFilter} options={tagFilterOptions} />
-        <ChipFilterBar label="Format" value={formatFilter} onChange={setFormatFilter} options={formatFilterOptions} />
-        <ChipFilterBar label="Status" value={statusFilter} onChange={setStatusFilter} options={statusFilterOptions} activeColor="#fbbf24" />
-        <AdSearchInput value={search} onChange={setSearch} placeholder="Search ad name…" />
-      </div>
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{
+          background: "linear-gradient(180deg, #0c182c 0%, #08111e 100%)",
+          border: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-2"
+          style={{
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            background: "rgba(245,158,11,0.04)",
+          }}
+        >
+          <p
+            className="text-[9px] uppercase tracking-[0.22em]"
+            style={{ color: FILTER_INK.live, fontFamily: "var(--font-archivo), sans-serif", fontWeight: 600 }}
+          >
+            Slice
+          </p>
+          <p className="text-[11px] tabular-nums" style={{ color: "#94a3b8", fontFamily: "var(--font-plex-mono)" }}>
+            {filteredAds.length} showing
+            {minSpendOn ? ` · $${MIN_SPEND}+ floor` : ""}
+            {minSpendOn && scopedAds.length !== filteredAds.length ? ` · ${scopedAds.length} before floor` : ""}
+          </p>
+        </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[10px] uppercase tracking-wider mr-1" style={{ color: "#475569", fontFamily: "var(--font-plex-mono)" }}>Find best</span>
-        {([
-          { label: "Best CPCONV", key: "cp_conversation" as const, nextAsc: true },
-          { label: "Best CPQL", key: "cost_per_qualified" as const, nextAsc: true },
-          { label: "Best CPL", key: "cpl" as const, nextAsc: true },
-          { label: "Best CPF", key: "cp_funded" as const, nextAsc: true },
-          { label: "Best hand-raise", key: "hand_raise_rate" as const, nextAsc: false },
-        ]).map((p) => {
-          const on = sortKey === p.key && asc === p.nextAsc;
-          return (
+        <div className="grid gap-x-4 gap-y-3 px-4 py-3 [grid-template-columns:repeat(auto-fit,minmax(11rem,1fr))]">
+          <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={filterCounts} />
+          <FilterSelect
+            label="Topic"
+            value={tagFilter}
+            onChange={setTagFilter}
+            options={tagFilterOptions}
+            anyLabel="Any topic"
+            accent="#6ee7b7"
+          />
+          <FilterSelect
+            label="Format"
+            value={formatFilter}
+            onChange={setFormatFilter}
+            options={formatFilterOptions}
+            anyLabel="Any format"
+            accent="#60a5fa"
+          />
+          <StatusKeys value={statusFilter} onChange={setStatusFilter} options={statusFilterOptions} />
+          <div className="min-w-0 [grid-column:span_2]">
+            <AdSearchInput value={search} onChange={setSearch} placeholder="Name, alias, topic…" />
+          </div>
+        </div>
+
+        <div
+          className="flex flex-wrap items-end gap-x-6 gap-y-3 px-4 py-3"
+          style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.18)" }}
+        >
+          <div className="min-w-0 flex-1">
+            <ChannelLabel kicker="Rank by" live={rankPresets.some((p) => sortKey === p.key && asc === p.nextAsc)} />
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Rank by">
+              {rankPresets.map((p) => {
+                const on = sortKey === p.key && asc === p.nextAsc;
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => applyPreset(p.key, p.nextAsc)}
+                    className="px-2.5 py-1.5 rounded-md text-[11px]"
+                    style={{
+                      fontFamily: "var(--font-plex-mono)",
+                      background: on ? "rgba(245,158,11,0.16)" : "rgba(255,255,255,0.03)",
+                      color: on ? "#fbbf24" : "#94a3b8",
+                      border: on ? "1px solid rgba(245,158,11,0.45)" : "1px solid rgba(255,255,255,0.08)",
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <ChannelLabel kicker="Floor" live={minSpendOn} />
             <button
-              key={p.label}
               type="button"
-              onClick={() => applyPreset(p.key, p.nextAsc)}
-              className="px-2.5 py-1 rounded-md text-[11px]"
+              aria-pressed={minSpendOn}
+              onClick={() => setMinSpendOn((v) => !v)}
+              className="px-2.5 py-1.5 rounded-md text-[11px]"
               style={{
                 fontFamily: "var(--font-plex-mono)",
-                background: on ? "rgba(245,158,11,0.16)" : "rgba(255,255,255,0.03)",
-                color: on ? "#fbbf24" : "#94a3b8",
-                border: on ? "1px solid rgba(245,158,11,0.45)" : "1px solid rgba(255,255,255,0.08)",
+                background: minSpendOn ? "rgba(52,211,153,0.14)" : "rgba(255,255,255,0.03)",
+                color: minSpendOn ? "#6ee7b7" : "#94a3b8",
+                border: minSpendOn ? "1px solid rgba(52,211,153,0.45)" : "1px solid rgba(255,255,255,0.08)",
               }}
             >
-              {p.label}
+              ${MIN_SPEND}+
             </button>
-          );
-        })}
-        <button
-          type="button"
-          onClick={() => setMinSpendOn((v) => !v)}
-          className="px-2.5 py-1 rounded-md text-[11px]"
-          style={{
-            fontFamily: "var(--font-plex-mono)",
-            background: minSpendOn ? "rgba(52,211,153,0.14)" : "rgba(255,255,255,0.03)",
-            color: minSpendOn ? "#6ee7b7" : "#94a3b8",
-            border: minSpendOn ? "1px solid rgba(52,211,153,0.45)" : "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          Min spend ${MIN_SPEND}{minSpendOn ? " on" : " off"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowPlatform((v) => !v)}
-          className="px-2.5 py-1 rounded-md text-[11px] ml-auto"
-          style={{
-            fontFamily: "var(--font-plex-mono)",
-            background: showPlatform ? "rgba(96,165,250,0.16)" : "rgba(255,255,255,0.03)",
-            color: showPlatform ? "#93c5fd" : "#94a3b8",
-            border: showPlatform ? "1px solid rgba(96,165,250,0.45)" : "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          {showPlatform ? "Hide CPC · CPM" : "Show CPC · CPM"}
-        </button>
+          </div>
+          <div>
+            <ChannelLabel kicker="Columns" live={showPlatform} />
+            <button
+              type="button"
+              aria-pressed={showPlatform}
+              onClick={() => setShowPlatform((v) => !v)}
+              className="px-2.5 py-1.5 rounded-md text-[11px]"
+              style={{
+                fontFamily: "var(--font-plex-mono)",
+                background: showPlatform ? "rgba(96,165,250,0.16)" : "rgba(255,255,255,0.03)",
+                color: showPlatform ? "#93c5fd" : "#94a3b8",
+                border: showPlatform ? "1px solid rgba(96,165,250,0.45)" : "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              {showPlatform ? "CPC · CPM on" : "CPC · CPM off"}
+            </button>
+          </div>
+          {sliceActive ? (
+            <button
+              type="button"
+              onClick={() => {
+                setProductFilter("all");
+                setTagFilter("all");
+                setFormatFilter("all");
+                setStatusFilter("all");
+                setSearch("");
+              }}
+              className="ml-auto px-2.5 py-1.5 rounded-md text-[10px] uppercase tracking-wider"
+              style={{
+                fontFamily: "var(--font-archivo), sans-serif",
+                color: FILTER_INK.live,
+                border: "1px solid rgba(245,158,11,0.35)",
+                background: "rgba(245,158,11,0.08)",
+              }}
+            >
+              Clear slice
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {(conceptStrip.tags.length > 0 || conceptStrip.formats.length > 0) ? (
@@ -863,7 +1061,8 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
             Concepts by blended CPCONV
           </p>
           {conceptStrip.tags.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <span className="text-[9px] uppercase tracking-[0.18em] mr-1" style={{ color: FILTER_INK.rail, fontFamily: "var(--font-archivo), sans-serif" }}>Topic</span>
               {conceptStrip.tags.map((c) => (
                 <button
                   key={`tag-${c.slug}`}
@@ -883,7 +1082,8 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
             </div>
           ) : null}
           {conceptStrip.formats.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <span className="text-[9px] uppercase tracking-[0.18em] mr-1" style={{ color: FILTER_INK.rail, fontFamily: "var(--font-archivo), sans-serif" }}>Format</span>
               {conceptStrip.formats.map((c) => (
                 <button
                   key={`fmt-${c.slug}`}
@@ -1605,10 +1805,25 @@ function AdLibrary({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-col gap-2 min-w-0 flex-1">
+        <div
+          className="flex flex-wrap items-end gap-x-5 gap-y-3 min-w-0 flex-1 rounded-xl px-4 py-3"
+          style={{
+            background: "linear-gradient(180deg, #0c182c 0%, #08111e 100%)",
+            border: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
           <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={libraryFilterCounts} />
-          <TagFilterBar value={tagFilter} onChange={setTagFilter} options={tagFilterOptions} />
-          <AdSearchInput value={search} onChange={setSearch} placeholder="Search name, alias, or topic…" />
+          <FilterSelect
+            label="Topic"
+            value={tagFilter}
+            onChange={setTagFilter}
+            options={tagFilterOptions}
+            anyLabel="Any topic"
+            accent="#6ee7b7"
+          />
+          <div className="flex-1 min-w-[14rem]">
+            <AdSearchInput value={search} onChange={setSearch} placeholder="Name, alias, or topic…" />
+          </div>
         </div>
         <button
           onClick={() => {
