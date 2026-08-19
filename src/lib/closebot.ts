@@ -52,6 +52,7 @@ export type ClosebotAgentNode = {
   type: ClosebotNodeType;
   name: string;
   description: string;
+  prompt: string;
 };
 
 export type ClosebotFollowUpTypeRow = {
@@ -98,6 +99,10 @@ export type ClosebotAgentVersion = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  went_live_at: string | null;
+  superseded_at: string | null;
+  open_ticket_count?: number;
+  resolved_ticket_count?: number;
 };
 
 export type ClosebotAgent = {
@@ -307,7 +312,8 @@ export function parseAgentNodes(v: unknown): { nodes: ClosebotAgentNode[]; error
     const name = typeof rec.name === "string" ? rec.name.trim() : "";
     if (!name) return { nodes: [], error: `nodes[${i}].name is required` };
     const description = typeof rec.description === "string" ? rec.description.trim() : "";
-    nodes.push({ type: rec.type, name, description });
+    const prompt = typeof rec.prompt === "string" ? rec.prompt.trim() : "";
+    nodes.push({ type: rec.type, name, description, prompt });
   }
   return { nodes };
 }
@@ -347,7 +353,7 @@ export function parseFollowUps(v: unknown): { followUps: ClosebotFollowUp[]; err
 }
 
 export function emptyAgentNode(): ClosebotAgentNode {
-  return { type: "agent_node", name: "", description: "" };
+  return { type: "agent_node", name: "", description: "", prompt: "" };
 }
 
 export function emptyFollowUp(): ClosebotFollowUp {

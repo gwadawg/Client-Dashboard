@@ -85,7 +85,14 @@ function formFromSnapshot(
     description: source.description ?? "",
     job_information: source.job_information ?? "",
     persona_id: source.persona_id ?? "",
-    nodes: Array.isArray(source.nodes) ? source.nodes : [],
+    nodes: Array.isArray(source.nodes)
+      ? source.nodes.map((n) => ({
+          type: n.type,
+          name: n.name ?? "",
+          description: n.description ?? "",
+          prompt: n.prompt ?? "",
+        }))
+      : [],
     follow_ups: Array.isArray(source.follow_ups) ? source.follow_ups : [],
   };
 }
@@ -183,7 +190,12 @@ export default function ClosebotAgentsSection({
         persona_id: form.persona_id || null,
         nodes: form.nodes
           .filter((n) => n.name.trim())
-          .map((n) => ({ ...n, name: n.name.trim(), description: n.description.trim() })),
+          .map((n) => ({
+            ...n,
+            name: n.name.trim(),
+            description: n.description.trim(),
+            prompt: (n.prompt ?? "").trim(),
+          })),
         follow_ups: form.follow_ups
           .filter((fu) => fu.name.trim())
           .map((fu) => ({
@@ -518,19 +530,44 @@ export default function ClosebotAgentsSection({
                       }))
                     }
                   />
-                  <textarea
-                    style={{ ...inputStyle, minHeight: "3.5rem", resize: "vertical" }}
-                    placeholder="What this node should do (not the prompt)"
-                    value={node.description}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        nodes: f.nodes.map((n, idx) =>
-                          idx === i ? { ...n, description: e.target.value } : n,
-                        ),
-                      }))
-                    }
-                  />
+                  <label className="block space-y-1">
+                    <span style={labelStyle}>What it should do</span>
+                    <textarea
+                      style={{ ...inputStyle, minHeight: "3.5rem", resize: "vertical" }}
+                      placeholder="Short note for us — not the Closebot prompt"
+                      value={node.description}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          nodes: f.nodes.map((n, idx) =>
+                            idx === i ? { ...n, description: e.target.value } : n,
+                          ),
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span style={labelStyle}>Prompt</span>
+                    <textarea
+                      style={{
+                        ...inputStyle,
+                        minHeight: "8rem",
+                        resize: "vertical",
+                        fontFamily: "ui-monospace, monospace",
+                        fontSize: "0.75rem",
+                      }}
+                      placeholder="Paste the Closebot prompt for this node"
+                      value={node.prompt ?? ""}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          nodes: f.nodes.map((n, idx) =>
+                            idx === i ? { ...n, prompt: e.target.value } : n,
+                          ),
+                        }))
+                      }
+                    />
+                  </label>
                 </div>
               ))}
             </div>
@@ -782,10 +819,20 @@ export default function ClosebotAgentsSection({
                             {v.nodes?.length ?? 0} nodes · {v.follow_ups?.length ?? 0} follow-ups
                           </p>
                           {(v.nodes ?? []).map((n, i) => (
-                            <p key={i}>
-                              {CLOSEBOT_NODE_TYPE_META[n.type]?.label ?? n.type}: {n.name}
-                              {n.description ? ` — ${n.description}` : ""}
-                            </p>
+                            <div key={i}>
+                              <p>
+                                {CLOSEBOT_NODE_TYPE_META[n.type]?.label ?? n.type}: {n.name}
+                                {n.description ? ` — ${n.description}` : ""}
+                              </p>
+                              {n.prompt && (
+                                <pre
+                                  className="whitespace-pre-wrap mt-1 p-2 rounded-lg max-h-40 overflow-y-auto"
+                                  style={{ background: "#050c18", color: "#cbd5e1" }}
+                                >
+                                  {n.prompt}
+                                </pre>
+                              )}
+                            </div>
                           ))}
                           {(v.follow_ups ?? []).map((fu, i) => (
                             <div key={i}>

@@ -38,11 +38,21 @@ describe("closebot helpers", () => {
 
   it("parses agent nodes", () => {
     const { nodes, error } = parseAgentNodes([
-      { type: "branch", name: "Credit split", description: "Route by credit" },
+      {
+        type: "agent_node",
+        name: "Reverse Agent",
+        description: "Book the appointment",
+        prompt: "Confirm what they want and book.",
+      },
     ]);
     assert.equal(error, undefined);
     assert.deepEqual(nodes, [
-      { type: "branch", name: "Credit split", description: "Route by credit" },
+      {
+        type: "agent_node",
+        name: "Reverse Agent",
+        description: "Book the appointment",
+        prompt: "Confirm what they want and book.",
+      },
     ]);
   });
 
