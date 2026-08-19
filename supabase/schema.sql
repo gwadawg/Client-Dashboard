@@ -2175,18 +2175,6 @@ create table if not exists closebot_bug_types (
   constraint closebot_bug_types_code_check check (char_length(short_code) between 2 and 8)
 );
 
-insert into closebot_bug_types (slug, name, short_code, sort_order)
-values
-  ('wrong_reply', 'Wrong reply', 'WRONG', 10),
-  ('booking_fail', 'Booking failed', 'BOOK', 20),
-  ('transfer_fail', 'Transfer failed', 'XFER', 30),
-  ('loop_stuck', 'Loop / stuck', 'LOOP', 40),
-  ('persona_tone', 'Persona / tone', 'TONE', 50),
-  ('compliance', 'Compliance', 'COMP', 60),
-  ('integration', 'Integration', 'INTG', 70),
-  ('other', 'Other', 'OTHR', 80)
-on conflict (slug) do nothing;
-
 create table if not exists closebot_agent_versions (
   id                 uuid primary key default gen_random_uuid(),
   agent_id           uuid not null references closebot_agents (id) on delete restrict,

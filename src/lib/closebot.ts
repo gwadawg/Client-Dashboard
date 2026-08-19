@@ -188,17 +188,6 @@ export const CLOSEBOT_TICKET_STATUS_META: Record<
   },
 };
 
-export const CLOSEBOT_DEFAULT_BUG_TYPES = [
-  { slug: "wrong_reply", name: "Wrong reply", short_code: "WRONG" },
-  { slug: "booking_fail", name: "Booking failed", short_code: "BOOK" },
-  { slug: "transfer_fail", name: "Transfer failed", short_code: "XFER" },
-  { slug: "loop_stuck", name: "Loop / stuck", short_code: "LOOP" },
-  { slug: "persona_tone", name: "Persona / tone", short_code: "TONE" },
-  { slug: "compliance", name: "Compliance", short_code: "COMP" },
-  { slug: "integration", name: "Integration", short_code: "INTG" },
-  { slug: "other", name: "Other", short_code: "OTHR" },
-] as const;
-
 export type ClosebotBugTypeRow = {
   slug: string;
   name: string;

@@ -73,3 +73,25 @@ export async function PATCH(req: Request, { params }: Params) {
   if (!data) return NextResponse.json({ error: "Type not found" }, { status: 404 });
   return NextResponse.json(data);
 }
+
+export async function DELETE(_req: Request, { params }: Params) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const denied = requireClosebotLogWrite(ctx);
+  if (denied) return denied;
+
+  const { slug } = await params;
+  if (!slug || !isClosebotBugTypeSlug(slug)) {
+    return NextResponse.json({ error: "slug is required" }, { status: 400 });
+  }
+
+  const { error: ticketErr } = await ctx.service
+    .from("closebot_tickets")
+    .update({ bug_type: null, updated_at: new Date().toISOString() })
+    .eq("bug_type", slug);
+  if (ticketErr) return NextResponse.json({ error: ticketErr.message }, { status: 500 });
+
+  const { error } = await ctx.service.from("closebot_bug_types").delete().eq("slug", slug);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
