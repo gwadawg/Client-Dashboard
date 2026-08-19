@@ -34,6 +34,7 @@ type AdRow = {
   ctr: number | null;
   cpc: number | null;
   cpm: number | null;
+  optin_rate: number | null;
   leads: number;
   qualified: number;
   hot: number;
@@ -147,6 +148,7 @@ function rollupAds(list: AdRow[]) {
     ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
     cpc: clicks > 0 ? spend / clicks : null,
     cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
+    optin_rate: clicks > 0 ? (leads / clicks) * 100 : null,
     leads,
     qualified,
     appointments,

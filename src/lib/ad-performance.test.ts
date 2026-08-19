@@ -134,6 +134,62 @@ describe('aggregateAdPerformance unique funnel', () => {
   });
 });
 
+describe('show rate grading', () => {
+  it('grades Show Rate on unique booked who spoke, keeping True Show separate', () => {
+    const rows = aggregateAdPerformance(
+      [meta()],
+      [
+        // Booked and spoke.
+        evt({ event_type: 'lead', ghl_contact_id: 'a', is_qualified: true }),
+        evt({ event_type: 'appointment_booked', ghl_contact_id: 'a' }),
+        evt({ event_type: 'show', ghl_contact_id: 'a' }),
+        // Booked, no-showed, never spoke.
+        evt({ event_type: 'lead', ghl_contact_id: 'b', is_qualified: true }),
+        evt({ event_type: 'appointment_booked', ghl_contact_id: 'b' }),
+        evt({ event_type: 'no_show', ghl_contact_id: 'b' }),
+        // Booked and reached by live transfer instead of a show.
+        evt({ event_type: 'lead', ghl_contact_id: 'c', is_qualified: true }),
+        evt({ event_type: 'appointment_booked', ghl_contact_id: 'c' }),
+        evt({ event_type: 'live_transfer', ghl_contact_id: 'c' }),
+        // Spoke but was never booked — outside the Show Rate denominator.
+        evt({ event_type: 'lead', ghl_contact_id: 'd', is_qualified: true }),
+        evt({ event_type: 'claimed', ghl_contact_id: 'd' }),
+      ],
+    );
+
+    const row = rows[0];
+    assert.equal(row.unique_booked, 3);
+    assert.equal(row.unique_booked_converted, 2);
+    // Two of three booked people eventually spoke.
+    assert.equal(row.show_rate, 66.7);
+    // True Show counts attendance events only: one show against one no-show.
+    assert.equal(row.true_show_pct, 50);
+  });
+
+  it('carries booked-who-spoke through the library rollup', () => {
+    const rows = aggregateAdPerformance(
+      [meta({ ad_name: 'Hook A' }), meta({ ad_name: 'Hook A v2' })],
+      [
+        evt({ event_type: 'lead', ghl_contact_id: 'a', ad_name: 'Hook A' }),
+        evt({ event_type: 'appointment_booked', ghl_contact_id: 'a', ad_name: 'Hook A' }),
+        evt({ event_type: 'show', ghl_contact_id: 'a', ad_name: 'Hook A' }),
+        evt({ event_type: 'lead', ghl_contact_id: 'b', ad_name: 'Hook A v2' }),
+        evt({ event_type: 'appointment_booked', ghl_contact_id: 'b', ad_name: 'Hook A v2' }),
+      ],
+    );
+    const resolver = new AdLibraryResolver(
+      [{ id: 'lib-1', ad_name: 'Hook A', status: 'active', platform: null, ad_format: null, product: null, summary: null, visual_notes: null, drive_url: null, thumbnail_url: null }],
+      [{ id: 'alias-1', library_id: 'lib-1', alias_name: 'Hook A v2' }],
+    );
+
+    const rolled = rollupAdPerformanceByLibrary(rows, resolver);
+    assert.equal(rolled.length, 1);
+    assert.equal(rolled[0].unique_booked, 2);
+    assert.equal(rolled[0].unique_booked_converted, 1);
+    assert.equal(rolled[0].show_rate, 50);
+  });
+});
+
 describe('buildAdDrilldown', () => {
   it('splits spend and CPCONV by client and day', () => {
     const drill = buildAdDrilldown(
@@ -158,6 +214,85 @@ describe('buildAdDrilldown', () => {
     assert.equal(drill.daily.length, 1);
     assert.equal(drill.daily[0].cp_conversation, 200);
     assert.equal(drill.perClientDaily.length, 2);
+  });
+
+  it('derives CTR, CPC, CPM and opt-in per client and per day', () => {
+    const drill = buildAdDrilldown(
+      'Hook A',
+      [
+        meta({ client_id: 'c1', spend: 100, impressions: 10000, clicks: 200, insight_date: '2026-08-01' }),
+        meta({ client_id: 'c2', spend: 300, impressions: 10000, clicks: 100, insight_date: '2026-08-01' }),
+      ],
+      [
+        evt({ client_id: 'c1', event_type: 'lead', ghl_contact_id: 'a' }),
+        evt({ client_id: 'c1', event_type: 'lead', ghl_contact_id: 'b' }),
+        evt({ client_id: 'c2', event_type: 'lead', ghl_contact_id: 'c' }),
+      ],
+    );
+
+    const c1 = drill.perClient.find((c) => c.client_id === 'c1');
+    assert.equal(c1?.impressions, 10000);
+    assert.equal(c1?.clicks, 200);
+    assert.equal(c1?.ctr, 2);
+    assert.equal(c1?.cpc, 0.5);
+    assert.equal(c1?.cpm, 10);
+    assert.equal(c1?.optin_rate, 1);
+
+    const c2 = drill.perClient.find((c) => c.client_id === 'c2');
+    assert.equal(c2?.ctr, 1);
+    assert.equal(c2?.cpc, 3);
+    assert.equal(c2?.cpm, 30);
+
+    // Blended day rolls both accounts together before deriving.
+    assert.equal(drill.daily[0].impressions, 20000);
+    assert.equal(drill.daily[0].clicks, 300);
+    assert.equal(drill.daily[0].ctr, 1.5);
+    assert.equal(drill.daily[0].cpc, 1.33);
+    assert.equal(drill.perClientDaily.find((p) => p.client_id === 'c1')?.ctr, 2);
+  });
+
+  it('holds CTR and CPC equal when only the landing page differs', () => {
+    // Same creative, same auction outcome, two clients. c2's header converts a
+    // third as well. CPL must diverge while the auction metrics stay identical —
+    // otherwise a bad header would read as a bad ad.
+    const drill = buildAdDrilldown(
+      'Hook A',
+      [
+        meta({ client_id: 'c1', spend: 100, impressions: 5000, clicks: 100, insight_date: '2026-08-01' }),
+        meta({ client_id: 'c2', spend: 100, impressions: 5000, clicks: 100, insight_date: '2026-08-01' }),
+      ],
+      [
+        evt({ client_id: 'c1', event_type: 'lead', ghl_contact_id: 'a1' }),
+        evt({ client_id: 'c1', event_type: 'lead', ghl_contact_id: 'a2' }),
+        evt({ client_id: 'c1', event_type: 'lead', ghl_contact_id: 'a3' }),
+        evt({ client_id: 'c2', event_type: 'lead', ghl_contact_id: 'b1' }),
+      ],
+    );
+
+    const good = drill.perClient.find((c) => c.client_id === 'c1');
+    const weakPage = drill.perClient.find((c) => c.client_id === 'c2');
+
+    assert.equal(good?.ctr, weakPage?.ctr);
+    assert.equal(good?.cpc, weakPage?.cpc);
+    assert.equal(good?.cpm, weakPage?.cpm);
+
+    assert.equal(good?.optin_rate, 3);
+    assert.equal(weakPage?.optin_rate, 1);
+    assert.equal(good?.cpl, 33.33);
+    assert.equal(weakPage?.cpl, 100);
+  });
+
+  it('leaves auction metrics null when no impressions were served', () => {
+    const drill = buildAdDrilldown(
+      'Hook A',
+      [meta({ client_id: 'c1', spend: 0, impressions: 0, clicks: 0 })],
+      [evt({ client_id: 'c1', event_type: 'lead' })],
+    );
+    const row = drill.perClient[0];
+    assert.equal(row.ctr, null);
+    assert.equal(row.cpc, null);
+    assert.equal(row.cpm, null);
+    assert.equal(row.optin_rate, null);
   });
 
   it('buckets by week when the range is over 90 days', () => {

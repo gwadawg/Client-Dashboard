@@ -39,6 +39,8 @@ export type AdPerformanceRow = {
   ctr: number | null;
   cpc: number | null;
   cpm: number | null;
+  /** Leads ÷ clicks × 100 — the landing page's own conversion step. */
+  optin_rate: number | null;
   leads: number;
   qualified: number;
   hot: number;
@@ -47,6 +49,8 @@ export type AdPerformanceRow = {
   no_shows: number;
   closes: number;
   unique_booked: number;
+  /** Unique booked leads who eventually spoke (show ∪ claimed ∪ live_transfer). */
+  unique_booked_converted: number;
   unique_hand_raises: number;
   unique_conversations: number;
   unique_proposals: number;
@@ -64,7 +68,10 @@ export type AdPerformanceRow = {
   booking_rate: number | null;
   /** Qualified leads ÷ total leads × 100. */
   qualified_rate: number | null;
+  /** Graded Show Rate: unique booked who spoke ÷ unique booked (see docs/KPIS.md). */
   show_rate: number | null;
+  /** True Show: shows ÷ (shows + no-shows). Booking-process secondary, not graded. */
+  true_show_pct: number | null;
   /** Unique (booked ∪ claimed ∪ LT) ÷ qualified × 100. */
   hand_raise_rate: number | null;
   /** Unique (show ∪ claimed ∪ LT) ÷ qualified × 100. */
@@ -312,6 +319,13 @@ function ratio(numerator: number, denominator: number): number | null {
   return denominator > 0 ? numerator / denominator : null;
 }
 
+function intersectionSize(a: Set<string>, b: Set<string>): number {
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  let n = 0;
+  for (const key of small) if (large.has(key)) n += 1;
+  return n;
+}
+
 function round(v: number | null, dp = 2): number | null {
   if (v == null) return null;
   const f = 10 ** dp;
@@ -320,6 +334,21 @@ function round(v: number | null, dp = 2): number | null {
 
 function pct(numerator: number, denominator: number): number | null {
   return round(ratio(numerator, denominator) != null ? (numerator / denominator) * 100 : null, 1);
+}
+
+/**
+ * Auction-side metrics. These are decided before the click, so a weak landing
+ * page cannot move them — which is what makes them usable to judge the creative
+ * independently of any one client's funnel. `optin_rate` is the exception and
+ * the deliberate pair: it is the landing page's own conversion step.
+ */
+function platformMetrics(spend: number, impressions: number, clicks: number, leads: number) {
+  return {
+    ctr: round(impressions > 0 ? (clicks / impressions) * 100 : null, 2),
+    cpc: round(ratio(spend, clicks), 2),
+    cpm: round(impressions > 0 ? (spend / impressions) * 1000 : null, 2),
+    optin_rate: pct(leads, clicks),
+  };
 }
 
 function costMetrics(
@@ -396,8 +425,10 @@ export function aggregateAdPerformance(
   return rows;
 }
 
-function accToRow(acc: Acc): AdPerformanceRow {
+function accToRow(acc: Acc & { booked_converted?: number }): AdPerformanceRow {
   const unique_booked = acc.bookedKeys.size;
+  const unique_booked_converted =
+    acc.booked_converted ?? intersectionSize(acc.bookedKeys, acc.conversationKeys);
   const unique_hand_raises = acc.handRaiseKeys.size;
   const unique_conversations = acc.conversationKeys.size;
   const unique_proposals = acc.proposalKeys.size;
@@ -420,9 +451,7 @@ function accToRow(acc: Acc): AdPerformanceRow {
     spend: round(acc.spend) ?? 0,
     impressions: acc.impressions,
     clicks: acc.clicks,
-    ctr: round(ratio(acc.clicks, acc.impressions) != null ? (acc.clicks / acc.impressions) * 100 : null, 2),
-    cpc: round(ratio(acc.spend, acc.clicks), 2),
-    cpm: round(acc.impressions > 0 ? (acc.spend / acc.impressions) * 1000 : null, 2),
+    ...platformMetrics(acc.spend, acc.impressions, acc.clicks, acc.leads),
     leads: acc.leads,
     qualified: acc.qualified,
     hot: acc.hot,
@@ -431,6 +460,7 @@ function accToRow(acc: Acc): AdPerformanceRow {
     no_shows: acc.no_shows,
     closes: acc.closes,
     unique_booked,
+    unique_booked_converted,
     unique_hand_raises,
     unique_conversations,
     unique_proposals,
@@ -439,10 +469,8 @@ function accToRow(acc: Acc): AdPerformanceRow {
     ...costs,
     booking_rate: pct(unique_booked, acc.qualified),
     qualified_rate: pct(acc.qualified, acc.leads),
-    show_rate: round(
-      acc.shows + acc.no_shows > 0 ? (acc.shows / (acc.shows + acc.no_shows)) * 100 : null,
-      1,
-    ),
+    show_rate: pct(unique_booked_converted, unique_booked),
+    true_show_pct: pct(acc.shows, acc.shows + acc.no_shows),
     hand_raise_rate: pct(unique_hand_raises, acc.qualified),
     conversation_rate: pct(unique_conversations, acc.qualified),
     client_count: acc.clients.size,
@@ -467,6 +495,7 @@ type RollupAcc = {
   no_shows: number;
   closes: number;
   unique_booked: number;
+  unique_booked_converted: number;
   unique_hand_raises: number;
   unique_conversations: number;
   unique_proposals: number;
@@ -491,6 +520,7 @@ function rollupAccToRow(acc: RollupAcc): RolledUpAdPerformanceRow {
     no_shows: acc.no_shows,
     closes: acc.closes,
     bookedKeys: numberedSet(acc.unique_booked),
+    booked_converted: acc.unique_booked_converted,
     handRaiseKeys: numberedSet(acc.unique_hand_raises),
     conversationKeys: numberedSet(acc.unique_conversations),
     proposalKeys: numberedSet(acc.unique_proposals),
@@ -553,6 +583,7 @@ export function rollupAdPerformanceByLibrary(
       no_shows: 0,
       closes: 0,
       unique_booked: 0,
+      unique_booked_converted: 0,
       unique_hand_raises: 0,
       unique_conversations: 0,
       unique_proposals: 0,
@@ -574,6 +605,7 @@ export function rollupAdPerformanceByLibrary(
     acc.no_shows += row.no_shows;
     acc.closes += row.closes;
     acc.unique_booked += row.unique_booked;
+    acc.unique_booked_converted += row.unique_booked_converted;
     acc.unique_hand_raises += row.unique_hand_raises;
     acc.unique_conversations += row.unique_conversations;
     acc.unique_proposals += row.unique_proposals;
@@ -591,6 +623,13 @@ export function rollupAdPerformanceByLibrary(
 export type AdClientBreakdownRow = {
   client_id: string;
   spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+  /** Leads ÷ clicks × 100 — the landing page's own conversion step. */
+  optin_rate: number | null;
   leads: number;
   qualified: number;
   appointments: number;
@@ -616,6 +655,12 @@ export type AdClientBreakdownRow = {
 export type AdDailyPoint = {
   date: string;
   spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+  optin_rate: number | null;
   leads: number;
   qualified: number;
   appointments: number;
@@ -641,6 +686,12 @@ export type AdClientDailyPoint = AdDailyPoint & { client_id: string };
 export type AdVariantBreakdown = {
   ad_name: string;
   spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+  optin_rate: number | null;
   leads: number;
   qualified: number;
   appointments: number;
@@ -676,6 +727,8 @@ export type AdDrilldownOptions = {
 
 type RawBucket = {
   spend: number;
+  impressions: number;
+  clicks: number;
   leads: number;
   qualified: number;
   hot: number;
@@ -694,6 +747,8 @@ type RawBucket = {
 function blankBucket(): RawBucket {
   return {
     spend: 0,
+    impressions: 0,
+    clicks: 0,
     leads: 0,
     qualified: 0,
     hot: 0,
@@ -737,6 +792,9 @@ function finalizeDailyPoint(date: string, b: RawBucket): AdDailyPoint {
   return {
     date,
     spend: round(b.spend) ?? 0,
+    impressions: b.impressions,
+    clicks: b.clicks,
+    ...platformMetrics(b.spend, b.impressions, b.clicks, b.leads),
     leads: b.leads,
     qualified: b.qualified,
     appointments: b.appointments,
@@ -775,6 +833,9 @@ function finalizeClientRow(client_id: string, b: RawBucket): AdClientBreakdownRo
   return {
     client_id,
     spend: round(b.spend) ?? 0,
+    impressions: b.impressions,
+    clicks: b.clicks,
+    ...platformMetrics(b.spend, b.impressions, b.clicks, b.leads),
     leads: b.leads,
     qualified: b.qualified,
     appointments: b.appointments,
@@ -798,8 +859,10 @@ function finalizeClientRow(client_id: string, b: RawBucket): AdClientBreakdownRo
   };
 }
 
-function addBucketSpend(b: RawBucket, spend: number): void {
+function addBucketMeta(b: RawBucket, spend: number, impressions: number, clicks: number): void {
   b.spend += spend;
+  b.impressions += impressions;
+  b.clicks += clicks;
 }
 
 function matchesAd(name: string | null, targets: Set<string>): boolean {
@@ -862,13 +925,15 @@ export function buildMultiAdDrilldown(
     const name = normalizeAdName(m.ad_name);
     if (!matchesAd(name, targets)) continue;
     const spend = num(m.spend);
+    const impressions = num(m.impressions);
+    const clicks = num(m.clicks);
     const date = m.insight_date ? bucketDate(m.insight_date, granularity) : null;
-    if (name) addBucketSpend(ensure(variants, name), spend);
+    if (name) addBucketMeta(ensure(variants, name), spend, impressions, clicks);
     if (m.client_id) {
-      addBucketSpend(ensure(perClient, m.client_id), spend);
-      if (date) addBucketSpend(ensure(perClientDaily, clientDayKey(m.client_id, date)), spend);
+      addBucketMeta(ensure(perClient, m.client_id), spend, impressions, clicks);
+      if (date) addBucketMeta(ensure(perClientDaily, clientDayKey(m.client_id, date)), spend, impressions, clicks);
     }
-    if (date) addBucketSpend(ensure(daily, date), spend);
+    if (date) addBucketMeta(ensure(daily, date), spend, impressions, clicks);
   }
 
   for (const e of events) {
@@ -900,6 +965,9 @@ export function buildMultiAdDrilldown(
     return {
       ad_name,
       spend: round(b.spend) ?? 0,
+      impressions: b.impressions,
+      clicks: b.clicks,
+      ...platformMetrics(b.spend, b.impressions, b.clicks, b.leads),
       leads: b.leads,
       qualified: b.qualified,
       appointments: b.appointments,
