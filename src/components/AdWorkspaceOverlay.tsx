@@ -183,19 +183,13 @@ const CLIENT_LINE_COLORS = [
   "#c084fc",
 ];
 
-type CostKey = "cpl" | "cost_per_qualified" | "cp_conversation" | "cp_proposal" | "cp_submission" | "cp_funded";
+type CostKey = "cpl" | "cost_per_qualified" | "cp_conversation";
 type RateKey = "qualified_rate" | "hand_raise_rate" | "conversation_rate";
 
 const COST_CHARTS: { key: CostKey; title: string; subtitle: string }[] = [
   { key: "cpl", title: "CPL", subtitle: "Spend ÷ leads" },
   { key: "cost_per_qualified", title: "CPQL", subtitle: "Spend ÷ qualified" },
   { key: "cp_conversation", title: "CPCONV", subtitle: "Spend ÷ unique conversations" },
-];
-
-const BACKEND_COST_CHARTS: { key: CostKey; title: string; subtitle: string }[] = [
-  { key: "cp_proposal", title: "CPP", subtitle: "Spend ÷ unique proposals" },
-  { key: "cp_submission", title: "CPS", subtitle: "Spend ÷ unique submissions" },
-  { key: "cp_funded", title: "CPF", subtitle: "Spend ÷ unique funded borrowers" },
 ];
 
 const RATE_CHARTS: { key: RateKey; title: string; subtitle: string; color: string }[] = [
@@ -813,9 +807,6 @@ export default function AdWorkspaceOverlay({
                     <StatTile label="Proposals" value={num(ad.unique_proposals ?? 0)} tip="Unique proposal ∪ submission ∪ funded" layer="cost" />
                     <StatTile label="Submissions" value={num(ad.unique_submissions ?? 0)} tip="Unique submission ∪ funded" layer="cost" />
                     <StatTile label="Funded" value={num(ad.unique_funded ?? 0)} tip="Unique funded borrowers" layer="cost" />
-                    <StatTile label="CPP" value={moneyExact(ad.cp_proposal)} tip="Spend ÷ unique proposals" layer="cost" spark={daily.map((p) => p.cp_proposal)} />
-                    <StatTile label="CPS" value={moneyExact(ad.cp_submission)} tip="Spend ÷ unique submissions" layer="cost" spark={daily.map((p) => p.cp_submission)} />
-                    <StatTile label="CPF" value={moneyExact(ad.cp_funded)} tip="Spend ÷ unique funded" layer="cost" spark={daily.map((p) => p.cp_funded)} />
                   </div>
                 </div>
               </LayerSection>
@@ -896,16 +887,7 @@ export default function AdWorkspaceOverlay({
 
               <FunnelWaterfall ad={ad} reduced={reducedMotion} />
 
-              <div>
-                <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "#475569", fontFamily: "var(--font-plex-mono)" }}>
-                  Backend conversions
-                </p>
-                <div className="grid gap-4 md:grid-cols-3">
-                  {BACKEND_COST_CHARTS.map((chart) => (
-                    <CostPanel key={chart.key} chart={chart} data={blendedChartData} granularity={granularity} />
-                  ))}
-                </div>
-              </div>
+              <BackendCostTable ad={ad} />
 
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#475569" }}>
@@ -931,10 +913,12 @@ export default function AdWorkspaceOverlay({
                           { h: "CPQL", layer: "cost" as const },
                           { h: "CPCONV", layer: "cost" as const },
                           { h: "Δ vs ad", layer: null },
-                          { h: "Prop", layer: null },
+                          { h: "Prop", layer: null, divide: true },
+                          { h: "CPP", layer: "cost" as const },
                           { h: "Sub", layer: null },
+                          { h: "CPS", layer: "cost" as const },
                           { h: "Funded", layer: null },
-                          { h: "CPF", layer: null },
+                          { h: "CPF", layer: "cost" as const },
                         ].map((col, i) => (
                           <th
                             key={col.h}
@@ -952,7 +936,7 @@ export default function AdWorkspaceOverlay({
                     <tbody>
                       {clients.length === 0 ? (
                         <tr>
-                          <td colSpan={15} className="px-3 py-4 text-center" style={{ color: "#475569" }}>No client data.</td>
+                          <td colSpan={17} className="px-3 py-4 text-center" style={{ color: "#475569" }}>No client data.</td>
                         </tr>
                       ) : (
                         clients.map((c) => {
@@ -1015,10 +999,17 @@ export default function AdWorkspaceOverlay({
                               >
                                 {delta == null ? "—" : `${delta > 0 ? "+" : ""}${moneyExact(delta)}`}
                               </td>
-                              <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(c.unique_proposals ?? 0)}</td>
-                              <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(c.unique_submissions ?? 0)}</td>
-                              <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{num(c.unique_funded ?? 0)}</td>
-                              <td className="px-3 py-2 text-right font-semibold" style={{ color: "#34d399" }}>{moneyExact(c.cp_funded)}</td>
+                              <td
+                                className="px-3 py-2 text-right tabular-nums"
+                                style={{ color: "#94a3b8", borderLeft: "1px solid rgba(255,255,255,0.08)" }}
+                              >
+                                {num(c.unique_proposals ?? 0)}
+                              </td>
+                              <td className="px-3 py-2 text-right tabular-nums" style={{ color: LAYER.cost }}>{moneyExact(c.cp_proposal)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums" style={{ color: "#94a3b8" }}>{num(c.unique_submissions ?? 0)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums" style={{ color: LAYER.cost }}>{moneyExact(c.cp_submission)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums" style={{ color: "#e2e8f0" }}>{num(c.unique_funded ?? 0)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{ color: LAYER.cost }}>{moneyExact(c.cp_funded)}</td>
                             </tr>
                           );
                         })
@@ -1035,7 +1026,7 @@ export default function AdWorkspaceOverlay({
                     <table className="w-full text-xs">
                       <thead>
                         <tr style={{ background: "#050c18" }}>
-                          {["Ad name", "Spend", "Leads", "CPL", "CPCONV", "Prop", "Sub", "Funded", "CPF"].map((h, i) => (
+                          {["Ad name", "Spend", "Leads", "CPL", "CPCONV", "Prop", "CPP", "Sub", "CPS", "Funded", "CPF"].map((h, i) => (
                             <th key={h} className={`px-3 py-2 ${i === 0 ? "text-left" : "text-right"} text-[10px] font-semibold uppercase tracking-wider`} style={{ color: "#475569" }}>
                               {h}
                             </th>
@@ -1050,10 +1041,12 @@ export default function AdWorkspaceOverlay({
                             <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(v.leads)}</td>
                             <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{moneyExact(v.cpl)}</td>
                             <td className="px-3 py-2 text-right" style={{ color: "#fbbf24" }}>{moneyExact(v.cp_conversation)}</td>
-                            <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(v.unique_proposals ?? 0)}</td>
-                            <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(v.unique_submissions ?? 0)}</td>
-                            <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{num(v.unique_funded ?? 0)}</td>
-                            <td className="px-3 py-2 text-right font-semibold" style={{ color: "#34d399" }}>{moneyExact(v.cp_funded)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums" style={{ color: "#94a3b8" }}>{num(v.unique_proposals ?? 0)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums" style={{ color: LAYER.cost }}>{moneyExact(v.cp_proposal)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums" style={{ color: "#94a3b8" }}>{num(v.unique_submissions ?? 0)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums" style={{ color: LAYER.cost }}>{moneyExact(v.cp_submission)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums" style={{ color: "#e2e8f0" }}>{num(v.unique_funded ?? 0)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{ color: LAYER.cost }}>{moneyExact(v.cp_funded)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1379,6 +1372,86 @@ function EngagementScatter({
       <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
         Bottom-right is the winner: wanted and cheap. Top-left is a dead creative. A single stray dot is that account&apos;s auction, not the concept.
       </p>
+    </div>
+  );
+}
+
+/**
+ * LO-side conversions are too sparse for a weekly line. A table of count and
+ * cost is the honest read: most weeks are empty, and a single funded loan
+ * should not pretend to be a trend.
+ */
+function BackendCostTable({ ad }: { ad: AdWorkspaceAd }) {
+  const rows = [
+    {
+      event: "Proposals",
+      costLabel: "CPP",
+      count: ad.unique_proposals ?? 0,
+      cost: ad.cp_proposal,
+      formula: "Spend ÷ unique proposals",
+    },
+    {
+      event: "Submissions",
+      costLabel: "CPS",
+      count: ad.unique_submissions ?? 0,
+      cost: ad.cp_submission,
+      formula: "Spend ÷ unique submissions",
+    },
+    {
+      event: "Funded",
+      costLabel: "CPF",
+      count: ad.unique_funded ?? 0,
+      cost: ad.cp_funded,
+      formula: "Spend ÷ unique funded borrowers",
+    },
+  ];
+
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "#475569", fontFamily: "var(--font-plex-mono)" }}>
+        Backend conversions
+      </p>
+      <p className="text-[11px] mb-2" style={{ color: "#64748b" }}>
+        These close too rarely to chart. Cost is spend in range divided by unique contacts who reached the stage.
+      </p>
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+        <table className="w-full text-xs">
+          <thead>
+            <tr style={{ background: "#050c18" }}>
+              {["Event", "Count", "Cost", "Formula"].map((h, i) => (
+                <th
+                  key={h}
+                  className={`px-3 py-2 ${i === 0 ? "text-left" : i === 3 ? "text-left" : "text-right"} text-[10px] font-semibold uppercase tracking-wider`}
+                  style={{ color: i === 2 ? LAYER.cost : "#475569" }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.event} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                <td className="px-3 py-2.5" style={{ color: "#cbd5e1" }}>
+                  {row.event}
+                  <span className="ml-2 text-[10px] uppercase tracking-wider" style={{ color: "#475569", fontFamily: "var(--font-plex-mono)" }}>
+                    {row.costLabel}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: "#e2e8f0" }}>
+                  {num(row.count)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ color: LAYER.cost }}>
+                  {moneyExact(row.cost)}
+                </td>
+                <td className="px-3 py-2.5" style={{ color: "#64748b" }}>
+                  {row.formula}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
