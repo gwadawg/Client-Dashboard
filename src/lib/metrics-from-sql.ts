@@ -266,7 +266,7 @@ export function metricsFromSqlCounts(
     cp_appt: booked > 0 ? ad_spend / booked : 0,
     cps: shows > 0 ? ad_spend / shows : 0,
     outbound_dials: dial_count,
-    dials_per_lead: leads > 0 ? dial_count / leads : 0,
+    dials_per_lead: qualified_leads > 0 ? dial_count / qualified_leads : 0,
     pickups,
     pickup_pct: dial_count > 0 ? (pickups / dial_count) * 100 : 0,
     conversations,

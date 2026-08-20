@@ -80,7 +80,7 @@ Tracked on the internal dashboard and derived from call + funnel events (formerl
 | **Callback Requests** | Callback appointments booked | `COUNT(callback_booked)` |
 | **Callback Rate** | Callbacks per lead | `Callbacks ÷ Total Leads × 100` |
 | **Appts To Take Place** | Still scheduled (pending outcomes) | `Appointments Booked − Shows − No Shows − Cancellations − Rescheduled − LO bailed` |
-| **Dials Per Lead** | Dial effort per lead | `Outbound Dials ÷ Total Leads` |
+| **Dials Per Lead** | Dial effort per qualified lead (only qualified leads are dialed) | `Outbound Dials ÷ Qualified Leads` |
 | **Ad Spend** | Meta (Facebook) | `SUM(meta_ad_insights.spend)` via `daily_meta_spend` view |
 | **Meta spend** | Facebook / Meta only | `SUM(meta_ad_insights.spend)` (daily rollup via `daily_meta_spend` view) |
 | **CPL** | Cost per lead | `Ad Spend ÷ Total Leads` |

@@ -40,6 +40,7 @@ export type DialAnalyticsSummary = {
   conversation_rate: number;
   leads: number;
   qualified_leads: number;
+  /** Outbound dials ÷ qualified leads. */
   dials_per_lead: number;
   appointments: number;
   booking_rate: number;
@@ -77,6 +78,7 @@ export type DialAnalyticsClientRow = {
   pickup_rate: number;
   leads: number;
   qualified_leads: number;
+  /** Outbound dials ÷ qualified leads. */
   dials_per_lead: number;
   conversations: number;
   appointments: number;
@@ -250,7 +252,7 @@ export function computeDialAnalytics(
   }
 
   const teamPickupRate = pct(summaryPickups, summaryDials);
-  const teamDialsPerLead = summaryLeads > 0 ? summaryDials / summaryLeads : 0;
+  const teamDialsPerLead = summaryQualified > 0 ? summaryDials / summaryQualified : 0;
   const summaryBookedForRate = summaryUniqueBooked.size > 0 ? summaryUniqueBooked.size : summaryAppointments;
   const teamBookingRate = pct(summaryBookedForRate, summaryQualified > 0 ? summaryQualified : summaryLeads);
 
@@ -259,7 +261,8 @@ export function computeDialAnalytics(
       const meta = clientById.get(client_id);
       const bookingDenom = acc.qualified_leads > 0 ? acc.qualified_leads : acc.leads;
       const pickup_rate = pct(acc.pickups, acc.dials);
-      const dials_per_lead = acc.leads > 0 ? Math.round((acc.dials / acc.leads) * 10) / 10 : 0;
+      const dials_per_lead =
+        acc.qualified_leads > 0 ? Math.round((acc.dials / acc.qualified_leads) * 10) / 10 : 0;
       const bookedForRate = acc.unique_booked_leads.size > 0 ? acc.unique_booked_leads.size : acc.appointments;
       const booking_rate = pct(bookedForRate, bookingDenom);
 
@@ -268,7 +271,11 @@ export function computeDialAnalytics(
       if (acc.dials >= 20 && teamPickupRate > 0 && pickup_rate < teamPickupRate * 0.7) {
         flag = "low_pickup";
         flag_label = "Low pickup vs team";
-      } else if (acc.leads >= 5 && teamDialsPerLead > 0 && dials_per_lead > teamDialsPerLead * 1.5) {
+      } else if (
+        acc.qualified_leads >= 5 &&
+        teamDialsPerLead > 0 &&
+        dials_per_lead > teamDialsPerLead * 1.5
+      ) {
         flag = "high_effort";
         flag_label = "High dial effort per lead";
       } else if (acc.leads >= 10 && booking_rate < Math.max(5, teamBookingRate * 0.5)) {
@@ -340,7 +347,8 @@ export function computeDialAnalytics(
       conversation_rate: pct(summaryConversations, summaryDials),
       leads: summaryLeads,
       qualified_leads: summaryQualified,
-      dials_per_lead: summaryLeads > 0 ? Math.round((summaryDials / summaryLeads) * 10) / 10 : 0,
+      dials_per_lead:
+        summaryQualified > 0 ? Math.round((summaryDials / summaryQualified) * 10) / 10 : 0,
       appointments: summaryAppointments,
       booking_rate: pct(summaryBookedForRate, summaryQualified > 0 ? summaryQualified : summaryLeads),
       avg_speed_to_lead_min: speed.median_min,
