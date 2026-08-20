@@ -21,6 +21,10 @@ function cleanEnum<T extends readonly string[]>(
   return allowed.includes(s as T[number]) ? (s as T[number]) : null;
 }
 
+function cleanBool(v: unknown, fallback = false): boolean {
+  return typeof v === 'boolean' ? v : fallback;
+}
+
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -79,6 +83,9 @@ export async function PATCH(
   }
   for (const key of ['platform', 'summary', 'visual_notes', 'drive_url', 'thumbnail_url'] as const) {
     if (key in body) updates[key] = cleanString(body[key]);
+  }
+  if ('ready_to_test' in body) {
+    updates.ready_to_test = cleanBool(body.ready_to_test, false);
   }
 
   let nextTags: string[] | null = null;

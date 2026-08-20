@@ -21,6 +21,10 @@ function cleanEnum<T extends readonly string[]>(
   return allowed.includes(s as T[number]) ? (s as T[number]) : null;
 }
 
+function cleanBool(v: unknown, fallback = false): boolean {
+  return typeof v === 'boolean' ? v : fallback;
+}
+
 export async function GET() {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -116,6 +120,7 @@ export async function POST(req: Request) {
     visual_notes: cleanString(body.visual_notes),
     drive_url: cleanString(body.drive_url),
     thumbnail_url: cleanString(body.thumbnail_url),
+    ready_to_test: cleanBool(body.ready_to_test, false),
     created_by: ctx.userId,
     updated_at: new Date().toISOString(),
   };

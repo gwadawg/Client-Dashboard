@@ -89,6 +89,7 @@ type LibEntry = {
   visual_notes: string | null;
   drive_url: string | null;
   thumbnail_url: string | null;
+  ready_to_test?: boolean;
   knowledge_capture_status?: string | null;
   captured_at?: string | null;
   os_refs?: string[] | null;
@@ -102,6 +103,8 @@ export type LibraryNav = {
   libraryId?: string;
   prefillAdName?: string;
   openForm?: boolean;
+  /** Open Ad Library with the Ready to test filter on. */
+  readyToTest?: boolean;
 } | null;
 
 const PRODUCT_OPTIONS = [
@@ -1551,6 +1554,7 @@ const EMPTY_FORM = {
   thumbnail_url: "",
   summary: "",
   visual_notes: "",
+  ready_to_test: false,
 };
 
 type LibraryMetrics = {
@@ -1577,9 +1581,11 @@ function AdLibrary({
   clientId,
   libraryNav,
   onNavClear,
+  onReadyCountChange,
 }: Props & {
   libraryNav: LibraryNav;
   onNavClear: () => void;
+  onReadyCountChange?: (count: number) => void;
 }) {
   const [entries, setEntries] = useState<LibEntry[]>([]);
   const [metricsById, setMetricsById] = useState<Map<string, LibraryMetrics>>(new Map());
@@ -1595,6 +1601,7 @@ function AdLibrary({
   const [formError, setFormError] = useState<string | null>(null);
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [tagFilter, setTagFilter] = useState("all");
+  const [readyToTestFilter, setReadyToTestFilter] = useState(false);
   const [search, setSearch] = useState("");
   const { formats, labels: formatLabels, createFormat, loading: formatsLoading } = useAdFormats();
   const { tags: tagCatalog, createTag, loading: tagsLoading } = useAdTags();
@@ -1615,6 +1622,7 @@ function AdLibrary({
       thumbnail_url: e.thumbnail_url ?? "",
       summary: e.summary ?? "",
       visual_notes: e.visual_notes ?? "",
+      ready_to_test: !!e.ready_to_test,
     });
   }, []);
 
@@ -1634,7 +1642,14 @@ function AdLibrary({
       }),
     ])
       .then(([libraryData, perfData]) => {
-        setEntries(libraryData.map((e) => ({ ...e, aliases: e.aliases ?? [], tags: e.tags ?? [] })));
+        const nextEntries = libraryData.map((e) => ({
+          ...e,
+          aliases: e.aliases ?? [],
+          tags: e.tags ?? [],
+          ready_to_test: !!e.ready_to_test,
+        }));
+        setEntries(nextEntries);
+        onReadyCountChange?.(nextEntries.filter((e) => e.ready_to_test).length);
         const next = new Map<string, LibraryMetrics>();
         for (const ad of perfData.ads ?? []) {
           const libId = ad.library?.id;
@@ -1645,7 +1660,7 @@ function AdLibrary({
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [startDate, endDate, clientId]);
+  }, [startDate, endDate, clientId, onReadyCountChange]);
 
   useEffect(() => {
     load();
@@ -1653,6 +1668,11 @@ function AdLibrary({
 
   useEffect(() => {
     if (!libraryNav) return;
+    if (libraryNav.readyToTest) {
+      setReadyToTestFilter(true);
+      onNavClear();
+      return;
+    }
     if (libraryNav.prefillAdName && libraryNav.openForm) {
       setFormError(null);
       setForm({ ...EMPTY_FORM, ad_name: libraryNav.prefillAdName });
@@ -1712,6 +1732,7 @@ function AdLibrary({
       thumbnail_url: form.thumbnail_url.trim() || null,
       summary: form.summary.trim() || null,
       visual_notes: form.visual_notes.trim() || null,
+      ready_to_test: !!form.ready_to_test,
     };
     const isEdit = !!form.id;
     const res = await fetch(isEdit ? `/api/ad-library/${form.id}` : "/api/ad-library", {
@@ -1734,6 +1755,19 @@ function AdLibrary({
     load();
   }
 
+  async function clearReadyToTest(id: string) {
+    const res = await fetch(`/api/ad-library/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ready_to_test: false }),
+    });
+    if (!res.ok) {
+      alert((await res.json()).error ?? "Failed to clear Ready to test");
+      return;
+    }
+    load();
+  }
+
   async function queueForKb(entry: LibEntry) {
     if (!entry.summary?.trim()) {
       alert("Add a summary before queuing for the OS knowledge base.");
@@ -1752,24 +1786,32 @@ function AdLibrary({
     load();
   }
 
-  const visibleEntries = useMemo(
-    () =>
-      entries.filter(
-        (e) =>
-          productMatches(e.product, productFilter) &&
-          (tagFilter === "all" || (e.tags ?? []).some((t) => t.slug === tagFilter)) &&
-          matchesAdQuery(
-            [
-              e.ad_name,
-              e.summary,
-              ...(e.aliases ?? []).map((a) => a.alias_name),
-              ...(e.tags ?? []).flatMap((t) => [t.label, t.slug]),
-            ],
-            search,
-          ),
-      ),
-    [entries, productFilter, tagFilter, search],
+  const readyToTestCount = useMemo(
+    () => entries.filter((e) => e.ready_to_test).length,
+    [entries],
   );
+
+  const visibleEntries = useMemo(() => {
+    const filtered = entries.filter(
+      (e) =>
+        (!readyToTestFilter || !!e.ready_to_test) &&
+        productMatches(e.product, productFilter) &&
+        (tagFilter === "all" || (e.tags ?? []).some((t) => t.slug === tagFilter)) &&
+        matchesAdQuery(
+          [
+            e.ad_name,
+            e.summary,
+            ...(e.aliases ?? []).map((a) => a.alias_name),
+            ...(e.tags ?? []).flatMap((t) => [t.label, t.slug]),
+          ],
+          search,
+        ),
+    );
+    if (!readyToTestFilter) return filtered;
+    return [...filtered].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+  }, [entries, productFilter, tagFilter, search, readyToTestFilter]);
   const libraryFilterCounts = useMemo(
     () => ({
       all: entries.length,
@@ -1819,6 +1861,30 @@ function AdLibrary({
             anyLabel="Any topic"
             accent="#6ee7b7"
           />
+          <div className="flex flex-col gap-1.5">
+            <span
+              className="text-[9px] uppercase tracking-[0.18em]"
+              style={{ color: "#64748b", fontFamily: "var(--font-archivo), sans-serif", fontWeight: 600 }}
+            >
+              Queue
+            </span>
+            <button
+              type="button"
+              onClick={() => setReadyToTestFilter((v) => !v)}
+              className="px-3 py-1.5 rounded-md text-xs font-semibold text-left"
+              style={{
+                background: readyToTestFilter ? "rgba(167,139,250,0.18)" : FILTER_INK.panel,
+                border: readyToTestFilter
+                  ? "1px solid rgba(167,139,250,0.55)"
+                  : "1px solid rgba(255,255,255,0.1)",
+                color: readyToTestFilter ? "#c4b5fd" : "#94a3b8",
+                fontFamily: "var(--font-plex-mono)",
+              }}
+              aria-pressed={readyToTestFilter}
+            >
+              Ready to test{readyToTestCount > 0 ? ` · ${readyToTestCount}` : ""}
+            </button>
+          </div>
           <div className="flex-1 min-w-[14rem]">
             <AdSearchInput value={search} onChange={setSearch} placeholder="Name, alias, or topic…" />
           </div>
@@ -1841,9 +1907,11 @@ function AdLibrary({
         </p>
       ) : visibleEntries.length === 0 ? (
         <p style={{ color: "#64748b" }} className="text-sm py-10 text-center">
-          {search.trim()
-            ? `No ads match “${search.trim()}”.`
-            : "No ads match these filters. Adjust product or topic, or tag an ad in the library."}
+          {readyToTestFilter
+            ? "No creatives marked ready to test."
+            : search.trim()
+              ? `No ads match “${search.trim()}”.`
+              : "No ads match these filters. Adjust product or topic, or tag an ad in the library."}
         </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -1886,7 +1954,17 @@ function AdLibrary({
                           {e.ad_name}
                         </p>
                       </button>
-                      <StatusBadge status={e.status} />
+                      <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
+                        {e.ready_to_test ? (
+                          <span
+                            className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
+                            style={{ background: "rgba(167,139,250,0.16)", color: "#c4b5fd" }}
+                          >
+                            Ready to test
+                          </span>
+                        ) : null}
+                        <StatusBadge status={e.status} />
+                      </div>
                     </div>
                     {allNames.length > 1 ? (
                       <div className="mt-1.5">
@@ -1960,6 +2038,17 @@ function AdLibrary({
                   >
                     Open
                   </button>
+                  {e.ready_to_test ? (
+                    <button
+                      type="button"
+                      onClick={() => clearReadyToTest(e.id)}
+                      className="text-xs"
+                      style={{ color: "#c4b5fd" }}
+                      title="Remove from Ready to test queue"
+                    >
+                      Clear ready
+                    </button>
+                  ) : null}
                   {e.drive_url ? (
                     <a href={e.drive_url} target="_blank" rel="noreferrer" className="text-xs underline" style={{ color: "#60a5fa" }}>
                       Creative
@@ -2109,6 +2198,25 @@ function AdLibrary({
                 </select>
               </Field>
             </div>
+            <label
+              className="flex items-start gap-3 rounded-lg px-3 py-2.5 cursor-pointer"
+              style={{ background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.22)" }}
+            >
+              <input
+                type="checkbox"
+                checked={!!form.ready_to_test}
+                onChange={(e) => setForm({ ...form, ready_to_test: e.target.checked })}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block text-sm font-medium" style={{ color: "#e2e8f0" }}>
+                  Ready to test
+                </span>
+                <span className="block text-[11px] mt-0.5" style={{ color: "#94a3b8" }}>
+                  Shows in the Media Buyer Ready to test list until turned off.
+                </span>
+              </span>
+            </label>
             <div>
               <span className="text-[11px] uppercase tracking-wider" style={{ color: "#475569" }}>Ad format</span>
               <div className="mt-1">
@@ -2208,6 +2316,29 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
   const [tab, setTab] = useState<"command" | "performance" | "library">("command");
   const [libraryNav, setLibraryNav] = useState<LibraryNav>(null);
+  const [readyToTestCount, setReadyToTestCount] = useState(0);
+
+  const handleReadyCountChange = useCallback((count: number) => {
+    setReadyToTestCount(count);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/ad-library")
+      .then(async (r) => {
+        if (!r.ok) return [] as LibEntry[];
+        return r.json() as Promise<LibEntry[]>;
+      })
+      .then((data) => {
+        if (!cancelled) setReadyToTestCount(data.filter((e) => e.ready_to_test).length);
+      })
+      .catch(() => {
+        /* strip is best-effort */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
 
   const handleAddToLibrary = useCallback((adName: string) => {
     setLibraryNav({ prefillAdName: adName, openForm: true });
@@ -2219,8 +2350,31 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
     setTab("library");
   }, []);
 
+  const openReadyToTestQueue = useCallback(() => {
+    setLibraryNav({ readyToTest: true });
+    setTab("library");
+  }, []);
+
   return (
     <div className="space-y-5">
+      {tab !== "library" && readyToTestCount > 0 ? (
+        <button
+          type="button"
+          onClick={openReadyToTestQueue}
+          className="w-full text-left rounded-xl px-4 py-3 text-sm font-medium transition-colors"
+          style={{
+            background: "rgba(167,139,250,0.1)",
+            border: "1px solid rgba(167,139,250,0.35)",
+            color: "#e2e8f0",
+          }}
+        >
+          <span style={{ color: "#c4b5fd" }}>
+            {readyToTestCount} creative{readyToTestCount === 1 ? "" : "s"} ready to test
+          </span>
+          <span style={{ color: "#64748b" }}> — open queue</span>
+        </button>
+      ) : null}
+
       <div className="flex gap-2">
         {([
           ["command", "Creative Command"],
@@ -2240,6 +2394,14 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
               }
             >
               {label}
+              {key === "library" && readyToTestCount > 0 ? (
+                <span
+                  className="ml-2 inline-flex items-center justify-center min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                  style={{ background: "rgba(167,139,250,0.2)", color: "#c4b5fd" }}
+                >
+                  {readyToTestCount}
+                </span>
+              ) : null}
             </button>
           );
         })}
@@ -2268,6 +2430,7 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
           clientId={clientId}
           libraryNav={libraryNav}
           onNavClear={() => setLibraryNav(null)}
+          onReadyCountChange={handleReadyCountChange}
         />
       )}
     </div>

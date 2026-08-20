@@ -1,10 +1,11 @@
 ---
 title: Ready to test creatives
-status: draft
-last_updated: 2026-08-19
+status: implemented
+last_updated: 2026-08-20
 artifact_type: design
 related_docs:
   - supabase/schema.sql
+  - supabase/migrations/add_ad_library_ready_to_test.sql
   - src/app/api/ad-library/route.ts
   - src/app/api/ad-library/[id]/route.ts
   - src/components/MediaBuyer.tsx
@@ -14,7 +15,7 @@ related_docs:
 # Ready to test creatives
 
 Date: 2026-08-19
-Status: Draft (awaiting founder review)
+Status: Implemented
 
 ## Problem
 

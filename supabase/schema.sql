@@ -539,6 +539,7 @@ create table if not exists ad_library (
   visual_notes  text,
   drive_url     text,
   thumbnail_url text,
+  ready_to_test boolean not null default false,
   created_by    uuid    references auth.users(id) on delete set null,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
@@ -559,6 +560,9 @@ create table if not exists ad_library (
 create index if not exists ad_library_status_idx on ad_library(status);
 create index if not exists ad_library_ad_format_idx on ad_library(ad_format);
 create index if not exists ad_library_product_idx on ad_library(product);
+create index if not exists ad_library_ready_to_test_idx
+  on ad_library (created_at desc)
+  where ready_to_test = true;
 
 -- Alternate Facebook ad names mapped to the same ad_library creative.
 create table if not exists ad_library_aliases (
