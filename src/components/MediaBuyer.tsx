@@ -1908,7 +1908,7 @@ function AdLibrary({
       ) : visibleEntries.length === 0 ? (
         <p style={{ color: "#64748b" }} className="text-sm py-10 text-center">
           {readyToTestFilter
-            ? "No creatives marked ready to test."
+            ? "Nothing in the test queue. Flag a creative only when the buyer should launch it — not when backfilling the library."
             : search.trim()
               ? `No ads match “${search.trim()}”.`
               : "No ads match these filters. Adjust product or topic, or tag an ad in the library."}
@@ -2213,7 +2213,8 @@ function AdLibrary({
                   Ready to test
                 </span>
                 <span className="block text-[11px] mt-0.5" style={{ color: "#94a3b8" }}>
-                  Shows in the Media Buyer Ready to test list until turned off.
+                  Only for creatives the media buyer should launch/test now (e.g. across accounts).
+                  Leave off when backfilling older ads into the library.
                 </span>
               </span>
             </label>
@@ -2369,9 +2370,9 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
           }}
         >
           <span style={{ color: "#c4b5fd" }}>
-            {readyToTestCount} creative{readyToTestCount === 1 ? "" : "s"} ready to test
+            {readyToTestCount} creative{readyToTestCount === 1 ? "" : "s"} flagged to test
           </span>
-          <span style={{ color: "#64748b" }}> — open queue</span>
+          <span style={{ color: "#64748b" }}> — open launch queue</span>
         </button>
       ) : null}
 

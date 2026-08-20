@@ -29,9 +29,13 @@ on CTR / opt-in. Brand-new uploads with no spend never appear there.
 
 ## Goal
 
-When someone adds or edits a library creative, they can mark **Ready
-to test**. The media buyer sees that set until someone turns the flag
-off.
+When someone adds or edits a library creative **that the media buyer
+should launch/test** (typically a new creative to try across accounts),
+they can mark **Ready to test**. The media buyer sees that set until
+someone turns the flag off.
+
+Backfilling older creatives that were missing from the library is
+**not** a ready-to-test handoff — leave the checkbox off.
 
 ## Non-goals (v1)
 
@@ -84,8 +88,9 @@ No new list endpoint. Count is `entries.filter(e => e.ready_to_test).length` in 
 
 **Form (Add / Edit)**
 
-- Checkbox **Ready to test**, default off on new ads
-- Helper: “Shows in the Media Buyer Ready to test list until turned off”
+- Checkbox **Ready to test**, default **off** (never auto-on for catalog adds)
+- Helper: only for creatives the buyer should launch/test now; leave off
+  when backfilling older ads into the library
 - Persist with the rest of the save body
 
 **List**
