@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { formatLogDate } from "@/lib/closebot";
 
 const inputStyle: CSSProperties = {
@@ -13,6 +13,120 @@ type Option = { id: string; name: string };
 type TypeOption = { slug: string; name: string; description: string | null };
 type CoveringFix = { id?: string; changed_at: string; problem_solved: string };
 type DoneState = "actionable" | "pre_fix" | null;
+
+function ErrorTypePicker({
+  types,
+  value,
+  onChange,
+  disabled,
+}: {
+  types: TypeOption[];
+  value: string;
+  onChange: (slug: string) => void;
+  disabled?: boolean;
+}) {
+  const listId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [previewSlug, setPreviewSlug] = useState<string | null>(null);
+  const selected = types.find((t) => t.slug === value) ?? null;
+  const preview = types.find((t) => t.slug === previewSlug) ?? (open ? selected : null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative space-y-1">
+      <span className="text-xs font-medium text-slate-400">Error type</span>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => {
+          setOpen((v) => !v);
+          setPreviewSlug(value || null);
+        }}
+        className="w-full rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between gap-2"
+        style={inputStyle}
+      >
+        <span style={{ color: selected ? "#e2e8f0" : "#64748b" }}>
+          {selected?.name ?? "Select error type"}
+        </span>
+        <span aria-hidden className="text-[10px]" style={{ color: "#64748b" }}>
+          {open ? "▴" : "▾"}
+        </span>
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 z-30 mt-1 rounded-xl overflow-hidden" style={{ background: "#0f2040", border: "1px solid rgba(245,158,11,0.35)", boxShadow: "0 18px 40px rgba(0,0,0,0.45)" }}>
+          {preview?.description ? (
+            <div className="px-3 py-2.5" style={{ background: "#140e08", borderBottom: "1px solid rgba(245,158,11,0.35)" }}>
+              <p className="cb-form-hint-kicker">{preview.name}</p>
+              <p className="text-[13px] leading-snug" style={{ color: "#f5f5f4" }}>
+                {preview.description}
+              </p>
+            </div>
+          ) : (
+            <p className="px-3 py-2 text-[11px]" style={{ color: "#78716c" }}>
+              Hover an option to see what it covers.
+            </p>
+          )}
+          <ul id={listId} role="listbox" aria-label="Error types" className="max-h-56 overflow-auto py-1">
+            {types.map((t) => {
+              const active = t.slug === value;
+              const hovered = t.slug === previewSlug;
+              return (
+                <li key={t.slug} role="option" aria-selected={active}>
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm"
+                    style={{
+                      background: hovered ? "rgba(245,158,11,0.16)" : active ? "rgba(255,255,255,0.06)" : "transparent",
+                      color: hovered || active ? "#fde68a" : "#e2e8f0",
+                    }}
+                    onMouseEnter={() => setPreviewSlug(t.slug)}
+                    onFocus={() => setPreviewSlug(t.slug)}
+                    onClick={() => {
+                      onChange(t.slug);
+                      setOpen(false);
+                    }}
+                  >
+                    {t.name}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+      <input
+        tabIndex={-1}
+        required
+        value={value}
+        onChange={() => {}}
+        className="absolute h-0 w-0 opacity-0 pointer-events-none"
+        aria-hidden
+      />
+      <span className="text-[11px] text-slate-600">
+        Hover an option in the list to see what that type covers.
+      </span>
+    </div>
+  );
+}
 
 export default function ClosebotTicketForm() {
   const [clients, setClients] = useState<Option[]>([]);
@@ -104,13 +218,12 @@ export default function ClosebotTicketForm() {
     };
   }, [clientId, bugType, occurredAt]);
 
-  const selectedType = useMemo(
-    () => types.find((t) => t.slug === bugType) ?? null,
-    [types, bugType],
-  );
-
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!bugType) {
+      setError("Pick an error type");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -278,34 +391,7 @@ export default function ClosebotTicketForm() {
               style={inputStyle}
             />
           </label>
-          <label className="cb-form-hint block space-y-1">
-            {selectedType?.description ? (
-              <span className="cb-form-hint-box" role="tooltip">
-                <span className="cb-form-hint-kicker">{selectedType.name}</span>
-                {selectedType.description}
-              </span>
-            ) : null}
-            <span className="text-xs font-medium text-slate-400">Error type</span>
-            <select
-              required
-              value={bugType}
-              onChange={(e) => setBugType(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm"
-              style={inputStyle}
-            >
-              <option value="">Select error type</option>
-              {types.map((t) => (
-                <option key={t.slug} value={t.slug} title={t.description ?? ""}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            {selectedType?.description ? (
-              <span className="text-[11px] text-slate-500">Hover this field for what this type covers.</span>
-            ) : (
-              <span className="text-[11px] text-slate-600">Types come from Closebot → Tickets → Type library.</span>
-            )}
-          </label>
+          <ErrorTypePicker types={types} value={bugType} onChange={setBugType} disabled={saving} />
           <label className="block space-y-1">
             <span className="text-xs font-medium text-slate-400">Client</span>
             <select
