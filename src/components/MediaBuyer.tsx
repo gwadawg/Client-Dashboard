@@ -35,6 +35,7 @@ import {
   type LibrarySort,
 } from "@/lib/ad-library-folders";
 import type { AdTagRef } from "@/lib/ad-tags";
+import AdsPausedControl from "@/components/AdsPausedControl";
 
 type Props = {
   startDate: string;
@@ -711,8 +712,12 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
     setLoading(true);
     return fetch(`/api/media-buyer?${params}`)
       .then(async (r) => {
-        if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load");
-        return r.json();
+        const body = await readJson<{ ads?: AdRow[]; error?: string }>(r);
+        if (!r.ok) {
+          throw new Error(body?.error ?? `Failed to load (${r.status})`);
+        }
+        if (!body) throw new Error("Failed to load ad performance");
+        return body;
       })
       .then((data) => {
         setAds(
@@ -2720,6 +2725,11 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
   const tab: MediaBuyerTab = isMediaBuyerTab(tabParam) ? tabParam : "command";
   const [libraryNav, setLibraryNav] = useState<LibraryNav>(null);
   const [readyToTestCount, setReadyToTestCount] = useState(0);
+  const [clientAds, setClientAds] = useState<{
+    name: string;
+    ads_paused: boolean;
+    ads_paused_note: string | null;
+  } | null>(null);
   // Mount each heavy tab once, then hide — switching back must not re-hit the API.
   const [mountedTabs, setMountedTabs] = useState<Record<MediaBuyerTab, boolean>>({
     command: true,
@@ -2730,6 +2740,44 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
   useEffect(() => {
     setMountedTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
   }, [tab]);
+
+  useEffect(() => {
+    if (!clientId) {
+      setClientAds(null);
+      return;
+    }
+    let cancelled = false;
+    // Use the shared client list (any auth user) — full client file GET is admin-only.
+    fetch("/api/clients")
+      .then(async (r) => {
+        if (!r.ok) return null;
+        return r.json();
+      })
+      .then((d) => {
+        if (cancelled || !d?.clients) return;
+        const match = (d.clients as Array<{
+          id: string;
+          name?: string;
+          ads_paused?: boolean;
+          ads_paused_note?: string | null;
+        }>).find(c => c.id === clientId);
+        if (!match) {
+          setClientAds(null);
+          return;
+        }
+        setClientAds({
+          name: match.name ?? "Client",
+          ads_paused: !!match.ads_paused,
+          ads_paused_note: match.ads_paused_note ?? null,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setClientAds(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
 
   const setTab = useCallback(
     (next: MediaBuyerTab) => {
@@ -2787,6 +2835,40 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
     <div className="space-y-5">
       {/* No banner here: the tab's count badge and the Ready to test smart
           folder already carry this, and a third copy read as an alert. */}
+      {clientId && clientAds && (
+        <div
+          className="flex items-center justify-between gap-3 flex-wrap px-3 py-2 rounded-lg"
+          style={{
+            background: clientAds.ads_paused ? "rgba(245,158,11,0.08)" : "rgba(52,211,153,0.06)",
+            border: `1px solid ${clientAds.ads_paused ? "rgba(245,158,11,0.25)" : "rgba(52,211,153,0.2)"}`,
+          }}
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-semibold truncate" style={{ color: "#e2e8f0" }}>
+              {clientAds.name}
+            </p>
+            <p className="text-[11px]" style={{ color: "#64748b" }}>
+              Account-level ads status (separate from creative pause in the library)
+            </p>
+          </div>
+          <AdsPausedControl
+            clientId={clientId}
+            adsPaused={clientAds.ads_paused}
+            adsPausedNote={clientAds.ads_paused_note}
+            onUpdated={next =>
+              setClientAds(prev =>
+                prev
+                  ? {
+                      ...prev,
+                      ads_paused: !!next.ads_paused,
+                      ads_paused_note: next.ads_paused_note ?? null,
+                    }
+                  : prev,
+              )
+            }
+          />
+        </div>
+      )}
       <div className="flex gap-2">
         {MEDIA_BUYER_TABS.map(([key, label]) => {
           const active = tab === key;

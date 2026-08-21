@@ -107,6 +107,8 @@ export default function WorkLogComposer({
   const [changeDate, setChangeDate] = useState(today);
   const [plannedDate, setPlannedDate] = useState("");
   const [reviewDate, setReviewDate] = useState(() => defaultReviewDate(defaultReviewDays));
+  const [markAdsPaused, setMarkAdsPaused] = useState(false);
+  const [markAdsOn, setMarkAdsOn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -149,6 +151,26 @@ export default function WorkLogComposer({
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error ?? "Failed to log work");
+
+      if (markAdsPaused || markAdsOn) {
+        const adsRes = await fetch(`/api/clients/${clientId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            markAdsPaused
+              ? {
+                  ads_paused: true,
+                  ads_paused_note: title.trim() || changeDescription.trim() || "Paused from work log",
+                }
+              : { ads_paused: false },
+          ),
+        });
+        const adsData = await adsRes.json().catch(() => ({}));
+        if (!adsRes.ok) {
+          throw new Error(adsData.error ?? "Work logged, but ads status update failed");
+        }
+      }
+
       setTitle("");
       setChangeDescription("");
       setHypothesis("");
@@ -158,6 +180,8 @@ export default function WorkLogComposer({
       setChangeDate(today);
       setPlannedDate("");
       setWorkType("cadence");
+      setMarkAdsPaused(false);
+      setMarkAdsOn(false);
       onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to log work");
@@ -374,6 +398,32 @@ export default function WorkLogComposer({
         </div>
       )}
       {error && <p className="text-xs text-rose-400">{error}</p>}
+      <div className="flex flex-col gap-1.5">
+        <label className="flex items-center gap-2 text-[11px] cursor-pointer" style={{ color: "#94a3b8" }}>
+          <input
+            type="checkbox"
+            checked={markAdsPaused}
+            onChange={e => {
+              setMarkAdsPaused(e.target.checked);
+              if (e.target.checked) setMarkAdsOn(false);
+            }}
+            className="rounded"
+          />
+          Also mark ads paused on this client
+        </label>
+        <label className="flex items-center gap-2 text-[11px] cursor-pointer" style={{ color: "#94a3b8" }}>
+          <input
+            type="checkbox"
+            checked={markAdsOn}
+            onChange={e => {
+              setMarkAdsOn(e.target.checked);
+              if (e.target.checked) setMarkAdsPaused(false);
+            }}
+            className="rounded"
+          />
+          Also mark ads back on
+        </label>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"

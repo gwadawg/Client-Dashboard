@@ -39,7 +39,7 @@ const CLIENT_NOTES_FIELDS =
   'id, note_type, reason_code, body, created_at, created_by, updated_at, related_call_id';
 
 const FILE_CLIENT_FIELDS =
-  'id, name, identity_client_id, is_live, reporting_type, service_program, sales_package, offer, offer_summary, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, legal_business_name, nmls, city, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, clickup_task_id, created_at, churned_at';
+  'id, name, identity_client_id, is_live, reporting_type, service_program, sales_package, offer, offer_summary, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, ads_paused, ads_paused_at, ads_paused_note, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, brokerage_name, legal_business_name, nmls, city, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, clickup_task_id, created_at, churned_at';
 
 const FILE_BILLING_FIELDS =
   'id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, passthrough_amount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, stripe_invoice_id, stripe_payment_intent_id, is_first_payment, is_extension, created_at';
@@ -159,15 +159,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const body = await req.json();
 
-  // Client Success may update only KPI judgment standards; full client edits stay admin.
+  // Client Success may update only KPI judgment standards; media/CS may toggle ads pause.
+  // Full client edits stay admin (+ billing for billing fields).
   const kpiOnlyKeys = new Set(['kpi_benchmarks', 'kpi_benchmarks_note']);
+  const adsOnlyKeys = new Set(['ads_paused', 'ads_paused_note']);
   const bodyKeys = Object.keys(body ?? {});
   const isKpiOnlyPatch =
     bodyKeys.length > 0 && bodyKeys.every(k => kpiOnlyKeys.has(k));
+  const isAdsOnlyPatch =
+    bodyKeys.length > 0 && bodyKeys.every(k => adsOnlyKeys.has(k));
 
   const denied = isKpiOnlyPatch
     ? requireAnyPermission(ctx, ['admin_clients', 'admin_billing', 'client_health'])
-    : requireAnyPermission(ctx, ['admin_clients', 'admin_billing']);
+    : isAdsOnlyPatch
+      ? requireAnyPermission(ctx, [
+          'admin_clients',
+          'admin_billing',
+          'media_buyer',
+          'client_workspace',
+          'client_health',
+        ])
+      : requireAnyPermission(ctx, ['admin_clients', 'admin_billing']);
   if (denied) return denied;
 
   const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
@@ -183,7 +195,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     'billing_model', 'pay_per_show', 'pay_per_bailed',
     // Lifecycle (pause/churn/reactivate) + performance pricing note.
     // billing_paused: billing-tab pause without changing lifecycle status.
+    // ads_paused: media spend off without changing lifecycle status.
     'lifecycle_status', 'churned_at', 'performance_terms', 'billing_paused', 'billing_paused_note',
+    'ads_paused', 'ads_paused_note',
     // Identity / contact (Client Roster + Client File editor)
     'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'ghl_location_id', 'clickup_task_id',
     'phone', 'source', 'website', 'brokerage_name', 'legal_business_name', 'nmls',
@@ -196,7 +210,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     'kpi_benchmarks',
   ];
   const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend', 'billing_day', 'pay_per_show', 'pay_per_bailed']);
-  const booleanFields = new Set(['live_transfer_approved', 'billing_paused']);
+  const booleanFields = new Set(['live_transfer_approved', 'billing_paused', 'ads_paused']);
   const updates: Record<string, unknown> = {};
   if ('states_licensed' in body) {
     updates.states_licensed = normalizeStatesLicensed(body.states_licensed);
@@ -310,14 +324,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   // a churn reason unless the status is actually changing.
   let previousLifecycle: string | null = null;
   let previousMrr: number | null = null;
+  let previousAdsPaused: boolean | null = null;
   const { data: priorRow, error: priorErr } = await ctx.service
     .from('clients')
-    .select('lifecycle_status, mrr, is_live, churned_at')
+    .select('lifecycle_status, mrr, is_live, churned_at, ads_paused')
     .eq('id', id)
     .single();
   if (priorErr) return NextResponse.json({ error: priorErr.message }, { status: 500 });
   previousLifecycle = priorRow.lifecycle_status ?? null;
   previousMrr = priorRow.mrr ?? null;
+  previousAdsPaused = priorRow.ads_paused === true;
 
   const lifecycleIsChanging =
     !!newLifecycle && newLifecycle !== previousLifecycle;
@@ -358,6 +374,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const pausing = updates.billing_paused === true;
     updates.billing_paused_at = pausing ? new Date().toISOString() : null;
     if (!pausing) updates.billing_paused_note = null;
+  }
+
+  // Stamp ads pause / resume timestamps when the flag changes.
+  if ('ads_paused' in updates) {
+    const pausing = updates.ads_paused === true;
+    updates.ads_paused_at = pausing ? new Date().toISOString() : null;
+    if (!pausing) updates.ads_paused_note = null;
   }
 
   const relatedCallId =
@@ -483,6 +506,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       changed_by: ctx.userId,
       note: typeof body.mrr_change_note === 'string' ? body.mrr_change_note.trim() || null : null,
     });
+  }
+
+  // Timeline note when ads pause flips (appears in Client File activity rail).
+  if (
+    'ads_paused' in updates
+    && updates.ads_paused !== previousAdsPaused
+  ) {
+    const paused = updates.ads_paused === true;
+    const noteText = paused
+      ? updates.ads_paused_note
+        ? `Ads paused — ${String(updates.ads_paused_note)}`
+        : 'Ads paused'
+      : 'Ads turned back on';
+    const { error: noteErr } = await ctx.service.from('client_notes').insert({
+      client_id: id,
+      note_type: 'internal',
+      body: noteText,
+      created_by: ctx.userId,
+    });
+    if (noteErr) console.error('[clients] ads_paused activity note failed', noteErr);
   }
 
   const client = includeRevenue ? data : redactClientMoneyFields(data);

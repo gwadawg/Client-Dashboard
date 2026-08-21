@@ -511,7 +511,7 @@ async function fetchClientHealthSummary(ctx: AuthContext, clientId: string) {
   const [{ data: client }, { data: snapshot }, { data: actions }] = await Promise.all([
     ctx.service
       .from('clients')
-      .select('id, name, lifecycle_status, cs_status, ad_status, is_live')
+      .select('id, name, lifecycle_status, cs_status, ad_status, ads_paused, ads_paused_at, ads_paused_note, is_live')
       .eq('id', clientId)
       .maybeSingle(),
     ctx.service
@@ -542,6 +542,9 @@ async function fetchClientHealthSummary(ctx: AuthContext, clientId: string) {
       lifecycle_status: client.lifecycle_status,
       cs_status: client.cs_status,
       ad_status: client.ad_status,
+      ads_paused: client.ads_paused === true,
+      ads_paused_at: client.ads_paused_at ?? null,
+      ads_paused_note: client.ads_paused_note ?? null,
       is_live: client.is_live,
     },
     latest_snapshot: snapshot ?? null,

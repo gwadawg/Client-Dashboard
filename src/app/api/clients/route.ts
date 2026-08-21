@@ -13,7 +13,7 @@ import { normalizeClientLeadSource } from '@/lib/client-lead-source';
 import { ensureAccountGroupForNewClient } from '@/lib/client-account-groups';
 
 const DETAIL_FIELDS =
-  'id, name, is_live, reporting_type, service_program, sales_package, offer, share_token, created_at, lifecycle_status, mrr, daily_adspend, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id, account_group_id, engagement_kind';
+  'id, name, is_live, reporting_type, service_program, sales_package, offer, share_token, created_at, lifecycle_status, mrr, daily_adspend, ads_paused, ads_paused_at, ads_paused_note, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id, account_group_id, engagement_kind';
 
 // GET is intentionally open to any authenticated user: the client list powers
 // the global client-filter dropdown on nearly every tab, so it is a shared
@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   if (!detail) {
     const { data, error } = await ctx.service
       .from('clients')
-      .select('id, name, is_live, reporting_type, share_token, created_at, launch_date, date_signed, lifecycle_status, churned_at, states_licensed')
+      .select('id, name, is_live, reporting_type, share_token, created_at, launch_date, date_signed, lifecycle_status, churned_at, states_licensed, ads_paused, ads_paused_at, ads_paused_note')
       .order('name');
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ clients: data });

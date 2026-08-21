@@ -14,6 +14,7 @@ import Link from "next/link";
 import { churnFormHref, isChurnOffboardEligible } from "@/lib/internal-forms";
 import { FormProgressStrip } from "@/components/ClientFormsSection";
 import LifecycleStatusSelect from "@/components/LifecycleStatusSelect";
+import AdsPausedControl from "@/components/AdsPausedControl";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
@@ -57,6 +58,9 @@ type Client = {
   lifecycle_status?: string | null;
   mrr?: number | null;
   daily_adspend?: number | null;
+  ads_paused?: boolean | null;
+  ads_paused_at?: string | null;
+  ads_paused_note?: string | null;
   billing_type?: string | null;
   billing_day?: number | null;
   launch_date?: string | null;
@@ -137,7 +141,7 @@ const SECTION_ACCENT: Record<SectionKey, string> = {
 };
 
 /** Optional middle columns, swapped per role-based view preset. */
-type ColumnKey = "stage" | "tenure" | "adspend" | "launch" | "cs_call";
+type ColumnKey = "stage" | "tenure" | "adspend" | "ads" | "launch" | "cs_call";
 
 type RosterView = "full" | "cs" | "media";
 
@@ -150,7 +154,7 @@ const ROSTER_VIEWS: { key: RosterView; label: string }[] = [
 const VIEW_COLUMNS: Record<RosterView, ColumnKey[]> = {
   full: ["stage", "tenure", "cs_call", "adspend"],
   cs: ["stage", "tenure", "cs_call"],
-  media: ["launch", "adspend", "tenure"],
+  media: ["launch", "adspend", "ads", "tenure"],
 };
 
 function moneyShort(n: number | null | undefined): string {
@@ -174,6 +178,15 @@ const COLUMN_DEFS: Record<ColumnKey, { header: string; revenueOnly?: boolean; re
     header: "Ad spend",
     revenueOnly: true,
     render: c => <span className="text-xs whitespace-nowrap" style={{ color: c.daily_adspend != null ? "#cbd5e1" : "#334155" }}>{c.daily_adspend != null ? `${moneyShort(c.daily_adspend)}/day` : "—"}</span>,
+  },
+  ads: {
+    header: "Ads",
+    // Rendered specially in ClientRow so toggle can update roster state.
+    render: c => (
+      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={c.ads_paused ? { color: "#f59e0b", background: "rgba(245,158,11,0.12)" } : { color: "#64748b" }}>
+        {c.ads_paused ? "Paused" : "On"}
+      </span>
+    ),
   },
   launch: {
     header: "Launch",
@@ -428,6 +441,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [statusFilter, setStatusFilter] = useState<SectionKey | "all">("all");
   const [offerFilter, setOfferFilter] = useState<ReportingType | "all">("all");
   const [packageFilter, setPackageFilter] = useState<"all" | "core_offer" | "mid_offer" | "skool" | "unset">("all");
+  const [adsFilter, setAdsFilter] = useState<"all" | "on" | "paused">("all");
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [statusChange, setStatusChange] = useState<{ clientId: string; clientName: string; targetStatus: string } | null>(null);
@@ -649,13 +663,16 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     if (packageFilter === "mid_offer" && normalizeSalesPackage(c.sales_package) !== "mid_offer") return false;
     if (packageFilter === "skool" && normalizeSalesPackage(c.sales_package) !== "skool") return false;
     if (packageFilter === "unset" && c.sales_package) return false;
+    if (adsFilter === "paused" && !c.ads_paused) return false;
+    if (adsFilter === "on" && c.ads_paused) return false;
     if (!q) return true;
     return clientMatchesQuery(c, q);
   });
   const grouped = groupAccountsBySection(groupClientsIntoAccounts(matched));
   const accountTotal = countRosterAccounts(clients);
   const counts = groupAccountsBySection(groupClientsIntoAccounts(clients));
-  const isFiltering = q.length > 0 || statusFilter !== "all" || offerFilter !== "all" || packageFilter !== "all";
+  const isFiltering = q.length > 0 || statusFilter !== "all" || offerFilter !== "all" || packageFilter !== "all" || adsFilter !== "all";
+  const adsPausedCount = clients.filter(c => c.ads_paused).length;
   const visibleSections = ROSTER_SECTIONS.filter(s => statusFilter === "all" || s.key === statusFilter);
   const matchTotal = visibleSections.reduce((n, s) => n + grouped[s.key].length, 0);
 
@@ -731,6 +748,9 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         onToggleActions={() => setActionsFor(prev => (prev === c.id ? null : c.id))}
         onRequestStatusChange={target => requestStatusChange(c, target)}
         onPatch={patchClient}
+        onAdsUpdated={(id, next) =>
+          setClients(prev => prev.map(x => (x.id === id ? { ...x, ...next } : x)))
+        }
         onOpenFile={() => openClientFile(c.id, c.name)}
         onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
         onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
@@ -961,6 +981,34 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                     }}
                   >
                     {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-1 flex-wrap" title="Filter by whether Meta/ads spend is on or paused">
+              {([
+                { key: "all", label: "All ads", count: clients.length },
+                { key: "on", label: "Ads on", count: clients.length - adsPausedCount },
+                { key: "paused", label: "Ads paused", count: adsPausedCount },
+              ] as const).map(opt => {
+                const active = adsFilter === opt.key;
+                const accent = opt.key === "paused" ? "#f59e0b" : opt.key === "on" ? "#34d399" : "#94a3b8";
+                return (
+                  <button
+                    key={opt.key}
+                    onClick={() => setAdsFilter(opt.key)}
+                    className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5"
+                    style={{
+                      color: active ? "#e2e8f0" : "#64748b",
+                      background: active ? "rgba(255,255,255,0.07)" : "transparent",
+                      border: `1px solid ${active ? "rgba(255,255,255,0.14)" : "transparent"}`,
+                    }}
+                  >
+                    {opt.key !== "all" && (
+                      <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: accent }} />
+                    )}
+                    {opt.label}
+                    <span style={{ color: active ? accent : "#475569" }}>{opt.count}</span>
                   </button>
                 );
               })}
@@ -1245,7 +1293,7 @@ function AccountGroupHeaderRow({
 }
 
 function ClientRow({
-  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange,   columns, colSpan, benchmarksOpen, actionsOpen, onToggleActions, onRequestStatusChange, onPatch, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onAddOffer, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete, variant = "standalone",
+  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange,   columns, colSpan, benchmarksOpen, actionsOpen, onToggleActions, onRequestStatusChange, onPatch, onAdsUpdated, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onAddOffer, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete, variant = "standalone",
 }: {
   client: Client;
   allClients: Client[];
@@ -1263,6 +1311,7 @@ function ClientRow({
   onToggleActions: () => void;
   onRequestStatusChange: (target: string) => void;
   onPatch: (id: string, body: Record<string, unknown>) => void;
+  onAdsUpdated: (id: string, next: { ads_paused?: boolean | null; ads_paused_at?: string | null; ads_paused_note?: string | null }) => void;
   onOpenFile: () => void;
   onOpenKickoff: () => void;
   onOpenLaunch: () => void;
@@ -1355,7 +1404,18 @@ function ClientRow({
       </td>
       {columns.map(key => (
         <td key={key} className={cell}>
-          {COLUMN_DEFS[key].render(c)}
+          {key === "ads" ? (
+            <AdsPausedControl
+              clientId={c.id}
+              adsPaused={!!c.ads_paused}
+              adsPausedNote={c.ads_paused_note}
+              variant="row"
+              disabled={busy}
+              onUpdated={next => onAdsUpdated(c.id, next)}
+            />
+          ) : (
+            COLUMN_DEFS[key].render(c)
+          )}
         </td>
       ))}
       <td className="px-3 py-2 text-right whitespace-nowrap">

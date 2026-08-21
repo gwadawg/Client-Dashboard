@@ -40,6 +40,7 @@ import ClientContactsSection from "@/components/ClientContactsSection";
 import ClientFileEditForm, { countMissingFields } from "@/components/ClientFileEditForm";
 import { toDateInputValue } from "@/lib/client-dates";
 import LifecycleStatusSelect from "@/components/LifecycleStatusSelect";
+import AdsPausedControl from "@/components/AdsPausedControl";
 import ClientFormsSection, { type FormSubmissionSummary } from "@/components/ClientFormsSection";
 import LoanLogLinkSection from "@/components/loan-log/LoanLogLinkSection";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
@@ -101,6 +102,9 @@ type FileClient = {
   contract_end_date: string | null;
   contract_term_months: number | null;
   daily_adspend: number | null;
+  ads_paused?: boolean | null;
+  ads_paused_at?: string | null;
+  ads_paused_note?: string | null;
   performance_terms: string | null;
   billing_email: string | null;
   primary_contact: string | null;
@@ -746,6 +750,22 @@ export default function ClientFile({
               {client && (
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={client.lifecycle_status === "active" ? { color: "#22c55e", background: "rgba(34,197,94,0.12)" } : { color: "#ef4444", background: "rgba(239,68,68,0.12)" }}>
                   {client.lifecycle_status === "active" ? "Live" : "Offline"}
+                </span>
+              )}
+              {client && !editing && (
+                <AdsPausedControl
+                  clientId={clientId}
+                  adsPaused={!!client.ads_paused}
+                  adsPausedNote={client.ads_paused_note}
+                  disabled={savingProfile}
+                  onUpdated={next =>
+                    setClient(prev => (prev ? { ...prev, ...next } : prev))
+                  }
+                />
+              )}
+              {client && editing && client.ads_paused && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)" }}>
+                  Ads paused
                 </span>
               )}
               {!editing && missingCount > 0 && (
