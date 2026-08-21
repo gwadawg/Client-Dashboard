@@ -9,6 +9,7 @@ import {
   isValidTeamCallType,
   normalizeHighlights,
 } from '@/lib/team-calls';
+import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 function optionalText(value: unknown): string | null {
   if (value === null || value === undefined) return null;
@@ -191,6 +192,18 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'team.meeting_logged',
+    actor: { userId: ctx.userId },
+    fields: {
+      title,
+      call_type: callType,
+      called_at: calledAt,
+      participants: optionalText(body.participants),
+      summary: optionalText(body.summary),
+    },
+  });
 
   return NextResponse.json(
     {

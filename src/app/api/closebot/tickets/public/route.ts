@@ -2,6 +2,18 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
 import { coveringFixFromTicket, createClosebotTicket } from "@/lib/closebot-store";
 import type { ClosebotTicket } from "@/lib/closebot";
+import {
+  closebotStatusLabel,
+  notifyMrWaizActivity,
+} from "@/lib/mr-waiz-activity-notify";
+
+function nestedName(row: unknown, key: "client" | "agent"): string | null {
+  if (!row || typeof row !== "object") return null;
+  const nested = (row as Record<string, unknown>)[key];
+  if (!nested || typeof nested !== "object") return null;
+  const name = (nested as { name?: unknown }).name;
+  return typeof name === "string" && name.trim() ? name.trim() : null;
+}
 
 const RATE_LIMIT_MS = 15_000;
 const recentSubmits = new Map<string, number>();
@@ -39,6 +51,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: created.error }, { status: created.status });
   }
   const ticket = created.ticket as ClosebotTicket | undefined;
+  if (ticket) {
+    void notifyMrWaizActivity(db, {
+      eventKey: "closebot.ticket_created",
+      actor: { label: ticket.reporter_name },
+      fields: {
+        reporter_name: ticket.reporter_name,
+        client_name: nestedName(ticket, "client"),
+        agent_name: nestedName(ticket, "agent"),
+        bug_type: ticket.bug_type,
+        status: ticket.status,
+        status_label: closebotStatusLabel(ticket.status),
+        description: ticket.description,
+        contact_url: ticket.contact_url,
+      },
+    });
+  }
   return NextResponse.json({
     ok: true,
     coverage: ticket?.coverage === "pre_fix" ? "pre_fix" : "actionable",

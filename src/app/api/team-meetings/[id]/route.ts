@@ -9,6 +9,7 @@ import {
   type TemplateDb,
 } from '@/lib/team-meetings-db';
 import { isValidTeamCallType } from '@/lib/team-calls';
+import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 function optionalText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -269,6 +270,20 @@ export async function POST(req: Request, routeCtx: RouteCtx) {
     .single();
 
   if (updInstErr) return NextResponse.json({ error: updInstErr.message }, { status: 500 });
+
+  if (nextStatus === 'completed') {
+    void notifyMrWaizActivity(ctx.service, {
+      eventKey: 'team.meeting_completed',
+      actor: { userId: ctx.userId },
+      fields: {
+        title: (template as TemplateDb).title,
+        scheduled_at: ex.scheduled_at,
+        participants: optionalText(responses.participants_present),
+        summary: optionalText(responses.summary),
+        recording_url: recording_url,
+      },
+    });
+  }
 
   return NextResponse.json({
     row: mapInstanceView(updated as Record<string, unknown>, template as TemplateDb),

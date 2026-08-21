@@ -11,7 +11,42 @@ import {
   isClosebotTicketStatus,
   parseChangedAt,
 } from "@/lib/closebot";
-import { createClosebotTicket, TICKET_SELECT } from "@/lib/closebot-store";
+import { createClosebotTicket } from "@/lib/closebot-store";
+import {
+  closebotStatusLabel,
+  notifyMrWaizActivity,
+} from "@/lib/mr-waiz-activity-notify";
+
+function nestedName(row: unknown, key: "client" | "agent"): string | null {
+  if (!row || typeof row !== "object") return null;
+  const nested = (row as Record<string, unknown>)[key];
+  if (!nested || typeof nested !== "object") return null;
+  const name = (nested as { name?: unknown }).name;
+  return typeof name === "string" && name.trim() ? name.trim() : null;
+}
+
+function notifyTicketCreated(
+  service: Parameters<typeof notifyMrWaizActivity>[0],
+  ticket: unknown,
+  actor: { userId?: string | null; label?: string | null },
+) {
+  if (!ticket || typeof ticket !== "object") return;
+  const t = ticket as Record<string, unknown>;
+  void notifyMrWaizActivity(service, {
+    eventKey: "closebot.ticket_created",
+    actor,
+    fields: {
+      reporter_name: typeof t.reporter_name === "string" ? t.reporter_name : null,
+      client_name: nestedName(ticket, "client"),
+      agent_name: nestedName(ticket, "agent"),
+      bug_type: typeof t.bug_type === "string" ? t.bug_type : null,
+      status: typeof t.status === "string" ? t.status : null,
+      status_label: closebotStatusLabel(typeof t.status === "string" ? t.status : null),
+      description: typeof t.description === "string" ? t.description : null,
+      contact_url: typeof t.contact_url === "string" ? t.contact_url : null,
+    },
+  });
+}
 
 const DEFAULT_LIMIT = 80;
 const MAX_LIMIT = 200;
@@ -105,5 +140,14 @@ export async function POST(req: Request) {
   if (created.error) {
     return NextResponse.json({ error: created.error }, { status: created.status });
   }
+  notifyTicketCreated(ctx.service, created.ticket, {
+    userId: ctx.userId,
+    label:
+      created.ticket &&
+      typeof created.ticket === "object" &&
+      typeof (created.ticket as { reporter_name?: unknown }).reporter_name === "string"
+        ? (created.ticket as { reporter_name: string }).reporter_name
+        : null,
+  });
   return NextResponse.json(created.ticket, { status: 201 });
 }

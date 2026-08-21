@@ -21,6 +21,7 @@ import {
   replaceLogBugTypes,
   resolveVersionForLog,
 } from "@/lib/closebot-store";
+import { notifyMrWaizActivity } from "@/lib/mr-waiz-activity-notify";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
@@ -181,8 +182,36 @@ export async function POST(req: Request) {
       .eq("id", data.id)
       .maybeSingle();
     if (reloadErr) return NextResponse.json({ error: reloadErr.message }, { status: 500 });
-    return NextResponse.json(hydratePromptLog(hydrated), { status: 201 });
+    const log = hydratePromptLog(hydrated);
+    if (log) {
+      void notifyMrWaizActivity(ctx.service, {
+        eventKey: "closebot.agent_log_created",
+        actor: { userId: ctx.userId },
+        fields: {
+          agent_name: log.agent?.name ?? null,
+          status: log.status,
+          problem_solved: log.problem_solved,
+          change_reason: log.change_reason,
+          outcome_notes: log.outcome_notes,
+        },
+      });
+    }
+    return NextResponse.json(log, { status: 201 });
   }
 
-  return NextResponse.json(hydratePromptLog(data), { status: 201 });
+  const fallback = hydratePromptLog(data);
+  if (fallback) {
+    void notifyMrWaizActivity(ctx.service, {
+      eventKey: "closebot.agent_log_created",
+      actor: { userId: ctx.userId },
+      fields: {
+        agent_name: fallback.agent?.name ?? null,
+        status: fallback.status,
+        problem_solved: fallback.problem_solved,
+        change_reason: fallback.change_reason,
+        outcome_notes: fallback.outcome_notes,
+      },
+    });
+  }
+  return NextResponse.json(fallback, { status: 201 });
 }

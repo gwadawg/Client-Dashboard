@@ -10,6 +10,11 @@ import {
   validateDepartmentCustom,
   validateSharedResponses,
 } from '@/lib/eod-forms';
+import {
+  eodDepartmentLabel,
+  notifyMrWaizActivity,
+  summarizeEodAccomplishments,
+} from '@/lib/mr-waiz-activity-notify';
 
 function todayLocalDate(): string {
   const d = new Date();
@@ -201,6 +206,30 @@ export async function POST(req: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  const responsesObj = responses as Record<string, unknown>;
+  void notifyMrWaizActivity(service, {
+    eventKey: 'team.eod_submitted',
+    actor: {
+      userId: submittedByUserId,
+      label: submittedByLabel,
+    },
+    fields: {
+      department: dept,
+      department_label: eodDepartmentLabel(dept),
+      agent_name: agent.name as string,
+      work_date: workDate,
+      accomplishments: summarizeEodAccomplishments(responsesObj),
+      tomorrow_priorities:
+        typeof responsesObj.tomorrow_priorities === 'string'
+          ? responsesObj.tomorrow_priorities
+          : null,
+      productivity_rating:
+        responsesObj.productivity_rating != null
+          ? String(responsesObj.productivity_rating)
+          : null,
+    },
+  });
 
   return NextResponse.json({ ok: true, submission: data });
 }

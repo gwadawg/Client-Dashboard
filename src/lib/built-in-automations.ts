@@ -60,6 +60,18 @@ export const BUILT_IN_AUTOMATIONS: BuiltInAutomation[] = [
     ],
     enabled: true,
   },
+  {
+    id: 'mr-waiz-internal-activity',
+    name: 'Internal team activity feed',
+    event_key: 'team.activity_feed',
+    trigger:
+      'Team work succeeds: meetings, work logs, EOD, CS/plan task done, Closebot tickets & agent logs (not client onboarding)',
+    actions: [
+      'Slack — mr_waiz team channel (C0BRRU9C4SH) with who + full details',
+      'Add slug mr_waiz in Automations → Team channels and /invite the bot',
+    ],
+    enabled: true,
+  },
 ];
 
 export function getBuiltInAutomation(eventKey: string): BuiltInAutomation | undefined {

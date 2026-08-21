@@ -20,6 +20,7 @@ import {
 import { createClientActionLog } from '@/lib/client-action-log-write';
 import { defaultReviewDateFromTimebox } from '@/lib/client-health-interventions';
 import { isWorkType, normalizeLoomUrl, parseBetCategory, parseWorkType } from '@/lib/client-work-log';
+import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz, ymdInTimeZone } from '@/lib/time';
 
 function optionalText(value: unknown): string | null {
@@ -304,6 +305,20 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
         .single();
 
       if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
+
+      const clientName = await resolveClientName(ctx.service, task.client_id);
+      void notifyMrWaizActivity(ctx.service, {
+        eventKey: 'plan.task_done',
+        actor: { userId: ctx.userId },
+        fields: {
+          client_name: clientName,
+          title: task.title,
+          scheduled_for: task.scheduled_for,
+          completion_report,
+          work_type,
+        },
+      });
+
       return NextResponse.json({ task: updated });
     }
 

@@ -22,6 +22,18 @@ import {
   resolveVersionAt,
   TICKET_SELECT,
 } from "@/lib/closebot-store";
+import {
+  closebotStatusLabel,
+  notifyMrWaizActivity,
+} from "@/lib/mr-waiz-activity-notify";
+
+function nestedName(row: unknown, key: "client" | "agent"): string | null {
+  if (!row || typeof row !== "object") return null;
+  const nested = (row as Record<string, unknown>)[key];
+  if (!nested || typeof nested !== "object") return null;
+  const name = (nested as { name?: unknown }).name;
+  return typeof name === "string" && name.trim() ? name.trim() : null;
+}
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -275,6 +287,32 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+
+  const prevStatus = existing.status as string;
+  const newStatus = (data as { status?: string }).status;
+  if (typeof newStatus === "string" && newStatus !== prevStatus) {
+    void notifyMrWaizActivity(ctx.service, {
+      eventKey: "closebot.ticket_status_changed",
+      actor: { userId: ctx.userId },
+      fields: {
+        client_name: nestedName(data, "client"),
+        agent_name: nestedName(data, "agent"),
+        ticket_id: id,
+        from_status: prevStatus,
+        to_status: newStatus,
+        from_status_label: closebotStatusLabel(prevStatus),
+        to_status_label: closebotStatusLabel(newStatus),
+        status_notes:
+          typeof (data as { status_notes?: unknown }).status_notes === "string"
+            ? ((data as { status_notes: string }).status_notes)
+            : null,
+        description:
+          typeof (data as { description?: unknown }).description === "string"
+            ? (data as { description: string }).description
+            : null,
+      },
+    });
+  }
 
   if (nextPromptLogId && nextBugType && nextStatus === "resolved_updated_agent") {
     const reclass = await reclassifyOpenTicketsForAgent(ctx.service, agentId);

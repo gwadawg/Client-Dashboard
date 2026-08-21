@@ -26,6 +26,7 @@ import {
   type BetCategoryId,
   type WorkType,
 } from '@/lib/client-work-log';
+import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 type Service = ReturnType<typeof createServiceClient>;
 
@@ -251,5 +252,23 @@ export async function createClientActionLog(
     .single();
 
   if (error) throw new Error(error.message);
+
+  const clientName = await resolveClientName(service, body.client_id);
+  void notifyMrWaizActivity(service, {
+    eventKey: 'client.work_log_created',
+    actor: { userId },
+    fields: {
+      client_name: clientName,
+      title,
+      work_type: workType,
+      status,
+      change_description:
+        typeof body.change_description === 'string' ? body.change_description : null,
+      hypothesis: hypothesis,
+      bet_category: betCategory,
+      loom_url: loomUrl,
+    },
+  });
+
   return { action: data as Record<string, unknown> };
 }

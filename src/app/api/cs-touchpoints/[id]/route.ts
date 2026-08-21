@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 type PatchBody = {
   action?: 'done' | 'snooze' | 'skip';
@@ -81,6 +82,21 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  if (action === 'done') {
+    const clientName = await resolveClientName(ctx.service, data.client_id as string);
+    void notifyMrWaizActivity(ctx.service, {
+      eventKey: 'cs.touchpoint_done',
+      actor: { userId: ctx.userId },
+      fields: {
+        client_name: clientName,
+        touchpoint_type: String(data.touchpoint_type ?? ''),
+        slack_snippet: typeof data.slack_snippet === 'string' ? data.slack_snippet : null,
+        completion_note:
+          typeof data.completion_note === 'string' ? data.completion_note : null,
+      },
+    });
+  }
 
   return NextResponse.json({ row: data });
 }
