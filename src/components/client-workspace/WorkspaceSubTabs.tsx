@@ -17,7 +17,7 @@ export default function WorkspaceSubTabs({ tabs, activeTab, onTabChange }: Props
   return (
     <div
       role="tablist"
-      className="flex items-center gap-1 overflow-x-auto -mx-1 px-1"
+      className="flex items-center gap-1 overflow-x-auto -mx-1 px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       style={{ borderBottom: "1px solid var(--color-ws-hairline)" }}
     >
       {tabs.map(tab => {
@@ -29,7 +29,7 @@ export default function WorkspaceSubTabs({ tabs, activeTab, onTabChange }: Props
             role="tab"
             aria-selected={active}
             onClick={() => onTabChange(tab.key)}
-            className="relative px-3 py-2 text-[13px] font-medium whitespace-nowrap transition-colors duration-200 ease-ws"
+            className="relative px-3 py-2 text-[13px] font-medium whitespace-nowrap transition-colors duration-200 ease-ws focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ws-accent)]/40 rounded-sm"
             style={{ color: active ? "var(--color-ws-text)" : "var(--color-ws-text-dim)" }}
           >
             {tab.label}

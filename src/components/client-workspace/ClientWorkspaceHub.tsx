@@ -27,7 +27,7 @@ const LeadProfilesTable = dynamic(() => import("../LeadProfilesTable"));
 
 type Props = {
   tab: ClientWorkspaceTab;
-  /** Level-2 selection, or `conversions` on the KPIs tab. */
+  /** Level-2 selection, or `roi` / legacy `conversions` on the KPIs tab. */
   sub: string | null;
   onTabChange: (tab: ClientWorkspaceTab) => void;
   onSubChange: (sub: string | null) => void;
@@ -222,8 +222,8 @@ function ExplorerPanel({ tab, filters }: { tab: DataExplorerTab; filters: Dashbo
     endDate: filters.dateEnd,
   };
 
-  if (tab === "leads" || tab === "conversions") {
-    return <LeadProfilesTable {...scope} conversionsTab={tab === "conversions"} />;
+  if (tab === "leads") {
+    return <LeadProfilesTable {...scope} />;
   }
   if (tab === "appointments") return <AppointmentsTable {...scope} />;
   // Keyed so switching between the RawDataTable-backed tabs resets its rows

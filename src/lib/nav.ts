@@ -2,7 +2,7 @@
 // permission editor. Hub views appear in the sidebar; sub-tabs live in-page.
 
 export type HeatmapTab = "show_rate" | "pickup_rate" | "new_leads";
-export type DataExplorerTab = "leads" | "conversions" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
+export type DataExplorerTab = "leads" | "dials" | "appointments" | "speed_to_lead" | "meta_ads";
 /** Level-1 tabs inside the unified Client Workspace. */
 export type ClientWorkspaceTab = "kpis" | "dials" | "explorer" | "heatmaps";
 export type AcquisitionTab = "appointments" | "credit_queue" | "sales_calls" | "pending_closes" | "log_close" | "call_examples";
@@ -114,8 +114,7 @@ export const HEATMAP_TABS: HubTabDef<HeatmapTab>[] = [
 
 export const DATA_EXPLORER_TABS: HubTabDef<DataExplorerTab>[] = [
   { key: "leads", label: "Leads" },
-  { key: "conversions", label: "Conversions" },
-  { key: "dials", label: "Dials" },
+  { key: "dials", label: "Call Log" },
   { key: "appointments", label: "Appointments" },
   { key: "speed_to_lead", label: "Speed to Lead" },
   { key: "meta_ads", label: "Meta Ads" },
@@ -124,12 +123,23 @@ export const DATA_EXPLORER_TABS: HubTabDef<DataExplorerTab>[] = [
 /**
  * Level-2 tabs, addressed by the `sub` URL param. Workspace tabs absent here
  * have no nested level. `kpis` uses `sub=roi` for Conversions & ROI (`sub=conversions` is still
- * accepted as an alias). Explorer uses `sub=conversions` for the lead list.
+ * accepted as an alias). Explorer stage filters use `sub=leads&conv=` (legacy
+ * `sub=conversions` bookmarks canonicalize to Leads).
  */
 export const CLIENT_WORKSPACE_SUBTABS: Partial<Record<ClientWorkspaceTab, HubTabDef<string>[]>> = {
   explorer: DATA_EXPLORER_TABS,
   heatmaps: HEATMAP_TABS,
 };
+
+/**
+ * Legacy Explorer bookmarks used `sub=conversions` for the same lead list.
+ * Stage filters now live on Leads via `conv=`.
+ */
+export function canonicalizeExplorerSub(
+  sub: string | null | undefined,
+): string | null | undefined {
+  return sub === "conversions" ? "leads" : sub;
+}
 
 /** Validate a `sub` value, falling back to the first nested tab. */
 export function resolveWorkspaceSubTab(
@@ -138,7 +148,8 @@ export function resolveWorkspaceSubTab(
 ): string | null {
   const tabs = CLIENT_WORKSPACE_SUBTABS[tab];
   if (!tabs?.length) return null;
-  return tabs.some(t => t.key === sub) ? (sub as string) : tabs[0].key;
+  const normalized = tab === "explorer" ? canonicalizeExplorerSub(sub) : sub;
+  return tabs.some(t => t.key === normalized) ? (normalized as string) : tabs[0].key;
 }
 
 export function isClientWorkspaceTab(tab: string | null | undefined): tab is ClientWorkspaceTab {

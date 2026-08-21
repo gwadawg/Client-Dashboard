@@ -499,20 +499,34 @@ export default function DashboardView({
     // revisiting Appointments / Sales Calls does not re-scroll to an old row.
     params.delete("appointment_id");
     params.delete("call_id");
-    // Hub tab change resets Explorer to its default (Leads); drop conv so a
-    // prior Conversions stage filter does not still apply.
+    // Hub tab change resets Explorer to its default (Leads); drop stage +
+    // table-local filters so they do not leak into the next tab.
     params.delete("conv");
+    params.delete("q");
+    params.delete("page");
+    params.delete("status");
+    params.delete("rows");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
 
   const setWorkspaceSubAndUrl = (sub: string | null) => {
-    setWorkspaceSub(sub);
+    // Legacy Explorer bookmarks used sub=conversions for the lead list.
+    const canonical =
+      hubTab === "explorer" && sub === "conversions" ? "leads" : sub;
+    setWorkspaceSub(canonical);
     const params = new URLSearchParams(searchParams.toString());
-    if (sub) params.set("sub", sub);
+    if (canonical) params.set("sub", canonical);
     else params.delete("sub");
-    // Conversion stage filter is only valid on Conversions; clear when leaving.
-    if (sub !== "conversions") params.delete("conv");
+    // Table-local filters must not leak across Explorer datasets.
+    params.delete("q");
+    params.delete("page");
+    params.delete("status");
+    params.delete("rows");
+    // Stage filter belongs on Explorer → Leads only.
+    if (!(hubTab === "explorer" && canonical === "leads")) {
+      params.delete("conv");
+    }
     params.delete("appointment_id");
     params.delete("call_id");
     const qs = params.toString();
@@ -580,7 +594,18 @@ export default function DashboardView({
     const fromUrl = resolveAllowedView(parsed.view);
     setView(current => (current === fromUrl ? current : fromUrl));
     setHubTab(parsed.tab);
-    setWorkspaceSub(searchParams.get("sub"));
+    {
+      const rawSub = searchParams.get("sub");
+      // Rewrite legacy Explorer ?sub=conversions bookmarks to Leads (keep conv=).
+      if (parsed.tab === "explorer" && rawSub === "conversions") {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("sub", "leads");
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        setWorkspaceSub("leads");
+      } else {
+        setWorkspaceSub(rawSub);
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 

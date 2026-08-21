@@ -58,13 +58,13 @@ export function shouldShowConversionCosts(adSpend: number): boolean {
 export function conversionExplorerNav(stage: ConversionStage): {
   view: 'client_workspace';
   tab: 'explorer';
-  sub: 'conversions';
+  sub: 'leads';
   conv: ConversionStage;
 } {
   return {
     view: 'client_workspace',
     tab: 'explorer',
-    sub: 'conversions',
+    sub: 'leads',
     conv: stage,
   };
 }

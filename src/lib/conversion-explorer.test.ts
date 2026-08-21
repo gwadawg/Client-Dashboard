@@ -74,21 +74,23 @@ describe('conversion-explorer', () => {
     assert.deepEqual(conversionExplorerNav('loan_funded'), {
       view: 'client_workspace',
       tab: 'explorer',
-      sub: 'conversions',
+      sub: 'leads',
       conv: 'loan_funded',
     });
   });
 });
 
-describe('explorer conversions tab', () => {
-  it('lists Conversions next to Leads', () => {
-    assert.equal(DATA_EXPLORER_TABS[0].key, 'leads');
-    assert.equal(DATA_EXPLORER_TABS[1].key, 'conversions');
-    assert.equal(DATA_EXPLORER_TABS[1].label, 'Conversions');
+describe('explorer leads tab', () => {
+  it('lists Call Log next to Leads (no separate Conversions tab)', () => {
+    assert.deepEqual(
+      DATA_EXPLORER_TABS.map(t => t.key),
+      ['leads', 'dials', 'appointments', 'speed_to_lead', 'meta_ads'],
+    );
+    assert.equal(DATA_EXPLORER_TABS[1].label, 'Call Log');
   });
 
-  it('resolves explorer sub=conversions instead of falling back to leads', () => {
-    assert.equal(resolveWorkspaceSubTab('explorer', 'conversions'), 'conversions');
+  it('canonicalizes legacy explorer sub=conversions to leads', () => {
+    assert.equal(resolveWorkspaceSubTab('explorer', 'conversions'), 'leads');
     assert.equal(resolveWorkspaceSubTab('explorer', 'roi'), 'leads');
   });
 });

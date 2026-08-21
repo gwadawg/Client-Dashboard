@@ -87,7 +87,6 @@ type Props = {
   liveOnly?: boolean;
   startDate: string;
   endDate: string;
-  conversionsTab?: boolean;
 };
 
 const EVENT_LABELS: Record<string, string> = {
@@ -359,7 +358,7 @@ function TimelineRow({ item }: { item: TimelineItem }) {
   );
 }
 
-export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDate, conversionsTab }: Props) {
+export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDate }: Props) {
   const urlParams = useUrlParams();
   const [rows, setRows] = useState<(LeadProfile | UnmappedContact)[]>([]);
   const [total, setTotal] = useState(0);
@@ -442,11 +441,15 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative">
           <input
-            type="text"
+            type="search"
+            name="lead-search"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="Search leads by name, phone, or email"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search name, phone or email…"
-            className="pl-9 pr-8 py-2 rounded-lg text-sm outline-none"
+            className="pl-9 pr-8 py-2 rounded-lg text-sm outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50"
             style={{
               background: "#0f2040",
               border: "1px solid rgba(255,255,255,0.12)",
@@ -474,7 +477,8 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
           value={conversionFilter}
           onChange={(e) => urlParams.setMany({ conv: e.target.value, page: null })}
           disabled={isUnmappedView}
-          className="px-4 py-2 rounded-lg text-sm font-medium outline-none disabled:opacity-40"
+          aria-label="Conversion stage"
+          className="px-4 py-2 rounded-lg text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 disabled:opacity-40"
           style={{
             background: "#0f2040",
             border: "1px solid rgba(255,255,255,0.12)",
@@ -515,7 +519,7 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
       <p className="text-xs leading-relaxed max-w-3xl" style={{ color: "#475569" }}>
         {isUnmappedView
           ? "Contacts with dial, claim, or appointment activity in this range but no lead event on record anywhere. Expand a row to inspect the orphaned events — usually a missing GHL lead webhook or a legacy contact being power-dialed."
-          : conversionsTab
+          : conversionFilter
             ? "Unique leads who reached this conversion stage in the selected date range (same rollup as the KPI cards: funded counts as submitted and proposed). Search by name, phone, or email still ignores the date range. Expand a row for the full event timeline."
             : "One row per lead event in the selected date range (matches dashboard Total Leads). Activity columns count dials, appointments, and outcomes in the same range. Search by name, phone, or email to jump to a lead (ignores the date range). Expand a row for the full event timeline."}
       </p>
