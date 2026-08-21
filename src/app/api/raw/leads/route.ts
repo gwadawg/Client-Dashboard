@@ -5,8 +5,12 @@ import { buildContactKey, eventPhone } from '@/lib/contact-key';
 import { profilesForConversionExplorer } from '@/lib/conversion-explorer';
 
 const PAGE_SIZE = 50;
-/** Cap rows loaded for in-memory grouping (historical backfills). */
-const MAX_EVENTS = 20_000;
+/** Cap rows loaded for heavy in-memory grouping (conversion / unmapped). */
+const MAX_EVENTS_HEAVY = 8_000;
+/** Activity hydration cap for a single leads page. */
+const MAX_EVENTS_PAGE_HYDRATE = 2_500;
+/** Unscoped (all clients) Explorer windows wider than this are clamped. */
+const MAX_UNSCOPED_RANGE_DAYS = 90;
 
 type EventRow = {
   id: string;
@@ -461,54 +465,57 @@ function toTimelineItem(row: EventRow): TimelineItem {
   };
 }
 
-export async function GET(req: Request) {
-  const ctx = await getAuthContext();
-  if (isAuthError(ctx)) return ctx;
-  const denied = requirePermission(ctx, 'leads');
-  if (denied) return denied;
+function daysBetween(start: string, end: string): number {
+  const a = Date.parse(`${start}T00:00:00.000Z`);
+  const b = Date.parse(`${end}T00:00:00.000Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.max(0, Math.round((b - a) / 86_400_000));
+}
 
-  const { searchParams } = new URL(req.url);
-  const client_id = searchParams.get('client_id');
-  const live_only = searchParams.get('live_only') === 'true';
-  const start_date = searchParams.get('start_date');
-  const end_date = searchParams.get('end_date');
-  const conversion_event = searchParams.get('conversion_event');
-  const view = searchParams.get('view') === 'unmapped' ? 'unmapped' : 'leads';
-  const search = searchParams.get('search')?.trim();
-  const safeSearch = search ? search.replace(/[,()*]/g, ' ').trim() : '';
-  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
-
-  let liveClientIds: string[] | null = null;
-  if (live_only && !client_id) {
-    liveClientIds = await getLiveClientIds(ctx.service);
+function clampUnscopedStart(
+  start: string | null,
+  end: string | null,
+  hasClientScope: boolean,
+): { start: string | null; clamped: boolean } {
+  if (hasClientScope || !start || !end) return { start, clamped: false };
+  if (daysBetween(start, end) <= MAX_UNSCOPED_RANGE_DAYS) {
+    return { start, clamped: false };
   }
+  const endMs = Date.parse(`${end}T00:00:00.000Z`);
+  const clampedStart = new Date(endMs - MAX_UNSCOPED_RANGE_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  return { start: clampedStart, clamped: true };
+}
 
-  let q = ctx.service
-    .from('events')
-    .select(
-      'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, lead_source, raw, clients(name, ghl_location_id)',
-    )
-    .order('occurred_at', { ascending: false })
-    .limit(MAX_EVENTS);
+const EVENT_SELECT =
+  'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, lead_source, raw, clients(name, ghl_location_id)';
 
-  if (client_id) q = q.eq('client_id', client_id);
-  else if (liveClientIds) q = q.in('client_id', liveClientFilter(liveClientIds));
-  // When searching, span all dates so a lookup finds the person regardless of range.
-  if (!safeSearch) {
-    if (start_date) q = q.gte('occurred_at', `${start_date}T00:00:00.000Z`);
-    if (end_date) q = q.lte('occurred_at', `${end_date}T23:59:59.999Z`);
-  } else {
-    q = q.or(
-      `lead_name.ilike.%${safeSearch}%,lead_phone.ilike.%${safeSearch}%,lead_email.ilike.%${safeSearch}%`,
-    );
-  }
+function applyClientScope<T extends { eq: Function; in: Function }>(
+  q: T,
+  clientId: string | null,
+  liveClientIds: string[] | null,
+): T {
+  if (clientId) return q.eq('client_id', clientId) as T;
+  if (liveClientIds) return q.in('client_id', liveClientFilter(liveClientIds)) as T;
+  return q;
+}
 
-  const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+function applyDateRange<T extends { gte: Function; lte: Function }>(
+  q: T,
+  start: string | null,
+  end: string | null,
+): T {
+  let next = q;
+  if (start) next = next.gte('occurred_at', `${start}T00:00:00.000Z`) as T;
+  if (end) next = next.lte('occurred_at', `${end}T23:59:59.999Z`) as T;
+  return next;
+}
 
-  const rows = (data ?? []) as unknown as EventRow[];
-  const profiles = new Map<string, LeadProfile & { has_lead_in_period: boolean }>();
-
+function ingestEventRows(
+  rows: EventRow[],
+  profiles: Map<string, LeadProfile & { has_lead_in_period: boolean }>,
+) {
   for (const row of rows) {
     const phone = eventPhone(row);
     const key = buildContactKey(row.client_id, phone, row.ghl_contact_id);
@@ -599,19 +606,212 @@ export async function GET(req: Request) {
       }
     }
   }
+}
+
+export async function GET(req: Request) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+  const denied = requirePermission(ctx, 'leads');
+  if (denied) return denied;
+
+  const { searchParams } = new URL(req.url);
+  const client_id = searchParams.get('client_id');
+  const live_only = searchParams.get('live_only') === 'true';
+  let start_date = searchParams.get('start_date');
+  const end_date = searchParams.get('end_date');
+  const conversion_event = searchParams.get('conversion_event');
+  const view = searchParams.get('view') === 'unmapped' ? 'unmapped' : 'leads';
+  const search = searchParams.get('search')?.trim();
+  const safeSearch = search ? search.replace(/[,()*]/g, ' ').trim() : '';
+  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
+
+  let liveClientIds: string[] | null = null;
+  if (live_only && !client_id) {
+    liveClientIds = await getLiveClientIds(ctx.service);
+    // Empty .in() filters error in PostgREST — return a clean empty page instead.
+    if (liveClientIds.length === 0) {
+      return NextResponse.json({
+        rows: [],
+        total: 0,
+        page,
+        page_size: PAGE_SIZE,
+        view,
+        mapping_summary: {
+          leads_in_period: 0,
+          unmapped_contacts: 0,
+          unmapped_events: 0,
+          unmapped_by_type: {},
+        },
+        events_loaded: 0,
+        capped: false,
+        range_clamped: false,
+        effective_start_date: start_date,
+        effective_end_date: end_date,
+      });
+    }
+  }
+
+  const hasClientScope = Boolean(client_id || (liveClientIds && liveClientIds.length > 0));
+  // Searching spans all dates by design; still clamp unscoped non-search windows.
+  const clamp = safeSearch
+    ? { start: start_date, clamped: false }
+    : clampUnscopedStart(start_date, end_date, Boolean(client_id));
+  start_date = clamp.start;
+
+  const needsHeavyPath = view === 'unmapped' || Boolean(conversion_event);
+
+  // ── Fast path: paginate lead events in the DB, hydrate activity for this page only ──
+  if (!needsHeavyPath) {
+    const offset = (page - 1) * PAGE_SIZE;
+    let leadQuery = ctx.service
+      .from('events')
+      .select(EVENT_SELECT, { count: 'exact' })
+      .eq('event_type', 'lead')
+      .order('occurred_at', { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    leadQuery = applyClientScope(leadQuery, client_id, liveClientIds);
+    if (!safeSearch) {
+      leadQuery = applyDateRange(leadQuery, start_date, end_date);
+    } else {
+      leadQuery = leadQuery.or(
+        `lead_name.ilike.%${safeSearch}%,lead_phone.ilike.%${safeSearch}%,lead_email.ilike.%${safeSearch}%`,
+      );
+    }
+
+    const { data: leadData, error: leadError, count } = await leadQuery;
+    if (leadError) return NextResponse.json({ error: leadError.message }, { status: 500 });
+
+    const leadRows = (leadData ?? []) as unknown as EventRow[];
+    const profiles = new Map<string, LeadProfile & { has_lead_in_period: boolean }>();
+    ingestEventRows(leadRows, profiles);
+
+    // Hydrate dials/appts/outcomes for the contacts on this page only.
+    const pageKeys = Array.from(profiles.keys());
+    if (pageKeys.length > 0) {
+      const ghlIds = Array.from(
+        new Set(leadRows.map((r) => r.ghl_contact_id).filter(Boolean) as string[]),
+      );
+      const phones = Array.from(
+        new Set(
+          leadRows
+            .map((r) => eventPhone(r))
+            .filter((p): p is string => Boolean(p)),
+        ),
+      );
+      const clientIds = Array.from(new Set(leadRows.map((r) => r.client_id)));
+
+      let activityQuery = ctx.service
+        .from('events')
+        .select(EVENT_SELECT)
+        .neq('event_type', 'lead')
+        .in('client_id', clientIds.length ? clientIds : ['00000000-0000-0000-0000-000000000000'])
+        .order('occurred_at', { ascending: false })
+        .limit(MAX_EVENTS_PAGE_HYDRATE);
+
+      // Prefer GHL contact ids; fall back to phone match when needed.
+      if (ghlIds.length > 0 && phones.length > 0) {
+        const phoneOr = phones.map((p) => `lead_phone.eq.${p}`).join(',');
+        activityQuery = activityQuery.or(
+          `ghl_contact_id.in.(${ghlIds.join(',')}),${phoneOr}`,
+        );
+      } else if (ghlIds.length > 0) {
+        activityQuery = activityQuery.in('ghl_contact_id', ghlIds);
+      } else if (phones.length > 0) {
+        activityQuery = activityQuery.in('lead_phone', phones);
+      }
+
+      if (!safeSearch) {
+        activityQuery = applyDateRange(activityQuery, start_date, end_date);
+      }
+
+      const { data: activityData } = await activityQuery;
+      if (activityData?.length) {
+        // Only keep events that map to contacts already on this page.
+        const filtered = (activityData as unknown as EventRow[]).filter((row) => {
+          const key = buildContactKey(row.client_id, eventPhone(row), row.ghl_contact_id);
+          return profiles.has(key);
+        });
+        ingestEventRows(filtered, profiles);
+      }
+    }
+
+    const pageProfiles = Array.from(profiles.values())
+      .filter((p) => p.has_lead_in_period)
+      .sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+
+    const stripInternal = (p: LeadProfile & { has_lead_in_period?: boolean }) => {
+      const { has_lead_in_period: _ignored, ...rest } = p;
+      return rest;
+    };
+
+    return NextResponse.json({
+      rows: pageProfiles.map(stripInternal),
+      total: count ?? pageProfiles.length,
+      page,
+      page_size: PAGE_SIZE,
+      view,
+      mapping_summary: {
+        leads_in_period: count ?? pageProfiles.length,
+        unmapped_contacts: 0,
+        unmapped_events: 0,
+        unmapped_by_type: {},
+      },
+      events_loaded: leadRows.length,
+      capped: false,
+      range_clamped: clamp.clamped,
+      effective_start_date: start_date,
+      effective_end_date: end_date,
+    });
+  }
+
+  // ── Heavy path: conversion stage filter or unmapped activity scan ──
+  let q = ctx.service
+    .from('events')
+    .select(EVENT_SELECT)
+    .order('occurred_at', { ascending: false })
+    .limit(MAX_EVENTS_HEAVY);
+
+  q = applyClientScope(q, client_id, liveClientIds);
+  if (!safeSearch) {
+    q = applyDateRange(q, start_date, end_date);
+  } else {
+    q = q.or(
+      `lead_name.ilike.%${safeSearch}%,lead_phone.ilike.%${safeSearch}%,lead_email.ilike.%${safeSearch}%`,
+    );
+  }
+
+  // Conversion filter only needs lead + stage events, not every dial.
+  if (conversion_event && view === 'leads') {
+    q = q.in('event_type', [
+      'lead',
+      'proposal_made',
+      'proposal_sent',
+      'submission_made',
+      'loan_processing',
+      'loan_funded',
+      'closed',
+    ]);
+  }
+
+  const { data, error } = await q;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const rows = (data ?? []) as unknown as EventRow[];
+  const profiles = new Map<string, LeadProfile & { has_lead_in_period: boolean }>();
+  ingestEventRows(rows, profiles);
 
   const allProfiles = Array.from(profiles.values());
   const leadProfiles = allProfiles.filter((p) => p.has_lead_in_period);
-  const conversionRows = profilesForConversionExplorer(
-    allProfiles,
-    conversion_event,
-  );
+  const conversionRows = profilesForConversionExplorer(allProfiles, conversion_event);
   const orphanCandidates = allProfiles.filter(
     (p) => !p.has_lead_in_period && p.timeline.some((t) => t.event_type !== 'lead'),
   );
 
   let unmappedContacts: UnmappedContact[] = [];
-  if (orphanCandidates.length > 0) {
+  if (view === 'unmapped' && orphanCandidates.length > 0) {
     const clientIds = Array.from(new Set(orphanCandidates.map((p) => p.client_id)));
     const keysWithLeadEver = await loadContactKeysWithLeadEvents(ctx.service, clientIds);
     unmappedContacts = orphanCandidates
@@ -633,7 +833,7 @@ export async function GET(req: Request) {
   mappingSummary.unmapped_events = unmappedStats.unmapped_events;
   mappingSummary.unmapped_by_type = unmappedStats.unmapped_by_type;
 
-  let sortedLeads = conversionRows.sort(
+  const sortedLeads = conversionRows.sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
 
@@ -648,13 +848,19 @@ export async function GET(req: Request) {
   };
 
   return NextResponse.json({
-    rows: view === 'unmapped' ? pageRows : (pageRows as (LeadProfile & { has_lead_in_period?: boolean })[]).map(stripInternal),
+    rows:
+      view === 'unmapped'
+        ? pageRows
+        : (pageRows as (LeadProfile & { has_lead_in_period?: boolean })[]).map(stripInternal),
     total,
     page,
     page_size: PAGE_SIZE,
     view,
     mapping_summary: mappingSummary,
     events_loaded: rows.length,
-    capped: rows.length >= MAX_EVENTS,
+    capped: rows.length >= MAX_EVENTS_HEAVY,
+    range_clamped: clamp.clamped,
+    effective_start_date: start_date,
+    effective_end_date: end_date,
   });
 }

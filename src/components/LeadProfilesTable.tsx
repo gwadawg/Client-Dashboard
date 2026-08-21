@@ -365,6 +365,9 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [capped, setCapped] = useState(false);
+  const [rangeClamped, setRangeClamped] = useState(false);
+  const [effectiveStart, setEffectiveStart] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [mappingSummary, setMappingSummary] = useState<MappingSummary | null>(null);
 
   // Table-local filters live in the URL so a narrowed list is linkable.
@@ -393,7 +396,12 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
   }, [clientId, liveOnly, startDate, endDate, conversionFilter, query, tableView]);
 
   useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
+    setLoadError(null);
+    setRows([]);
+    setTotal(0);
+
     const params = new URLSearchParams({ page: String(page), view: tableView });
     if (liveOnly) params.set("live_only", "true");
     else if (clientId) params.set("client_id", clientId);
@@ -402,16 +410,29 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
     if (conversionFilter && tableView === "leads") params.set("conversion_event", conversionFilter);
     if (query) params.set("search", query);
 
-    fetch(`/api/raw/leads?${params}`)
-      .then((r) => r.json())
+    fetch(`/api/raw/leads?${params}`, { signal: controller.signal })
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error ?? `Request failed (${r.status})`);
+        return d;
+      })
       .then((d) => {
+        if (controller.signal.aborted) return;
         setRows(d.rows ?? []);
         setTotal(d.total ?? 0);
         setCapped(!!d.capped);
+        setRangeClamped(!!d.range_clamped);
+        setEffectiveStart(d.effective_start_date ?? null);
         setMappingSummary(d.mapping_summary ?? null);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        setLoadError(err instanceof Error ? err.message : "Failed to load leads");
+        setLoading(false);
+      });
+
+    return () => controller.abort();
   }, [clientId, liveOnly, page, startDate, endDate, conversionFilter, query, tableView]);
 
   function handleViewChange(next: TableView) {
@@ -436,6 +457,23 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
     <div className="space-y-4">
       {mappingSummary && (
         <MappingBanner summary={mappingSummary} view={tableView} onViewChange={handleViewChange} />
+      )}
+      {loadError && (
+        <div
+          className="rounded-lg px-3 py-2 text-sm"
+          style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", color: "#fca5a5" }}
+        >
+          {loadError}
+        </div>
+      )}
+      {rangeClamped && !loading && (
+        <div
+          className="rounded-lg px-3 py-2 text-sm"
+          style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.35)", color: "#fbbf24" }}
+        >
+          All Clients + a wide date range is capped to the last 90 days
+          {effectiveStart ? ` (from ${effectiveStart})` : ""} for speed. Pick a client to browse the full history.
+        </div>
       )}
       {/* Client and date scope come from the workspace filter bar above. */}
       <div className="flex flex-wrap items-center gap-3">
@@ -491,11 +529,13 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
           <option value="submission_made">Has Submission</option>
           <option value="loan_funded">Has Funded Loan</option>
         </select>
-        <span className="text-sm" style={{ color: "#334155" }}>
-          {isUnmappedView
-            ? `${total.toLocaleString()} unmapped contact${total === 1 ? "" : "s"}`
-            : `${leadCount.toLocaleString()} leads`}
-          {query && <span style={{ color: "#475569" }}> · searching all dates</span>}
+        <span className="text-sm" style={{ color: "#334155" }} aria-live="polite">
+          {loading
+            ? "Loading…"
+            : isUnmappedView
+              ? `${total.toLocaleString()} unmapped contact${total === 1 ? "" : "s"}`
+              : `${leadCount.toLocaleString()} leads`}
+          {!loading && query && <span style={{ color: "#475569" }}> · searching all dates</span>}
         </span>
         <button
           type="button"
