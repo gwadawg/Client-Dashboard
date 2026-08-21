@@ -101,14 +101,26 @@ type Scopeable = {
   or: (filters: string) => Scopeable;
 };
 
-async function withClientScope(
+type ClientScope = { kind: 'one'; id: string } | { kind: 'live'; ids: string[] };
+
+/**
+ * Resolve live client ids once. Do NOT return a Supabase builder from an async
+ * function — builders are thenable, so `return query.eq(...)` gets awaited into
+ * `{ data, error }` and the next `.gte` throws "i.gte is not a function".
+ */
+async function resolveClientScope(
   service: ServiceClient,
-  query: Scopeable,
   clientId?: string | null,
-): Promise<Scopeable> {
-  if (clientId) return query.eq('client_id', clientId);
+): Promise<ClientScope> {
+  if (clientId) return { kind: 'one', id: clientId };
   const live = await getLiveClientIds(service);
-  return query.in('client_id', liveClientFilter(live));
+  return { kind: 'live', ids: liveClientFilter(live) };
+}
+
+function applyClientScope(query: Scopeable, scope: ClientScope): Scopeable {
+  return scope.kind === 'one'
+    ? query.eq('client_id', scope.id)
+    : query.in('client_id', scope.ids);
 }
 
 function withDateRange(
@@ -176,8 +188,9 @@ export async function loadMediaBuyerWindow(
         .from('meta_ad_insights')
         .select(META_SELECT) as unknown as Scopeable;
 
-      eventsQuery = await withClientScope(service, eventsQuery, scope.clientId);
-      metaQuery = await withClientScope(service, metaQuery, scope.clientId);
+      const clients = await resolveClientScope(service, scope.clientId);
+      eventsQuery = applyClientScope(eventsQuery, clients);
+      metaQuery = applyClientScope(metaQuery, clients);
       eventsQuery = withDateRange(eventsQuery, 'occurred_at', scope.startDate, scope.endDate, true);
       metaQuery = withDateRange(metaQuery, 'insight_date', scope.startDate, scope.endDate, false);
       eventsQuery = eventsQuery.limit(ROW_LIMIT);
@@ -334,7 +347,8 @@ export async function loadMediaBuyerDrilldownRows(
     .from('meta_ad_insights')
     .select(META_SELECT)
     .in('ad_name', names) as unknown as Scopeable;
-  metaQuery = await withClientScope(service, metaQuery, scope.clientId);
+  const clients = await resolveClientScope(service, scope.clientId);
+  metaQuery = applyClientScope(metaQuery, clients);
   metaQuery = withDateRange(metaQuery, 'insight_date', scope.startDate, scope.endDate, false);
   metaQuery = metaQuery.limit(ROW_LIMIT);
 
@@ -343,7 +357,7 @@ export async function loadMediaBuyerDrilldownRows(
     .select(EVENT_SELECT)
     .in('event_type', [...FUNNEL_EVENT_TYPES])
     .in('ad_name', names) as unknown as Scopeable;
-  namedEventsQuery = await withClientScope(service, namedEventsQuery, scope.clientId);
+  namedEventsQuery = applyClientScope(namedEventsQuery, clients);
   namedEventsQuery = withDateRange(
     namedEventsQuery,
     'occurred_at',
@@ -411,7 +425,7 @@ export async function loadMediaBuyerDrilldownRows(
       .select(EVENT_SELECT)
       .in('event_type', [...FUNNEL_EVENT_TYPES])
       .in('ghl_contact_id', idChunk) as unknown as Scopeable;
-    q = await withClientScope(service, q, scope.clientId);
+    q = applyClientScope(q, clients);
     q = withDateRange(q, 'occurred_at', scope.startDate, scope.endDate, true);
     q = q.limit(ROW_LIMIT);
     const { data, error } = await (q as unknown as QueryResult<AdEventRow>);
@@ -427,7 +441,7 @@ export async function loadMediaBuyerDrilldownRows(
       .select(EVENT_SELECT)
       .in('event_type', [...FUNNEL_EVENT_TYPES])
       .or(`lead_phone.in.(${list}),phone_number_used.in.(${list})`) as unknown as Scopeable;
-    q = await withClientScope(service, q, scope.clientId);
+    q = applyClientScope(q, clients);
     q = withDateRange(q, 'occurred_at', scope.startDate, scope.endDate, true);
     q = q.limit(ROW_LIMIT);
     const { data, error } = await (q as unknown as QueryResult<AdEventRow>);
