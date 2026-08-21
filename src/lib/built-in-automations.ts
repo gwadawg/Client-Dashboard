@@ -67,8 +67,8 @@ export const BUILT_IN_AUTOMATIONS: BuiltInAutomation[] = [
     trigger:
       'Team work succeeds: meetings, work logs, EOD, CS/plan task done, Closebot tickets & agent logs (not client onboarding)',
     actions: [
-      'Slack — mr_waiz team channel (C0BRRU9C4SH) with who + full details',
-      'Add slug mr_waiz in Automations → Team channels and /invite the bot',
+      'Slack — mrwaiz team channel (C0BRRU9C4SH) with who + full details',
+      'Add slug mrwaiz in Automations → Team channels and /invite the bot',
     ],
     enabled: true,
   },

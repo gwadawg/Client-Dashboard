@@ -8,8 +8,8 @@ import { CLOSEBOT_TICKET_STATUS_META, type ClosebotTicketStatus } from '@/lib/cl
 import { EOD_DEPARTMENT_LABELS, type EodDepartment } from '@/lib/eod-forms';
 import { isSlackConfigured, postToTeamChannel } from '@/lib/slack-notify';
 
-export const MR_WAIZ_ACTIVITY_SLUG = 'mr_waiz';
-/** Documented production channel id — register under Automations as slug mr_waiz. */
+export const MR_WAIZ_ACTIVITY_SLUG = 'mrwaiz';
+/** Documented production channel id — register under Automations as slug mrwaiz. */
 export const MR_WAIZ_ACTIVITY_CHANNEL_ID = 'C0BRRU9C4SH';
 
 export const MR_WAIZ_ACTIVITY_EVENT_KEYS = [

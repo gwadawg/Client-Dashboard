@@ -2,7 +2,7 @@
 
 **Status:** approved for implementation  
 **Date:** 2026-08-21  
-**Channel:** Slack `C0BRRU9C4SH` (team slug `mr_waiz`)
+**Channel:** Slack `C0BRRU9C4SH` (team slug `mrwaiz`)
 
 ## Purpose
 

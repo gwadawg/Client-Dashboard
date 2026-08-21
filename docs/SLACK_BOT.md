@@ -57,13 +57,13 @@ Run that in each private client or ops channel you want Mr. Waiz to post to.
 | Intro showed — setter reflection | `setters` | — |
 | Demo showed — closer form | `ceo` | — |
 | Active clients CPL > $35 (past 4 days) | `media_buyer` | Daily cron `GET /api/alerts/cpl-threshold` |
-| Internal team activity (meetings, work logs, EOD, CS/plan done, Closebot) | `mr_waiz` (`C0BRRU9C4SH`) | Immediate on each successful write |
+| Internal team activity (meetings, work logs, EOD, CS/plan done, Closebot) | `mrwaiz` (`C0BRRU9C4SH`) | Immediate on each successful write |
 
-## Internal activity channel (`mr_waiz`)
+## Internal activity channel (`mrwaiz`)
 
 For the team activity feed (meetings, work logs, EOD, CS/plan tasks, Closebot):
 
-1. Admin → Automations → Team channels → add slug **`mr_waiz`**
+1. Admin → Automations → Team channels → add slug **`mrwaiz`**
 2. Channel ID: **`C0BRRU9C4SH`**
 3. In Slack: `/invite @Mr. Waiz` in that channel
 

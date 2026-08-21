@@ -41,7 +41,7 @@ export const NOTIFICATION_AUTOMATION_SELECT =
 /** Suggested workspace channel slugs for the Automations UI. */
 export const SUGGESTED_TEAM_CHANNEL_SLUGS = [
   'ops_alerts',
-  'mr_waiz',
+  'mrwaiz',
   'media_buyer',
   'client_success',
   'billing',
