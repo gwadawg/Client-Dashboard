@@ -5,8 +5,23 @@ import { createPortal } from "react-dom";
 import { AdFormatPicker, useAdFormats } from "./AdFormatPicker";
 import { AdTagPicker, useAdTags } from "./AdTagPicker";
 import AdWorkspaceOverlay, { type AdWorkspaceDrilldown } from "./AdWorkspaceOverlay";
+import CardActionsMenu from "./ad-library/CardActionsMenu";
+import FolderRail from "./ad-library/FolderRail";
+import LibraryBreadcrumb from "./ad-library/LibraryBreadcrumb";
 import CreativeCommand from "./creative-command/CreativeCommand";
 import { adFormatLabel } from "@/lib/ad-formats";
+import {
+  buildFolderTreeCounts,
+  defaultFolderPath,
+  entryMatchesFolder,
+  folderPathForEntry,
+  formPrefillFromFolder,
+  groupEntriesByFormat,
+  loadStoredFolderPath,
+  shouldSectionByFormat,
+  storeFolderPath,
+  type FolderPath,
+} from "@/lib/ad-library-folders";
 import type { AdTagRef } from "@/lib/ad-tags";
 
 type Props = {
@@ -1599,12 +1614,31 @@ function AdLibrary({
   const [expandedVariants, setExpandedVariants] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [productFilter, setProductFilter] = useState<ProductFilter>("all");
+  const [folderPath, setFolderPath] = useState<FolderPath>(defaultFolderPath);
   const [tagFilter, setTagFilter] = useState("all");
-  const [readyToTestFilter, setReadyToTestFilter] = useState(false);
   const [search, setSearch] = useState("");
   const { formats, labels: formatLabels, createFormat, loading: formatsLoading } = useAdFormats();
   const { tags: tagCatalog, createTag, loading: tagsLoading } = useAdTags();
+
+  useEffect(() => {
+    setFolderPath(loadStoredFolderPath());
+  }, []);
+
+  const selectFolder = useCallback((next: FolderPath) => {
+    setFolderPath(next);
+    storeFolderPath(next);
+  }, []);
+
+  const openCreateForm = useCallback(() => {
+    setFormError(null);
+    const prefill = formPrefillFromFolder(folderPath);
+    setForm({
+      ...EMPTY_FORM,
+      product: prefill.product,
+      ad_format: prefill.ad_format,
+      ready_to_test: folderPath.kind === "smart" && folderPath.id === "ready",
+    });
+  }, [folderPath]);
 
   const openEditForm = useCallback((e: LibEntry) => {
     setFormError(null);
@@ -1669,7 +1703,7 @@ function AdLibrary({
   useEffect(() => {
     if (!libraryNav) return;
     if (libraryNav.readyToTest) {
-      setReadyToTestFilter(true);
+      selectFolder({ kind: "smart", id: "ready" });
       onNavClear();
       return;
     }
@@ -1682,13 +1716,14 @@ function AdLibrary({
     if (libraryNav.libraryId) {
       setHighlightId(libraryNav.libraryId);
       const entry = entries.find((e) => e.id === libraryNav.libraryId);
+      if (entry) selectFolder(folderPathForEntry(entry));
       requestAnimationFrame(() => {
         document.getElementById(`library-card-${libraryNav.libraryId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
       });
       if (libraryNav.openForm && entry) openEditForm(entry);
       onNavClear();
     }
-  }, [libraryNav, entries, onNavClear, openEditForm]);
+  }, [libraryNav, entries, onNavClear, openEditForm, selectFolder]);
 
   async function addAlias() {
     if (!form?.id || !newAlias.trim()) return;
@@ -1786,16 +1821,19 @@ function AdLibrary({
     load();
   }
 
-  const readyToTestCount = useMemo(
-    () => entries.filter((e) => e.ready_to_test).length,
-    [entries],
+  const folderCounts = useMemo(
+    () => buildFolderTreeCounts(entries, formats.map((f) => f.slug)),
+    [entries, formats],
+  );
+
+  const folderEntries = useMemo(
+    () => entries.filter((e) => entryMatchesFolder(e, folderPath)),
+    [entries, folderPath],
   );
 
   const visibleEntries = useMemo(() => {
-    const filtered = entries.filter(
+    const filtered = folderEntries.filter(
       (e) =>
-        (!readyToTestFilter || !!e.ready_to_test) &&
-        productMatches(e.product, productFilter) &&
         (tagFilter === "all" || (e.tags ?? []).some((t) => t.slug === tagFilter)) &&
         matchesAdQuery(
           [
@@ -1807,22 +1845,22 @@ function AdLibrary({
           search,
         ),
     );
-    if (!readyToTestFilter) return filtered;
-    return [...filtered].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
-  }, [entries, productFilter, tagFilter, search, readyToTestFilter]);
-  const libraryFilterCounts = useMemo(
-    () => ({
-      all: entries.length,
-      reverse: entries.filter((e) => e.product === "reverse").length,
-      dscr: entries.filter((e) => e.product === "dscr").length,
-    }),
-    [entries],
-  );
+    if (folderPath.kind === "smart" && folderPath.id === "ready") {
+      return [...filtered].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+    }
+    return filtered;
+  }, [folderEntries, tagFilter, search, folderPath]);
+
+  const sectionedEntries = useMemo(() => {
+    if (!shouldSectionByFormat(folderPath)) return null;
+    return groupEntriesByFormat(visibleEntries, formatLabels);
+  }, [folderPath, visibleEntries, formatLabels]);
+
   const tagFilterOptions = useMemo(() => {
     const counts = new Map<string, { slug: string; label: string; count: number }>();
-    for (const e of entries) {
+    for (const e of folderEntries) {
       for (const t of e.tags ?? []) {
         const prev = counts.get(t.slug);
         counts.set(t.slug, { slug: t.slug, label: t.label, count: (prev?.count ?? 0) + 1 });
@@ -1837,249 +1875,323 @@ function AdLibrary({
       });
     }
     return [...counts.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }, [entries, tagFilter, tagCatalog]);
+  }, [folderEntries, tagFilter, tagCatalog]);
 
   if (loading) return <p style={{ color: "#475569" }} className="text-sm py-10 text-center">Loading library…</p>;
   if (error) return <p style={{ color: "#f87171" }} className="text-sm py-10 text-center">{error}</p>;
 
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div
-          className="flex flex-wrap items-end gap-x-5 gap-y-3 min-w-0 flex-1 rounded-xl px-4 py-3"
-          style={{
-            background: "linear-gradient(180deg, #0c182c 0%, #08111e 100%)",
-            border: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={libraryFilterCounts} />
-          <FilterSelect
-            label="Topic"
-            value={tagFilter}
-            onChange={setTagFilter}
-            options={tagFilterOptions}
-            anyLabel="Any topic"
-            accent="#6ee7b7"
-          />
-          <div className="flex flex-col gap-1.5">
-            <span
-              className="text-[9px] uppercase tracking-[0.18em]"
-              style={{ color: "#64748b", fontFamily: "var(--font-archivo), sans-serif", fontWeight: 600 }}
-            >
-              Queue
-            </span>
+  function renderCard(e: LibEntry, index: number) {
+    const thumb = driveThumb(e);
+    const allNames = [e.ad_name, ...(e.aliases ?? []).map((a) => a.alias_name)];
+    const isHighlighted = highlightId === e.id;
+    const metrics = metricsById.get(e.id);
+    const overflowActions = [
+      ...(e.ready_to_test
+        ? [
+            {
+              id: "clear-ready",
+              label: "Clear ready to test",
+              onClick: () => clearReadyToTest(e.id),
+              tone: "muted" as const,
+            },
+          ]
+        : []),
+      ...(e.drive_url
+        ? [
+            {
+              id: "creative",
+              label: "Open creative",
+              onClick: () => undefined,
+              href: e.drive_url,
+              tone: "default" as const,
+            },
+          ]
+        : []),
+      ...(e.knowledge_capture_status !== "processed"
+        ? [
+            {
+              id: "queue-kb",
+              label: "Queue for OS KB",
+              onClick: () => queueForKb(e),
+              tone: "accent" as const,
+            },
+          ]
+        : []),
+      {
+        id: "delete",
+        label: "Delete",
+        onClick: () => remove(e.id),
+        tone: "danger" as const,
+      },
+    ];
+
+    return (
+      <div
+        key={e.id}
+        id={`library-card-${e.id}`}
+        className="rounded-xl overflow-hidden flex flex-col transition-shadow ad-library-card-enter"
+        style={{
+          background: "#0a1424",
+          border: isHighlighted ? "1px solid rgba(245,158,11,0.5)" : "1px solid rgba(255,255,255,0.06)",
+          boxShadow: isHighlighted ? "0 0 0 2px rgba(245,158,11,0.25)" : undefined,
+          animationDelay: `${Math.min(index, 12) * 40}ms`,
+        }}
+      >
+        <div className="p-4 flex gap-3 flex-1">
+          {thumb ? (
             <button
               type="button"
-              onClick={() => setReadyToTestFilter((v) => !v)}
-              className="px-3 py-1.5 rounded-md text-xs font-semibold text-left"
-              style={{
-                background: readyToTestFilter ? "rgba(167,139,250,0.18)" : FILTER_INK.panel,
-                border: readyToTestFilter
-                  ? "1px solid rgba(167,139,250,0.55)"
-                  : "1px solid rgba(255,255,255,0.1)",
-                color: readyToTestFilter ? "#c4b5fd" : "#94a3b8",
-                fontFamily: "var(--font-plex-mono)",
-              }}
-              aria-pressed={readyToTestFilter}
+              onClick={() => openEditForm(e)}
+              className="shrink-0 w-16 h-16 rounded-lg overflow-hidden"
+              style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.06)" }}
             >
-              Ready to test{readyToTestCount > 0 ? ` · ${readyToTestCount}` : ""}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={thumb} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            </button>
+          ) : null}
+          <div className="min-w-0 flex-1 flex flex-col">
+            <div className="flex items-start justify-between gap-2">
+              <button type="button" onClick={() => openEditForm(e)} className="text-left min-w-0">
+                <p className="font-semibold text-sm leading-snug truncate" style={{ color: "#e2e8f0" }} title={e.ad_name}>
+                  {e.ad_name}
+                </p>
+              </button>
+              <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
+                {e.ready_to_test ? (
+                  <span
+                    className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
+                    style={{ background: "rgba(167,139,250,0.16)", color: "#c4b5fd" }}
+                  >
+                    Ready to test
+                  </span>
+                ) : null}
+                <StatusBadge status={e.status} />
+              </div>
+            </div>
+            {allNames.length > 1 ? (
+              <div className="mt-1.5">
+                <button
+                  type="button"
+                  className="text-[11px] underline"
+                  style={{ color: "#94a3b8" }}
+                  onClick={() => setExpandedVariants(expandedVariants === e.id ? null : e.id)}
+                >
+                  {allNames.length} linked names {expandedVariants === e.id ? "▲" : "▼"}
+                </button>
+                {expandedVariants === e.id ? (
+                  <ul className="mt-1 space-y-0.5">
+                    {allNames.map((name) => (
+                      <li key={name} className="text-[11px] truncate" style={{ color: "#64748b" }}>
+                        {name}
+                        {name === e.ad_name ? " (primary)" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+            {(e.ad_format || e.product || (e.tags ?? []).length > 0 || (e.knowledge_capture_status && e.knowledge_capture_status !== "none")) ? (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {e.ad_format ? (
+                  <ClassBadge label={adFormatLabel(e.ad_format, formatLabels)} color="#60a5fa" />
+                ) : null}
+                {e.product ? (
+                  <ClassBadge label={PRODUCT_LABELS[e.product] ?? e.product} color="#a78bfa" />
+                ) : null}
+                {(e.tags ?? []).map((t) => (
+                  <button
+                    key={t.slug}
+                    type="button"
+                    onClick={() => setTagFilter(t.slug)}
+                    title={`Filter by ${t.label}`}
+                  >
+                    <ClassBadge label={t.label} color="#34d399" />
+                  </button>
+                ))}
+                {e.knowledge_capture_status && e.knowledge_capture_status !== "none" ? (
+                  <span
+                    className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
+                    style={{
+                      background: e.knowledge_capture_status === "processed" ? "rgba(52,211,153,0.12)" : "rgba(245,158,11,0.12)",
+                      color: e.knowledge_capture_status === "processed" ? "#34d399" : "#fbbf24",
+                    }}
+                  >
+                    KB {e.knowledge_capture_status.replace("_", " ")}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="flex gap-2 mt-3">
+              <MetricChip label="CPL" value={money(metrics?.cpl)} />
+              <MetricChip label="CTR" value={pct(metrics?.ctr)} />
+              <MetricChip label="CPC" value={money(metrics?.cpc)} />
+            </div>
+          </div>
+        </div>
+        <div
+          className="flex items-center gap-3 px-4 py-2.5"
+          style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.15)" }}
+        >
+          <button
+            type="button"
+            onClick={() => openEditForm(e)}
+            className="text-xs font-medium"
+            style={{ color: "#e2e8f0" }}
+          >
+            Open
+          </button>
+          <button
+            type="button"
+            onClick={() => openEditForm(e)}
+            className="text-xs ml-auto"
+            style={{ color: "#94a3b8" }}
+          >
+            Edit
+          </button>
+          <CardActionsMenu actions={overflowActions} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <style>{`
+        @keyframes adLibCardIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .ad-library-card-enter {
+          animation: adLibCardIn 0.28s ease-out both;
+        }
+      `}</style>
+
+      <div className="lg:flex lg:items-start lg:gap-4">
+        <FolderRail
+          path={folderPath}
+          onSelect={(next) => {
+            selectFolder(next);
+            setTagFilter("all");
+          }}
+          counts={folderCounts}
+          formatLabels={formatLabels}
+        />
+
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div
+              className="flex flex-wrap items-end gap-x-5 gap-y-3 min-w-0 flex-1 rounded-xl px-4 py-3"
+              style={{
+                background: "linear-gradient(180deg, #0c182c 0%, #08111e 100%)",
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <div className="w-full">
+                <LibraryBreadcrumb
+                  path={folderPath}
+                  onSelect={(next) => {
+                    selectFolder(next);
+                    setTagFilter("all");
+                  }}
+                  formatLabels={formatLabels}
+                  count={visibleEntries.length}
+                />
+              </div>
+              <FilterSelect
+                label="Topic"
+                value={tagFilter}
+                onChange={setTagFilter}
+                options={tagFilterOptions}
+                anyLabel="Any topic"
+                accent="#6ee7b7"
+              />
+              <div className="flex-1 min-w-[14rem]">
+                <AdSearchInput value={search} onChange={setSearch} placeholder="Name, alias, or topic…" />
+              </div>
+            </div>
+            <button
+              onClick={openCreateForm}
+              className="px-4 py-2 rounded-lg text-sm font-semibold"
+              style={{ background: "#f59e0b", color: "#0a1424" }}
+            >
+              + Add Ad
             </button>
           </div>
-          <div className="flex-1 min-w-[14rem]">
-            <AdSearchInput value={search} onChange={setSearch} placeholder="Name, alias, or topic…" />
-          </div>
-        </div>
-        <button
-          onClick={() => {
-            setFormError(null);
-            setForm({ ...EMPTY_FORM });
-          }}
-          className="px-4 py-2 rounded-lg text-sm font-semibold"
-          style={{ background: "#f59e0b", color: "#0a1424" }}
-        >
-          + Add Ad
-        </button>
-      </div>
 
-      {entries.length === 0 ? (
-        <p style={{ color: "#475569" }} className="text-sm py-10 text-center">
-          No ads in the library yet. Add one with its ad name and a Google Drive link.
-        </p>
-      ) : visibleEntries.length === 0 ? (
-        <p style={{ color: "#64748b" }} className="text-sm py-10 text-center">
-          {readyToTestFilter
-            ? "Nothing in the test queue. Flag a creative only when the buyer should launch it — not when backfilling the library."
-            : search.trim()
-              ? `No ads match “${search.trim()}”.`
-              : "No ads match these filters. Adjust product or topic, or tag an ad in the library."}
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {visibleEntries.map((e) => {
-            const thumb = driveThumb(e);
-            const allNames = [e.ad_name, ...(e.aliases ?? []).map((a) => a.alias_name)];
-            const isHighlighted = highlightId === e.id;
-            const metrics = metricsById.get(e.id);
-            return (
-              <div
-                key={e.id}
-                id={`library-card-${e.id}`}
-                className="rounded-xl overflow-hidden flex flex-col transition-shadow"
-                style={{
-                  background: "#0a1424",
-                  border: isHighlighted ? "1px solid rgba(245,158,11,0.5)" : "1px solid rgba(255,255,255,0.06)",
-                  boxShadow: isHighlighted ? "0 0 0 2px rgba(245,158,11,0.25)" : undefined,
-                }}
-              >
-                <div className="p-4 flex gap-3 flex-1">
-                  {thumb ? (
-                    <button
-                      type="button"
-                      onClick={() => openEditForm(e)}
-                      className="shrink-0 w-16 h-16 rounded-lg overflow-hidden"
-                      style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.06)" }}
+          {entries.length === 0 ? (
+            <p style={{ color: "#475569" }} className="text-sm py-10 text-center">
+              No ads in the library yet. Add one with its ad name and a Google Drive link.
+            </p>
+          ) : visibleEntries.length === 0 ? (
+            <div className="text-center py-10 space-y-3">
+              <p style={{ color: "#64748b" }} className="text-sm">
+                {folderPath.kind === "smart" && folderPath.id === "ready"
+                  ? "Nothing in the test queue. Flag a creative only when the buyer should launch it — not when backfilling the library."
+                  : search.trim()
+                    ? `No ads match “${search.trim()}”.`
+                    : "No ads in this folder. Adjust topic, or add an ad here."}
+              </p>
+              {!(folderPath.kind === "smart" && folderPath.id === "ready") && !search.trim() ? (
+                <button
+                  type="button"
+                  onClick={openCreateForm}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold"
+                  style={{ background: "rgba(245,158,11,0.16)", color: "#fbbf24" }}
+                >
+                  Add ad in this folder
+                </button>
+              ) : null}
+            </div>
+          ) : sectionedEntries ? (
+            <div className="space-y-6">
+              {sectionedEntries.map((section) => (
+                <section key={section.key} className="space-y-2">
+                  <div
+                    className="sticky top-0 z-[1] flex items-center gap-2 px-1 py-1.5 backdrop-blur-sm"
+                    style={{ background: "rgba(5,12,24,0.85)" }}
+                  >
+                    <h3
+                      className="text-xs font-semibold uppercase tracking-[0.14em]"
+                      style={{ color: "#94a3b8", fontFamily: "var(--font-archivo), sans-serif" }}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={thumb} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    </button>
-                  ) : null}
-                  <div className="min-w-0 flex-1 flex flex-col">
-                    <div className="flex items-start justify-between gap-2">
+                      {section.label}
+                    </h3>
+                    <span
+                      className="text-[10px] tabular-nums"
+                      style={{ color: "#64748b", fontFamily: "var(--font-plex-mono)" }}
+                    >
+                      {section.entries.length}
+                    </span>
+                    {folderPath.kind === "product" ? (
                       <button
                         type="button"
-                        onClick={() => openEditForm(e)}
-                        className="text-left min-w-0"
+                        className="text-[10px] underline ml-1"
+                        style={{ color: "#64748b" }}
+                        onClick={() =>
+                          selectFolder({
+                            kind: "product",
+                            product: folderPath.product,
+                            format: section.key,
+                          })
+                        }
                       >
-                        <p className="font-semibold text-sm leading-snug truncate" style={{ color: "#e2e8f0" }} title={e.ad_name}>
-                          {e.ad_name}
-                        </p>
+                        Open folder
                       </button>
-                      <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
-                        {e.ready_to_test ? (
-                          <span
-                            className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
-                            style={{ background: "rgba(167,139,250,0.16)", color: "#c4b5fd" }}
-                          >
-                            Ready to test
-                          </span>
-                        ) : null}
-                        <StatusBadge status={e.status} />
-                      </div>
-                    </div>
-                    {allNames.length > 1 ? (
-                      <div className="mt-1.5">
-                        <button
-                          type="button"
-                          className="text-[11px] underline"
-                          style={{ color: "#94a3b8" }}
-                          onClick={() => setExpandedVariants(expandedVariants === e.id ? null : e.id)}
-                        >
-                          {allNames.length} linked names {expandedVariants === e.id ? "▲" : "▼"}
-                        </button>
-                        {expandedVariants === e.id ? (
-                          <ul className="mt-1 space-y-0.5">
-                            {allNames.map((name) => (
-                              <li key={name} className="text-[11px] truncate" style={{ color: "#64748b" }}>
-                                {name}
-                                {name === e.ad_name ? " (primary)" : ""}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </div>
                     ) : null}
-                    {(e.ad_format || e.product || (e.tags ?? []).length > 0 || (e.knowledge_capture_status && e.knowledge_capture_status !== "none")) ? (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {e.ad_format ? (
-                          <ClassBadge label={adFormatLabel(e.ad_format, formatLabels)} color="#60a5fa" />
-                        ) : null}
-                        {e.product ? (
-                          <ClassBadge label={PRODUCT_LABELS[e.product] ?? e.product} color="#a78bfa" />
-                        ) : null}
-                        {(e.tags ?? []).map((t) => (
-                          <button
-                            key={t.slug}
-                            type="button"
-                            onClick={() => setTagFilter(t.slug)}
-                            title={`Filter by ${t.label}`}
-                          >
-                            <ClassBadge label={t.label} color="#34d399" />
-                          </button>
-                        ))}
-                        {e.knowledge_capture_status && e.knowledge_capture_status !== "none" ? (
-                          <span
-                            className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
-                            style={{
-                              background: e.knowledge_capture_status === "processed" ? "rgba(52,211,153,0.12)" : "rgba(245,158,11,0.12)",
-                              color: e.knowledge_capture_status === "processed" ? "#34d399" : "#fbbf24",
-                            }}
-                          >
-                            KB {e.knowledge_capture_status.replace("_", " ")}
-                          </span>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    <div className="flex gap-2 mt-3">
-                      <MetricChip label="CPL" value={money(metrics?.cpl)} />
-                      <MetricChip label="CTR" value={pct(metrics?.ctr)} />
-                      <MetricChip label="CPC" value={money(metrics?.cpc)} />
-                    </div>
                   </div>
-                </div>
-                <div
-                  className="flex items-center gap-3 px-4 py-2.5 flex-wrap"
-                  style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.15)" }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => openEditForm(e)}
-                    className="text-xs font-medium"
-                    style={{ color: "#e2e8f0" }}
-                  >
-                    Open
-                  </button>
-                  {e.ready_to_test ? (
-                    <button
-                      type="button"
-                      onClick={() => clearReadyToTest(e.id)}
-                      className="text-xs"
-                      style={{ color: "#c4b5fd" }}
-                      title="Remove from Ready to test queue"
-                    >
-                      Clear ready
-                    </button>
-                  ) : null}
-                  {e.drive_url ? (
-                    <a href={e.drive_url} target="_blank" rel="noreferrer" className="text-xs underline" style={{ color: "#60a5fa" }}>
-                      Creative
-                    </a>
-                  ) : null}
-                  {e.knowledge_capture_status !== "processed" ? (
-                    <button
-                      type="button"
-                      onClick={() => queueForKb(e)}
-                      className="text-xs"
-                      style={{ color: "#fbbf24" }}
-                    >
-                      Queue for OS KB
-                    </button>
-                  ) : null}
-                  <button
-                    onClick={() => openEditForm(e)}
-                    className="text-xs ml-auto"
-                    style={{ color: "#94a3b8" }}
-                  >
-                    Edit
-                  </button>
-                  <button onClick={() => remove(e.id)} className="text-xs" style={{ color: "#f87171" }}>
-                    Delete
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {section.entries.map((e, i) => renderCard(e, i))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {visibleEntries.map((e, i) => renderCard(e, i))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {form ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setForm(null)}>

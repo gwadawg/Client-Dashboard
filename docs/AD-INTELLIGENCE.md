@@ -12,6 +12,13 @@ Operational mirror of Wm-os [ad-intelligence-bridge.md](https://github.com/waizm
 - `meta_ad_insights` — daily spend (never synced to Wm-os git)
 - `knowledge_capture_status`, `captured_at`, `os_refs` on `ad_library` (v2)
 
+## Ad Library browse UI
+
+The Media Buyer **Ad Library** tab browses by folder (Product → Format)
+plus smart queues (Ready to test, Winners, Needs classification). Topic
+tags stay as facets inside a folder. See
+[2026-08-20-ad-library-folder-navigation-design.md](superpowers/specs/2026-08-20-ad-library-folder-navigation-design.md).
+
 ## API
 
 `GET /api/ad-formats` — live catalog (permission: `media_buyer` or `acquisition_marketing`)
