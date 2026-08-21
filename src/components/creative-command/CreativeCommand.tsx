@@ -117,7 +117,13 @@ export default function CreativeCommand({
       const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
       if (clientId) params.set("client_id", clientId);
       if (ad.library?.id) params.set("library_id", ad.library.id);
-      else params.set("ad", ad.variant_names[0] ?? ad.ad_name);
+      else {
+        params.set("ad", ad.variant_names[0] ?? ad.ad_name);
+        params.set(
+          "variants",
+          (ad.variant_names.length ? ad.variant_names : [ad.ad_name]).join("\n"),
+        );
+      }
       fetch(`/api/media-buyer?${params}`)
         .then((r) => r.json())
         .then((json: AdWorkspaceDrilldown) => setDrill((d) => ({ ...d, [ad.row_key]: json })))

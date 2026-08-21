@@ -19,6 +19,13 @@ plus smart queues (Ready to test, Winners, Needs classification). Topic
 tags stay as facets inside a folder. See
 [2026-08-20-ad-library-folder-navigation-design.md](superpowers/specs/2026-08-20-ad-library-folder-navigation-design.md).
 
+## Ad Performance load
+
+Leaderboard and Creative Command both pull the same raw funnel + Meta
+window today; that duplication is the main reason Ad Performance feels
+slow on wide ranges. Audit and fix order:
+[2026-08-21-ad-performance-load-audit.md](superpowers/specs/2026-08-21-ad-performance-load-audit.md).
+
 ## API
 
 `GET /api/ad-formats` — live catalog (permission: `media_buyer` or `acquisition_marketing`)

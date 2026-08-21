@@ -694,10 +694,10 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   const MIN_SPEND = 250;
 
   const loadAds = useCallback(() => {
-    setLoading(true);
     setError(null);
     const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
     if (clientId) params.set("client_id", clientId);
+    setLoading(true);
     return fetch(`/api/media-buyer?${params}`)
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load");
@@ -925,8 +925,13 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
         setDrill((d) => ({ ...d, [key]: "loading" }));
         const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
         if (clientId) params.set("client_id", clientId);
-        if (ad.library?.id) params.set("library_id", ad.library.id);
-        else params.set("ad", ad.variant_names[0] ?? ad.ad_name);
+        if (ad.library?.id) {
+          params.set("library_id", ad.library.id);
+        } else {
+          params.set("ad", ad.variant_names[0] ?? ad.ad_name);
+          // Newline-separated so commas inside Facebook names stay intact.
+          params.set("variants", (ad.variant_names.length ? ad.variant_names : [ad.ad_name]).join("\n"));
+        }
         fetch(`/api/media-buyer?${params}`)
           .then((r) => r.json())
           .then((data: Drilldown) => setDrill((d) => ({ ...d, [key]: data })))
@@ -948,14 +953,20 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
     [drill, startDate, endDate, clientId],
   );
 
-  if (loading) return <p style={{ color: "#475569" }} className="text-sm py-10 text-center">Loading ad performance…</p>;
-  if (error) return <p style={{ color: "#f87171" }} className="text-sm py-10 text-center">{error}</p>;
-  if (ads.length === 0)
+  // Keep the prior board on screen while a range change loads.
+  if (loading && ads.length === 0) {
+    return <p style={{ color: "#475569" }} className="text-sm py-10 text-center">Loading ad performance…</p>;
+  }
+  if (error && ads.length === 0) {
+    return <p style={{ color: "#f87171" }} className="text-sm py-10 text-center">{error}</p>;
+  }
+  if (!loading && ads.length === 0) {
     return (
       <p style={{ color: "#475569" }} className="text-sm py-10 text-center">
         No ad data for this range. Make sure Meta ad insights are ingested and leads carry an ad name / utm_content.
       </p>
     );
+  }
 
   const sliceActive =
     productFilter !== "all" ||
@@ -2683,6 +2694,16 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
   const tab: MediaBuyerTab = isMediaBuyerTab(tabParam) ? tabParam : "command";
   const [libraryNav, setLibraryNav] = useState<LibraryNav>(null);
   const [readyToTestCount, setReadyToTestCount] = useState(0);
+  // Mount each heavy tab once, then hide — switching back must not re-hit the API.
+  const [mountedTabs, setMountedTabs] = useState<Record<MediaBuyerTab, boolean>>({
+    command: true,
+    performance: false,
+    library: false,
+  });
+
+  useEffect(() => {
+    setMountedTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
+  }, [tab]);
 
   const setTab = useCallback(
     (next: MediaBuyerTab) => {
@@ -2701,6 +2722,7 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
     setReadyToTestCount(count);
   }, []);
 
+  // Count once per shell mount — not on every tab flip.
   useEffect(() => {
     let cancelled = false;
     fetch("/api/ad-library")
@@ -2717,7 +2739,7 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [tab]);
+  }, []);
 
   const handleAddToLibrary = useCallback(
     (adName: string) => {
@@ -2774,32 +2796,43 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
         })}
       </div>
 
-      {tab === "command" ? (
-        <CreativeCommand
-          startDate={startDate}
-          endDate={endDate}
-          clientId={clientId}
-          onAddToLibrary={handleAddToLibrary}
-          onViewInLibrary={handleViewInLibrary}
-        />
-      ) : tab === "performance" ? (
-        <AdPerformance
-          startDate={startDate}
-          endDate={endDate}
-          clientId={clientId}
-          onAddToLibrary={handleAddToLibrary}
-          onViewInLibrary={handleViewInLibrary}
-        />
-      ) : (
-        <AdLibrary
-          startDate={startDate}
-          endDate={endDate}
-          clientId={clientId}
-          libraryNav={libraryNav}
-          onNavClear={() => setLibraryNav(null)}
-          onReadyCountChange={handleReadyCountChange}
-        />
-      )}
+      {mountedTabs.command ? (
+        <div style={{ display: tab === "command" ? undefined : "none" }} aria-hidden={tab !== "command"}>
+          <CreativeCommand
+            startDate={startDate}
+            endDate={endDate}
+            clientId={clientId}
+            onAddToLibrary={handleAddToLibrary}
+            onViewInLibrary={handleViewInLibrary}
+          />
+        </div>
+      ) : null}
+      {mountedTabs.performance ? (
+        <div
+          style={{ display: tab === "performance" ? undefined : "none" }}
+          aria-hidden={tab !== "performance"}
+        >
+          <AdPerformance
+            startDate={startDate}
+            endDate={endDate}
+            clientId={clientId}
+            onAddToLibrary={handleAddToLibrary}
+            onViewInLibrary={handleViewInLibrary}
+          />
+        </div>
+      ) : null}
+      {mountedTabs.library ? (
+        <div style={{ display: tab === "library" ? undefined : "none" }} aria-hidden={tab !== "library"}>
+          <AdLibrary
+            startDate={startDate}
+            endDate={endDate}
+            clientId={clientId}
+            libraryNav={libraryNav}
+            onNavClear={() => setLibraryNav(null)}
+            onReadyCountChange={handleReadyCountChange}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
