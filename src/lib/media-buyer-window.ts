@@ -1,16 +1,22 @@
 /**
  * Shared Media Buyer window load for Creative Command + Ad Performance.
- * One process-local TTL cache so the second tab on the same isolate skips
- * the 100k-row events/meta pull.
+ * In-flight requests coalesce; only the compact derived board is TTL-cached
+ * (raw events/meta are too large to retain on Railway isolates).
  */
 
 import {
+  AdLibraryResolver,
+  aggregateAdPerformance,
+  rollupAdPerformanceByLibrary,
   type AdEventRow,
   type AdLibraryAliasRow,
   type AdLibraryMeta,
   type AdMetaRow,
+  type RolledUpAdPerformanceRow,
   normalizeAdName,
 } from '@/lib/ad-performance';
+import { buildCreativeIntel } from '@/lib/ad-creative-intel';
+import type { CreativeIntelReport } from '@/lib/ad-creative-lenses';
 import { eventPhone, normalizePhone } from '@/lib/contact-key';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import { tagsByLibraryId } from '@/lib/ad-tags-db';
@@ -64,8 +70,23 @@ export type MediaBuyerWindow = {
   truncated: boolean;
 };
 
-const windowCache = createTtlCache<MediaBuyerWindow>(45_000);
+/** Leaderboard row as returned by GET /api/media-buyer (client_ids stripped). */
+export type MediaBuyerAdRow = Omit<RolledUpAdPerformanceRow, 'client_ids'>;
+
+export type MediaBuyerBoard = {
+  ads: MediaBuyerAdRow[];
+  overview: CreativeIntelReport;
+  truncated: boolean;
+};
+
+/**
+ * Derived board only — never TTL-cache the raw 100k events/meta rows. Keeping
+ * those in heap across requests OOMs small Railway isolates and the proxy then
+ * returns an empty body ("Unexpected end of JSON input" in the browser).
+ */
+const boardCache = createTtlCache<MediaBuyerBoard>(45_000);
 const windowInflight = new Map<string, Promise<{ data?: MediaBuyerWindow; error?: string }>>();
+const boardInflight = new Map<string, Promise<{ data?: MediaBuyerBoard; error?: string }>>();
 
 function scopeKey(scope: MediaBuyerScope): string {
   return [scope.clientId ?? '', scope.startDate ?? '', scope.endDate ?? ''].join('|');
@@ -132,85 +153,159 @@ export function uniqueAdNames(names: string[]): string[] {
 type QueryResult<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
 
 /**
- * Full window used by the leaderboard and Creative Command. Cached so flipping
- * tabs on the same isolate does not re-stream events + meta. Concurrent callers
- * (both tabs mounted on a date change) share one in-flight Promise.
+ * Raw window for one request. Concurrent callers share one in-flight Promise;
+ * nothing is retained after it settles (see loadMediaBuyerBoard for the TTL).
  */
 export async function loadMediaBuyerWindow(
   service: ServiceClient,
   scope: MediaBuyerScope,
 ): Promise<{ data?: MediaBuyerWindow; error?: string }> {
   const key = scopeKey(scope);
-  const cached = windowCache.get(key);
-  if (cached) return { data: cached };
-
   const existing = windowInflight.get(key);
   if (existing) return existing;
 
   const pending = (async () => {
-    // Query builders are cast to a narrow Scopeable so Supabase's deep generics
-    // do not blow the compiler when we chain scope + date + limit.
-    let eventsQuery: Scopeable = service
-      .from('events')
-      .select(EVENT_SELECT)
-      .in('event_type', [...FUNNEL_EVENT_TYPES]) as unknown as Scopeable;
-    let metaQuery: Scopeable = service
-      .from('meta_ad_insights')
-      .select(META_SELECT) as unknown as Scopeable;
+    try {
+      // Query builders are cast to a narrow Scopeable so Supabase's deep generics
+      // do not blow the compiler when we chain scope + date + limit.
+      let eventsQuery: Scopeable = service
+        .from('events')
+        .select(EVENT_SELECT)
+        .in('event_type', [...FUNNEL_EVENT_TYPES]) as unknown as Scopeable;
+      let metaQuery: Scopeable = service
+        .from('meta_ad_insights')
+        .select(META_SELECT) as unknown as Scopeable;
 
-    eventsQuery = await withClientScope(service, eventsQuery, scope.clientId);
-    metaQuery = await withClientScope(service, metaQuery, scope.clientId);
-    eventsQuery = withDateRange(eventsQuery, 'occurred_at', scope.startDate, scope.endDate, true);
-    metaQuery = withDateRange(metaQuery, 'insight_date', scope.startDate, scope.endDate, false);
-    eventsQuery = eventsQuery.limit(ROW_LIMIT);
-    metaQuery = metaQuery.limit(ROW_LIMIT);
+      eventsQuery = await withClientScope(service, eventsQuery, scope.clientId);
+      metaQuery = await withClientScope(service, metaQuery, scope.clientId);
+      eventsQuery = withDateRange(eventsQuery, 'occurred_at', scope.startDate, scope.endDate, true);
+      metaQuery = withDateRange(metaQuery, 'insight_date', scope.startDate, scope.endDate, false);
+      eventsQuery = eventsQuery.limit(ROW_LIMIT);
+      metaQuery = metaQuery.limit(ROW_LIMIT);
 
-    const [
-      { data: events, error: eventsError },
-      { data: meta, error: metaError },
-      { data: library, error: libError },
-      { data: aliases, error: aliasError },
-    ] = await Promise.all([
-      eventsQuery as unknown as QueryResult<AdEventRow>,
-      metaQuery as unknown as QueryResult<AdMetaRow>,
-      service.from('ad_library').select(LIBRARY_SELECT),
-      service.from('ad_library_aliases').select('id, library_id, alias_name'),
-    ]);
+      const [
+        { data: events, error: eventsError },
+        { data: meta, error: metaError },
+        { data: library, error: libError },
+        { data: aliases, error: aliasError },
+      ] = await Promise.all([
+        eventsQuery as unknown as QueryResult<AdEventRow>,
+        metaQuery as unknown as QueryResult<AdMetaRow>,
+        service.from('ad_library').select(LIBRARY_SELECT),
+        service.from('ad_library_aliases').select('id, library_id, alias_name'),
+      ]);
 
-    if (eventsError || metaError || libError || aliasError) {
+      if (eventsError || metaError || libError || aliasError) {
+        return {
+          error:
+            eventsError?.message ??
+            metaError?.message ??
+            libError?.message ??
+            aliasError?.message ??
+            'Failed to load media buyer window',
+        };
+      }
+
+      const libraryRows = (library ?? []) as AdLibraryMeta[];
+      const tagLookup = await tagsByLibraryId(
+        service,
+        libraryRows.map((row) => row.id),
+      );
+
       return {
-        error:
-          eventsError?.message ??
-          metaError?.message ??
-          libError?.message ??
-          aliasError?.message ??
-          'Failed to load media buyer window',
+        data: {
+          events: (events ?? []) as AdEventRow[],
+          meta: (meta ?? []) as AdMetaRow[],
+          library: libraryRows,
+          aliases: (aliases ?? []) as AdLibraryAliasRow[],
+          tagsById: tagLookup.data,
+          truncated:
+            (events?.length ?? 0) >= ROW_LIMIT || (meta?.length ?? 0) >= ROW_LIMIT,
+        },
+      };
+    } catch (e) {
+      return {
+        error: e instanceof Error ? e.message : 'Failed to load media buyer window',
       };
     }
-
-    const libraryRows = (library ?? []) as AdLibraryMeta[];
-    const tagLookup = await tagsByLibraryId(
-      service,
-      libraryRows.map((row) => row.id),
-    );
-
-    const payload: MediaBuyerWindow = {
-      events: (events ?? []) as AdEventRow[],
-      meta: (meta ?? []) as AdMetaRow[],
-      library: libraryRows,
-      aliases: (aliases ?? []) as AdLibraryAliasRow[],
-      tagsById: tagLookup.data,
-      truncated:
-        (events?.length ?? 0) >= ROW_LIMIT || (meta?.length ?? 0) >= ROW_LIMIT,
-    };
-
-    windowCache.set(key, payload);
-    return { data: payload };
   })().finally(() => {
     windowInflight.delete(key);
   });
 
   windowInflight.set(key, pending);
+  return pending;
+}
+
+function stripClientIds<T extends { client_ids?: string[] }>(row: T): Omit<T, 'client_ids'> {
+  const rest = { ...row };
+  delete rest.client_ids;
+  return rest;
+}
+
+/**
+ * Compact board shared by Creative Command + Ad Performance. One DB pull builds
+ * both payloads; only this result is TTL-cached (not the raw event/meta arrays).
+ */
+export async function loadMediaBuyerBoard(
+  service: ServiceClient,
+  scope: MediaBuyerScope,
+): Promise<{ data?: MediaBuyerBoard; error?: string }> {
+  const key = scopeKey(scope);
+  const cached = boardCache.get(key);
+  if (cached) return { data: cached };
+
+  const existing = boardInflight.get(key);
+  if (existing) return existing;
+
+  const pending = (async () => {
+    try {
+      const window = await loadMediaBuyerWindow(service, scope);
+      if (window.error || !window.data) {
+        return { error: window.error ?? 'Failed to load' };
+      }
+
+      const { events, meta, library, aliases, tagsById, truncated } = window.data;
+      for (const row of library) {
+        row.tags = tagsById.get(row.id) ?? [];
+      }
+
+      const resolver = new AdLibraryResolver(library, aliases);
+      const perName = aggregateAdPerformance(meta, events);
+      const ads: MediaBuyerAdRow[] = rollupAdPerformanceByLibrary(perName, resolver).map((row) => {
+        const stripped = stripClientIds(row);
+        if (row.library) {
+          return {
+            ...stripped,
+            library: {
+              ...row.library,
+              tags: tagsById.get(row.library.id) ?? [],
+            },
+          };
+        }
+        return stripped;
+      });
+
+      const overview = buildCreativeIntel({
+        metaRows: meta,
+        events,
+        resolver,
+        start: scope.startDate,
+        end: scope.endDate,
+      });
+
+      const board: MediaBuyerBoard = { ads, overview, truncated };
+      boardCache.set(key, board);
+      return { data: board };
+    } catch (e) {
+      return {
+        error: e instanceof Error ? e.message : 'Failed to build media buyer board',
+      };
+    }
+  })().finally(() => {
+    boardInflight.delete(key);
+  });
+
+  boardInflight.set(key, pending);
   return pending;
 }
 

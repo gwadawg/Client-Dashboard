@@ -64,17 +64,37 @@ export default function CreativeCommand({
     if (clientId) params.set("client_id", clientId);
     fetch(`/api/media-buyer/overview?${params}`, { signal: controller.signal })
       .then(async (r) => {
-        const json = await r.json();
-        if (!r.ok) throw new Error(json.error ?? "Failed to load creative intel");
+        const text = await r.text();
+        if (controller.signal.aborted) return null;
+        let json: CreativeIntelResponse & { error?: string } | null = null;
+        if (text) {
+          try {
+            json = JSON.parse(text) as CreativeIntelResponse & { error?: string };
+          } catch {
+            throw new Error(
+              `Creative Command got a bad response (${r.status || "empty"}). Try a shorter date range.`,
+            );
+          }
+        }
+        if (!r.ok) {
+          throw new Error(json?.error ?? `Failed to load creative intel (${r.status})`);
+        }
+        if (!json) {
+          throw new Error(
+            `Creative Command got an empty response (${r.status || "network"}). Try a shorter date range.`,
+          );
+        }
         return json as CreativeIntelResponse;
       })
       .then((json) => {
+        if (!json || controller.signal.aborted) return;
         setResult({ key: requestKey, data: json });
         setDrill({});
         setOpened(null);
       })
       .catch((e: Error) => {
-        if (e.name !== "AbortError") setResult({ key: requestKey, error: e.message });
+        if (controller.signal.aborted || e.name === "AbortError") return;
+        setResult({ key: requestKey, error: e.message });
       });
     return () => controller.abort();
   }, [requestKey, startDate, endDate, clientId]);
