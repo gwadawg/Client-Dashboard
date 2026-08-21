@@ -503,7 +503,7 @@ export default function AutomationsManager() {
 
       <SectionCard
         title="Automations"
-        description="Built-in workflows run automatically when clients submit forms. GHL tag triggers your GHL automations (emails, etc.)."
+        description="Built-in workflows run on form events and scheduled checks (e.g. CPL threshold). Wire team channel slugs below so Slack delivery works."
       >
         <div className="rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
           <table className="w-full text-sm">

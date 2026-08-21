@@ -48,6 +48,18 @@ export const BUILT_IN_AUTOMATIONS: BuiltInAutomation[] = [
     ],
     enabled: true,
   },
+  {
+    id: 'cpl-threshold-media-buyer',
+    name: 'CPL over $35 (past 4 days)',
+    event_key: 'kpi.cpl.threshold_breached',
+    trigger:
+      'Daily cron: active + live paid-ads clients whose CPL (ad spend ÷ leads) over the past 4 calendar days exceeds $35',
+    actions: [
+      'Slack — media_buyer team channel digest (add slug media_buyer in Automations → Team channels)',
+      'Endpoint — GET/POST /api/alerts/cpl-threshold (CRON_SECRET or ADMIN_WEBHOOK_SECRET)',
+    ],
+    enabled: true,
+  },
 ];
 
 export function getBuiltInAutomation(eventKey: string): BuiltInAutomation | undefined {

@@ -56,6 +56,7 @@ Run that in each private client or ops channel you want Mr. Waiz to post to.
 | Demo booked — booking credit | `setters` | — |
 | Intro showed — setter reflection | `setters` | — |
 | Demo showed — closer form | `ceo` | — |
+| Active clients CPL > $35 (past 4 days) | `media_buyer` | Daily cron `GET /api/alerts/cpl-threshold` |
 
 ## Test from the dashboard
 

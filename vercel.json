@@ -7,6 +7,10 @@
     {
       "path": "/api/cs-touchpoints/run-schedule",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/alerts/cpl-threshold",
+      "schedule": "0 14 * * *"
     }
   ]
 }
