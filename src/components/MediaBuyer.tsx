@@ -344,6 +344,17 @@ function normalizeAdQuery(q: string): string {
   return q.trim().toLowerCase();
 }
 
+/** Empty/HTML error bodies throw "Unexpected end of JSON input" on res.json(). */
+async function readJson<T = unknown>(res: Response): Promise<T | null> {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
 function matchesAdQuery(haystacks: Array<string | null | undefined>, q: string): boolean {
   const needle = normalizeAdQuery(q);
   if (!needle) return true;
@@ -1764,17 +1775,20 @@ function AdLibrary({
     setError(null);
     const perfParams = new URLSearchParams({ start_date: startDate, end_date: endDate });
     if (clientId) perfParams.set("client_id", clientId);
-    Promise.all([
-      fetch("/api/ad-library").then(async (r) => {
-        if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load library");
-        return r.json() as Promise<LibEntry[]>;
-      }),
-      fetch(`/api/media-buyer?${perfParams}`).then(async (r) => {
-        if (!r.ok) throw new Error((await r.json()).error ?? "Failed to load metrics");
-        return r.json() as Promise<{ ads?: AdRow[] }>;
-      }),
-    ])
-      .then(([libraryData, perfData]) => {
+
+    // Library rows are required; spend metrics are optional. Coupling them meant a
+    // timed-out /api/media-buyer (empty body) wiped the whole Ad Library tab.
+    fetch("/api/ad-library")
+      .then(async (r) => {
+        const body = await readJson<LibEntry[] | { error?: string }>(r);
+        if (!r.ok) {
+          const err = body && typeof body === "object" && "error" in body ? body.error : null;
+          throw new Error(err ?? `Failed to load library (${r.status})`);
+        }
+        if (!Array.isArray(body)) throw new Error("Failed to load library");
+        return body;
+      })
+      .then((libraryData) => {
         const nextEntries = libraryData.map((e) => ({
           ...e,
           aliases: e.aliases ?? [],
@@ -1783,16 +1797,28 @@ function AdLibrary({
         }));
         setEntries(nextEntries);
         onReadyCountChange?.(nextEntries.filter((e) => e.ready_to_test).length);
-        const next = new Map<string, LibraryMetrics>();
-        for (const ad of perfData.ads ?? []) {
-          const libId = ad.library?.id;
-          if (!libId) continue;
-          next.set(libId, { cpl: ad.cpl, ctr: ad.ctr, cpc: ad.cpc });
-        }
-        setMetricsById(next);
+        setLoading(false);
+
+        return fetch(`/api/media-buyer?${perfParams}`)
+          .then(async (r) => {
+            const body = await readJson<{ ads?: AdRow[]; error?: string }>(r);
+            if (!r.ok || !body) return;
+            const next = new Map<string, LibraryMetrics>();
+            for (const ad of body.ads ?? []) {
+              const libId = ad.library?.id;
+              if (!libId) continue;
+              next.set(libId, { cpl: ad.cpl, ctr: ad.ctr, cpc: ad.cpc });
+            }
+            setMetricsById(next);
+          })
+          .catch(() => {
+            /* metrics are best-effort — cards show "No spend in range" */
+          });
       })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        setError(e.message);
+        setLoading(false);
+      });
   }, [startDate, endDate, clientId, onReadyCountChange]);
 
   useEffect(() => {
