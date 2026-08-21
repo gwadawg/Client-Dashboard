@@ -259,6 +259,72 @@ export function shouldSectionByFormat(path: FolderPath): boolean {
     : path.kind === "product" && path.format === undefined;
 }
 
+/**
+ * How many ads outside the current folder still satisfy the active filters.
+ * Backs the "search everywhere" escape hatch, so it takes the grid's own
+ * predicate rather than re-deriving one that could drift.
+ */
+export function countMatchesOutsideFolder<T extends LibraryFolderEntry>(
+  entries: T[],
+  path: FolderPath,
+  passes: (e: T) => boolean,
+): number {
+  return entries.filter((e) => !entryMatchesFolder(e, path) && passes(e)).length;
+}
+
+export type LibrarySort = "name" | "updated" | "created" | "cpl";
+
+export const LIBRARY_SORT_OPTIONS: { slug: LibrarySort; label: string }[] = [
+  { slug: "name", label: "Name A–Z" },
+  { slug: "updated", label: "Recently updated" },
+  { slug: "created", label: "Newest added" },
+  { slug: "cpl", label: "Best CPL" },
+];
+
+export const DEFAULT_LIBRARY_SORT: LibrarySort = "name";
+
+export function parseLibrarySort(raw: string | null | undefined): LibrarySort | null {
+  return LIBRARY_SORT_OPTIONS.some((o) => o.slug === raw) ? (raw as LibrarySort) : null;
+}
+
+export type SortableAd = {
+  ad_name: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function timestamp(raw: string): number {
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/**
+ * Every order falls back to name so the grid is totally ordered — the API
+ * returns `updated_at desc`, which reshuffles cards whenever an ad is edited.
+ * Ads with no CPL in range sort last instead of winning "Best CPL" on a null.
+ */
+export function libraryAdComparator<T extends SortableAd>(
+  sort: LibrarySort,
+  cplOf: (e: T) => number | null | undefined,
+): (a: T, b: T) => number {
+  return (a, b) => {
+    if (sort === "updated") {
+      const d = timestamp(b.updated_at) - timestamp(a.updated_at);
+      if (d !== 0) return d;
+    } else if (sort === "created") {
+      const d = timestamp(b.created_at) - timestamp(a.created_at);
+      if (d !== 0) return d;
+    } else if (sort === "cpl") {
+      const av = cplOf(a) ?? null;
+      const bv = cplOf(b) ?? null;
+      if (av == null && bv != null) return 1;
+      if (bv == null && av != null) return -1;
+      if (av != null && bv != null && av !== bv) return av - bv;
+    }
+    return a.ad_name.localeCompare(b.ad_name, undefined, { sensitivity: "base" });
+  };
+}
+
 export function groupEntriesByFormat<T extends LibraryFolderEntry>(
   entries: T[],
   formatLabels: Record<string, string>,

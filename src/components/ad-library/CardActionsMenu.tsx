@@ -16,10 +16,10 @@ type Props = {
 };
 
 const TONE: Record<NonNullable<CardAction["tone"]>, string> = {
-  default: "#e2e8f0",
-  danger: "#f87171",
-  accent: "#fbbf24",
-  muted: "#94a3b8",
+  default: "var(--color-ws-text)",
+  danger: "var(--color-ws-negative)",
+  accent: "var(--color-ws-accent-bright)",
+  muted: "var(--color-ws-text-muted)",
 };
 
 export default function CardActionsMenu({ actions }: Props) {
@@ -72,7 +72,10 @@ export default function CardActionsMenu({ actions }: Props) {
         aria-controls={menuId}
         onClick={() => setOpen((v) => !v)}
         className="text-xs px-2 py-0.5 rounded"
-        style={{ color: "#94a3b8", background: open ? "rgba(255,255,255,0.06)" : "transparent" }}
+        style={{
+          color: "var(--color-ws-text-muted)",
+          background: open ? "rgba(255,255,255,0.06)" : "transparent",
+        }}
         title="More actions"
       >
         ⋯
@@ -83,12 +86,13 @@ export default function CardActionsMenu({ actions }: Props) {
               ref={menuRef}
               id={menuId}
               role="menu"
-              className="fixed z-[80] min-w-[180px] rounded-lg py-1 shadow-lg"
+              // Portalled out of the library's font scope, so re-apply it.
+              className="adlib fixed z-[80] min-w-[180px] rounded-lg py-1 shadow-lg"
               style={{
                 top: pos.top,
                 left: pos.left,
-                background: "#0f1c2e",
-                border: "1px solid rgba(255,255,255,0.12)",
+                background: "var(--color-ws-input)",
+                border: "1px solid var(--color-ws-hairline)",
               }}
             >
               {actions.map((a) => {

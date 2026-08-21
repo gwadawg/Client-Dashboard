@@ -478,6 +478,10 @@ export default function DashboardView({
     params.delete("sub");
     params.delete("appointment_id");
     params.delete("call_id");
+    // Media Buyer owns these; a stale folder must not leak into another view.
+    params.delete("mb");
+    params.delete("folder");
+    params.delete("sort");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };

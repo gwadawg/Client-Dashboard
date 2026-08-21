@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AdFormatPicker, useAdFormats } from "./AdFormatPicker";
 import { AdTagPicker, useAdTags } from "./AdTagPicker";
 import AdWorkspaceOverlay, { type AdWorkspaceDrilldown } from "./AdWorkspaceOverlay";
@@ -9,18 +10,29 @@ import CardActionsMenu from "./ad-library/CardActionsMenu";
 import FolderRail from "./ad-library/FolderRail";
 import LibraryBreadcrumb from "./ad-library/LibraryBreadcrumb";
 import CreativeCommand from "./creative-command/CreativeCommand";
+// One set of formatters and primitives across both tabs of this shell, so the
+// same CPL cannot render two ways depending on which tab you are looking at.
+import { Chip, Empty, Kicker, driveThumb, money, money2, pct } from "./creative-command/ui";
 import { adFormatLabel } from "@/lib/ad-formats";
 import {
   buildFolderTreeCounts,
+  countMatchesOutsideFolder,
   defaultFolderPath,
+  DEFAULT_LIBRARY_SORT,
   entryMatchesFolder,
   folderPathForEntry,
+  folderPathKey,
   formPrefillFromFolder,
   groupEntriesByFormat,
+  libraryAdComparator,
+  LIBRARY_SORT_OPTIONS,
   loadStoredFolderPath,
+  parseFolderPathKey,
+  parseLibrarySort,
   shouldSectionByFormat,
   storeFolderPath,
   type FolderPath,
+  type LibrarySort,
 } from "@/lib/ad-library-folders";
 import type { AdTagRef } from "@/lib/ad-tags";
 
@@ -121,6 +133,46 @@ export type LibraryNav = {
   /** Open Ad Library with the Ready to test filter on. */
   readyToTest?: boolean;
 } | null;
+
+/**
+ * Query params this tab owns, so a folder is linkable and the back button
+ * works. `media_buyer` is not a hub view, so DashboardView's `goToView` strips
+ * `tab` on entry — hence the dedicated names rather than reusing `tab`.
+ */
+const TAB_PARAM = "mb";
+const FOLDER_PARAM = "folder";
+const SORT_PARAM = "sort";
+
+/** Long enough for the deep link's smooth scroll to land and register. */
+const HIGHLIGHT_LINGER_MS = 2400;
+
+function useTabParams() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  /**
+   * `push` for moves the user made on purpose — changing tab or folder — so
+   * Back walks them in reverse. `replace` for refinements and for restoring
+   * remembered state, which should not pile up history entries.
+   */
+  const setParams = useCallback(
+    (next: Record<string, string | null>, mode: "push" | "replace" = "replace") => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(next)) {
+        if (value == null) params.delete(key);
+        else params.set(key, value);
+      }
+      const qs = params.toString();
+      const href = qs ? `${pathname}?${qs}` : pathname;
+      if (mode === "push") router.push(href, { scroll: false });
+      else router.replace(href, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
+
+  return { searchParams, setParams };
+}
 
 const PRODUCT_OPTIONS = [
   { value: "", label: "Select product…" },
@@ -296,6 +348,16 @@ function matchesAdQuery(haystacks: Array<string | null | undefined>, q: string):
   const needle = normalizeAdQuery(q);
   if (!needle) return true;
   return haystacks.some((h) => (h ?? "").toLowerCase().includes(needle));
+}
+
+/** Fields library search reads, so folder-scoped and library-wide counts agree. */
+function adSearchHaystack(e: LibEntry): Array<string | null | undefined> {
+  return [
+    e.ad_name,
+    e.summary,
+    ...(e.aliases ?? []).map((a) => a.alias_name),
+    ...(e.tags ?? []).flatMap((t) => [t.label, t.slug]),
+  ];
 }
 
 function AdSearchInput({
@@ -504,38 +566,20 @@ function FilterSelect({
   );
 }
 
+// Winner is green, not amber: amber means selection and primary action, and a
+// winner badge sitting next to an amber-selected folder read as the same thing.
 const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  winner: { bg: "rgba(245,158,11,0.14)", text: "#fbbf24", label: "Winner" },
-  active: { bg: "rgba(52,211,153,0.12)", text: "#34d399", label: "Active" },
+  winner: { bg: "rgba(52,211,153,0.14)", text: "#34d399", label: "Winner" },
+  active: { bg: "rgba(148,163,184,0.12)", text: "#94a3b8", label: "Active" },
   paused: { bg: "rgba(148,163,184,0.12)", text: "#94a3b8", label: "Paused" },
   archived: { bg: "rgba(100,116,139,0.1)", text: "#64748b", label: "Archived" },
 };
 
 const STATUS_OPTIONS = ["active", "winner", "paused", "archived"] as const;
 
-function money(v: number | null | undefined): string {
-  if (v == null) return "—";
-  return `$${v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
-}
-
 function num(v: number | null | undefined): string {
   if (v == null) return "—";
   return v.toLocaleString("en-US");
-}
-
-function pct(v: number | null | undefined): string {
-  if (v == null) return "—";
-  return `${v.toFixed(2)}%`;
-}
-
-/** Turn a Google Drive share link into a thumbnail URL when possible. */
-function driveThumb(entry: { drive_url: string | null; thumbnail_url: string | null }): string | null {
-  if (entry.thumbnail_url) return entry.thumbnail_url;
-  const url = entry.drive_url;
-  if (!url) return null;
-  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) ?? url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  if (match) return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w600`;
-  return null;
 }
 
 type SortKey =
@@ -1092,7 +1136,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                     border: "1px solid rgba(52,211,153,0.25)",
                   }}
                 >
-                  {c.label} · {money(c.cpconv)}
+                  {c.label} · {money2(c.cpconv)}
                 </button>
               ))}
             </div>
@@ -1113,7 +1157,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                     border: "1px solid rgba(96,165,250,0.25)",
                   }}
                 >
-                  {c.label} · {money(c.cpconv)}
+                  {c.label} · {money2(c.cpconv)}
                 </button>
               ))}
             </div>
@@ -1147,7 +1191,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
               <div className="mt-3 grid grid-cols-3 sm:grid-cols-7 gap-3">
                 <div>
                   <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>Spend</p>
-                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(Math.round(lane.stats.spend))}</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(lane.stats.spend)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>Leads</p>
@@ -1155,19 +1199,19 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>CTR</p>
-                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{pct(lane.stats.ctr)}</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{pct(lane.stats.ctr, 2)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>CPC</p>
-                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(lane.stats.cpc)}</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money2(lane.stats.cpc)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>CPM</p>
-                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(lane.stats.cpm)}</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money2(lane.stats.cpm)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>CPCONV</p>
-                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money(lane.stats.cp_conversation)}</p>
+                  <p className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: "#e2e8f0" }}>{money2(lane.stats.cp_conversation)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wider" style={{ color: "#475569" }}>Funded</p>
@@ -1256,25 +1300,25 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-12 gap-3">
         {[
-          { label: "Total Spend", value: money(Math.round(totals.spend)) },
+          { label: "Total Spend", value: money(totals.spend) },
           { label: "Impr", value: num(totals.impressions) },
           { label: "Clicks", value: num(totals.clicks) },
-          { label: "CTR", value: pct(totals.ctr) },
-          { label: "CPC", value: money(totals.cpc) },
-          { label: "CPM", value: money(totals.cpm) },
+          { label: "CTR", value: pct(totals.ctr, 2) },
+          { label: "CPC", value: money2(totals.cpc) },
+          { label: "CPM", value: money2(totals.cpm) },
           { label: "Leads", value: num(totals.leads) },
           { label: "Qual %", value: pct(totals.qualified_rate) },
-          { label: "CPL", value: money(totals.cpl) },
-          { label: "CPQL", value: money(totals.cost_per_qualified) },
-          { label: "CPCONV", value: money(totals.cp_conversation) },
+          { label: "CPL", value: money2(totals.cpl) },
+          { label: "CPQL", value: money2(totals.cost_per_qualified) },
+          { label: "CPCONV", value: money2(totals.cp_conversation) },
           { label: "Proposals", value: num(totals.unique_proposals) },
           { label: "Submissions", value: num(totals.unique_submissions) },
           { label: "Funded", value: num(totals.unique_funded) },
-          { label: "CPF", value: money(totals.cp_funded) },
+          { label: "CPF", value: money2(totals.cp_funded) },
           { label: "Hand-raise", value: pct(totals.hand_raise_rate) },
         ].map((s) => (
           <div key={s.label} className="rounded-xl p-4" style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <p className="text-[11px] uppercase tracking-wider" style={{ color: "#475569" }}>{s.label}</p>
+            <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-ws-text-faint)" }}>{s.label}</p>
             <p className="text-xl font-bold mt-1" style={{ color: "#e2e8f0" }}>{s.value}</p>
           </div>
         ))}
@@ -1377,7 +1421,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
               value={linkLibraryId}
               onChange={(e) => setLinkLibraryId(e.target.value)}
               className="w-full px-3 py-2 rounded-lg text-sm"
-              style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+              style={{ background: "var(--color-ws-chrome)", border: "1px solid var(--color-ws-hairline)", color: "var(--color-ws-text)" }}
             >
               <option value="">Select library entry…</option>
               {libraryOptions
@@ -1536,22 +1580,22 @@ function FragmentRow({
         <>
           <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.impressions)}</td>
           <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.clicks)}</td>
-          <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{pct(ad.ctr)}</td>
-          <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money(ad.cpc)}</td>
-          <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money(ad.cpm)}</td>
+          <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{pct(ad.ctr, 2)}</td>
+          <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money2(ad.cpc)}</td>
+          <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money2(ad.cpm)}</td>
         </>
       ) : null}
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.leads)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#a78bfa" }}>{pct(ad.qualified_rate)}</td>
-      <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money(ad.cpl)}</td>
-      <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money(ad.cost_per_qualified)}</td>
-      <td className="px-3 py-3 text-right font-semibold" style={{ color: "#fbbf24" }}>{money(ad.cp_conversation)}</td>
+      <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money2(ad.cpl)}</td>
+      <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money2(ad.cost_per_qualified)}</td>
+      <td className="px-3 py-3 text-right font-semibold" style={{ color: "#fbbf24" }}>{money2(ad.cp_conversation)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{pct(ad.hand_raise_rate)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{pct(ad.conversation_rate)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.unique_proposals ?? 0)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.unique_submissions ?? 0)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{num(ad.unique_funded ?? 0)}</td>
-      <td className="px-3 py-3 text-right font-semibold" style={{ color: "#34d399" }}>{money(ad.cp_funded)}</td>
+      <td className="px-3 py-3 text-right font-semibold" style={{ color: "#34d399" }}>{money2(ad.cp_funded)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#475569" }}>{ad.client_count}</td>
     </tr>
   );
@@ -1578,14 +1622,29 @@ type LibraryMetrics = {
   cpc: number | null;
 };
 
+/** Topic tags shown on a card before collapsing the rest into a +N chip. */
+const CARD_TAG_BUDGET = 2;
+
+/**
+ * Card-scale sibling of `Stat` — same Kicker and data font, but sized for three
+ * across inside a card rather than a dashboard header.
+ */
 function MetricChip({ label, value }: { label: string; value: string }) {
   return (
     <div
       className="rounded-lg px-2.5 py-1.5 min-w-0 flex-1"
-      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+      style={{
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid var(--color-ws-hairline-soft)",
+      }}
     >
-      <p className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: "#64748b" }}>{label}</p>
-      <p className="text-sm font-semibold mt-0.5 truncate" style={{ color: "#e2e8f0" }}>{value}</p>
+      <Kicker>{label}</Kicker>
+      <p
+        className="text-xs mt-0.5 truncate adlib-data"
+        style={{ color: "var(--color-ws-text)" }}
+      >
+        {value}
+      </p>
     </div>
   );
 }
@@ -1614,20 +1673,49 @@ function AdLibrary({
   const [expandedVariants, setExpandedVariants] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [folderPath, setFolderPath] = useState<FolderPath>(defaultFolderPath);
   const [tagFilter, setTagFilter] = useState("all");
   const [search, setSearch] = useState("");
   const { formats, labels: formatLabels, createFormat, loading: formatsLoading } = useAdFormats();
   const { tags: tagCatalog, createTag, loading: tagsLoading } = useAdTags();
 
-  useEffect(() => {
-    setFolderPath(loadStoredFolderPath());
-  }, []);
+  const { searchParams, setParams } = useTabParams();
+  const folderParam = searchParams.get(FOLDER_PARAM);
+  const sort = parseLibrarySort(searchParams.get(SORT_PARAM)) ?? DEFAULT_LIBRARY_SORT;
 
-  const selectFolder = useCallback((next: FolderPath) => {
-    setFolderPath(next);
-    storeFolderPath(next);
-  }, []);
+  const setSort = useCallback(
+    (next: string) => {
+      setParams({ [SORT_PARAM]: next === DEFAULT_LIBRARY_SORT ? null : next });
+    },
+    [setParams],
+  );
+
+  // URL is the source of truth so folders are linkable and the back button
+  // steps through them; localStorage only seeds the first visit.
+  const folderPath = useMemo<FolderPath>(
+    () => parseFolderPathKey(folderParam) ?? defaultFolderPath(),
+    [folderParam],
+  );
+
+  const selectFolder = useCallback(
+    (next: FolderPath) => {
+      storeFolderPath(next);
+      // A highlight belongs to the folder it was deep-linked into.
+      setHighlightId(null);
+      setParams({ [FOLDER_PARAM]: folderPathKey(next) }, "push");
+    },
+    [setParams],
+  );
+
+  const seededFromStorage = useRef(false);
+  useEffect(() => {
+    if (seededFromStorage.current) return;
+    seededFromStorage.current = true;
+    if (folderParam) return;
+    const stored = loadStoredFolderPath();
+    if (folderPathKey(stored) !== folderPathKey(defaultFolderPath())) {
+      setParams({ [FOLDER_PARAM]: folderPathKey(stored) });
+    }
+  }, [folderParam, setParams]);
 
   const openCreateForm = useCallback(() => {
     setFormError(null);
@@ -1714,9 +1802,10 @@ function AdLibrary({
       return;
     }
     if (libraryNav.libraryId) {
-      setHighlightId(libraryNav.libraryId);
       const entry = entries.find((e) => e.id === libraryNav.libraryId);
+      // Select before highlighting: selectFolder clears the ring.
       if (entry) selectFolder(folderPathForEntry(entry));
+      setHighlightId(libraryNav.libraryId);
       requestAnimationFrame(() => {
         document.getElementById(`library-card-${libraryNav.libraryId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
       });
@@ -1724,6 +1813,15 @@ function AdLibrary({
       onNavClear();
     }
   }, [libraryNav, entries, onNavClear, openEditForm, selectFolder]);
+
+  // The deep link from Ad Performance flashes a ring to say "this one". Left
+  // set it reads as a permanent selection for the rest of the session, so it
+  // retires once the smooth scroll has landed.
+  useEffect(() => {
+    if (!highlightId) return;
+    const t = setTimeout(() => setHighlightId(null), HIGHLIGHT_LINGER_MS);
+    return () => clearTimeout(t);
+  }, [highlightId]);
 
   async function addAlias() {
     if (!form?.id || !newAlias.trim()) return;
@@ -1831,32 +1929,45 @@ function AdLibrary({
     [entries, folderPath],
   );
 
+  const passesFilters = useCallback(
+    (e: LibEntry) =>
+      (tagFilter === "all" || (e.tags ?? []).some((t) => t.slug === tagFilter)) &&
+      matchesAdQuery(adSearchHaystack(e), search),
+    [tagFilter, search],
+  );
+
   const visibleEntries = useMemo(() => {
-    const filtered = folderEntries.filter(
-      (e) =>
-        (tagFilter === "all" || (e.tags ?? []).some((t) => t.slug === tagFilter)) &&
-        matchesAdQuery(
-          [
-            e.ad_name,
-            e.summary,
-            ...(e.aliases ?? []).map((a) => a.alias_name),
-            ...(e.tags ?? []).flatMap((t) => [t.label, t.slug]),
-          ],
-          search,
-        ),
+    const filtered = folderEntries.filter(passesFilters);
+    // The test queue is a worklist, so newest-first wins over the chosen sort.
+    const effective: LibrarySort =
+      folderPath.kind === "smart" && folderPath.id === "ready" ? "created" : sort;
+    return filtered.sort(
+      libraryAdComparator(effective, (e: LibEntry) => metricsById.get(e.id)?.cpl),
     );
-    if (folderPath.kind === "smart" && folderPath.id === "ready") {
-      return [...filtered].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
-    }
-    return filtered;
-  }, [folderEntries, tagFilter, search, folderPath]);
+  }, [folderEntries, passesFilters, folderPath, sort, metricsById]);
+
+  // Only computed when the folder came up empty: counts the same filters across
+  // the rest of the library so the escape hatch can never lead to another
+  // empty state.
+  const elsewhereCount = useMemo(() => {
+    if (visibleEntries.length > 0 || !search.trim()) return 0;
+    return countMatchesOutsideFolder(entries, folderPath, passesFilters);
+  }, [visibleEntries.length, search, entries, folderPath, passesFilters]);
 
   const sectionedEntries = useMemo(() => {
     if (!shouldSectionByFormat(folderPath)) return null;
     return groupEntriesByFormat(visibleEntries, formatLabels);
   }, [folderPath, visibleEntries, formatLabels]);
+
+  const sortOptions = useMemo(
+    () =>
+      LIBRARY_SORT_OPTIONS.filter((o) => o.slug !== DEFAULT_LIBRARY_SORT).map((o) => ({
+        slug: o.slug,
+        label: o.label,
+        count: 0,
+      })),
+    [],
+  );
 
   const tagFilterOptions = useMemo(() => {
     const counts = new Map<string, { slug: string; label: string; count: number }>();
@@ -1877,14 +1988,44 @@ function AdLibrary({
     return [...counts.values()].sort((a, b) => a.label.localeCompare(b.label));
   }, [folderEntries, tagFilter, tagCatalog]);
 
-  if (loading) return <p style={{ color: "#475569" }} className="text-sm py-10 text-center">Loading library…</p>;
-  if (error) return <p style={{ color: "#f87171" }} className="text-sm py-10 text-center">{error}</p>;
+  if (loading) return <Empty>Loading library…</Empty>;
+  if (error) {
+    return (
+      <p style={{ color: "var(--color-ws-negative)" }} className="text-sm py-10 text-center">
+        {error}
+      </p>
+    );
+  }
 
   function renderCard(e: LibEntry, index: number) {
     const thumb = driveThumb(e);
     const allNames = [e.ad_name, ...(e.aliases ?? []).map((a) => a.alias_name)];
     const isHighlighted = highlightId === e.id;
     const metrics = metricsById.get(e.id);
+    const hasMetrics = !!metrics && (metrics.cpl != null || metrics.ctr != null || metrics.cpc != null);
+
+    // The rail, breadcrumb, and format section headers already name the folder
+    // you're standing in, so a card badge repeating it is pure duplication.
+    // Active is likewise the default for nearly every entry.
+    const formatImplied =
+      shouldSectionByFormat(folderPath) ||
+      (folderPath.kind === "product" && folderPath.format !== undefined);
+    const inWinners = folderPath.kind === "smart" && folderPath.id === "winners";
+    const badgeFormat = formatImplied ? null : e.ad_format;
+    const badgeProduct = folderPath.kind === "product" ? null : e.product;
+    const badgeKb =
+      e.knowledge_capture_status && e.knowledge_capture_status !== "none"
+        ? e.knowledge_capture_status
+        : null;
+    const showReadyBadge =
+      !!e.ready_to_test && !(folderPath.kind === "smart" && folderPath.id === "ready");
+    const showStatusBadge = e.status !== "active" && !(inWinners && e.status === "winner");
+
+    const tags = e.tags ?? [];
+    const shownTags = tags.slice(0, CARD_TAG_BUDGET);
+    const hiddenTags = tags.slice(CARD_TAG_BUDGET);
+    const showBadgeRow = !!badgeFormat || !!badgeProduct || tags.length > 0 || !!badgeKb;
+
     const overflowActions = [
       ...(e.ready_to_test
         ? [
@@ -1931,49 +2072,65 @@ function AdLibrary({
         id={`library-card-${e.id}`}
         className="rounded-xl overflow-hidden flex flex-col transition-shadow ad-library-card-enter"
         style={{
-          background: "#0a1424",
-          border: isHighlighted ? "1px solid rgba(245,158,11,0.5)" : "1px solid rgba(255,255,255,0.06)",
-          boxShadow: isHighlighted ? "0 0 0 2px rgba(245,158,11,0.25)" : undefined,
+          background: "var(--color-ws-panel)",
+          border: isHighlighted
+            ? "1px solid color-mix(in srgb, var(--color-ws-accent) 50%, transparent)"
+            : "1px solid var(--color-ws-hairline)",
+          boxShadow: isHighlighted
+            ? "0 0 0 2px color-mix(in srgb, var(--color-ws-accent) 25%, transparent)"
+            : undefined,
           animationDelay: `${Math.min(index, 12) * 40}ms`,
         }}
       >
         <div className="p-4 flex gap-3 flex-1">
-          {thumb ? (
-            <button
-              type="button"
-              onClick={() => openEditForm(e)}
-              className="shrink-0 w-16 h-16 rounded-lg overflow-hidden"
-              style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.06)" }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/* Rendered even without art so titles share one left edge across the grid. */}
+          <button
+            type="button"
+            onClick={() => openEditForm(e)}
+            aria-label={`Open ${e.ad_name}`}
+            className="shrink-0 w-16 h-16 rounded-lg overflow-hidden"
+            style={{
+              background: "var(--color-ws-chrome)",
+              border: "1px solid var(--color-ws-hairline)",
+            }}
+          >
+            {thumb ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
               <img src={thumb} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-            </button>
-          ) : null}
+            ) : null}
+          </button>
           <div className="min-w-0 flex-1 flex flex-col">
             <div className="flex items-start justify-between gap-2">
               <button type="button" onClick={() => openEditForm(e)} className="text-left min-w-0">
-                <p className="font-semibold text-sm leading-snug truncate" style={{ color: "#e2e8f0" }} title={e.ad_name}>
+                <p
+                  className="font-semibold text-sm leading-snug line-clamp-2 break-words"
+                  style={{ color: "var(--color-ws-text)" }}
+                  title={e.ad_name}
+                >
                   {e.ad_name}
                 </p>
               </button>
-              <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
-                {e.ready_to_test ? (
-                  <span
-                    className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
-                    style={{ background: "rgba(167,139,250,0.16)", color: "#c4b5fd" }}
-                  >
-                    Ready to test
-                  </span>
-                ) : null}
-                <StatusBadge status={e.status} />
-              </div>
+              {showReadyBadge || showStatusBadge ? (
+                <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
+                  {showReadyBadge ? (
+                    <span
+                      className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
+                      style={{ background: "rgba(167,139,250,0.16)", color: "#c4b5fd" }}
+                    >
+                      Ready to test
+                    </span>
+                  ) : null}
+                  {/* Violet is reserved for ready-to-test; status carries its own tone. */}
+                  {showStatusBadge ? <StatusBadge status={e.status} /> : null}
+                </div>
+              ) : null}
             </div>
             {allNames.length > 1 ? (
               <div className="mt-1.5">
                 <button
                   type="button"
-                  className="text-[11px] underline"
-                  style={{ color: "#94a3b8" }}
+                  className="text-xs underline"
+                  style={{ color: "var(--color-ws-text-muted)" }}
                   onClick={() => setExpandedVariants(expandedVariants === e.id ? null : e.id)}
                 >
                   {allNames.length} linked names {expandedVariants === e.id ? "▲" : "▼"}
@@ -1981,7 +2138,11 @@ function AdLibrary({
                 {expandedVariants === e.id ? (
                   <ul className="mt-1 space-y-0.5">
                     {allNames.map((name) => (
-                      <li key={name} className="text-[11px] truncate" style={{ color: "#64748b" }}>
+                      <li
+                        key={name}
+                        className="text-xs truncate"
+                        style={{ color: "var(--color-ws-text-dim)" }}
+                      >
                         {name}
                         {name === e.ad_name ? " (primary)" : ""}
                       </li>
@@ -1990,72 +2151,71 @@ function AdLibrary({
                 ) : null}
               </div>
             ) : null}
-            {(e.ad_format || e.product || (e.tags ?? []).length > 0 || (e.knowledge_capture_status && e.knowledge_capture_status !== "none")) ? (
+            {/* Format, product, and topic are all classification, so they share
+                one neutral chip — colour here only competed with selection. */}
+            {showBadgeRow ? (
               <div className="flex flex-wrap gap-1.5 mt-2">
-                {e.ad_format ? (
-                  <ClassBadge label={adFormatLabel(e.ad_format, formatLabels)} color="#60a5fa" />
+                {badgeFormat ? <Chip>{adFormatLabel(badgeFormat, formatLabels)}</Chip> : null}
+                {badgeProduct ? (
+                  <Chip>{PRODUCT_LABELS[badgeProduct] ?? badgeProduct}</Chip>
                 ) : null}
-                {e.product ? (
-                  <ClassBadge label={PRODUCT_LABELS[e.product] ?? e.product} color="#a78bfa" />
-                ) : null}
-                {(e.tags ?? []).map((t) => (
+                {shownTags.map((t) => (
                   <button
                     key={t.slug}
                     type="button"
                     onClick={() => setTagFilter(t.slug)}
                     title={`Filter by ${t.label}`}
                   >
-                    <ClassBadge label={t.label} color="#34d399" />
+                    <Chip>{t.label}</Chip>
                   </button>
                 ))}
-                {e.knowledge_capture_status && e.knowledge_capture_status !== "none" ? (
-                  <span
-                    className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide"
-                    style={{
-                      background: e.knowledge_capture_status === "processed" ? "rgba(52,211,153,0.12)" : "rgba(245,158,11,0.12)",
-                      color: e.knowledge_capture_status === "processed" ? "#34d399" : "#fbbf24",
-                    }}
-                  >
-                    KB {e.knowledge_capture_status.replace("_", " ")}
+                {hiddenTags.length > 0 ? (
+                  <span title={hiddenTags.map((t) => t.label).join(", ")}>
+                    <Chip>+{hiddenTags.length}</Chip>
                   </span>
                 ) : null}
+                {badgeKb ? <Chip>KB {badgeKb.replace("_", " ")}</Chip> : null}
               </div>
             ) : null}
-            <div className="flex gap-2 mt-3">
-              <MetricChip label="CPL" value={money(metrics?.cpl)} />
-              <MetricChip label="CTR" value={pct(metrics?.ctr)} />
-              <MetricChip label="CPC" value={money(metrics?.cpc)} />
-            </div>
+            {/* Pinned to the bottom of the content area so numbers line up across a row. */}
+            {hasMetrics ? (
+              <div className="flex gap-2 mt-auto pt-3">
+                <MetricChip label="CPL" value={money2(metrics?.cpl)} />
+                <MetricChip label="CTR" value={pct(metrics?.ctr, 2)} />
+                <MetricChip label="CPC" value={money2(metrics?.cpc)} />
+              </div>
+            ) : (
+              <p className="text-xs mt-auto pt-3" style={{ color: "var(--color-ws-text-muted)" }}>
+                No spend in range
+              </p>
+            )}
           </div>
         </div>
         <div
           className="flex items-center gap-3 px-4 py-2.5"
-          style={{ borderTop: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.15)" }}
+          style={{
+            borderTop: "1px solid var(--color-ws-hairline)",
+            background: "rgba(0,0,0,0.15)",
+          }}
         >
           <button
             type="button"
             onClick={() => openEditForm(e)}
             className="text-xs font-medium"
-            style={{ color: "#e2e8f0" }}
-          >
-            Open
-          </button>
-          <button
-            type="button"
-            onClick={() => openEditForm(e)}
-            className="text-xs ml-auto"
-            style={{ color: "#94a3b8" }}
+            style={{ color: "var(--color-ws-text-muted)" }}
           >
             Edit
           </button>
-          <CardActionsMenu actions={overflowActions} />
+          <div className="ml-auto">
+            <CardActionsMenu actions={overflowActions} />
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 adlib">
       <style>{`
         @keyframes adLibCardIn {
           from { opacity: 0; transform: translateY(6px); }
@@ -2078,12 +2238,15 @@ function AdLibrary({
         />
 
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          {/* items-stretch so Add Ad matches the toolbar's height instead of
+              floating at the top of a two-row panel. */}
+          <div className="flex flex-wrap items-stretch justify-between gap-3">
             <div
               className="flex flex-wrap items-end gap-x-5 gap-y-3 min-w-0 flex-1 rounded-xl px-4 py-3"
               style={{
-                background: "linear-gradient(180deg, #0c182c 0%, #08111e 100%)",
-                border: "1px solid rgba(255,255,255,0.08)",
+                background:
+                  "linear-gradient(180deg, var(--color-ws-panel) 0%, var(--color-ws-base) 100%)",
+                border: "1px solid var(--color-ws-hairline)",
               }}
             >
               <div className="w-full">
@@ -2103,7 +2266,22 @@ function AdLibrary({
                 onChange={setTagFilter}
                 options={tagFilterOptions}
                 anyLabel="Any topic"
-                accent="#6ee7b7"
+                // Topic is classification, so it takes the same neutral as the
+                // card chips rather than a colour that competes with selection.
+                accent="#cbd5e1"
+              />
+              <FilterSelect
+                label="Sort"
+                // FilterSelect's "all" is its neutral value; here that is the
+                // default order, so its clear affordance restores Name A–Z.
+                value={sort === DEFAULT_LIBRARY_SORT ? "all" : sort}
+                onChange={(slug) => setSort(slug === "all" ? DEFAULT_LIBRARY_SORT : slug)}
+                options={sortOptions}
+                anyLabel={
+                  LIBRARY_SORT_OPTIONS.find((o) => o.slug === DEFAULT_LIBRARY_SORT)?.label ?? "Name"
+                }
+                accent="#cbd5e1"
+                hideCounts
               />
               <div className="flex-1 min-w-[14rem]">
                 <AdSearchInput value={search} onChange={setSearch} placeholder="Name, alias, or topic…" />
@@ -2111,32 +2289,48 @@ function AdLibrary({
             </div>
             <button
               onClick={openCreateForm}
-              className="px-4 py-2 rounded-lg text-sm font-semibold"
-              style={{ background: "#f59e0b", color: "#0a1424" }}
+              className="px-4 rounded-lg text-sm font-semibold self-stretch"
+              style={{ background: "var(--color-ws-accent)", color: "var(--color-ws-panel)" }}
             >
               + Add Ad
             </button>
           </div>
 
           {entries.length === 0 ? (
-            <p style={{ color: "#475569" }} className="text-sm py-10 text-center">
+            <Empty>
               No ads in the library yet. Add one with its ad name and a Google Drive link.
-            </p>
+            </Empty>
           ) : visibleEntries.length === 0 ? (
             <div className="text-center py-10 space-y-3">
-              <p style={{ color: "#64748b" }} className="text-sm">
-                {folderPath.kind === "smart" && folderPath.id === "ready"
-                  ? "Nothing in the test queue. Flag a creative only when the buyer should launch it — not when backfilling the library."
-                  : search.trim()
-                    ? `No ads match “${search.trim()}”.`
+              <p style={{ color: "var(--color-ws-text-dim)" }} className="text-sm">
+                {search.trim()
+                  ? `No ads match “${search.trim()}” in this folder.`
+                  : folderPath.kind === "smart" && folderPath.id === "ready"
+                    ? "Nothing in the test queue. Flag a creative only when the buyer should launch it — not when backfilling the library."
                     : "No ads in this folder. Adjust topic, or add an ad here."}
               </p>
-              {!(folderPath.kind === "smart" && folderPath.id === "ready") && !search.trim() ? (
+              {elsewhereCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => selectFolder({ kind: "smart", id: "all" })}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold"
+                  style={{
+                    background: "var(--color-ws-accent-wash)",
+                    color: "var(--color-ws-accent-bright)",
+                  }}
+                >
+                  {elsewhereCount} {elsewhereCount === 1 ? "match" : "matches"} in other folders —
+                  search everywhere
+                </button>
+              ) : !search.trim() && !(folderPath.kind === "smart" && folderPath.id === "ready") ? (
                 <button
                   type="button"
                   onClick={openCreateForm}
                   className="px-4 py-2 rounded-lg text-sm font-semibold"
-                  style={{ background: "rgba(245,158,11,0.16)", color: "#fbbf24" }}
+                  style={{
+                    background: "var(--color-ws-accent-wash)",
+                    color: "var(--color-ws-accent-bright)",
+                  }}
                 >
                   Add ad in this folder
                 </button>
@@ -2148,17 +2342,20 @@ function AdLibrary({
                 <section key={section.key} className="space-y-2">
                   <div
                     className="sticky top-0 z-[1] flex items-center gap-2 px-1 py-1.5 backdrop-blur-sm"
-                    style={{ background: "rgba(5,12,24,0.85)" }}
+                    style={{
+                      background:
+                        "color-mix(in srgb, var(--color-ws-chrome) 85%, transparent)",
+                    }}
                   >
                     <h3
                       className="text-xs font-semibold uppercase tracking-[0.14em]"
-                      style={{ color: "#94a3b8", fontFamily: "var(--font-archivo), sans-serif" }}
+                      style={{ color: "var(--color-ws-text-muted)" }}
                     >
                       {section.label}
                     </h3>
                     <span
-                      className="text-[10px] tabular-nums"
-                      style={{ color: "#64748b", fontFamily: "var(--font-plex-mono)" }}
+                      className="text-[10px] adlib-data"
+                      style={{ color: "var(--color-ws-text-muted)" }}
                     >
                       {section.entries.length}
                     </span>
@@ -2166,7 +2363,7 @@ function AdLibrary({
                       <button
                         type="button"
                         className="text-[10px] underline ml-1"
-                        style={{ color: "#64748b" }}
+                        style={{ color: "var(--color-ws-text-muted)" }}
                         onClick={() =>
                           selectFolder({
                             kind: "product",
@@ -2197,16 +2394,19 @@ function AdLibrary({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setForm(null)}>
           <div
             className="rounded-xl w-full max-w-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto"
-            style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.1)" }}
+            style={{
+              background: "var(--color-ws-panel)",
+              border: "1px solid var(--color-ws-hairline)",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
+                <h3 className="text-base font-semibold" style={{ color: "var(--color-ws-text)" }}>
                   {form.id ? form.ad_name || "Ad details" : "Add Ad"}
                 </h3>
                 {form.id ? (
-                  <p className="text-xs mt-1" style={{ color: "#64748b" }}>
+                  <p className="text-xs mt-1" style={{ color: "var(--color-ws-text-dim)" }}>
                     Script, visual notes, and classification — full overview lives here.
                   </p>
                 ) : null}
@@ -2217,7 +2417,10 @@ function AdLibrary({
                   target="_blank"
                   rel="noreferrer"
                   className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold"
-                  style={{ background: "rgba(96,165,250,0.12)", color: "#60a5fa" }}
+                  style={{
+                    background: "var(--color-ws-accent-wash)",
+                    color: "var(--color-ws-accent-bright)",
+                  }}
                 >
                   Open creative
                 </a>
@@ -2228,7 +2431,11 @@ function AdLibrary({
                 {(["CPL", "CTR", "CPC"] as const).map((label) => {
                   const m = metricsById.get(form.id);
                   const value =
-                    label === "CPL" ? money(m?.cpl) : label === "CTR" ? pct(m?.ctr) : money(m?.cpc);
+                    label === "CPL"
+                      ? money2(m?.cpl)
+                      : label === "CTR"
+                        ? pct(m?.ctr, 2)
+                        : money2(m?.cpc);
                   return <MetricChip key={label} label={label} value={value} />;
                 })}
               </div>
@@ -2238,24 +2445,36 @@ function AdLibrary({
                 value={form.ad_name}
                 onChange={(e) => setForm({ ...form, ad_name: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg text-sm"
-                style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                style={{ background: "var(--color-ws-chrome)", border: "1px solid var(--color-ws-hairline)", color: "var(--color-ws-text)" }}
                 placeholder="e.g. Spring Promo — UGC v3"
               />
             </Field>
             {form.id ? (
               <Field label="Linked ad names (Facebook variants)">
                 <div className="space-y-2">
-                  <p className="text-[10px]" style={{ color: "#64748b" }}>
-                    Primary: <span style={{ color: "#94a3b8" }}>{form.ad_name}</span>
+                  <p className="text-[10px]" style={{ color: "var(--color-ws-text-dim)" }}>
+                    Primary:{" "}
+                    <span style={{ color: "var(--color-ws-text-muted)" }}>{form.ad_name}</span>
                   </p>
                   {editAliases.length === 0 ? (
-                    <p className="text-xs" style={{ color: "#475569" }}>No variant aliases yet.</p>
+                    <p className="text-xs" style={{ color: "var(--color-ws-text-faint)" }}>
+                      No variant aliases yet.
+                    </p>
                   ) : (
                     <ul className="space-y-1">
                       {editAliases.map((a) => (
-                        <li key={a.id} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#cbd5e1" }}>
+                        <li
+                          key={a.id}
+                          className="flex items-center justify-between gap-2 text-xs"
+                          style={{ color: "var(--color-ws-text-muted)" }}
+                        >
                           <span className="truncate">{a.alias_name}</span>
-                          <button type="button" onClick={() => removeAlias(a.id)} className="shrink-0" style={{ color: "#f87171" }}>
+                          <button
+                            type="button"
+                            onClick={() => removeAlias(a.id)}
+                            className="shrink-0"
+                            style={{ color: "var(--color-ws-negative)" }}
+                          >
                             Remove
                           </button>
                         </li>
@@ -2267,7 +2486,7 @@ function AdLibrary({
                       value={newAlias}
                       onChange={(e) => setNewAlias(e.target.value)}
                       className="flex-1 px-3 py-2 rounded-lg text-sm"
-                      style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                      style={{ background: "var(--color-ws-chrome)", border: "1px solid var(--color-ws-hairline)", color: "var(--color-ws-text)" }}
                       placeholder="Facebook ad name variant…"
                     />
                     <button
@@ -2275,12 +2494,20 @@ function AdLibrary({
                       onClick={addAlias}
                       disabled={!newAlias.trim()}
                       className="px-3 py-2 rounded-lg text-sm font-semibold shrink-0"
-                      style={{ background: "#1e293b", color: "#e2e8f0", opacity: newAlias.trim() ? 1 : 0.5 }}
+                      style={{
+                        background: "var(--color-ws-input)",
+                        color: "var(--color-ws-text)",
+                        opacity: newAlias.trim() ? 1 : 0.5,
+                      }}
                     >
                       Add
                     </button>
                   </div>
-                  {aliasError ? <p className="text-xs" style={{ color: "#f87171" }}>{aliasError}</p> : null}
+                  {aliasError ? (
+                    <p className="text-xs" style={{ color: "var(--color-ws-negative)" }}>
+                      {aliasError}
+                    </p>
+                  ) : null}
                 </div>
               </Field>
             ) : null}
@@ -2290,7 +2517,7 @@ function AdLibrary({
                   value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg text-sm"
-                  style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                  style={{ background: "var(--color-ws-chrome)", border: "1px solid var(--color-ws-hairline)", color: "var(--color-ws-text)" }}
                 >
                   {STATUS_OPTIONS.map((s) => (
                     <option key={s} value={s}>{STATUS_STYLES[s].label}</option>
@@ -2302,7 +2529,7 @@ function AdLibrary({
                   value={form.product}
                   onChange={(e) => setForm({ ...form, product: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg text-sm"
-                  style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                  style={{ background: "var(--color-ws-chrome)", border: "1px solid var(--color-ws-hairline)", color: "var(--color-ws-text)" }}
                 >
                   {PRODUCT_OPTIONS.map((o) => (
                     <option key={o.value || "empty"} value={o.value}>{o.label}</option>
@@ -2321,17 +2548,17 @@ function AdLibrary({
                 className="mt-0.5"
               />
               <span>
-                <span className="block text-sm font-medium" style={{ color: "#e2e8f0" }}>
+                <span className="block text-sm font-medium" style={{ color: "var(--color-ws-text)" }}>
                   Ready to test
                 </span>
-                <span className="block text-[11px] mt-0.5" style={{ color: "#94a3b8" }}>
+                <span className="block text-xs mt-0.5" style={{ color: "var(--color-ws-text-muted)" }}>
                   Only for creatives the media buyer should launch/test now (e.g. across accounts).
                   Leave off when backfilling older ads into the library.
                 </span>
               </span>
             </label>
             <div>
-              <span className="text-[11px] uppercase tracking-wider" style={{ color: "#475569" }}>Ad format</span>
+              <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-ws-text-faint)" }}>Ad format</span>
               <div className="mt-1">
                   <AdFormatPicker
                     value={form.ad_format}
@@ -2343,7 +2570,7 @@ function AdLibrary({
               </div>
             </div>
             <div>
-              <span className="text-[11px] uppercase tracking-wider" style={{ color: "#475569" }}>Topics</span>
+              <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-ws-text-faint)" }}>Topics</span>
               <div className="mt-1">
                 <AdTagPicker
                   value={form.tags}
@@ -2359,7 +2586,7 @@ function AdLibrary({
                 value={form.thumbnail_url}
                 onChange={(e) => setForm({ ...form, thumbnail_url: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg text-sm"
-                style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                style={{ background: "var(--color-ws-chrome)", border: "1px solid var(--color-ws-hairline)", color: "var(--color-ws-text)" }}
                 placeholder="https://…"
               />
             </Field>
@@ -2368,7 +2595,7 @@ function AdLibrary({
                 value={form.drive_url}
                 onChange={(e) => setForm({ ...form, drive_url: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg text-sm"
-                style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                style={{ background: "var(--color-ws-chrome)", border: "1px solid var(--color-ws-hairline)", color: "var(--color-ws-text)" }}
                 placeholder="https://drive.google.com/file/d/…"
               />
             </Field>
@@ -2378,7 +2605,7 @@ function AdLibrary({
                 onChange={(e) => setForm({ ...form, summary: e.target.value })}
                 rows={8}
                 className="w-full px-3 py-2 rounded-lg text-sm font-mono leading-relaxed"
-                style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                style={{ background: "var(--color-ws-chrome)", border: "1px solid var(--color-ws-hairline)", color: "var(--color-ws-text)" }}
                 placeholder="Full script, hook, offer, on-screen text, talent, pacing, colors, format details…"
               />
             </Field>
@@ -2388,23 +2615,35 @@ function AdLibrary({
                 onChange={(e) => setForm({ ...form, visual_notes: e.target.value })}
                 rows={3}
                 className="w-full px-3 py-2 rounded-lg text-sm"
-                style={{ background: "#050c18", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" }}
+                style={{ background: "var(--color-ws-chrome)", border: "1px solid var(--color-ws-hairline)", color: "var(--color-ws-text)" }}
                 placeholder="Performance notes, what worked, what to test next, context for recreating this ad…"
               />
-              <p className="text-[10px] mt-1" style={{ color: "#64748b" }}>
+              <p className="text-[10px] mt-1" style={{ color: "var(--color-ws-text-dim)" }}>
                 AI will use both the script/copy above and these notes when generating new creatives.
               </p>
             </Field>
-            {formError ? <p className="text-xs" style={{ color: "#f87171" }}>{formError}</p> : null}
+            {formError ? (
+              <p className="text-xs" style={{ color: "var(--color-ws-negative)" }}>
+                {formError}
+              </p>
+            ) : null}
             <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setForm(null)} className="px-4 py-2 rounded-lg text-sm" style={{ color: "#94a3b8" }}>
+              <button
+                onClick={() => setForm(null)}
+                className="px-4 py-2 rounded-lg text-sm"
+                style={{ color: "var(--color-ws-text-muted)" }}
+              >
                 Cancel
               </button>
               <button
                 onClick={save}
                 disabled={saving}
                 className="px-4 py-2 rounded-lg text-sm font-semibold"
-                style={{ background: "#f59e0b", color: "#0a1424", opacity: saving ? 0.6 : 1 }}
+                style={{
+                  background: "var(--color-ws-accent)",
+                  color: "var(--color-ws-panel)",
+                  opacity: saving ? 0.6 : 1,
+                }}
               >
                 {saving ? "Saving…" : "Save"}
               </button>
@@ -2419,17 +2658,44 @@ function AdLibrary({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wider" style={{ color: "#475569" }}>{label}</span>
+      <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-ws-text-faint)" }}>{label}</span>
       <div className="mt-1">{children}</div>
     </label>
   );
 }
 
 // ── Shell with sub-tabs ───────────────────────────────────────────────────────
+type MediaBuyerTab = "command" | "performance" | "library";
+
+const MEDIA_BUYER_TABS: readonly [MediaBuyerTab, string][] = [
+  ["command", "Creative Command"],
+  ["performance", "Ad Performance"],
+  ["library", "Ad Library"],
+];
+
+function isMediaBuyerTab(v: string | null): v is MediaBuyerTab {
+  return v === "command" || v === "performance" || v === "library";
+}
+
 export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
-  const [tab, setTab] = useState<"command" | "performance" | "library">("command");
+  const { searchParams, setParams } = useTabParams();
+  const tabParam = searchParams.get(TAB_PARAM);
+  const tab: MediaBuyerTab = isMediaBuyerTab(tabParam) ? tabParam : "command";
   const [libraryNav, setLibraryNav] = useState<LibraryNav>(null);
   const [readyToTestCount, setReadyToTestCount] = useState(0);
+
+  const setTab = useCallback(
+    (next: MediaBuyerTab) => {
+      // Leaving the library abandons its folder and sort selection.
+      setParams(
+        next === "library"
+          ? { [TAB_PARAM]: next }
+          : { [TAB_PARAM]: next, [FOLDER_PARAM]: null, [SORT_PARAM]: null },
+        "push",
+      );
+    },
+    [setParams],
+  );
 
   const handleReadyCountChange = useCallback((count: number) => {
     setReadyToTestCount(count);
@@ -2453,47 +2719,28 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
     };
   }, [tab]);
 
-  const handleAddToLibrary = useCallback((adName: string) => {
-    setLibraryNav({ prefillAdName: adName, openForm: true });
-    setTab("library");
-  }, []);
+  const handleAddToLibrary = useCallback(
+    (adName: string) => {
+      setLibraryNav({ prefillAdName: adName, openForm: true });
+      setTab("library");
+    },
+    [setTab],
+  );
 
-  const handleViewInLibrary = useCallback((libraryId: string) => {
-    setLibraryNav({ libraryId });
-    setTab("library");
-  }, []);
-
-  const openReadyToTestQueue = useCallback(() => {
-    setLibraryNav({ readyToTest: true });
-    setTab("library");
-  }, []);
+  const handleViewInLibrary = useCallback(
+    (libraryId: string) => {
+      setLibraryNav({ libraryId });
+      setTab("library");
+    },
+    [setTab],
+  );
 
   return (
     <div className="space-y-5">
-      {tab !== "library" && readyToTestCount > 0 ? (
-        <button
-          type="button"
-          onClick={openReadyToTestQueue}
-          className="w-full text-left rounded-xl px-4 py-3 text-sm font-medium transition-colors"
-          style={{
-            background: "rgba(167,139,250,0.1)",
-            border: "1px solid rgba(167,139,250,0.35)",
-            color: "#e2e8f0",
-          }}
-        >
-          <span style={{ color: "#c4b5fd" }}>
-            {readyToTestCount} creative{readyToTestCount === 1 ? "" : "s"} flagged to test
-          </span>
-          <span style={{ color: "#64748b" }}> — open launch queue</span>
-        </button>
-      ) : null}
-
+      {/* No banner here: the tab's count badge and the Ready to test smart
+          folder already carry this, and a third copy read as an alert. */}
       <div className="flex gap-2">
-        {([
-          ["command", "Creative Command"],
-          ["performance", "Ad Performance"],
-          ["library", "Ad Library"],
-        ] as const).map(([key, label]) => {
+        {MEDIA_BUYER_TABS.map(([key, label]) => {
           const active = tab === key;
           return (
             <button
@@ -2502,8 +2749,15 @@ export default function MediaBuyer({ startDate, endDate, clientId }: Props) {
               className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
               style={
                 active
-                  ? { background: "rgba(245,158,11,0.12)", color: "#f59e0b" }
-                  : { background: "#0a1424", color: "#475569", border: "1px solid rgba(255,255,255,0.06)" }
+                  ? {
+                      background: "var(--color-ws-accent-wash)",
+                      color: "var(--color-ws-accent)",
+                    }
+                  : {
+                      background: "var(--color-ws-panel)",
+                      color: "var(--color-ws-text-faint)",
+                      border: "1px solid var(--color-ws-hairline)",
+                    }
               }
             >
               {label}

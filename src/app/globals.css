@@ -73,6 +73,21 @@ body {
   font-family: var(--font-report-body), "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
+/* ── Ad Library ────────────────────────────────────────────────────────
+   Card text specified no family and so inherited the `body` Arial rule,
+   putting three faces in one section next to the rail's Archivo and the
+   counts' Plex Mono. Scoped rather than fixing `body`, which would move
+   every screen in the app. */
+
+.adlib {
+  font-family: var(--font-display), system-ui, sans-serif;
+}
+
+.adlib-data {
+  font-family: var(--font-data), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Lead source ROI tool ──────────────────────────────────────────────
    Terminal treatment scoped to `.lsr` so the rest of the dashboard is
    untouched. Numerals use IBM Plex Mono; chrome uses Archivo. */

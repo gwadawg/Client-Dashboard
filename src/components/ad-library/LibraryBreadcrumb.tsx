@@ -23,14 +23,14 @@ export default function LibraryBreadcrumb({ path, onSelect, formatLabels, count 
           return (
             <span key={folderPathKey(c.path) + i} className="flex items-center gap-1.5 min-w-0">
               {i > 0 ? (
-                <span style={{ color: "#475569" }} className="text-xs shrink-0">
+                <span style={{ color: "var(--color-ws-text-faint)" }} className="text-xs shrink-0">
                   /
                 </span>
               ) : null}
               {last ? (
                 <span
                   className="text-sm font-semibold truncate"
-                  style={{ color: "#e2e8f0", fontFamily: "var(--font-archivo), sans-serif" }}
+                  style={{ color: "var(--color-ws-text)" }}
                 >
                   {c.label}
                 </span>
@@ -39,7 +39,7 @@ export default function LibraryBreadcrumb({ path, onSelect, formatLabels, count 
                   type="button"
                   onClick={() => onSelect(c.path)}
                   className="text-sm truncate hover:underline"
-                  style={{ color: "#94a3b8" }}
+                  style={{ color: "var(--color-ws-text-muted)" }}
                 >
                   {c.label}
                 </button>
@@ -49,8 +49,8 @@ export default function LibraryBreadcrumb({ path, onSelect, formatLabels, count 
         })}
       </nav>
       <span
-        className="text-[11px] tabular-nums shrink-0"
-        style={{ color: "#64748b", fontFamily: "var(--font-plex-mono)" }}
+        className="text-[10px] shrink-0 adlib-data"
+        style={{ color: "var(--color-ws-text-muted)" }}
       >
         {count} ad{count === 1 ? "" : "s"}
       </span>
