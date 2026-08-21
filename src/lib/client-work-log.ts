@@ -29,8 +29,8 @@ export const WORK_TYPE_META: Record<WorkType, WorkTypeMeta> = {
     hint: 'Seat hygiene — expected work, not a KPI experiment.',
     tooltip:
       'Use for permission-level seat work you are not measuring as a KPI bet.\n\n' +
-      'Examples: pause/kill clear losers, budget pacing, launch checks, chase blank dispositions, observe 48h.\n\n' +
-      'Not for: new campaign / angle / offer / landing test, or any lever you will argue about on Thursday → Bet.',
+      'Examples: budget pacing, launch checks, chase blank dispositions, observe 48h.\n\n' +
+      'Not for: turning account ads off/on (use Ads category), new campaign / angle / offer / landing test, or any lever you will argue about on Thursday → Bet.',
     color: '#94a3b8',
     chartDefaultOn: false,
   },

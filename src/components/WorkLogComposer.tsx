@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   metricValue,
   SUCCESS_METRIC_META,
@@ -40,6 +40,42 @@ const labelStyle = {
   display: "block",
   marginBottom: "0.25rem",
 };
+
+/** Composer modes: work-log types + a dedicated Ads status category (not a DB work_type). */
+type ComposerMode = WorkType | "ads";
+
+const ADS_META = {
+  label: "Ads",
+  hint: "Account ads spend — on or paused. Separate from Finding / Cadence / Bet.",
+  tooltip:
+    "Use when you turned Meta/ads off or back on for this client.\n\n" +
+    "Updates the client ads flag (Roster / Client File / Media Buyer).\n\n" +
+    "Not for: killing individual creatives (Ad Library) or logging a KPI bet.",
+  color: "#f59e0b",
+} as const;
+
+const COMPOSER_MODES: {
+  key: ComposerMode;
+  label: string;
+  color: string;
+  hint: string;
+  tooltip: string;
+}[] = [
+  ...WORK_TYPES.map(type => ({
+    key: type as ComposerMode,
+    label: WORK_TYPE_META[type].label,
+    color: WORK_TYPE_META[type].color,
+    hint: WORK_TYPE_META[type].hint,
+    tooltip: WORK_TYPE_META[type].tooltip,
+  })),
+  {
+    key: "ads",
+    label: ADS_META.label,
+    color: ADS_META.color,
+    hint: ADS_META.hint,
+    tooltip: ADS_META.tooltip,
+  },
+];
 
 function formatMetric(key: string | null, value: number | null): string {
   if (value == null) return "—";
@@ -96,7 +132,7 @@ export default function WorkLogComposer({
   onCancel,
 }: WorkLogComposerProps) {
   const today = todayYmdInCallCenterTz();
-  const [workType, setWorkType] = useState<WorkType>("cadence");
+  const [mode, setMode] = useState<ComposerMode>("cadence");
   const [title, setTitle] = useState("");
   const [changeDescription, setChangeDescription] = useState("");
   const [hypothesis, setHypothesis] = useState("");
@@ -107,10 +143,43 @@ export default function WorkLogComposer({
   const [changeDate, setChangeDate] = useState(today);
   const [plannedDate, setPlannedDate] = useState("");
   const [reviewDate, setReviewDate] = useState(() => defaultReviewDate(defaultReviewDays));
-  const [markAdsPaused, setMarkAdsPaused] = useState(false);
-  const [markAdsOn, setMarkAdsOn] = useState(false);
+  const [adsPaused, setAdsPaused] = useState(false);
+  const [adsNote, setAdsNote] = useState("");
+  const [adsLoaded, setAdsLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const workType: WorkType | null = mode === "ads" ? null : mode;
+  const modeMeta = COMPOSER_MODES.find(m => m.key === mode)!;
+
+  useEffect(() => {
+    if (mode !== "ads") return;
+    let cancelled = false;
+    setAdsLoaded(false);
+    fetch("/api/clients")
+      .then(async r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (cancelled || !d?.clients) return;
+        const match = (
+          d.clients as Array<{
+            id: string;
+            ads_paused?: boolean;
+            ads_paused_note?: string | null;
+          }>
+        ).find(c => c.id === clientId);
+        if (match) {
+          setAdsPaused(!!match.ads_paused);
+          setAdsNote(match.ads_paused_note ?? "");
+        }
+        setAdsLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setAdsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, clientId]);
 
   const targetHint = targetInputHint(successMetric);
   const betLive = workType === "bet" ? changeDate || null : null;
@@ -118,10 +187,39 @@ export default function WorkLogComposer({
   const betReady = Boolean(
     hypothesis.trim() && successMetric && betCategory && loomOk,
   );
-  const canSave = Boolean(title.trim()) && (workType !== "bet" || betReady);
+  const canSave =
+    mode === "ads"
+      ? adsLoaded
+      : Boolean(title.trim()) && (workType !== "bet" || betReady);
 
-  async function submit() {
-    if (!canSave) return;
+  async function submitAds() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/clients/${clientId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          adsPaused
+            ? {
+                ads_paused: true,
+                ads_paused_note: adsNote.trim() || null,
+              }
+            : { ads_paused: false },
+        ),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error ?? "Failed to update ads status");
+      onSaved?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update ads status");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitWork() {
+    if (!workType || !canSave) return;
     setSaving(true);
     setError(null);
     const liveDate = workType === "bet" ? changeDate || null : changeDate || today;
@@ -139,8 +237,12 @@ export default function WorkLogComposer({
           constraint_label: defaultConstraintLabel,
           change_description: changeDescription || null,
           hypothesis: workType === "bet" ? hypothesis.trim() : null,
-          bet_category: workType === "bet" ? betCategory : null,
-          loom_url: workType === "bet" ? loomUrl.trim() || null : null,
+          ...(workType === "bet"
+            ? {
+                bet_category: betCategory,
+                loom_url: loomUrl.trim() || null,
+              }
+            : {}),
           success_metric: workType === "bet" ? successMetric : null,
           target_value: workType === "bet" && targetValue ? Number(targetValue) : null,
           change_date: liveDate,
@@ -152,25 +254,6 @@ export default function WorkLogComposer({
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error ?? "Failed to log work");
 
-      if (markAdsPaused || markAdsOn) {
-        const adsRes = await fetch(`/api/clients/${clientId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            markAdsPaused
-              ? {
-                  ads_paused: true,
-                  ads_paused_note: title.trim() || changeDescription.trim() || "Paused from work log",
-                }
-              : { ads_paused: false },
-          ),
-        });
-        const adsData = await adsRes.json().catch(() => ({}));
-        if (!adsRes.ok) {
-          throw new Error(adsData.error ?? "Work logged, but ads status update failed");
-        }
-      }
-
       setTitle("");
       setChangeDescription("");
       setHypothesis("");
@@ -179,9 +262,7 @@ export default function WorkLogComposer({
       setTargetValue("");
       setChangeDate(today);
       setPlannedDate("");
-      setWorkType("cadence");
-      setMarkAdsPaused(false);
-      setMarkAdsOn(false);
+      setMode("cadence");
       onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to log work");
@@ -190,20 +271,27 @@ export default function WorkLogComposer({
     }
   }
 
+  async function submit() {
+    if (mode === "ads") return submitAds();
+    return submitWork();
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        {WORK_TYPES.map(type => {
-          const on = workType === type;
-          const metaT = WORK_TYPE_META[type];
+        {COMPOSER_MODES.map(metaT => {
+          const on = mode === metaT.key;
           return (
-            <div key={type} className="relative group/type">
+            <div key={metaT.key} className="relative group/type">
               <button
                 type="button"
                 aria-label={`${metaT.label}: ${metaT.hint}`}
                 onClick={() => {
-                  setWorkType(type);
-                  setChangeDate(type === "bet" ? "" : today);
+                  setMode(metaT.key);
+                  setError(null);
+                  if (metaT.key !== "ads") {
+                    setChangeDate(metaT.key === "bet" ? "" : today);
+                  }
                 }}
                 className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg"
                 style={{
@@ -236,194 +324,227 @@ export default function WorkLogComposer({
         })}
       </div>
       <p className="text-[10px]" style={{ color: "#475569" }}>
-        {WORK_TYPE_META[workType].hint}
+        {modeMeta.hint}
       </p>
-      <div>
-        <label style={labelStyle}>
-          {workType === "finding"
-            ? "What did you find?"
-            : workType === "cadence"
-              ? "What did you do?"
-              : "What is the bet?"}{" "}
-          *
-        </label>
-        <input
-          style={inputStyle}
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          placeholder={
-            workType === "finding"
-              ? "e.g. Pixel firing twice on thank-you page"
-              : workType === "cadence"
-                ? "e.g. Killed underperforming ads"
-                : "e.g. New LTO offer on landing page"
-          }
-        />
-      </div>
-      <div>
-        <label style={labelStyle}>Details</label>
-        <textarea
-          style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
-          value={changeDescription}
-          onChange={e => setChangeDescription(e.target.value)}
-        />
-      </div>
-      {workType === "bet" && (
+
+      {mode === "ads" ? (
+        <>
+          {!adsLoaded ? (
+            <p className="text-xs" style={{ color: "#64748b" }}>
+              Loading ads status…
+            </p>
+          ) : (
+            <>
+              <div>
+                <label style={labelStyle}>Ads status *</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAdsPaused(false)}
+                    className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg"
+                    style={{
+                      color: !adsPaused ? "#34d399" : "#64748b",
+                      background: !adsPaused ? "rgba(52,211,153,0.15)" : "transparent",
+                      border: `1px solid ${!adsPaused ? "rgba(52,211,153,0.4)" : "rgba(255,255,255,0.1)"}`,
+                    }}
+                  >
+                    Ads on
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdsPaused(true)}
+                    className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg"
+                    style={{
+                      color: adsPaused ? "#f59e0b" : "#64748b",
+                      background: adsPaused ? "rgba(245,158,11,0.15)" : "transparent",
+                      border: `1px solid ${adsPaused ? "rgba(245,158,11,0.4)" : "rgba(255,255,255,0.1)"}`,
+                    }}
+                  >
+                    Ads paused
+                  </button>
+                </div>
+              </div>
+              {adsPaused && (
+                <div>
+                  <label style={labelStyle}>Note (optional)</label>
+                  <input
+                    style={inputStyle}
+                    value={adsNote}
+                    onChange={e => setAdsNote(e.target.value)}
+                    placeholder="e.g. Client request, CPL kill, budget hold"
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </>
+      ) : (
         <>
           <div>
-            <label style={labelStyle}>Action category *</label>
-            <select
-              style={inputStyle as React.CSSProperties}
-              value={betCategory}
-              onChange={e => setBetCategory(e.target.value as BetCategoryId | "")}
-            >
-              <option value="">Select category…</option>
-              {BET_CATEGORIES.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.group} · {c.label}
-                </option>
-              ))}
-            </select>
+            <label style={labelStyle}>
+              {workType === "finding"
+                ? "What did you find?"
+                : workType === "cadence"
+                  ? "What did you do?"
+                  : "What is the bet?"}{" "}
+              *
+            </label>
+            <input
+              style={inputStyle}
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder={
+                workType === "finding"
+                  ? "e.g. Pixel firing twice on thank-you page"
+                  : workType === "cadence"
+                    ? "e.g. Killed underperforming ads"
+                    : "e.g. New LTO offer on landing page"
+              }
+            />
           </div>
           <div>
-            <label style={labelStyle}>Hypothesis (why it should help) *</label>
+            <label style={labelStyle}>Details</label>
             <textarea
               style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
-              value={hypothesis}
-              onChange={e => setHypothesis(e.target.value)}
+              value={changeDescription}
+              onChange={e => setChangeDescription(e.target.value)}
             />
           </div>
-          <div>
-            <label style={labelStyle}>
-              Loom walkthrough {betRequiresLoom(changeDate || null) ? "*" : "(required when live)"}
-            </label>
-            <input
-              style={inputStyle}
-              type="url"
-              value={loomUrl}
-              onChange={e => setLoomUrl(e.target.value)}
-              placeholder="https://www.loom.com/share/…"
-            />
-            <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
-              Record what changed and why. Required before marking the bet live.
-            </p>
-            {loomUrl.trim() && !isValidLoomUrl(loomUrl) && (
-              <p className="text-[10px] mt-1 text-rose-400">Must be a loom.com link.</p>
+          {workType === "bet" && (
+            <>
+              <div>
+                <label style={labelStyle}>Action category *</label>
+                <select
+                  style={inputStyle as React.CSSProperties}
+                  value={betCategory}
+                  onChange={e => setBetCategory(e.target.value as BetCategoryId | "")}
+                >
+                  <option value="">Select category…</option>
+                  {BET_CATEGORIES.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.group} · {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Hypothesis (why it should help) *</label>
+                <textarea
+                  style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
+                  value={hypothesis}
+                  onChange={e => setHypothesis(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>
+                  Loom walkthrough {betRequiresLoom(changeDate || null) ? "*" : "(required when live)"}
+                </label>
+                <input
+                  style={inputStyle}
+                  type="url"
+                  value={loomUrl}
+                  onChange={e => setLoomUrl(e.target.value)}
+                  placeholder="https://www.loom.com/share/…"
+                />
+                <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
+                  Record what changed and why. Required before marking the bet live.
+                </p>
+                {loomUrl.trim() && !isValidLoomUrl(loomUrl) && (
+                  <p className="text-[10px] mt-1 text-rose-400">
+                    Must be a loom.com link.
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label style={labelStyle}>
+                {workType === "finding" ? "Observed date" : "Planned date"}
+              </label>
+              {workType === "finding" ? (
+                <input
+                  style={inputStyle}
+                  type="date"
+                  value={changeDate}
+                  onChange={e => setChangeDate(e.target.value)}
+                />
+              ) : (
+                <input
+                  style={inputStyle}
+                  type="date"
+                  value={plannedDate}
+                  onChange={e => setPlannedDate(e.target.value)}
+                />
+              )}
+            </div>
+            {workType !== "finding" && (
+              <div>
+                <label style={labelStyle}>
+                  {workType === "bet" ? "Went live (leave blank if planned)" : "Done date"}
+                </label>
+                <input
+                  style={inputStyle}
+                  type="date"
+                  value={changeDate}
+                  onChange={e => setChangeDate(e.target.value)}
+                />
+              </div>
             )}
           </div>
+          {workType === "bet" && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label style={labelStyle}>Success metric *</label>
+                <select
+                  style={inputStyle as React.CSSProperties}
+                  value={successMetric}
+                  onChange={e => setSuccessMetric(e.target.value as SuccessMetricKey)}
+                >
+                  {Object.entries(SUCCESS_METRIC_META).map(([key, meta]) => (
+                    <option key={key} value={key}>
+                      {meta.label}
+                    </option>
+                  ))}
+                </select>
+                {snapshot && periodStart && periodEnd && (
+                  <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
+                    Current period ({periodStart} → {periodEnd}):{" "}
+                    {formatMetric(
+                      successMetric,
+                      metricValue(snapshot, successMetric, normalizeReportingType(reportingType)),
+                    )}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label style={labelStyle}>Target value</label>
+                <input
+                  style={inputStyle}
+                  type="number"
+                  value={targetValue}
+                  onChange={e => setTargetValue(e.target.value)}
+                  placeholder={targetHint.placeholder}
+                />
+                <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
+                  {targetHint.hint}
+                </p>
+              </div>
+              <div>
+                <label style={labelStyle}>Review date</label>
+                <input
+                  style={inputStyle}
+                  type="date"
+                  value={reviewDate}
+                  onChange={e => setReviewDate(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
         </>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label style={labelStyle}>
-            {workType === "finding" ? "Observed date" : "Planned date"}
-          </label>
-          {workType === "finding" ? (
-            <input
-              style={inputStyle}
-              type="date"
-              value={changeDate}
-              onChange={e => setChangeDate(e.target.value)}
-            />
-          ) : (
-            <input
-              style={inputStyle}
-              type="date"
-              value={plannedDate}
-              onChange={e => setPlannedDate(e.target.value)}
-            />
-          )}
-        </div>
-        {workType !== "finding" && (
-          <div>
-            <label style={labelStyle}>
-              {workType === "bet" ? "Went live (leave blank if planned)" : "Done date"}
-            </label>
-            <input
-              style={inputStyle}
-              type="date"
-              value={changeDate}
-              onChange={e => setChangeDate(e.target.value)}
-            />
-          </div>
-        )}
-      </div>
-      {workType === "bet" && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <label style={labelStyle}>Success metric *</label>
-            <select
-              style={inputStyle as React.CSSProperties}
-              value={successMetric}
-              onChange={e => setSuccessMetric(e.target.value as SuccessMetricKey)}
-            >
-              {Object.entries(SUCCESS_METRIC_META).map(([key, meta]) => (
-                <option key={key} value={key}>
-                  {meta.label}
-                </option>
-              ))}
-            </select>
-            {snapshot && periodStart && periodEnd && (
-              <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
-                Current period ({periodStart} → {periodEnd}):{" "}
-                {formatMetric(
-                  successMetric,
-                  metricValue(snapshot, successMetric, normalizeReportingType(reportingType)),
-                )}
-              </p>
-            )}
-          </div>
-          <div>
-            <label style={labelStyle}>Target value</label>
-            <input
-              style={inputStyle}
-              type="number"
-              value={targetValue}
-              onChange={e => setTargetValue(e.target.value)}
-              placeholder={targetHint.placeholder}
-            />
-            <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
-              {targetHint.hint}
-            </p>
-          </div>
-          <div>
-            <label style={labelStyle}>Review date</label>
-            <input
-              style={inputStyle}
-              type="date"
-              value={reviewDate}
-              onChange={e => setReviewDate(e.target.value)}
-            />
-          </div>
-        </div>
-      )}
+
       {error && <p className="text-xs text-rose-400">{error}</p>}
-      <div className="flex flex-col gap-1.5">
-        <label className="flex items-center gap-2 text-[11px] cursor-pointer" style={{ color: "#94a3b8" }}>
-          <input
-            type="checkbox"
-            checked={markAdsPaused}
-            onChange={e => {
-              setMarkAdsPaused(e.target.checked);
-              if (e.target.checked) setMarkAdsOn(false);
-            }}
-            className="rounded"
-          />
-          Also mark ads paused on this client
-        </label>
-        <label className="flex items-center gap-2 text-[11px] cursor-pointer" style={{ color: "#94a3b8" }}>
-          <input
-            type="checkbox"
-            checked={markAdsOn}
-            onChange={e => {
-              setMarkAdsOn(e.target.checked);
-              if (e.target.checked) setMarkAdsPaused(false);
-            }}
-            className="rounded"
-          />
-          Also mark ads back on
-        </label>
-      </div>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -431,16 +552,30 @@ export default function WorkLogComposer({
           disabled={saving || !canSave}
           className="px-4 py-2 rounded-lg text-sm font-semibold"
           style={{
-            background: canSave ? "rgba(96,165,250,0.2)" : "rgba(100,116,139,0.15)",
-            color: canSave ? "#60a5fa" : "#475569",
-            border: "1px solid rgba(96,165,250,0.3)",
+            background: canSave
+              ? mode === "ads"
+                ? "rgba(245,158,11,0.2)"
+                : "rgba(96,165,250,0.2)"
+              : "rgba(100,116,139,0.15)",
+            color: canSave
+              ? mode === "ads"
+                ? "#f59e0b"
+                : "#60a5fa"
+              : "#475569",
+            border: `1px solid ${
+              mode === "ads" ? "rgba(245,158,11,0.35)" : "rgba(96,165,250,0.3)"
+            }`,
           }}
         >
           {saving
             ? "Saving…"
-            : workType === "bet" && !changeDate
-              ? "Save planned bet"
-              : "Save"}
+            : mode === "ads"
+              ? adsPaused
+                ? "Save ads paused"
+                : "Save ads on"
+              : workType === "bet" && !changeDate
+                ? "Save planned bet"
+                : "Save"}
         </button>
         {onCancel && (
           <button type="button" className="text-xs text-slate-500" onClick={onCancel}>
