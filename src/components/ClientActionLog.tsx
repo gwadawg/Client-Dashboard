@@ -8,10 +8,14 @@ import {
 } from "@/lib/client-health";
 import { defaultReviewDateFromTimebox, BASELINE_LOOKBACK_DAYS } from "@/lib/client-health-interventions";
 import {
+  BET_CATEGORIES,
   WORK_TYPE_META,
   WORK_TYPES,
+  betCategoryLabel,
   isBetWorkType,
+  isValidLoomUrl,
   parseWorkType,
+  type BetCategoryId,
   type WorkType,
 } from "@/lib/client-work-log";
 import WorkLogComposer from "./WorkLogComposer";
@@ -28,6 +32,8 @@ export type ActionLog = {
   constraint_label: string | null;
   change_description: string | null;
   hypothesis: string | null;
+  bet_category?: string | null;
+  loom_url?: string | null;
   success_metric: string | null;
   baseline_value: number | null;
   target_value: number | null;
@@ -135,6 +141,8 @@ export default function ClientActionLog({
   const [promoteId, setPromoteId] = useState<string | null>(null);
 
   const [promoteHypothesis, setPromoteHypothesis] = useState("");
+  const [promoteCategory, setPromoteCategory] = useState<BetCategoryId | "">("");
+  const [promoteLoom, setPromoteLoom] = useState("");
   const [promoteMetric, setPromoteMetric] = useState<SuccessMetricKey>("cpconv");
   const [promoteReview, setPromoteReview] = useState(() => defaultReviewDate(7));
   const [promoteLive, setPromoteLive] = useState(todayYmd);
@@ -216,22 +224,28 @@ export default function ClientActionLog({
   };
 
   const promote = async (action: ActionLog) => {
+    if (!promoteCategory || !promoteHypothesis.trim()) return;
+    if (promoteLive && !isValidLoomUrl(promoteLoom)) return;
     setSaving(true);
     const res = await fetch(`/api/client-actions/${action.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         promote: true,
-        hypothesis: promoteHypothesis || null,
+        hypothesis: promoteHypothesis.trim(),
+        bet_category: promoteCategory,
+        loom_url: promoteLoom.trim() || null,
         success_metric: promoteMetric,
         review_date: promoteReview,
-        change_date: promoteLive,
-        status: "in_progress",
+        change_date: promoteLive || null,
+        status: promoteLive ? "in_progress" : "planned",
       }),
     });
     setSaving(false);
     if (res.ok) {
       setPromoteId(null);
+      setPromoteCategory("");
+      setPromoteLoom("");
       load();
     }
   };
@@ -368,6 +382,14 @@ export default function ClientActionLog({
                           {a.status.replace("_", " ")}
                         </span>
                       )}
+                      {type === "bet" && a.bet_category && (
+                        <span
+                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                          style={{ background: "rgba(148,163,184,0.12)", color: "#94a3b8" }}
+                        >
+                          {betCategoryLabel(a.bet_category)}
+                        </span>
+                      )}
                       {reviewDue && (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24" }}>
                           Review due
@@ -392,6 +414,17 @@ export default function ClientActionLog({
                     <p className="text-sm font-medium" style={{ color: "#e2e8f0" }}>
                       {a.title}
                     </p>
+                    {type === "bet" && a.loom_url && (
+                      <a
+                        href={a.loom_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs mt-1 inline-block"
+                        style={{ color: "#60a5fa" }}
+                      >
+                        Watch Loom →
+                      </a>
+                    )}
                     {a.success_metric && type === "bet" && (
                       <p className="text-xs mt-1.5" style={{ color: "#475569" }}>
                         Tracking {meta?.label ?? a.success_metric}
@@ -415,11 +448,30 @@ export default function ClientActionLog({
                         <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "#60a5fa" }}>
                           Promote to bet
                         </p>
+                        <select
+                          style={inputStyle}
+                          value={promoteCategory}
+                          onChange={e => setPromoteCategory(e.target.value as BetCategoryId | "")}
+                        >
+                          <option value="">Action category *</option>
+                          {BET_CATEGORIES.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.group} · {c.label}
+                            </option>
+                          ))}
+                        </select>
                         <textarea
                           style={{ ...inputStyle, minHeight: 48 }}
-                          placeholder="Hypothesis"
+                          placeholder="Hypothesis *"
                           value={promoteHypothesis}
                           onChange={e => setPromoteHypothesis(e.target.value)}
+                        />
+                        <input
+                          style={inputStyle}
+                          type="url"
+                          placeholder="Loom URL (required if live)"
+                          value={promoteLoom}
+                          onChange={e => setPromoteLoom(e.target.value)}
                         />
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <select
@@ -431,18 +483,23 @@ export default function ClientActionLog({
                               <option key={key} value={key}>{m.label}</option>
                             ))}
                           </select>
-                          <input style={inputStyle} type="date" value={promoteLive} onChange={e => setPromoteLive(e.target.value)} />
+                          <input style={inputStyle} type="date" value={promoteLive} onChange={e => setPromoteLive(e.target.value)} title="Went live (blank = planned)" />
                           <input style={inputStyle} type="date" value={promoteReview} onChange={e => setPromoteReview(e.target.value)} />
                         </div>
                         <div className="flex gap-2">
                           <button
                             type="button"
-                            disabled={saving}
+                            disabled={
+                              saving ||
+                              !promoteCategory ||
+                              !promoteHypothesis.trim() ||
+                              (Boolean(promoteLive) && !isValidLoomUrl(promoteLoom))
+                            }
                             onClick={() => promote(a)}
                             className="text-[11px] px-2 py-1 rounded font-semibold"
                             style={{ background: "rgba(96,165,250,0.2)", color: "#60a5fa" }}
                           >
-                            {saving ? "Saving…" : "Promote & freeze baseline"}
+                            {saving ? "Saving…" : promoteLive ? "Promote & freeze baseline" : "Promote as planned bet"}
                           </button>
                           <button type="button" className="text-[11px] text-slate-500" onClick={() => setPromoteId(null)}>
                             Cancel

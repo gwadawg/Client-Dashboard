@@ -73,9 +73,11 @@ export default function ClientAiDiagnosis({ clientId, endDate, defaultLayer, onS
         hypothesis: `AI: ${item.do_not_do ? `do not ${item.do_not_do}` : "see plan"}`,
         change_description: `Owner: ${item.owner} · ${item.timebox}`,
         success_metric: "cpconv",
+        bet_category: "other",
         ai_generated: true,
         work_type: "bet",
         status: "planned",
+        change_date: null,
       }),
     });
     if (res.ok) {

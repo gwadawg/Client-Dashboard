@@ -5,7 +5,17 @@ import type { AccountPlanTask, AccountWeekPlan, AdhocWorkLog } from "@/lib/accou
 import { weekStartMondayContaining } from "@/lib/account-week-plans";
 import { addDaysToYmd } from "@/lib/team-meetings";
 import { todayYmdInCallCenterTz } from "@/lib/time";
-import { WORK_TYPE_META, WORK_TYPES, parseWorkType, type WorkType } from "@/lib/client-work-log";
+import {
+  BET_CATEGORIES,
+  WORK_TYPE_META,
+  WORK_TYPES,
+  betCategoryLabel,
+  isValidLoomUrl,
+  parseBetCategory,
+  parseWorkType,
+  type BetCategoryId,
+  type WorkType,
+} from "@/lib/client-work-log";
 import { SUCCESS_METRIC_META } from "@/lib/client-health";
 
 type Props = {
@@ -38,6 +48,8 @@ export default function AccountWeekPlansWeekList({
   const [report, setReport] = useState("");
   const [completeType, setCompleteType] = useState<WorkType>("cadence");
   const [completeMetric, setCompleteMetric] = useState("");
+  const [completeCategory, setCompleteCategory] = useState<BetCategoryId | "">("");
+  const [completeLoom, setCompleteLoom] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [reflectionDraft, setReflectionDraft] = useState<Record<string, string>>({});
   const [reflectBusy, setReflectBusy] = useState<string | null>(null);
@@ -255,7 +267,9 @@ export default function AccountWeekPlansWeekList({
                     <div className="text-[10px] text-slate-500 mt-0.5">
                       {t.status}
                       {t.scheduled_for ? ` · ${t.scheduled_for}` : ""}
-                      {t.tactic_tag ? ` · #${t.tactic_tag}` : ""}
+                      {t.tactic_tag
+                        ? ` · #${betCategoryLabel(t.tactic_tag) ?? t.tactic_tag}`
+                        : ""}
                       {` · ${WORK_TYPE_META[parseWorkType(t.work_type, "cadence")].label}`}
                       {t.client_action_log_id ? " · filed to work log" : ""}
                     </div>
@@ -275,8 +289,11 @@ export default function AccountWeekPlansWeekList({
                         onClick={() => {
                           setCompleteId(t.id);
                           setReport("");
-                          setCompleteType(parseWorkType(t.work_type, "cadence"));
+                          const wt = parseWorkType(t.work_type, "cadence");
+                          setCompleteType(wt);
                           setCompleteMetric(t.success_metric ?? "");
+                          setCompleteCategory(parseBetCategory(t.tactic_tag) ?? "");
+                          setCompleteLoom("");
                         }}
                       >
                         Done
@@ -315,24 +332,55 @@ export default function AccountWeekPlansWeekList({
                       ))}
                     </select>
                     {completeType === "bet" && (
-                      <select
-                        value={completeMetric}
-                        onChange={e => setCompleteMetric(e.target.value)}
-                        style={fieldStyle}
-                        required
-                      >
-                        <option value="">Success metric (required)</option>
-                        {Object.entries(SUCCESS_METRIC_META).map(([key, meta]) => (
-                          <option key={key} value={key}>
-                            {meta.label}
-                          </option>
-                        ))}
-                      </select>
+                      <>
+                        <select
+                          value={completeCategory}
+                          onChange={e => setCompleteCategory(e.target.value as BetCategoryId | "")}
+                          style={fieldStyle}
+                          required
+                        >
+                          <option value="">Action category (required)</option>
+                          {BET_CATEGORIES.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.group} · {c.label}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={completeMetric}
+                          onChange={e => setCompleteMetric(e.target.value)}
+                          style={fieldStyle}
+                          required
+                        >
+                          <option value="">Success metric (required)</option>
+                          {Object.entries(SUCCESS_METRIC_META).map(([key, meta]) => (
+                            <option key={key} value={key}>
+                              {meta.label}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="url"
+                          value={completeLoom}
+                          onChange={e => setCompleteLoom(e.target.value)}
+                          placeholder="Loom URL (required)"
+                          style={fieldStyle}
+                        />
+                        {completeLoom.trim() && !isValidLoomUrl(completeLoom) && (
+                          <p className="text-[10px] text-rose-400">Must be a loom.com link.</p>
+                        )}
+                      </>
                     )}
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        disabled={busyId === t.id || (completeType === "bet" && !completeMetric)}
+                        disabled={
+                          busyId === t.id ||
+                          (completeType === "bet" &&
+                            (!completeMetric ||
+                              !completeCategory ||
+                              !isValidLoomUrl(completeLoom)))
+                        }
                         className="text-xs text-white px-3 py-1 rounded"
                         style={{ background: "#059669" }}
                         onClick={() =>
@@ -341,6 +389,8 @@ export default function AccountWeekPlansWeekList({
                             completion_report: report || null,
                             work_type: completeType,
                             success_metric: completeType === "bet" ? completeMetric : t.success_metric,
+                            bet_category: completeType === "bet" ? completeCategory : null,
+                            loom_url: completeType === "bet" ? completeLoom.trim() : null,
                           })
                         }
                       >

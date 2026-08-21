@@ -826,6 +826,8 @@ create table if not exists client_action_logs (
   constraint_label     text,
   change_description   text,
   hypothesis           text,
+  bet_category         text,             -- curated lever type (bets only)
+  loom_url             text,             -- Loom of what changed + why (required when bet goes live)
   baseline_snapshot_id uuid    references client_health_snapshots(id) on delete set null,
   success_metric       text,             -- which KPI must move, e.g. cpconv / show_rate
   baseline_value       numeric,
@@ -843,6 +845,24 @@ create table if not exists client_action_logs (
   ),
   constraint client_action_logs_work_type_check check (
     work_type in ('finding', 'cadence', 'bet')
+  ),
+  constraint client_action_logs_bet_category_check check (
+    bet_category is null
+    or bet_category in (
+      'new_creatives',
+      'new_angle_offer',
+      'audience_targeting',
+      'landing_optin',
+      'budget_allocation',
+      'campaign_structure',
+      'reactivate_leads',
+      'confirmation_rebook',
+      'dial_coverage',
+      'script_booking',
+      'live_transfer',
+      'lo_show_process',
+      'other'
+    )
   )
 );
 
@@ -1240,6 +1260,7 @@ create index if not exists client_health_snapshots_client_period on client_healt
 create index if not exists client_action_logs_client_created     on client_action_logs(client_id, created_at desc);
 create index if not exists client_action_logs_status             on client_action_logs(status);
 create index if not exists client_action_logs_client_type_change_idx on client_action_logs(client_id, work_type, change_date);
+create index if not exists client_action_logs_client_bet_category_idx on client_action_logs(client_id, bet_category) where bet_category is not null;
 create index if not exists clients_lifecycle_status_idx          on clients(lifecycle_status);
 create index if not exists clients_churned_at_idx                on clients(churned_at) where churned_at is not null;
 create index if not exists client_status_history_client          on client_status_history(client_id, changed_at desc);

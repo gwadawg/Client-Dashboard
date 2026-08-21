@@ -19,7 +19,7 @@ import {
 } from '@/lib/account-plan-task-kpi';
 import { createClientActionLog } from '@/lib/client-action-log-write';
 import { defaultReviewDateFromTimebox } from '@/lib/client-health-interventions';
-import { isWorkType, parseWorkType } from '@/lib/client-work-log';
+import { isWorkType, normalizeLoomUrl, parseBetCategory, parseWorkType } from '@/lib/client-work-log';
 import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz, ymdInTimeZone } from '@/lib/time';
 
 function optionalText(value: unknown): string | null {
@@ -220,6 +220,36 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
         );
       }
 
+      const betCategory =
+        work_type === 'bet'
+          ? parseBetCategory(body.bet_category) ?? parseBetCategory(task.tactic_tag)
+          : null;
+      if (work_type === 'bet' && !betCategory) {
+        return NextResponse.json(
+          { error: 'Bet tasks require an action category before they can be marked done' },
+          { status: 400 },
+        );
+      }
+
+      const loomUrl =
+        work_type === 'bet' && body.loom_url != null && body.loom_url !== ''
+          ? normalizeLoomUrl(body.loom_url)
+          : null;
+      if (work_type === 'bet') {
+        if (body.loom_url != null && body.loom_url !== '' && !loomUrl) {
+          return NextResponse.json(
+            { error: 'loom_url must be a valid loom.com link' },
+            { status: 400 },
+          );
+        }
+        if (!loomUrl) {
+          return NextResponse.json(
+            { error: 'Bet tasks require a Loom URL before they can be marked done' },
+            { status: 400 },
+          );
+        }
+      }
+
       let baseline_value = task.baseline_value;
       const changeDate = todayYmdInCallCenterTz();
 
@@ -231,8 +261,13 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
             work_type,
             change_description:
               completion_report || task.notes || `Completed plan task: ${task.title}`,
-            hypothesis: work_type === 'bet' ? task.notes : null,
+            hypothesis:
+              work_type === 'bet'
+                ? task.notes || completion_report || `Plan bet: ${task.title}`
+                : null,
             constraint_label: task.tactic_tag,
+            bet_category: betCategory,
+            loom_url: loomUrl,
             success_metric: work_type === 'bet' ? success_metric : null,
             status: work_type === 'bet' ? 'in_progress' : 'in_progress',
             change_date: changeDate,

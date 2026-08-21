@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { freezeInterventionBaseline } from '@/lib/client-action-log-write';
 import { defaultReviewDateFromTimebox } from '@/lib/client-health-interventions';
-import { isWorkType, shouldFreezeBaseline } from '@/lib/client-work-log';
+import {
+  betRequiresLoom,
+  isWorkType,
+  normalizeLoomUrl,
+  parseBetCategory,
+  shouldFreezeBaseline,
+} from '@/lib/client-work-log';
 
 const MUTABLE_STATUSES = ['planned', 'in_progress', 'measuring', 'succeeded', 'failed', 'abandoned'];
 
@@ -55,6 +61,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
     update.work_type = body.work_type;
   }
+  if (body.bet_category !== undefined) {
+    if (body.bet_category === null || body.bet_category === '') {
+      update.bet_category = null;
+    } else {
+      const cat = parseBetCategory(body.bet_category);
+      if (!cat) {
+        return NextResponse.json({ error: 'invalid bet_category' }, { status: 400 });
+      }
+      update.bet_category = cat;
+    }
+  }
+  if (body.loom_url !== undefined) {
+    if (body.loom_url === null || body.loom_url === '') {
+      update.loom_url = null;
+    } else {
+      const loom = normalizeLoomUrl(body.loom_url);
+      if (!loom) {
+        return NextResponse.json({ error: 'loom_url must be a valid loom.com link' }, { status: 400 });
+      }
+      update.loom_url = loom;
+    }
+  }
 
   const promoting =
     body.promote === true ||
@@ -77,6 +105,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.target_value !== undefined) {
       update.target_value = body.target_value != null ? Number(body.target_value) : null;
     }
+    const promoteCat = parseBetCategory(body.bet_category) ?? parseBetCategory(existing.bet_category);
+    if (!promoteCat) {
+      return NextResponse.json({ error: 'bet_category is required to promote to a bet' }, { status: 400 });
+    }
+    update.bet_category = promoteCat;
   }
 
   const nextStatus = (update.status as string | undefined) ?? existing.status;
@@ -94,6 +127,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     nextChangeDate = new Date().toISOString().split('T')[0];
     update.change_date = nextChangeDate;
     update.status = nextStatus === 'planned' ? 'in_progress' : nextStatus;
+  }
+
+  const nextLoom =
+    (update.loom_url as string | null | undefined) !== undefined
+      ? (update.loom_url as string | null)
+      : (existing.loom_url as string | null);
+  const nextCategory =
+    (update.bet_category as string | null | undefined) !== undefined
+      ? (update.bet_category as string | null)
+      : (existing.bet_category as string | null);
+
+  if (nextWorkType === 'bet') {
+    if (!parseBetCategory(nextCategory)) {
+      return NextResponse.json({ error: 'bet_category is required for bets' }, { status: 400 });
+    }
+    if (betRequiresLoom(nextChangeDate) && !nextLoom) {
+      return NextResponse.json(
+        { error: 'loom_url is required when a bet goes live' },
+        { status: 400 },
+      );
+    }
   }
 
   const needsFreeze =

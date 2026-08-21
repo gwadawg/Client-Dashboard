@@ -47,6 +47,65 @@ export const WORK_TYPE_META: Record<WorkType, WorkTypeMeta> = {
   },
 };
 
+/** Curated bet action categories (what kind of lever). */
+export const BET_CATEGORIES = [
+  { id: 'new_creatives', label: 'New creatives', group: 'Media' },
+  { id: 'new_angle_offer', label: 'New angle / offer', group: 'Media' },
+  { id: 'audience_targeting', label: 'Audience / targeting', group: 'Media' },
+  { id: 'landing_optin', label: 'Landing / opt-in', group: 'Media' },
+  { id: 'budget_allocation', label: 'Budget allocation', group: 'Media' },
+  { id: 'campaign_structure', label: 'Campaign structure', group: 'Media' },
+  { id: 'reactivate_leads', label: 'Reactivate leads', group: 'CS / Call center' },
+  { id: 'confirmation_rebook', label: 'Confirmations / rebook', group: 'Call center' },
+  { id: 'dial_coverage', label: 'Dial coverage', group: 'Call center' },
+  { id: 'script_booking', label: 'Script / booking flow', group: 'Call center' },
+  { id: 'live_transfer', label: 'Live transfer path', group: 'Call center' },
+  { id: 'lo_show_process', label: 'LO / show process', group: 'CS' },
+  { id: 'other', label: 'Other', group: 'Any' },
+] as const;
+
+export type BetCategoryId = (typeof BET_CATEGORIES)[number]['id'];
+
+const BET_CATEGORY_IDS = new Set<string>(BET_CATEGORIES.map(c => c.id));
+
+export function isBetCategoryId(v: unknown): v is BetCategoryId {
+  return typeof v === 'string' && BET_CATEGORY_IDS.has(v);
+}
+
+export function parseBetCategory(v: unknown): BetCategoryId | null {
+  return isBetCategoryId(v) ? v : null;
+}
+
+export function betCategoryLabel(id: string | null | undefined): string | null {
+  if (!id) return null;
+  return BET_CATEGORIES.find(c => c.id === id)?.label ?? id;
+}
+
+/** Accept loom.com share/share URLs only. */
+export function normalizeLoomUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const t = raw.trim();
+  if (!t) return null;
+  try {
+    const withScheme = /^https?:\/\//i.test(t) ? t : `https://${t}`;
+    const u = new URL(withScheme);
+    if (!/(^|\.)loom\.com$/i.test(u.hostname)) return null;
+    u.hash = '';
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function isValidLoomUrl(raw: unknown): boolean {
+  return normalizeLoomUrl(raw) != null;
+}
+
+/** Live bets need Loom evidence; planned bets may omit it. */
+export function betRequiresLoom(changeDate: string | null | undefined): boolean {
+  return Boolean(changeDate && String(changeDate).trim());
+}
+
 export const DEFAULT_LAYER_TOGGLES: Record<WorkType, boolean> = {
   finding: false,
   cadence: false,

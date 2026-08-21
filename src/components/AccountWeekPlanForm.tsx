@@ -4,7 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import type { AccountWeekPlanSeverity } from "@/lib/account-week-plans";
 import { weekStartMondayContaining } from "@/lib/account-week-plans";
 import { todayYmdInCallCenterTz } from "@/lib/time";
-import { WORK_TYPE_META, WORK_TYPES, parseWorkType, type WorkType } from "@/lib/client-work-log";
+import {
+  BET_CATEGORIES,
+  WORK_TYPE_META,
+  WORK_TYPES,
+  parseWorkType,
+  type WorkType,
+} from "@/lib/client-work-log";
 
 const fieldStyle = {
   background: "#0f2040",
@@ -135,6 +141,17 @@ export default function AccountWeekPlanForm({
           work_type: t.work_type,
           sort_order: i,
         }));
+      if (payloadTasks.length === 0) {
+        throw new Error("Add at least one task");
+      }
+      for (const t of payloadTasks) {
+        if (t.work_type === "bet" && !t.tactic_tag) {
+          throw new Error("Bet tasks need an action category");
+        }
+        if (t.work_type === "bet" && !t.success_metric) {
+          throw new Error("Bet tasks need a target KPI");
+        }
+      }
 
       const res = await fetch("/api/account-week-plans", {
         method: "POST",
@@ -288,12 +305,29 @@ export default function AccountWeekPlanForm({
               style={fieldStyle}
             />
             <div className="grid gap-2 sm:grid-cols-3">
-              <input
-                placeholder="Tag (optional)"
-                value={t.tactic_tag}
-                onChange={e => updateTask(t.key, { tactic_tag: e.target.value })}
-                style={fieldStyle}
-              />
+              {t.work_type === "bet" ? (
+                <select
+                  required
+                  value={t.tactic_tag}
+                  onChange={e => updateTask(t.key, { tactic_tag: e.target.value })}
+                  style={fieldStyle}
+                  title="Bet action category"
+                >
+                  <option value="">Category…</option>
+                  {BET_CATEGORIES.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.group} · {c.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  placeholder="Tag (optional)"
+                  value={t.tactic_tag}
+                  onChange={e => updateTask(t.key, { tactic_tag: e.target.value })}
+                  style={fieldStyle}
+                />
+              )}
               <select
                 value={t.assignee_user_id}
                 onChange={e => updateTask(t.key, { assignee_user_id: e.target.value })}
@@ -317,7 +351,13 @@ export default function AccountWeekPlanForm({
             <div className="grid gap-2 sm:grid-cols-2">
               <select
                 value={t.work_type}
-                onChange={e => updateTask(t.key, { work_type: parseWorkType(e.target.value, "cadence") })}
+                onChange={e => {
+                  const next = parseWorkType(e.target.value, "cadence");
+                  updateTask(t.key, {
+                    work_type: next,
+                    tactic_tag: next === "bet" ? "" : t.tactic_tag,
+                  });
+                }}
                 style={fieldStyle}
                 title={WORK_TYPE_META[t.work_type].tooltip}
               >

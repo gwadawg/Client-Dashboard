@@ -16,10 +16,14 @@ import { fetchCombinedSpendForMetrics, fetchMetaClicksSum } from '@/lib/spend';
 import type { EventRow } from '@/lib/metrics';
 import type { createServiceClient } from '@/lib/supabase';
 import {
+  betRequiresLoom,
   isWorkType,
+  normalizeLoomUrl,
+  parseBetCategory,
   parseWorkType,
   resolveWorkLogDates,
   shouldFreezeBaseline,
+  type BetCategoryId,
   type WorkType,
 } from '@/lib/client-work-log';
 
@@ -33,6 +37,8 @@ export type CreateActionLogInput = {
   constraint_label?: string | null;
   change_description?: string | null;
   hypothesis?: string | null;
+  bet_category?: unknown;
+  loom_url?: unknown;
   success_metric?: string | null;
   target_value?: number | null;
   baseline_value?: number | null;
@@ -193,6 +199,31 @@ export async function createClientActionLog(
   const targetValue =
     workType === 'bet' && body.target_value != null ? Number(body.target_value) : null;
 
+  let betCategory: BetCategoryId | null = null;
+  let loomUrl: string | null = null;
+  if (workType === 'bet') {
+    betCategory = parseBetCategory(body.bet_category);
+    if (!betCategory) {
+      throw new Error('bet_category is required for bets');
+    }
+    if (body.hypothesis == null || String(body.hypothesis).trim() === '') {
+      throw new Error('hypothesis is required for bets');
+    }
+    if (!successMetric) {
+      throw new Error('success_metric is required for bets');
+    }
+    const rawLoom = body.loom_url;
+    if (rawLoom != null && String(rawLoom).trim() !== '') {
+      loomUrl = normalizeLoomUrl(rawLoom);
+      if (!loomUrl) {
+        throw new Error('loom_url must be a valid loom.com link');
+      }
+    }
+    if (betRequiresLoom(dates.changeDate) && !loomUrl) {
+      throw new Error('loom_url is required when a bet goes live');
+    }
+  }
+
   const { data, error } = await service
     .from('client_action_logs')
     .insert({
@@ -204,6 +235,8 @@ export async function createClientActionLog(
       constraint_label: body.constraint_label ?? null,
       change_description: body.change_description ?? null,
       hypothesis,
+      bet_category: betCategory,
+      loom_url: loomUrl,
       baseline_snapshot_id,
       success_metric: successMetric,
       baseline_value: freeze ? baseline_value : workType === 'bet' ? baseline_value : null,

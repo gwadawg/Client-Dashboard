@@ -10,7 +10,15 @@ import {
 import { defaultReviewDateFromTimebox } from "@/lib/client-health-interventions";
 import { normalizeReportingType } from "@/lib/kpi-layouts";
 import { todayYmdInCallCenterTz } from "@/lib/time";
-import { WORK_TYPE_META, WORK_TYPES, type WorkType } from "@/lib/client-work-log";
+import {
+  BET_CATEGORIES,
+  WORK_TYPE_META,
+  WORK_TYPES,
+  betRequiresLoom,
+  isValidLoomUrl,
+  type BetCategoryId,
+  type WorkType,
+} from "@/lib/client-work-log";
 
 const inputStyle = {
   background: "#050c18",
@@ -92,6 +100,8 @@ export default function WorkLogComposer({
   const [title, setTitle] = useState("");
   const [changeDescription, setChangeDescription] = useState("");
   const [hypothesis, setHypothesis] = useState("");
+  const [betCategory, setBetCategory] = useState<BetCategoryId | "">("");
+  const [loomUrl, setLoomUrl] = useState("");
   const [successMetric, setSuccessMetric] = useState<SuccessMetricKey>("cpconv");
   const [targetValue, setTargetValue] = useState("");
   const [changeDate, setChangeDate] = useState(today);
@@ -101,16 +111,20 @@ export default function WorkLogComposer({
   const [error, setError] = useState<string | null>(null);
 
   const targetHint = targetInputHint(successMetric);
-  const betReady = Boolean(hypothesis.trim() && successMetric);
+  const betLive = workType === "bet" ? changeDate || null : null;
+  const loomOk = !betRequiresLoom(betLive) || isValidLoomUrl(loomUrl);
+  const betReady = Boolean(
+    hypothesis.trim() && successMetric && betCategory && loomOk,
+  );
   const canSave = Boolean(title.trim()) && (workType !== "bet" || betReady);
 
   async function submit() {
     if (!canSave) return;
     setSaving(true);
     setError(null);
-    const betLive = workType === "bet" ? changeDate || null : changeDate || today;
+    const liveDate = workType === "bet" ? changeDate || null : changeDate || today;
     const status =
-      workType === "bet" ? (betLive ? "in_progress" : "planned") : "in_progress";
+      workType === "bet" ? (liveDate ? "in_progress" : "planned") : "in_progress";
     try {
       const res = await fetch("/api/client-actions", {
         method: "POST",
@@ -123,9 +137,11 @@ export default function WorkLogComposer({
           constraint_label: defaultConstraintLabel,
           change_description: changeDescription || null,
           hypothesis: workType === "bet" ? hypothesis.trim() : null,
+          bet_category: workType === "bet" ? betCategory : null,
+          loom_url: workType === "bet" ? loomUrl.trim() || null : null,
           success_metric: workType === "bet" ? successMetric : null,
           target_value: workType === "bet" && targetValue ? Number(targetValue) : null,
-          change_date: workType === "bet" ? betLive : betLive,
+          change_date: liveDate,
           planned_date: plannedDate || null,
           review_date: workType === "bet" ? reviewDate || null : null,
           status,
@@ -136,6 +152,8 @@ export default function WorkLogComposer({
       setTitle("");
       setChangeDescription("");
       setHypothesis("");
+      setBetCategory("");
+      setLoomUrl("");
       setTargetValue("");
       setChangeDate(today);
       setPlannedDate("");
@@ -227,14 +245,49 @@ export default function WorkLogComposer({
         />
       </div>
       {workType === "bet" && (
-        <div>
-          <label style={labelStyle}>Hypothesis (why it should help) *</label>
-          <textarea
-            style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
-            value={hypothesis}
-            onChange={e => setHypothesis(e.target.value)}
-          />
-        </div>
+        <>
+          <div>
+            <label style={labelStyle}>Action category *</label>
+            <select
+              style={inputStyle as React.CSSProperties}
+              value={betCategory}
+              onChange={e => setBetCategory(e.target.value as BetCategoryId | "")}
+            >
+              <option value="">Select category…</option>
+              {BET_CATEGORIES.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.group} · {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Hypothesis (why it should help) *</label>
+            <textarea
+              style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
+              value={hypothesis}
+              onChange={e => setHypothesis(e.target.value)}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>
+              Loom walkthrough {betRequiresLoom(changeDate || null) ? "*" : "(required when live)"}
+            </label>
+            <input
+              style={inputStyle}
+              type="url"
+              value={loomUrl}
+              onChange={e => setLoomUrl(e.target.value)}
+              placeholder="https://www.loom.com/share/…"
+            />
+            <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
+              Record what changed and why. Required before marking the bet live.
+            </p>
+            {loomUrl.trim() && !isValidLoomUrl(loomUrl) && (
+              <p className="text-[10px] mt-1 text-rose-400">Must be a loom.com link.</p>
+            )}
+          </div>
+        </>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>

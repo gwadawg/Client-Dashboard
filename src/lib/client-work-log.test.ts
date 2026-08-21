@@ -1,10 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  isBetCategoryId,
+  isValidLoomUrl,
   isWorkType,
+  normalizeLoomUrl,
+  parseBetCategory,
   parseWorkType,
   resolveWorkLogDates,
   shouldFreezeBaseline,
+  betRequiresLoom,
+  betCategoryLabel,
   isBetWorkType,
   workLogPlotDate,
   workLogWeekDate,
@@ -26,6 +32,31 @@ describe('work type', () => {
     assert.equal(isBetWorkType(null), true);
     assert.equal(isBetWorkType(undefined), true);
     assert.equal(isBetWorkType('cadence'), false);
+  });
+});
+
+describe('bet category + loom', () => {
+  it('accepts curated categories', () => {
+    assert.equal(isBetCategoryId('new_creatives'), true);
+    assert.equal(isBetCategoryId('reactivate_leads'), true);
+    assert.equal(parseBetCategory('nope'), null);
+    assert.equal(betCategoryLabel('new_creatives'), 'New creatives');
+  });
+
+  it('normalizes loom.com urls only', () => {
+    assert.equal(
+      normalizeLoomUrl('https://www.loom.com/share/abc123'),
+      'https://www.loom.com/share/abc123',
+    );
+    assert.equal(isValidLoomUrl('https://loom.com/share/x'), true);
+    assert.equal(isValidLoomUrl('https://youtube.com/watch?v=1'), false);
+    assert.equal(isValidLoomUrl(''), false);
+  });
+
+  it('requires loom only when live', () => {
+    assert.equal(betRequiresLoom('2026-08-18'), true);
+    assert.equal(betRequiresLoom(null), false);
+    assert.equal(betRequiresLoom(''), false);
   });
 });
 
