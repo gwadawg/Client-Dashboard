@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission, type AuthContext } from '@/lib/api-auth';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import { buildContactKey, eventPhone } from '@/lib/contact-key';
-import { profilesForConversionExplorer } from '@/lib/conversion-explorer';
+import {
+  isActivityStage,
+  isLeadQualityFilter,
+  matchesLeadQuality,
+  profilesForConversionExplorer,
+} from '@/lib/conversion-explorer';
 
 const PAGE_SIZE = 50;
 /** Cap rows loaded for heavy in-memory grouping (conversion / unmapped). */
@@ -620,6 +625,8 @@ export async function GET(req: Request) {
   let start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
   const conversion_event = searchParams.get('conversion_event');
+  const quality_raw = searchParams.get('quality');
+  const quality = isLeadQualityFilter(quality_raw) ? quality_raw : null;
   const view = searchParams.get('view') === 'unmapped' ? 'unmapped' : 'leads';
   const search = searchParams.get('search')?.trim();
   const safeSearch = search ? search.replace(/[,()*]/g, ' ').trim() : '';
@@ -677,6 +684,12 @@ export async function GET(req: Request) {
       leadQuery = leadQuery.or(
         `lead_name.ilike.%${safeSearch}%,lead_phone.ilike.%${safeSearch}%,lead_email.ilike.%${safeSearch}%`,
       );
+    }
+    if (quality === 'qualified' || quality === 'qualified_hot') {
+      leadQuery = leadQuery.eq('is_qualified', true);
+    }
+    if (quality === 'hot' || quality === 'qualified_hot') {
+      leadQuery = leadQuery.eq('is_hot', true);
     }
 
     const { data: leadData, error: leadError, count } = await leadQuery;
@@ -783,17 +796,21 @@ export async function GET(req: Request) {
     );
   }
 
-  // Conversion filter only needs lead + stage events, not every dial.
+  // Stage filters only need the relevant event types, not every dial.
   if (conversion_event && view === 'leads') {
-    q = q.in('event_type', [
-      'lead',
-      'proposal_made',
-      'proposal_sent',
-      'submission_made',
-      'loan_processing',
-      'loan_funded',
-      'closed',
-    ]);
+    if (isActivityStage(conversion_event)) {
+      q = q.in('event_type', ['lead', 'claimed', 'live_transfer', 'show']);
+    } else {
+      q = q.in('event_type', [
+        'lead',
+        'proposal_made',
+        'proposal_sent',
+        'submission_made',
+        'loan_processing',
+        'loan_funded',
+        'closed',
+      ]);
+    }
   }
 
   const { data, error } = await q;
@@ -805,7 +822,10 @@ export async function GET(req: Request) {
 
   const allProfiles = Array.from(profiles.values());
   const leadProfiles = allProfiles.filter((p) => p.has_lead_in_period);
-  const conversionRows = profilesForConversionExplorer(allProfiles, conversion_event);
+  let conversionRows = profilesForConversionExplorer(allProfiles, conversion_event);
+  if (quality) {
+    conversionRows = conversionRows.filter((p) => matchesLeadQuality(p, quality));
+  }
   const orphanCandidates = allProfiles.filter(
     (p) => !p.has_lead_in_period && p.timeline.some((t) => t.event_type !== 'lead'),
   );

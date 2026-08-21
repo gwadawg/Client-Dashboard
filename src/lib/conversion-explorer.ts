@@ -4,13 +4,31 @@ export const CONVERSION_STAGES = [
   'loan_funded',
 ] as const;
 
+/** Activity milestones on the Explorer stage filter (not KPI pipeline stages). */
+export const ACTIVITY_STAGES = [
+  'conversations',
+  'claimed',
+  'live_transfer',
+  'show',
+] as const;
+
 export type ConversionStage = (typeof CONVERSION_STAGES)[number];
+export type ActivityStage = (typeof ACTIVITY_STAGES)[number];
 
 export type ConversionFlags = {
   has_proposal_made: boolean;
   has_submission_made: boolean;
   has_loan_funded: boolean;
 };
+
+/** Activity counts used by Explorer claimed / LT / show / conversations filters. */
+export type ActivityCounts = {
+  claimed: number;
+  live_transfers: number;
+  shows: number;
+};
+
+export type LeadQualityFilter = 'qualified' | 'hot' | 'qualified_hot';
 
 export function isConversionStage(
   value: string | null | undefined,
@@ -20,6 +38,44 @@ export function isConversionStage(
     value === 'submission_made' ||
     value === 'loan_funded'
   );
+}
+
+export function isActivityStage(
+  value: string | null | undefined,
+): value is ActivityStage {
+  return (
+    value === 'conversations' ||
+    value === 'claimed' ||
+    value === 'live_transfer' ||
+    value === 'show'
+  );
+}
+
+/** Conversations = claimed ∪ live transfer ∪ show (same unique-conversation definition as KPIs). */
+export function matchesActivityStage(
+  counts: ActivityCounts,
+  stage: ActivityStage,
+): boolean {
+  if (stage === 'claimed') return counts.claimed > 0;
+  if (stage === 'live_transfer') return counts.live_transfers > 0;
+  if (stage === 'show') return counts.shows > 0;
+  return counts.claimed > 0 || counts.live_transfers > 0 || counts.shows > 0;
+}
+
+export function isLeadQualityFilter(
+  value: string | null | undefined,
+): value is LeadQualityFilter {
+  return value === 'qualified' || value === 'hot' || value === 'qualified_hot';
+
+}
+
+export function matchesLeadQuality(
+  flags: { is_qualified: boolean; is_hot: boolean },
+  quality: LeadQualityFilter,
+): boolean {
+  if (quality === 'qualified') return flags.is_qualified;
+  if (quality === 'hot') return flags.is_hot;
+  return flags.is_qualified && flags.is_hot;
 }
 
 /** KPI tab only: `roi` is canonical; `conversions` remains a bookmark alias. */
@@ -43,12 +99,23 @@ export function matchesConversionRollup(
 }
 
 export function profilesForConversionExplorer<
-  T extends ConversionFlags & { has_lead_in_period: boolean },
+  T extends ConversionFlags & {
+    has_lead_in_period: boolean;
+    counts?: ActivityCounts;
+  },
 >(profiles: T[], conversionEvent: string | null | undefined): T[] {
-  if (!isConversionStage(conversionEvent)) {
-    return profiles.filter(p => p.has_lead_in_period);
+  if (isActivityStage(conversionEvent)) {
+    return profiles.filter(
+      (p) =>
+        p.has_lead_in_period &&
+        p.counts != null &&
+        matchesActivityStage(p.counts, conversionEvent),
+    );
   }
-  return profiles.filter(p => matchesConversionRollup(p, conversionEvent));
+  if (!isConversionStage(conversionEvent)) {
+    return profiles.filter((p) => p.has_lead_in_period);
+  }
+  return profiles.filter((p) => matchesConversionRollup(p, conversionEvent));
 }
 
 export function shouldShowConversionCosts(adSpend: number): boolean {

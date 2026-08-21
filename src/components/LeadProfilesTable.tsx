@@ -373,6 +373,7 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
   // Table-local filters live in the URL so a narrowed list is linkable.
   const query = urlParams.get("q");
   const conversionFilter = urlParams.get("conv");
+  const qualityFilter = urlParams.get("qual");
   const tableView: TableView = urlParams.get("rows") === "unmapped" ? "unmapped" : "leads";
   const pageParam = Number(urlParams.get("page"));
   const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
@@ -393,7 +394,7 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
   // otherwise stay expanded against different leads.
   useEffect(() => {
     setExpanded(new Set());
-  }, [clientId, liveOnly, startDate, endDate, conversionFilter, query, tableView]);
+  }, [clientId, liveOnly, startDate, endDate, conversionFilter, qualityFilter, query, tableView]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -408,6 +409,7 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
     if (conversionFilter && tableView === "leads") params.set("conversion_event", conversionFilter);
+    if (qualityFilter && tableView === "leads") params.set("quality", qualityFilter);
     if (query) params.set("search", query);
 
     fetch(`/api/raw/leads?${params}`, { signal: controller.signal })
@@ -433,7 +435,7 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
       });
 
     return () => controller.abort();
-  }, [clientId, liveOnly, page, startDate, endDate, conversionFilter, query, tableView]);
+  }, [clientId, liveOnly, page, startDate, endDate, conversionFilter, qualityFilter, query, tableView]);
 
   function handleViewChange(next: TableView) {
     urlParams.setMany({ rows: next === "unmapped" ? "unmapped" : null, page: null });
@@ -513,9 +515,9 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
 
         <select
           value={conversionFilter}
-          onChange={(e) => urlParams.setMany({ conv: e.target.value, page: null })}
+          onChange={(e) => urlParams.setMany({ conv: e.target.value || null, page: null })}
           disabled={isUnmappedView}
-          aria-label="Conversion stage"
+          aria-label="Stage filter"
           className="px-4 py-2 rounded-lg text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 disabled:opacity-40"
           style={{
             background: "#0f2040",
@@ -524,10 +526,36 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
             minWidth: "12rem",
           }}
         >
-          <option value="">All Conversion Stages</option>
-          <option value="proposal_made">Has Proposal</option>
-          <option value="submission_made">Has Submission</option>
-          <option value="loan_funded">Has Funded Loan</option>
+          <option value="">All Stages</option>
+          <optgroup label="Conversations">
+            <option value="conversations">Conversations (claimed / LT / show)</option>
+            <option value="claimed">Claimed</option>
+            <option value="live_transfer">Live Transfer</option>
+            <option value="show">Show</option>
+          </optgroup>
+          <optgroup label="Pipeline">
+            <option value="proposal_made">Has Proposal</option>
+            <option value="submission_made">Has Submission</option>
+            <option value="loan_funded">Has Funded Loan</option>
+          </optgroup>
+        </select>
+        <select
+          value={qualityFilter}
+          onChange={(e) => urlParams.setMany({ qual: e.target.value || null, page: null })}
+          disabled={isUnmappedView}
+          aria-label="Lead quality"
+          className="px-4 py-2 rounded-lg text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 disabled:opacity-40"
+          style={{
+            background: "#0f2040",
+            border: "1px solid rgba(255,255,255,0.12)",
+            color: "#e2e8f0",
+            minWidth: "11rem",
+          }}
+        >
+          <option value="">All Qualities</option>
+          <option value="qualified">Qualified</option>
+          <option value="hot">Hot</option>
+          <option value="qualified_hot">Qualified + Hot</option>
         </select>
         <span className="text-sm" style={{ color: "#334155" }} aria-live="polite">
           {loading
@@ -559,8 +587,8 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
       <p className="text-xs leading-relaxed max-w-3xl" style={{ color: "#475569" }}>
         {isUnmappedView
           ? "Contacts with dial, claim, or appointment activity in this range but no lead event on record anywhere. Expand a row to inspect the orphaned events — usually a missing GHL lead webhook or a legacy contact being power-dialed."
-          : conversionFilter
-            ? "Unique leads who reached this conversion stage in the selected date range (same rollup as the KPI cards: funded counts as submitted and proposed). Search by name, phone, or email still ignores the date range. Expand a row for the full event timeline."
+          : conversionFilter || qualityFilter
+            ? "Leads matching the stage and/or quality filters in the selected date range. Conversations = claimed, live transfer, or show. Pipeline stages roll up like the KPI cards (funded counts as submitted and proposed). Search by name, phone, or email still ignores the date range. Expand a row for the full event timeline."
             : "One row per lead event in the selected date range (matches dashboard Total Leads). Activity columns count dials, appointments, and outcomes in the same range. Search by name, phone, or email to jump to a lead (ignores the date range). Expand a row for the full event timeline."}
       </p>
 

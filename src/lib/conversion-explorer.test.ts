@@ -2,9 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   conversionExplorerNav,
+  isActivityStage,
   isConversionStage,
   isKpiRoiSub,
+  isLeadQualityFilter,
+  matchesActivityStage,
   matchesConversionRollup,
+  matchesLeadQuality,
   profilesForConversionExplorer,
   shouldShowConversionCosts,
 } from './conversion-explorer';
@@ -92,5 +96,56 @@ describe('explorer leads tab', () => {
   it('canonicalizes legacy explorer sub=conversions to leads', () => {
     assert.equal(resolveWorkspaceSubTab('explorer', 'conversions'), 'leads');
     assert.equal(resolveWorkspaceSubTab('explorer', 'roi'), 'leads');
+  });
+});
+
+
+describe('activity and quality filters', () => {
+  it('recognizes activity stage values', () => {
+    assert.equal(isActivityStage('conversations'), true);
+    assert.equal(isActivityStage('claimed'), true);
+    assert.equal(isActivityStage('live_transfer'), true);
+    assert.equal(isActivityStage('show'), true);
+    assert.equal(isActivityStage('proposal_made'), false);
+  });
+
+  it('matches conversations as claimed ∪ live transfer ∪ show', () => {
+    assert.equal(matchesActivityStage({ claimed: 1, live_transfers: 0, shows: 0 }, 'conversations'), true);
+    assert.equal(matchesActivityStage({ claimed: 0, live_transfers: 1, shows: 0 }, 'conversations'), true);
+    assert.equal(matchesActivityStage({ claimed: 0, live_transfers: 0, shows: 1 }, 'conversations'), true);
+    assert.equal(matchesActivityStage({ claimed: 0, live_transfers: 0, shows: 0 }, 'conversations'), false);
+    assert.equal(matchesActivityStage({ claimed: 0, live_transfers: 2, shows: 0 }, 'live_transfer'), true);
+    assert.equal(matchesActivityStage({ claimed: 0, live_transfers: 2, shows: 0 }, 'claimed'), false);
+  });
+
+  it('filters lead quality flags', () => {
+    assert.equal(isLeadQualityFilter('qualified_hot'), true);
+    assert.equal(matchesLeadQuality({ is_qualified: true, is_hot: true }, 'qualified_hot'), true);
+    assert.equal(matchesLeadQuality({ is_qualified: true, is_hot: false }, 'qualified_hot'), false);
+    assert.equal(matchesLeadQuality({ is_qualified: true, is_hot: false }, 'qualified'), true);
+    assert.equal(matchesLeadQuality({ is_qualified: false, is_hot: true }, 'hot'), true);
+  });
+
+  it('lists conversation-stage leads via profilesForConversionExplorer', () => {
+    const rows = profilesForConversionExplorer(
+      [
+        {
+          has_proposal_made: false,
+          has_submission_made: false,
+          has_loan_funded: false,
+          has_lead_in_period: true,
+          counts: { claimed: 0, live_transfers: 1, shows: 0 },
+        },
+        {
+          has_proposal_made: false,
+          has_submission_made: false,
+          has_loan_funded: false,
+          has_lead_in_period: true,
+          counts: { claimed: 0, live_transfers: 0, shows: 0 },
+        },
+      ],
+      'conversations',
+    );
+    assert.equal(rows.length, 1);
   });
 });
