@@ -16,9 +16,9 @@ After a successful DB write, call `notifyMrWaizActivity(...)` fire-and-forget. S
 
 - Resolve actor display name
 - Format event-specific mrkdwn
-- `postToTeamChannel(service, 'mr_waiz', text)`
+- `postToTeamChannel(service, 'mrwaiz', text)`
 
-Channel wiring: Admin → Automations → Team channels, slug `mr_waiz`, channel id `C0BRRU9C4SH`. Invite the bot into the channel.
+Channel wiring: Admin → Automations → Team channels, slug `mrwaiz`, channel id `C0BRRU9C4SH`. Invite the bot into the channel.
 
 ## Event catalog (V1)
 
