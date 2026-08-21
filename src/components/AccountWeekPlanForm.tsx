@@ -319,9 +319,10 @@ export default function AccountWeekPlanForm({
                 value={t.work_type}
                 onChange={e => updateTask(t.key, { work_type: parseWorkType(e.target.value, "cadence") })}
                 style={fieldStyle}
+                title={WORK_TYPE_META[t.work_type].tooltip}
               >
                 {WORK_TYPES.map(type => (
-                  <option key={type} value={type}>
+                  <option key={type} value={type} title={WORK_TYPE_META[type].tooltip}>
                     {WORK_TYPE_META[type].label}
                   </option>
                 ))}

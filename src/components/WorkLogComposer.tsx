@@ -155,22 +155,41 @@ export default function WorkLogComposer({
           const on = workType === type;
           const metaT = WORK_TYPE_META[type];
           return (
-            <button
-              key={type}
-              type="button"
-              onClick={() => {
-                setWorkType(type);
-                setChangeDate(type === "bet" ? "" : today);
-              }}
-              className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg"
-              style={{
-                color: on ? metaT.color : "#64748b",
-                background: on ? `${metaT.color}18` : "transparent",
-                border: `1px solid ${on ? metaT.color : "rgba(255,255,255,0.1)"}`,
-              }}
-            >
-              {metaT.label}
-            </button>
+            <div key={type} className="relative group/type">
+              <button
+                type="button"
+                aria-label={`${metaT.label}: ${metaT.hint}`}
+                onClick={() => {
+                  setWorkType(type);
+                  setChangeDate(type === "bet" ? "" : today);
+                }}
+                className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg"
+                style={{
+                  color: on ? metaT.color : "#64748b",
+                  background: on ? `${metaT.color}18` : "transparent",
+                  border: `1px solid ${on ? metaT.color : "rgba(255,255,255,0.1)"}`,
+                }}
+              >
+                {metaT.label}
+              </button>
+              <div
+                role="tooltip"
+                className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 w-72 max-w-[min(18rem,calc(100vw-2rem))] rounded-lg px-3 py-2.5 opacity-0 shadow-lg transition-opacity duration-150 group-hover/type:opacity-100 group-focus-within/type:opacity-100"
+                style={{
+                  background: "#0f1c2e",
+                  border: `1px solid ${metaT.color}55`,
+                  color: "#cbd5e1",
+                }}
+              >
+                <p
+                  className="text-[10px] font-bold uppercase tracking-wide mb-1.5"
+                  style={{ color: metaT.color }}
+                >
+                  {metaT.label}
+                </p>
+                <p className="text-[11px] leading-relaxed whitespace-pre-line">{metaT.tooltip}</p>
+              </div>
+            </div>
           );
         })}
       </div>

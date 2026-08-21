@@ -3,25 +3,45 @@
 export const WORK_TYPES = ['finding', 'cadence', 'bet'] as const;
 export type WorkType = (typeof WORK_TYPES)[number];
 
-export const WORK_TYPE_META: Record<
-  WorkType,
-  { label: string; hint: string; color: string; chartDefaultOn: boolean }
-> = {
+export type WorkTypeMeta = {
+  label: string;
+  /** One-line summary under the selected type. */
+  hint: string;
+  /** Hover / title text: when to use, examples, what not to use. */
+  tooltip: string;
+  color: string;
+  chartDefaultOn: boolean;
+};
+
+export const WORK_TYPE_META: Record<WorkType, WorkTypeMeta> = {
   finding: {
     label: 'Finding',
-    hint: 'Discovery — not a change. Audit notes, issues reported.',
+    hint: 'Discovery — we saw it; nothing changed yet.',
+    tooltip:
+      'Use when you spotted a problem but did not change the funnel yet.\n\n' +
+      'Examples: Gate A / DATA_HOLD, spend ≠ Meta, blank dispositions, wrong constraint layer.\n\n' +
+      'Not for: changes you already shipped (those are Cadence or Bet). Vacation / LO-out → roster notes.',
     color: '#fbbf24',
     chartDefaultOn: false,
   },
   cadence: {
     label: 'Cadence',
-    hint: 'Expected hygiene — killed ads, budget pacing, QA.',
+    hint: 'Seat hygiene — expected work, not a KPI experiment.',
+    tooltip:
+      'Use for permission-level seat work you are not measuring as a KPI bet.\n\n' +
+      'Examples: pause/kill clear losers, budget pacing, launch checks, chase blank dispositions, observe 48h.\n\n' +
+      'Not for: new campaign / angle / offer / landing test, or any lever you will argue about on Thursday → Bet.',
     color: '#94a3b8',
     chartDefaultOn: false,
   },
   bet: {
     label: 'Bet',
-    hint: 'Hypothesized KPI mover. Measured from live date → review.',
+    hint: 'Hypothesized KPI mover — measured live → review.',
+    tooltip:
+      'Use for one quality lever with a hypothesis and success metric.\n\n' +
+      'Examples: new creative/angle/offer, landing/opt-in test, script or Show Rate process change meant to move the grade.\n\n' +
+      'Not for: DATA_HOLD fixes, disposition cleanup, or routine prune with no learn goal.\n\n' +
+      'Unsure Cadence vs Bet? If you will ask “did it work?” on Thursday → Bet.',
     color: '#60a5fa',
     chartDefaultOn: true,
   },
