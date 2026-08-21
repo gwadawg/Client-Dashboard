@@ -11,7 +11,7 @@ import {
   isClosebotTicketStatus,
   parseChangedAt,
 } from "@/lib/closebot";
-import { createClosebotTicket } from "@/lib/closebot-store";
+import { createClosebotTicket, TICKET_SELECT } from "@/lib/closebot-store";
 import {
   closebotStatusLabel,
   notifyMrWaizActivity,
