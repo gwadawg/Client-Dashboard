@@ -22,12 +22,12 @@ observed, keep **week plans** as founder-gated assignments, and give
 every seat a **Due today** plate on Team Command without a generic
 task database.
 
-Two sequential builds, one product:
+Two sequential builds, one product. **Do not start Slice 2 until
+Slice 1 is live** (LLM council, 2026-08-24).
 
 1. Cleanup so plans, logs, and follow-ups are not the same object.
-2. A read-time **work inbox** API that Team Command (all seats,
-   including Founder/CEO) uses to list due work and complete *simple*
-   items in place.
+2. A read-time **work inbox** API that Team Command uses to list due
+   work and complete *simple* items in place.
 
 ## Non-goals
 
@@ -41,6 +41,10 @@ Two sequential builds, one product:
   File display only until a later migration into `cs_touchpoints`).
 - Replacing Follow-ups, Account Work, Closebot, or work-log composers
   as create surfaces.
+- Showing **unassigned** CS follow-ups on every CS seat (permission
+  dump). Unowned work is not “mine.”
+- A second complete implementation: inbox complete **must call the
+  existing** plan-task and touchpoint writers (thin proxy at most).
 
 ## Problem
 
@@ -59,6 +63,9 @@ Operators now have overlapping “work” objects:
 A universal task entity would hide that until complete-rules
 (Slack snippet, Loom, founder approve, baseline freeze) collide.
 
+A five-kind inbox before writes are honest, or a Due-today dump with
+no owners, trains people to ignore the plate.
+
 ## Operating model
 
 Three kinds of truth:
@@ -74,6 +81,10 @@ Three kinds of truth:
 **Bet** = measured lever on the work log after it is **live**.
 **Follow-up** = CS playbook touchpoint (snippet to complete).
 **Inbox row** = pointer at one of the above.
+
+The primitive is a **completion contract**, not a generic task. New
+kinds later are extra **projectors** onto the same GET, not a new
+ledger table.
 
 Ad-hoc **Log work** from Client Workspace still writes the ledger
 directly (no plan). Founder approval applies to **plans only**. That
@@ -97,52 +108,70 @@ Unchanged: three work types, bet freeze/Loom rules, ad-hoc log door.
 
 `GET /api/work-inbox?day=YYYY-MM-DD&scope=me|user&user_id=`
 
-Default `day` = call-center today. `scope=me` uses the session user.
-`scope=user` requires Founder/CEO/owner and `user_id`.
+Default `day` = **call-center timezone** today (`America/Sao_Paulo`,
+same as week plans). `scope=me` uses the session user. `scope=user`
+requires Founder/CEO/owner and `user_id`.
 
 Each item:
 
-- `kind` — `plan_task` | `cs_followup` | `closebot_ticket` | `plan_approve` | `bet_review`
+- `kind` — see v1 / v1.1 below
 - `source_table`, `source_id`
 - `client_id`, `client_name` (null if not client-scoped)
 - `title`
+- `label` — English source for UI (“Week-plan task”, “CS follow-up”,
+  “Needs founder approve”)
 - `due_at` (date or timestamptz, ISO)
-- `assignee_user_id` (null allowed)
+- `assignee_user_id` (null only for unowned bucket, not personal plate)
 - `complete_mode` — `inline` | `deep_link`
 - `href` — dashboard query to the native screen
 - `blocked_reason` — null, or why inline complete would fail
 
 Built **at read time** in one lib (UNION of source queries). No
-`tasks` table. Optional later: `work_inbox_owners` mapping
-touchpoints (or clients) to a user when the source has no assignee.
+`tasks` table.
 
-### v1 sources
+**Owners:** v1 personal plate only includes rows with
+`assignee_user_id = session user` (plan tasks). CS follow-ups stay
+off the personal plate until `work_inbox_owners` (or equivalent)
+maps touchpoint or client → user. Until then, unowned open
+touchpoints appear only on an **Unowned** list on the CS lead /
+CS Command, not on every CS login.
+
+### v1 sources (first inbox ship)
 
 | Kind | Include when | Mine | Complete |
 |------|----------------|------|----------|
-| `plan_task` | Plan `approved`, task `open`, `scheduled_for` ≤ day (overdue first) | `assignee_user_id` | Inline if work type is cadence or finding (or unset → cadence). Deep-link if bet (Loom + category + KPI). |
-| `cs_followup` | `open` or `snoozed`, `due_at` ≤ end of day | v1: all users with CS Follow-ups permission if no owner map; else mapped user | Inline with same snippet rules as Follow-ups, or deep-link |
-| `closebot_ticket` | Open statuses (`new`, `investigating`, `ticket_open`) | CCM permission plate in v1 (not per-agent until assigned) | Deep-link only |
+| `plan_task` | Plan `approved`, task `open`, `scheduled_for` ≤ day (overdue first) | `assignee_user_id` | Inline if cadence/finding or unset → cadence. Deep-link if bet. |
+| `cs_followup` | `open` or `snoozed`, `due_at` ≤ end of day, **and assigned** | Owner map | Inline with same snippet rules as Follow-ups |
 | `plan_approve` | Plan `pending` | Founder/CEO/owner | Deep-link Account Work → Approve |
-| `bet_review` | Bet with `review_date` ≤ day, no outcome yet, open statuses | Creator, or Media/CS plate by layer (L1/L2 → Media; else CS). If both match, show once. | Deep-link work log / Client Health |
+
+### v1.1 (after the plate is used for a week)
+
+| Kind | Include when | Mine | Complete |
+|------|----------------|------|----------|
+| `closebot_ticket` | Open statuses | Assigned user, else CCM lead Unowned — **not** the whole CCM plate | Deep-link only |
+| `bet_review` | Bet with `review_date` ≤ day, no outcome, open statuses | Creator, else layer seat; show once | Deep-link work log |
 
 **Not on the inbox:** ClickUp, credit queues, billing reminders, EOD,
 `cs_appointments` (stay “calls today” context on CS Command),
 onboarding derived rows on Media Command (keep that queue; do not
 fake tasks), `meeting_commitments`.
 
-### Complete router
+**Fold-in:** CS Command’s existing follow-up list and any overlapping
+“due” widgets **must** be replaced or nested in this block so there
+are not two Due-today surfaces.
 
-`POST /api/work-inbox/:kind/:id/complete` with the body the source
-already expects (e.g. `completion_report`, `work_type`, snippet).
+### Complete path
 
-- Inline kinds call existing writers (`PATCH` plan task, touchpoint
-  done). Same validation. Same work-log insert on plan-task done.
-- Deep-link kinds return **400** with “complete on the source screen”
-  — inbox never marks a bet live, never approves a plan, never
-  resolves Closebot.
+Prefer **calling existing** `PATCH` plan-task and touchpoint routes
+from the Team Command UI. If a `POST /api/work-inbox/:kind/:id/complete`
+exists, it is a **proxy only** — same body, same validation, same
+work-log insert. No new complete rules.
+
+- Inline kinds: cadence/finding plan tasks, assigned follow-ups with
+  snippet.
+- Deep-link kinds: never complete via inbox (400 if POST exists).
 - Idempotent: source already done → 200, no second log.
-- Failure: return the source error; row stays open.
+- Failure: source error; row stays open.
 
 Permissions: session user is assignee, **or** Founder/CEO/owner, **or**
 already allowed to complete that source today. `GET` of another user’s
@@ -153,37 +182,30 @@ Partial source failure on GET: omit that kind, return the rest, include
 
 ## UI
 
-v1: **Due today** block at the top of each Team Command seat
-(CS, Media, CCM, CEO). Same API; CEO/Founder person switcher on the
-block.
+v1: **Due today** at the **top** of each Team Command seat (CS, Media,
+CCM, CEO). English `label` on every row. CEO/Founder person switcher.
 
-CS Command: fold the existing follow-up list into this block so there
-are not two due lists. Keep “calls today” and EOD beside it, not as
-inbox rows.
+CS Command: fold existing follow-up list into this block. Keep “calls
+today” and EOD beside it, not as inbox rows. **Unowned** follow-ups:
+CS lead only.
 
-Deep-links open existing views (Account Work, Follow-ups, Closebot,
-Client Workspace / Client Health work log). No second composer.
-
-Later (not v1): Team Command can keep embedding the same API; a
-dedicated tab is optional if the block is too dense.
+Deep-links open existing views. No second composer.
 
 ## Data notes (Postgres)
 
 - Keep specialized tables and their indexes (`due_at`,
   `assignee_user_id + scheduled_for`, open-status partial indexes).
-- Inbox queries must filter in SQL (client, day, status, assignee) —
-  do not pull large `client_action_logs` lists and filter in app
-  (today’s ad-hoc plan attach pattern is not the inbox pattern).
-- Default new `client_action_logs.work_type` should not be `bet`
-  (schema/parser fallback today). New inserts: explicit type;
-  plan-task complete default **cadence**.
+- Inbox queries must filter in SQL — do not pull large
+  `client_action_logs` lists and filter in app.
+- Default new `client_action_logs.work_type` should not be `bet`.
+  Plan-task complete default **cadence**.
 - Optional unique: one non-rejected week plan per `(client_id,
-  week_start)` — separate small migration if we take it; not required
-  for inbox v1.
-- `work_inbox_owners` (later): `touchpoint_id` or `client_id` +
-  `user_id`, not a generic task row.
+  week_start)` — not required for inbox v1.
+- `work_inbox_owners`: `touchpoint_id` or `client_id` + `user_id`.
+  CS lead owns the map. Not a generic task row. Ship **before**
+  follow-ups appear on personal plates.
 
-## Slice 1 — Cleanup
+## Slice 1 — Cleanup (ship first; no inbox)
 
 - `AccountWeekPlanForm` tasks: title, assignee, day, notes. No
   work-type / bet category / KPI on create.
@@ -195,38 +217,45 @@ dedicated tab is optional if the block is too dense.
   ship”). Workspace composer: live bet or finding/cadence only.
 - Team Meetings: hide or disable new `meeting_commitments` on Mon/Thu
   KPI templates; week plan form/list remains.
-- SOP: completing a task files the log; bet is opt-in at complete,
-  not “always bet.” Cadence is the default diary row.
+- SOP: completing a task files the log; bet is opt-in at complete.
+  Cadence is the default diary row.
 
-## Slice 2 — Inbox
+## Slice 2 — Inbox (only after Slice 1 is live)
 
-- Lib + GET/POST routes + tests listed below.
-- Team Command Due today on all four seats; CS follow-up fold-in.
-- Hybrid complete as specified.
+- Lib + GET; UI complete via existing PATCH (or thin proxy).
+- Due today on all four seats; CS follow-up fold-in; Unowned bucket
+  for CS lead.
+- v1 kinds only; v1.1 Closebot / bet review later.
 
 ## Tests
 
 - Approved open plan task scheduled today appears for that assignee;
   pending-plan tasks do not.
-- Complete cadence task from inbox: one `client_action_logs` cadence
+- Complete cadence task from plate: one `client_action_logs` cadence
   row, task `done`, item gone from GET.
-- Bet-classified task: inbox POST complete → 400; GET
-  `complete_mode = deep_link`.
+- Bet-classified task: no inline complete; `complete_mode = deep_link`.
 - Non-CEO `scope=user` → 403.
 - Follow-up complete without snippet still fails if Follow-ups
   requires snippet.
-- GET still 200 if Closebot query fails (`warnings` set).
+- Unassigned follow-up does **not** appear on a non-lead CS personal
+  plate.
+- GET still 200 if an optional kind query fails (`warnings` set).
 
 ## Success criteria
 
-- CS, Media, CCM, and Founder/CEO each see Due today on Team Command
-  for their login (Founder can switch person).
+- After Slice 1: operators cannot create a plan that looks like a
+  live bet; new ghost bets are blocked.
+- After Slice 2: CS, Media, CCM, and Founder/CEO each see Due today
+  for **their** assignments (Founder can switch person).
 - Easy items complete on the plate; bets, plan approve, and Closebot
   complete only on native screens.
 - Client file: plans ≠ ledger. Bets overlay KPIs only when live.
 - No Create Task that writes a shared tasks table.
+- Kill metric (ops): share of Due-today rows touched (complete or
+  deep-link) within 7 days — if near zero, the plate is wallpaper.
 
 ## Rollout
 
-Ship Slice 1 before Slice 2 so the union is not lying. Feature-flag
-the Due today block if needed; API can land first behind the flag.
+Ship Slice 1. Confirm a week of Monday plans without work-type on
+create. Then Slice 2 behind a flag if needed. Do not land the UNION
+API as the first PR.
