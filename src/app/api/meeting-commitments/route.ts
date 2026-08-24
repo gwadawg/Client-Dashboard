@@ -6,6 +6,7 @@ import {
   filterOpenForWeek,
   isMeetingCommitmentStatus,
   softDuplicateWarn,
+  kpiTemplateBlocksNewCommitments,
   type MeetingCommitment,
   type MeetingCommitmentConstraintType,
   type MeetingCommitmentOwnerRole,
@@ -190,6 +191,32 @@ export async function POST(req: Request) {
   }
 
   const meetingId = optionalText(body.meeting_id) ?? optionalText(body.origin_meeting_id);
+
+  if (meetingId) {
+    const { data: instance } = await ctx.service
+      .from('team_meeting_instances')
+      .select('id, template_id')
+      .eq('id', meetingId)
+      .maybeSingle();
+    const templateId = (instance as { template_id?: string } | null)?.template_id;
+    if (templateId) {
+      const { data: template } = await ctx.service
+        .from('team_meeting_templates')
+        .select('slug')
+        .eq('id', templateId)
+        .maybeSingle();
+      const slug = (template as { slug?: string } | null)?.slug;
+      if (slug && kpiTemplateBlocksNewCommitments(slug)) {
+        return NextResponse.json(
+          {
+            error:
+              'New meeting commitments are frozen on Monday/Thursday KPI. Capture the work as an account week plan.',
+          },
+          { status: 400 },
+        );
+      }
+    }
+  }
 
   const week = weekBoundsContaining(dueDate);
   const { data: openRows } = await ctx.service

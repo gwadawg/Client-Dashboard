@@ -50,6 +50,7 @@ export default function AccountWeekPlansWeekList({
   const [completeMetric, setCompleteMetric] = useState("");
   const [completeCategory, setCompleteCategory] = useState<BetCategoryId | "">("");
   const [completeLoom, setCompleteLoom] = useState("");
+  const [completeHypothesis, setCompleteHypothesis] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [reflectionDraft, setReflectionDraft] = useState<Record<string, string>>({});
   const [reflectBusy, setReflectBusy] = useState<string | null>(null);
@@ -270,7 +271,9 @@ export default function AccountWeekPlansWeekList({
                       {t.tactic_tag
                         ? ` · #${betCategoryLabel(t.tactic_tag) ?? t.tactic_tag}`
                         : ""}
-                      {` · ${WORK_TYPE_META[parseWorkType(t.work_type, "cadence")].label}`}
+                      {t.status === "done"
+                        ? ` · ${WORK_TYPE_META[parseWorkType(t.work_type, "cadence")].label}`
+                        : ""}
                       {t.client_action_log_id ? " · filed to work log" : ""}
                     </div>
                     {t.completion_report && (
@@ -289,11 +292,11 @@ export default function AccountWeekPlansWeekList({
                         onClick={() => {
                           setCompleteId(t.id);
                           setReport("");
-                          const wt = parseWorkType(t.work_type, "cadence");
-                          setCompleteType(wt);
-                          setCompleteMetric(t.success_metric ?? "");
-                          setCompleteCategory(parseBetCategory(t.tactic_tag) ?? "");
+                          setCompleteType("cadence");
+                          setCompleteMetric("");
+                          setCompleteCategory("");
                           setCompleteLoom("");
+                          setCompleteHypothesis(t.notes ?? "");
                         }}
                       >
                         Done
@@ -331,8 +334,18 @@ export default function AccountWeekPlansWeekList({
                         </option>
                       ))}
                     </select>
+                    <p className="text-[10px] text-slate-500">
+                      Cadence is the default diary row. Opt into Bet only if this shipped as a measured lever.
+                    </p>
                     {completeType === "bet" && (
                       <>
+                        <textarea
+                          rows={2}
+                          placeholder="Hypothesis (required)"
+                          value={completeHypothesis}
+                          onChange={e => setCompleteHypothesis(e.target.value)}
+                          style={fieldStyle}
+                        />
                         <select
                           value={completeCategory}
                           onChange={e => setCompleteCategory(e.target.value as BetCategoryId | "")}
@@ -379,6 +392,7 @@ export default function AccountWeekPlansWeekList({
                           (completeType === "bet" &&
                             (!completeMetric ||
                               !completeCategory ||
+                              !completeHypothesis.trim() ||
                               !isValidLoomUrl(completeLoom)))
                         }
                         className="text-xs text-white px-3 py-1 rounded"
@@ -391,6 +405,7 @@ export default function AccountWeekPlansWeekList({
                             success_metric: completeType === "bet" ? completeMetric : t.success_metric,
                             bet_category: completeType === "bet" ? completeCategory : null,
                             loom_url: completeType === "bet" ? completeLoom.trim() : null,
+                            hypothesis: completeType === "bet" ? completeHypothesis.trim() : null,
                           })
                         }
                       >

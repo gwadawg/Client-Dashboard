@@ -132,7 +132,7 @@ export default function ClientTimelineChart({ clientId }: Props) {
           }) => {
             const plotDate = workLogPlotDate(x);
             if (!plotDate) return [];
-            const workType = parseWorkType(x.work_type, "bet");
+            const workType = parseWorkType(x.work_type, "cadence");
             return [{
               id: x.id,
               title: x.title,

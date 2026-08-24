@@ -102,10 +102,10 @@ export default function ClientInterventionHistory({ clientId, compact = false }:
 
   const open = actions.filter(
     a =>
-      parseWorkType(a.work_type, "bet") === "bet" &&
+      parseWorkType(a.work_type, "cadence") === "bet" &&
       ["planned", "in_progress", "measuring"].includes(a.status),
   );
-  const closed = actions.filter(a => parseWorkType(a.work_type, "bet") === "bet" && !["planned", "in_progress", "measuring"].includes(a.status));
+  const closed = actions.filter(a => parseWorkType(a.work_type, "cadence") === "bet" && !["planned", "in_progress", "measuring"].includes(a.status));
   const list = compact ? actions.slice(0, 5) : actions;
 
   return (
@@ -118,7 +118,7 @@ export default function ClientInterventionHistory({ clientId, compact = false }:
       <div className="space-y-2">
         {list.map(a => {
           const meta = a.success_metric ? SUCCESS_METRIC_META[a.success_metric as SuccessMetricKey] : undefined;
-          const type = parseWorkType(a.work_type, "bet");
+          const type = parseWorkType(a.work_type, "cadence");
           const typeMeta = WORK_TYPE_META[type];
           const changeDate = a.change_date ?? (type === "bet" ? actionChangeDate(a) : null);
           const reviewDue =

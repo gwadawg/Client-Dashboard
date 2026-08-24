@@ -12,6 +12,7 @@ import {
   betRequiresLoom,
   betCategoryLabel,
   isBetWorkType,
+  newBetWriteError,
   workLogPlotDate,
   workLogWeekDate,
   isGhostMark,
@@ -28,10 +29,30 @@ describe('work type', () => {
     assert.equal(parseWorkType('nope', 'cadence'), 'cadence');
   });
 
-  it('treats missing work_type as bet for backfill', () => {
-    assert.equal(isBetWorkType(null), true);
-    assert.equal(isBetWorkType(undefined), true);
+  it('treats only explicit bet as a bet (missing type is not a ghost bet)', () => {
+    assert.equal(isBetWorkType(null), false);
+    assert.equal(isBetWorkType(undefined), false);
     assert.equal(isBetWorkType('cadence'), false);
+    assert.equal(isBetWorkType('bet'), true);
+  });
+
+  it('rejects new planned or dateless bets', () => {
+    assert.match(
+      newBetWriteError({ workType: 'bet', status: 'planned', changeDate: '2026-08-24' }) ?? '',
+      /planned/i,
+    );
+    assert.match(
+      newBetWriteError({ workType: 'bet', status: 'in_progress', changeDate: null }) ?? '',
+      /change_date/i,
+    );
+    assert.equal(
+      newBetWriteError({ workType: 'bet', status: 'in_progress', changeDate: '2026-08-24' }),
+      null,
+    );
+    assert.equal(
+      newBetWriteError({ workType: 'cadence', status: 'planned', changeDate: null }),
+      null,
+    );
   });
 });
 

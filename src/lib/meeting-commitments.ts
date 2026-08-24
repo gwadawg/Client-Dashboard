@@ -212,10 +212,20 @@ export function isMeetingCommitmentStatus(v: unknown): v is MeetingCommitmentSta
   return typeof v === 'string' && (MEETING_COMMITMENT_STATUSES as string[]).includes(v);
 }
 
+/** Mon/Thu KPI: week plans only — do not create new meeting_commitments. */
+export const KPI_TEMPLATES_BLOCK_NEW_COMMITMENTS = new Set([
+  'mon-kpi-week-plan',
+  'thu-kpi-commitment-check',
+]);
+
+export function kpiTemplateBlocksNewCommitments(slug: string): boolean {
+  return KPI_TEMPLATES_BLOCK_NEW_COMMITMENTS.has(slug);
+}
+
 export function commitmentModeForTemplateSlug(
   slug: string,
 ): 'edit' | 'check' | 'approve' | null {
-  if (slug === 'mon-kpi-week-plan') return 'edit';
+  if (slug === 'mon-kpi-week-plan') return null;
   if (slug === 'thu-kpi-commitment-check') return 'check';
   if (slug === 'mon-ops-planning') return 'approve';
   return null;

@@ -194,7 +194,7 @@ export function evaluateActionOutcome(
   today: string = new Date().toISOString().split('T')[0],
   metaClicks?: number,
 ): OutcomeEvaluation | null {
-  if ((action.work_type ?? 'bet') !== 'bet') return null;
+  if (action.work_type !== 'bet') return null;
   if (!action.change_date) return null;
   const metricKey = action.success_metric as SuccessMetricKey | null;
   if (!metricKey || !SUCCESS_METRIC_META[metricKey]) return null;

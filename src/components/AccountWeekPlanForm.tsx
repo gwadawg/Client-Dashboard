@@ -4,13 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import type { AccountWeekPlanSeverity } from "@/lib/account-week-plans";
 import { weekStartMondayContaining } from "@/lib/account-week-plans";
 import { todayYmdInCallCenterTz } from "@/lib/time";
-import {
-  BET_CATEGORIES,
-  WORK_TYPE_META,
-  WORK_TYPES,
-  parseWorkType,
-  type WorkType,
-} from "@/lib/client-work-log";
 
 const fieldStyle = {
   background: "#0f2040",
@@ -30,11 +23,8 @@ type TaskDraft = {
   key: string;
   title: string;
   notes: string;
-  tactic_tag: string;
   assignee_user_id: string;
   scheduled_for: string;
-  success_metric: string;
-  work_type: WorkType;
 };
 
 type Props = {
@@ -44,30 +34,13 @@ type Props = {
   compact?: boolean;
 };
 
-const KPI_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "Target KPI (optional)" },
-  { value: "cpconv", label: "CPConv" },
-  { value: "cpql", label: "CPQL" },
-  { value: "cpl", label: "CPL" },
-  { value: "show_rate", label: "Show Rate" },
-  { value: "hand_raise_rate", label: "Hand-raise rate" },
-  { value: "booking_rate", label: "Booking rate" },
-  { value: "lead_booking_rate", label: "Lead booking rate" },
-  { value: "lead_to_qual", label: "Lead → qualified" },
-  { value: "conversation_yield", label: "Conversation yield" },
-  { value: "optin_rate", label: "Opt-in rate" },
-];
-
 function emptyTask(): TaskDraft {
   return {
     key: Math.random().toString(36).slice(2),
     title: "",
     notes: "",
-    tactic_tag: "",
     assignee_user_id: "",
     scheduled_for: "",
-    success_metric: "",
-    work_type: "cadence",
   };
 }
 
@@ -134,23 +107,12 @@ export default function AccountWeekPlanForm({
         .map((t, i) => ({
           title: t.title.trim(),
           notes: t.notes.trim() || null,
-          tactic_tag: t.tactic_tag.trim() || null,
           assignee_user_id: t.assignee_user_id || null,
           scheduled_for: t.scheduled_for || null,
-          success_metric: t.success_metric || null,
-          work_type: t.work_type,
           sort_order: i,
         }));
       if (payloadTasks.length === 0) {
         throw new Error("Add at least one task");
-      }
-      for (const t of payloadTasks) {
-        if (t.work_type === "bet" && !t.tactic_tag) {
-          throw new Error("Bet tasks need an action category");
-        }
-        if (t.work_type === "bet" && !t.success_metric) {
-          throw new Error("Bet tasks need a target KPI");
-        }
       }
 
       const res = await fetch("/api/account-week-plans", {
@@ -191,7 +153,8 @@ export default function AccountWeekPlanForm({
           Account week plan
         </h4>
         <p className="text-xs text-slate-500">
-          Client + why this week, then the work. Founder approves before tasks are active.
+          Assignments only (person + day). Classify as cadence, finding, or bet when the task is completed.
+          Founder approves before tasks are active.
         </p>
       </div>
 
@@ -304,30 +267,7 @@ export default function AccountWeekPlanForm({
               onChange={e => updateTask(t.key, { title: e.target.value })}
               style={fieldStyle}
             />
-            <div className="grid gap-2 sm:grid-cols-3">
-              {t.work_type === "bet" ? (
-                <select
-                  required
-                  value={t.tactic_tag}
-                  onChange={e => updateTask(t.key, { tactic_tag: e.target.value })}
-                  style={fieldStyle}
-                  title="Bet action category"
-                >
-                  <option value="">Category…</option>
-                  {BET_CATEGORIES.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.group} · {c.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  placeholder="Tag (optional)"
-                  value={t.tactic_tag}
-                  onChange={e => updateTask(t.key, { tactic_tag: e.target.value })}
-                  style={fieldStyle}
-                />
-              )}
+            <div className="grid gap-2 sm:grid-cols-2">
               <select
                 value={t.assignee_user_id}
                 onChange={e => updateTask(t.key, { assignee_user_id: e.target.value })}
@@ -347,38 +287,6 @@ export default function AccountWeekPlanForm({
                 style={fieldStyle}
                 title="Due / do-on day"
               />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <select
-                value={t.work_type}
-                onChange={e => {
-                  const next = parseWorkType(e.target.value, "cadence");
-                  updateTask(t.key, {
-                    work_type: next,
-                    tactic_tag: next === "bet" ? "" : t.tactic_tag,
-                  });
-                }}
-                style={fieldStyle}
-                title={WORK_TYPE_META[t.work_type].tooltip}
-              >
-                {WORK_TYPES.map(type => (
-                  <option key={type} value={type} title={WORK_TYPE_META[type].tooltip}>
-                    {WORK_TYPE_META[type].label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={t.success_metric}
-                onChange={e => updateTask(t.key, { success_metric: e.target.value })}
-                style={fieldStyle}
-                required={t.work_type === "bet"}
-              >
-                {KPI_OPTIONS.map(o => (
-                  <option key={o.value || "none"} value={o.value}>
-                    {t.work_type === "bet" && !o.value ? "Target KPI (required for bets)" : o.label}
-                  </option>
-                ))}
-              </select>
             </div>
             <input
               placeholder="Notes (optional)"

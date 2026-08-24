@@ -22,8 +22,6 @@ import {
   requirePlanAccess,
   userCanApprovePlans,
 } from '@/lib/account-week-plans-api';
-import { isSuccessMetricKey } from '@/lib/account-plan-task-kpi';
-import { parseWorkType, type WorkType } from '@/lib/client-work-log';
 import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz, ymdInTimeZone } from '@/lib/time';
 import { addDaysToYmd } from '@/lib/team-meetings';
 
@@ -56,8 +54,6 @@ type TaskInput = {
   tactic_tag: string | null;
   assignee_user_id: string | null;
   scheduled_for: string | null;
-  success_metric: string | null;
-  work_type: WorkType;
   sort_order: number;
 };
 
@@ -81,24 +77,12 @@ function parseTasks(raw: unknown): TaskInput[] | NextResponse {
       typeof row.scheduled_for === 'string' && /^\d{4}-\d{2}-\d{2}/.test(row.scheduled_for)
         ? row.scheduled_for.slice(0, 10)
         : null;
-    let success_metric: string | null = null;
-    if (row.success_metric != null && row.success_metric !== '') {
-      if (!isSuccessMetricKey(row.success_metric)) {
-        return NextResponse.json(
-          { error: `tasks[${i}].success_metric is invalid` },
-          { status: 400 },
-        );
-      }
-      success_metric = row.success_metric;
-    }
     out.push({
       title,
       notes: optionalText(row.notes),
       tactic_tag: optionalText(row.tactic_tag),
       assignee_user_id: optionalText(row.assignee_user_id),
       scheduled_for: scheduled,
-      success_metric,
-      work_type: parseWorkType(row.work_type, 'cadence'),
       sort_order: typeof row.sort_order === 'number' ? row.sort_order : i,
     });
   }
@@ -455,8 +439,6 @@ export async function POST(req: Request) {
       tactic_tag: t.tactic_tag,
       assignee_user_id: t.assignee_user_id,
       scheduled_for: t.scheduled_for,
-      success_metric: t.success_metric,
-      work_type: t.work_type,
       status: 'open' as const,
       sort_order: t.sort_order,
     }));

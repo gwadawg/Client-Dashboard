@@ -182,10 +182,10 @@ export default function WorkLogComposer({
   }, [mode, clientId]);
 
   const targetHint = targetInputHint(successMetric);
-  const betLive = workType === "bet" ? changeDate || null : null;
+  const betLive = workType === "bet" ? changeDate || today : null;
   const loomOk = !betRequiresLoom(betLive) || isValidLoomUrl(loomUrl);
   const betReady = Boolean(
-    hypothesis.trim() && successMetric && betCategory && loomOk,
+    hypothesis.trim() && successMetric && betCategory && loomOk && changeDate,
   );
   const canSave =
     mode === "ads"
@@ -222,9 +222,8 @@ export default function WorkLogComposer({
     if (!workType || !canSave) return;
     setSaving(true);
     setError(null);
-    const liveDate = workType === "bet" ? changeDate || null : changeDate || today;
-    const status =
-      workType === "bet" ? (liveDate ? "in_progress" : "planned") : "in_progress";
+    const liveDate = workType === "bet" ? changeDate || today : changeDate || today;
+    const status = "in_progress";
     try {
       const res = await fetch("/api/client-actions", {
         method: "POST",
@@ -290,7 +289,7 @@ export default function WorkLogComposer({
                   setMode(metaT.key);
                   setError(null);
                   if (metaT.key !== "ads") {
-                    setChangeDate(metaT.key === "bet" ? "" : today);
+                    setChangeDate(today);
                   }
                 }}
                 className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg"
@@ -481,7 +480,7 @@ export default function WorkLogComposer({
             {workType !== "finding" && (
               <div>
                 <label style={labelStyle}>
-                  {workType === "bet" ? "Went live (leave blank if planned)" : "Done date"}
+                  {workType === "bet" ? "Went live *" : "Done date"}
                 </label>
                 <input
                   style={inputStyle}
@@ -573,9 +572,7 @@ export default function WorkLogComposer({
               ? adsPaused
                 ? "Save ads paused"
                 : "Save ads on"
-              : workType === "bet" && !changeDate
-                ? "Save planned bet"
-                : "Save"}
+              : "Save"}
         </button>
         {onCancel && (
           <button type="button" className="text-xs text-slate-500" onClick={onCancel}>

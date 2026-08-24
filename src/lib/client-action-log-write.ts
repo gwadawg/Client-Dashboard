@@ -21,6 +21,7 @@ import {
   normalizeLoomUrl,
   parseBetCategory,
   parseWorkType,
+  newBetWriteError,
   resolveWorkLogDates,
   shouldFreezeBaseline,
   type BetCategoryId,
@@ -157,7 +158,7 @@ export async function createClientActionLog(
     throw new Error('client_id and title are required');
   }
 
-  const workType: WorkType = parseWorkType(body.work_type, 'bet');
+  const workType: WorkType = parseWorkType(body.work_type, 'cadence');
   if (body.work_type != null && body.work_type !== '' && !isWorkType(body.work_type)) {
     throw new Error('invalid work_type');
   }
@@ -165,6 +166,9 @@ export async function createClientActionLog(
     typeof body.status === 'string' && body.status.trim()
       ? body.status.trim()
       : 'in_progress';
+  const changeDateRaw = typeof body.change_date === 'string' ? body.change_date : null;
+  const betErr = newBetWriteError({ workType, status, changeDate: changeDateRaw });
+  if (betErr) throw new Error(betErr);
   const today = new Date().toISOString().split('T')[0];
   const dates = resolveWorkLogDates({
     workType,
@@ -225,29 +229,35 @@ export async function createClientActionLog(
     }
   }
 
+  const row: Record<string, unknown> = {
+    client_id: body.client_id,
+    created_by: userId,
+    title,
+    work_type: workType,
+    layer: body.layer ?? null,
+    constraint_label: body.constraint_label ?? null,
+    change_description: body.change_description ?? null,
+    hypothesis,
+    baseline_snapshot_id,
+    success_metric: successMetric,
+    baseline_value: freeze ? baseline_value : workType === 'bet' ? baseline_value : null,
+    target_value: targetValue,
+    status,
+    review_date: reviewDate,
+    change_date: dates.changeDate,
+    planned_date: dates.plannedDate,
+    ai_generated: Boolean(body.ai_generated),
+  };
+  // Only attach bet-only columns when logging a bet (avoids schema-cache errors
+  // on finding/cadence if migration is pending, and keeps inserts lean).
+  if (workType === 'bet') {
+    row.bet_category = betCategory;
+    row.loom_url = loomUrl;
+  }
+
   const { data, error } = await service
     .from('client_action_logs')
-    .insert({
-      client_id: body.client_id,
-      created_by: userId,
-      title,
-      work_type: workType,
-      layer: body.layer ?? null,
-      constraint_label: body.constraint_label ?? null,
-      change_description: body.change_description ?? null,
-      hypothesis,
-      bet_category: betCategory,
-      loom_url: loomUrl,
-      baseline_snapshot_id,
-      success_metric: successMetric,
-      baseline_value: freeze ? baseline_value : workType === 'bet' ? baseline_value : null,
-      target_value: targetValue,
-      status,
-      review_date: reviewDate,
-      change_date: dates.changeDate,
-      planned_date: dates.plannedDate,
-      ai_generated: Boolean(body.ai_generated),
-    })
+    .insert(row)
     .select('*')
     .single();
 

@@ -225,7 +225,7 @@ export default function ClientActionLog({
 
   const promote = async (action: ActionLog) => {
     if (!promoteCategory || !promoteHypothesis.trim()) return;
-    if (promoteLive && !isValidLoomUrl(promoteLoom)) return;
+    if (!promoteLive || !isValidLoomUrl(promoteLoom)) return;
     setSaving(true);
     const res = await fetch(`/api/client-actions/${action.id}`, {
       method: "PATCH",
@@ -237,8 +237,8 @@ export default function ClientActionLog({
         loom_url: promoteLoom.trim() || null,
         success_metric: promoteMetric,
         review_date: promoteReview,
-        change_date: promoteLive || null,
-        status: promoteLive ? "in_progress" : "planned",
+        change_date: promoteLive,
+        status: "in_progress",
       }),
     });
     setSaving(false);
@@ -251,7 +251,7 @@ export default function ClientActionLog({
   };
 
   const visible = useMemo(
-    () => (filter === "all" ? actions : actions.filter(a => parseWorkType(a.work_type, "bet") === filter)),
+    () => (filter === "all" ? actions : actions.filter(a => parseWorkType(a.work_type, "cadence") === filter)),
     [actions, filter],
   );
 
@@ -334,7 +334,7 @@ export default function ClientActionLog({
       ) : (
         <ol className="space-y-3">
           {visible.map(a => {
-            const type = parseWorkType(a.work_type, "bet");
+            const type = parseWorkType(a.work_type, "cadence");
             const typeMeta = WORK_TYPE_META[type];
             const meta = a.success_metric ? SUCCESS_METRIC_META[a.success_metric as SuccessMetricKey] : undefined;
             let delta: { improved: boolean; text: string } | null = null;
@@ -483,7 +483,7 @@ export default function ClientActionLog({
                               <option key={key} value={key}>{m.label}</option>
                             ))}
                           </select>
-                          <input style={inputStyle} type="date" value={promoteLive} onChange={e => setPromoteLive(e.target.value)} title="Went live (blank = planned)" />
+                          <input style={inputStyle} type="date" required value={promoteLive} onChange={e => setPromoteLive(e.target.value)} title="Went live (required)" />
                           <input style={inputStyle} type="date" value={promoteReview} onChange={e => setPromoteReview(e.target.value)} />
                         </div>
                         <div className="flex gap-2">
@@ -493,13 +493,14 @@ export default function ClientActionLog({
                               saving ||
                               !promoteCategory ||
                               !promoteHypothesis.trim() ||
-                              (Boolean(promoteLive) && !isValidLoomUrl(promoteLoom))
+                              !promoteLive ||
+                              !isValidLoomUrl(promoteLoom)
                             }
                             onClick={() => promote(a)}
                             className="text-[11px] px-2 py-1 rounded font-semibold"
                             style={{ background: "rgba(96,165,250,0.2)", color: "#60a5fa" }}
                           >
-                            {saving ? "Saving…" : promoteLive ? "Promote & freeze baseline" : "Promote as planned bet"}
+                            {saving ? "Saving…" : "Promote & freeze baseline"}
                           </button>
                           <button type="button" className="text-[11px] text-slate-500" onClick={() => setPromoteId(null)}>
                             Cancel

@@ -25,7 +25,7 @@ Run Monday Week Plan and Thursday Commitment Check so every under-KPI account le
 
 ## Scope
 
-**In:** Mon KPI (~25 min) and Thu KPI (~25 min) for Client Success, Media Buyer, and Call Center Manager. Capture work as **Account week plans** (one plan per client + tasks). Founder approves every plan in Account Work.
+**In:** Mon KPI (~25 min) and Thu KPI (~25 min) for Client Success, Media Buyer, and Call Center Manager. Capture work as **Account week plans** (one plan per client + assignment tasks: person + day). Founder approves every plan in Account Work. Do **not** create new meeting commitments on Mon/Thu KPI.
 
 **Out:** Creative debates, Founder status theater, deep coaching, rewriting the grader, Fri Exec Q&A form (separate).
 
@@ -43,10 +43,10 @@ Run Monday Week Plan and Thursday Commitment Check so every under-KPI account le
 
 ## Outputs
 
-- **Account week plan** per red client: Why + tasks (person + day + optional free-text tag)
+- **Account week plan** per red client: Why + assignments (person + day)
 - Founder **approve/reject** every plan (Account Work → Approve)
-- Thursday: open vs done on tasks; optional completion report
-- Optional: log a completed task as **Account change** (Client Success action log) when it was a material change
+- Thursday: open vs done on tasks; completing a task files the work log (cadence default; finding optional; bet only if opted in live)
+- Do not open new meeting commitments in Mon/Thu KPI
 
 ## Tools
 
@@ -97,7 +97,7 @@ Show Rate = unique booked leads who eventually spoke (show ∪ claimed ∪ live 
    - Confirm north-star miss.
    - Fork: **system/data** vs **quality** (thin only — deep work uses the ladder async).
    - If dispositions look incomplete in-room, name **DATA_HOLD** and assign Call Center Manager / Client Success to finish Gate A before quality levers.
-   - Add an **Account week plan** for the client: Why + one or more **tasks** (what to do, person, day, optional tag).
+   - Add an **Account week plan** for the client: Why + one or more **assignments** (what to do, person, day). Do not classify finding / cadence / bet on create.
 4. **OB glance** — launches this week only (gate risk), then close.
 
 Even if the plan is “observe 48h,” add a plan with Why filled and at least one task.
@@ -154,18 +154,20 @@ Owning roles run the [Under-KPI Diagnosis Ladder](under-kpi-diagnosis-ladder.md)
 
 Refine the same plan tasks in Account Work; do not invent a parallel note system.
 
-**After founder approves:** tasks are active work. Complete them in
-Account Work. Completing a task always files the work log as Finding,
-Cadence (default), or Bet. Bets freeze a baseline and get a review
-date so Client Success can measure outcome.
+**After founder approves:** assignments are active work. Complete them in
+Account Work. Completing a task files the work log. Cadence is the
+default diary row. Finding is optional. Bet is opt-in at complete
+(category, hypothesis, success metric, Loom when live). Do not create
+new meeting commitments on Mon/Thu KPI.
 
 ## Quality bar
 
 - Every Mon red has a week plan (Why + ≥1 task with assignee when known).
 - Founder can clear pending plans without Slack archaeology.
 - Thu answers “what did we execute?” from week list + client history.
-- Completing a task files Finding / Cadence / Bet on the client work
-  log. Cadence is hygiene; only Bets overlay the KPI chart by default.
+- Completing a task files the work log. Cadence is the default; bet is
+  opt-in at complete (live only). Do not create new meeting commitments
+  on Mon/Thu KPI.
 - Positions only — no personal names in the standard.
 - Meeting stays ~25 minutes; depth lives in the library ladder, not the form.
 

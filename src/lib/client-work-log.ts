@@ -167,7 +167,23 @@ export function shouldFreezeBaseline(
 }
 
 export function isBetWorkType(workType: string | null | undefined): boolean {
-  return (workType ?? 'bet') === 'bet';
+  return workType === 'bet';
+}
+
+/** New bets must already be live. Planned/ghost bets belong on week-plan tasks. */
+export function newBetWriteError(opts: {
+  workType: WorkType;
+  status: string;
+  changeDate: string | null | undefined;
+}): string | null {
+  if (opts.workType !== 'bet') return null;
+  if (opts.status === 'planned') {
+    return 'Bets cannot be created as planned. Assign the work on a week-plan task until it is live.';
+  }
+  if (!opts.changeDate || !String(opts.changeDate).trim()) {
+    return 'Bets require a change_date (live only).';
+  }
+  return null;
 }
 
 /** Date the chart/strip should plot: live date, else planned (ghost). */

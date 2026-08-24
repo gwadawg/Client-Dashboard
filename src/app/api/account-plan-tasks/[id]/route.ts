@@ -19,7 +19,7 @@ import {
 } from '@/lib/account-plan-task-kpi';
 import { createClientActionLog } from '@/lib/client-action-log-write';
 import { defaultReviewDateFromTimebox } from '@/lib/client-health-interventions';
-import { isWorkType, normalizeLoomUrl, parseBetCategory, parseWorkType } from '@/lib/client-work-log';
+import { isWorkType, normalizeLoomUrl, parseBetCategory } from '@/lib/client-work-log';
 import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz, ymdInTimeZone } from '@/lib/time';
 
@@ -210,9 +210,7 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
         }
       }
 
-      const work_type = isWorkType(body.work_type)
-        ? body.work_type
-        : parseWorkType(task.work_type, 'cadence');
+      const work_type = isWorkType(body.work_type) ? body.work_type : 'cadence';
 
       if (work_type === 'bet' && !success_metric) {
         return NextResponse.json(
@@ -228,6 +226,17 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
       if (work_type === 'bet' && !betCategory) {
         return NextResponse.json(
           { error: 'Bet tasks require an action category before they can be marked done' },
+          { status: 400 },
+        );
+      }
+
+      const hypothesis =
+        work_type === 'bet'
+          ? optionalText(body.hypothesis) || optionalText(task.notes) || completion_report
+          : null;
+      if (work_type === 'bet' && !hypothesis) {
+        return NextResponse.json(
+          { error: 'Bet tasks require a hypothesis before they can be marked done' },
           { status: 400 },
         );
       }
@@ -262,10 +271,7 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
             work_type,
             change_description:
               completion_report || task.notes || `Completed plan task: ${task.title}`,
-            hypothesis:
-              work_type === 'bet'
-                ? task.notes || completion_report || `Plan bet: ${task.title}`
-                : null,
+            hypothesis: work_type === 'bet' ? hypothesis : null,
             constraint_label: task.tactic_tag,
             bet_category: betCategory,
             loom_url: loomUrl,

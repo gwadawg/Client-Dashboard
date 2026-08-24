@@ -113,7 +113,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const nextStatus = (update.status as string | undefined) ?? existing.status;
-  const nextWorkType = (update.work_type as string | undefined) ?? existing.work_type ?? 'bet';
+  const nextWorkType = (update.work_type as string | undefined) ?? existing.work_type ?? 'cadence';
   let nextChangeDate =
     (update.change_date as string | null | undefined) !== undefined
       ? (update.change_date as string | null)

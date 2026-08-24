@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   canTransition,
   commitmentModeForTemplateSlug,
+  kpiTemplateBlocksNewCommitments,
   filterNeedsFounder,
   filterOpenForWeek,
   softDuplicateWarn,
@@ -124,9 +125,12 @@ describe('meeting-commitments filters', () => {
   });
 
   it('maps template slugs to panel modes', () => {
-    assert.equal(commitmentModeForTemplateSlug('mon-kpi-week-plan'), 'edit');
+    assert.equal(commitmentModeForTemplateSlug('mon-kpi-week-plan'), null);
     assert.equal(commitmentModeForTemplateSlug('thu-kpi-commitment-check'), 'check');
     assert.equal(commitmentModeForTemplateSlug('mon-ops-planning'), 'approve');
     assert.equal(commitmentModeForTemplateSlug('fri-exec-qa'), null);
+    assert.equal(kpiTemplateBlocksNewCommitments('mon-kpi-week-plan'), true);
+    assert.equal(kpiTemplateBlocksNewCommitments('thu-kpi-commitment-check'), true);
+    assert.equal(kpiTemplateBlocksNewCommitments('mon-ops-planning'), false);
   });
 });
