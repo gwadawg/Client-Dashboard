@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { MediaBuyerCommandPayload, MbLaunchCheckField } from "@/lib/team-dashboards/media";
 import { MB_LAUNCH_CHECK_DAYS } from "@/lib/team-dashboards/media";
 import { cachedJsonFetch, peekCachedJson, invalidateCachedJson } from "@/lib/client-fetch-cache";
+import DueTodayPlate from "@/components/team-dashboards/DueTodayPlate";
 
 const POLL_MS = 90_000;
 const CACHE_KEY = "team-command-media";
@@ -279,6 +280,8 @@ export default function MediaBuyerCommandDashboard({ onNavigate, embedded = fals
           {error}
         </p>
       )}
+
+      <DueTodayPlate onNavigate={go} />
 
       {/* Counts band */}
       <section

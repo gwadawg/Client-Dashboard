@@ -6,6 +6,7 @@ import type { CcmCommandPayload } from "@/lib/team-dashboards/ccm";
 import type { TeamMeetingInstanceView } from "@/lib/team-meetings";
 import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz } from "@/lib/team-meetings";
 import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
+import DueTodayPlate from "@/components/team-dashboards/DueTodayPlate";
 
 const POLL_MS = 90_000;
 const CACHE_KEY = "team-command-ccm";
@@ -169,6 +170,8 @@ export default function CcmCommandDashboard({ onNavigate, embedded = false }: Pr
           Bring Booking % / Show % / dial reds and name one commitment per red for Laura.
         </div>
       )}
+
+      <DueTodayPlate onNavigate={go} />
 
       <TodayTeamMeetingsStrip onOpen={() => go("team_meetings")} />
 

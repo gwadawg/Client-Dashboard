@@ -187,6 +187,24 @@ export function filterActiveWorkTasks<
   });
 }
 
+/** Inbox: approved + open + assignee, scheduled on or before the plate day. */
+export function filterInboxPlanTasks<
+  T extends {
+    plan_status: AccountWeekPlanStatus;
+    status: AccountPlanTaskStatus;
+    assignee_user_id: string | null;
+    scheduled_for: string | null;
+  },
+>(rows: T[], filters: { assigneeUserId: string; day: string }): T[] {
+  return rows.filter(r => {
+    if (r.plan_status !== 'approved') return false;
+    if (r.status !== 'open') return false;
+    if (r.assignee_user_id !== filters.assigneeUserId) return false;
+    if (!r.scheduled_for || r.scheduled_for > filters.day) return false;
+    return true;
+  });
+}
+
 export function softDuplicatePlanWarn<
   T extends { client_id: string; week_start: string; status: AccountWeekPlanStatus },
 >(rows: T[], clientId: string, weekStart: string): boolean {

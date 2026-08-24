@@ -6,6 +6,7 @@ import type { CsCommandPayload } from "@/lib/team-dashboards/cs";
 import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
 import type { TeamMeetingInstanceView } from "@/lib/team-meetings";
 import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz } from "@/lib/team-meetings";
+import DueTodayPlate from "@/components/team-dashboards/DueTodayPlate";
 
 const POLL_MS = 90_000;
 const CACHE_KEY = "team-command-cs";
@@ -99,7 +100,7 @@ export default function CsCommandDashboard({ onNavigate, embedded = false }: Pro
 
   if (!data) return null;
 
-  const { counts, followups, calls_today, dayContext, eod } = data;
+  const { counts, calls_today, dayContext, eod } = data;
   const overdueColor = counts.overdue_followups > 0 ? "#f87171" : "#34d399";
   const todayColor = counts.today_followups > 0 ? "#fbbf24" : "#94a3b8";
   const eodColor = eod.submitted ? "#34d399" : "#fbbf24";
@@ -154,6 +155,8 @@ export default function CsCommandDashboard({ onNavigate, embedded = false }: Pro
         </div>
       )}
 
+      <DueTodayPlate onNavigate={go} />
+
       <TodayCsMeetingsStrip onOpen={() => go("team_meetings")} />
 
       {/* Count strip */}
@@ -187,87 +190,6 @@ export default function CsCommandDashboard({ onNavigate, embedded = false }: Pro
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-6 min-w-0">
-          {/* Follow-ups due */}
-          <section
-            className="rounded-xl border p-5"
-            style={{
-              borderColor: "rgba(148,163,184,0.15)",
-              background: "rgba(10,22,40,0.9)",
-            }}
-          >
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div>
-                <h2
-                  className="text-sm font-semibold"
-                  style={{ color: "#e2e8f0" }}
-                >
-                  Follow-ups due
-                </h2>
-                <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
-                  Overdue first, then today — complete from Follow-ups or Client File
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => go("client_health", "followups")}
-                className="text-xs font-semibold shrink-0 hover:underline"
-                style={{ color: "#60a5fa" }}
-              >
-                Full queue →
-              </button>
-            </div>
-
-            {followups.length === 0 ? (
-              <p className="text-sm py-6 text-center" style={{ color: "#475569" }}>
-                No open follow-ups due today. Nice clean plate.
-              </p>
-            ) : (
-              <ul className="divide-y" style={{ borderColor: "rgba(51,65,85,0.5)" }}>
-                {followups.map(row => (
-                  <li
-                    key={row.id}
-                    className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0"
-                    style={{ borderColor: "rgba(51,65,85,0.45)" }}
-                  >
-                    <div className="min-w-0">
-                      <button
-                        type="button"
-                        onClick={() => go("client_health", "followups")}
-                        className="text-sm font-medium text-left hover:underline truncate max-w-full"
-                        style={{ color: "#f1f5f9" }}
-                      >
-                        {row.client_name}
-                      </button>
-                      <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
-                        {row.touchpoint_label}
-                        {row.status === "snoozed" ? " · snoozed" : ""}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span
-                        className="text-[11px] font-semibold px-2 py-0.5 rounded"
-                        style={{
-                          color: row.is_overdue ? "#f87171" : "#fbbf24",
-                          background: row.is_overdue
-                            ? "rgba(239,68,68,0.15)"
-                            : "rgba(245,158,11,0.12)",
-                        }}
-                      >
-                        {row.is_overdue ? "Overdue" : "Today"}
-                      </span>
-                      <span
-                        className="text-xs tabular-nums"
-                        style={{ color: "#64748b" }}
-                      >
-                        {formatDue(row.due_at)}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
           {/* Calls today */}
           <section
             className="rounded-xl border p-5"
@@ -498,15 +420,6 @@ function CountCard({
       ) : null}
     </div>
   );
-}
-
-function formatDue(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function formatWhen(iso: string) {
