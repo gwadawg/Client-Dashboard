@@ -235,12 +235,12 @@ export default function BillingManager({ canViewRevenue: initialCanViewRevenue =
     setBusy(null);
   }
 
-  async function billCycle(id: string, markPaid: boolean) {
+  async function billCycle(id: string) {
     setBusy(id);
     await fetch(`/api/billing-cycles/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ markPaid, billed_on: todayYmd() }),
+      body: JSON.stringify({ markPaid: true, billed_on: todayYmd() }),
     });
     await load();
     setBusy(null);
@@ -685,7 +685,7 @@ function UnifiedBilling({
   onSchedule: (client: ClientBilling, opts: ScheduleOpts) => void;
   onPatchClient: (clientId: string, body: Record<string, unknown>) => void;
   onPatchCycle: (id: string, body: Record<string, unknown>) => Promise<void> | void;
-  onBillCycle: (id: string, markPaid: boolean) => Promise<void> | void;
+  onBillCycle: (id: string) => Promise<void> | void;
   onEnsureCycle: (
     client: ClientBilling,
     period?: { periodStart: string; periodEnd: string },
@@ -845,7 +845,7 @@ function WorklistSection({
   onDelete: (id: string) => void;
   onSchedule: (client: ClientBilling, opts: ScheduleOpts) => void;
   onPatchCycle: (id: string, body: Record<string, unknown>) => Promise<void> | void;
-  onBillCycle: (id: string, markPaid: boolean) => Promise<void> | void;
+  onBillCycle: (id: string) => Promise<void> | void;
   onEnsureCycle: (
     client: ClientBilling,
     period?: { periodStart: string; periodEnd: string },
@@ -923,7 +923,7 @@ function WorkRowView({
   onDelete: (id: string) => void;
   onSchedule: (client: ClientBilling, opts: ScheduleOpts) => void;
   onPatchCycle: (id: string, body: Record<string, unknown>) => Promise<void> | void;
-  onBillCycle: (id: string, markPaid: boolean) => Promise<void> | void;
+  onBillCycle: (id: string) => Promise<void> | void;
   onEnsureCycle: (
     client: ClientBilling,
     period?: { periodStart: string; periodEnd: string },
@@ -1171,7 +1171,7 @@ function ScheduleEditor({
   return (
     <div className="space-y-3">
       <p className="text-xs px-3 py-2 rounded-lg" style={{ color: "#818cf8", background: "rgba(129,140,248,0.08)", border: "1px solid rgba(129,140,248,0.2)" }}>
-        <strong style={{ color: "#c7d2fe" }}>Mark paid</strong> when cash is collected.
+        <strong style={{ color: "#c7d2fe" }}>Mark paid</strong> records cash collected in the ledger — it does not charge Stripe.
         {" "}
         <strong style={{ color: "#c7d2fe" }}>Extension</strong> for a free/paused month ($0) so the cycle advances.
       </p>
@@ -1428,7 +1428,7 @@ function RecordedEditor({
                 className="text-xs font-semibold px-3 py-1.5 rounded"
                 style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: isBusy ? 0.5 : 1 }}
               >
-                Mark fully paid
+                Mark paid
               </button>
             </div>
             <div className="flex flex-col gap-1 justify-end">
@@ -1548,7 +1548,7 @@ function RecordedEditor({
           className="text-xs font-semibold px-3 py-1.5 rounded"
           style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: isBusy ? 0.5 : 1 }}
         >
-          Mark fully paid
+          Mark paid
         </button>
         <button
           onClick={() => onPatch(billing.id, { is_extension: true, ...paymentExtras() })}

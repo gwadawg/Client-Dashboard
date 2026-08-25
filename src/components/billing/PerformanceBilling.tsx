@@ -102,12 +102,12 @@ export default function PerformanceBilling({
     setBusy(null);
   }
 
-  async function billCycle(id: string, markPaid: boolean) {
+  async function billCycle(id: string) {
     setBusy(id);
     await fetch(`/api/billing-cycles/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ markPaid, billed_on: todayYmd() }),
+      body: JSON.stringify({ markPaid: true, billed_on: todayYmd() }),
     });
     await loadCycles();
     await onReloadClients();
@@ -308,7 +308,7 @@ function CycleSection({
   expandedId: string | null;
   onToggle: (id: string | null) => void;
   onPatch: (id: string, body: Record<string, unknown>) => void;
-  onBill: (id: string, markPaid: boolean) => void;
+  onBill: (id: string) => void;
   showDeadline?: boolean;
   highlightReady?: boolean;
   readOnly?: boolean;
@@ -394,7 +394,7 @@ export function CycleEditor({
   cycle: BillingCycle;
   busy: string | null;
   onPatch: (id: string, body: Record<string, unknown>) => void;
-  onBill: (id: string, markPaid: boolean) => void;
+  onBill: (id: string) => void;
 }) {
   const [periodStart, setPeriodStart] = useState(cycle.period_start);
   const [periodEnd, setPeriodEnd] = useState(cycle.period_end);
@@ -549,6 +549,10 @@ export function CycleEditor({
         )}
       </div>
 
+      <p className="text-xs" style={{ color: "#64748b" }}>
+        Mark paid closes this cycle and records cash in the ledger — it does not charge Stripe.
+      </p>
+
       <div className="flex gap-2 flex-wrap pt-2 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
         {(status === "draft" || status === "ready_to_bill") && (
           <button
@@ -574,18 +578,13 @@ export function CycleEditor({
           </button>
         )}
         {status === "ready_to_bill" && (
-          <>
-            <button onClick={() => onBill(cycle.id, false)} disabled={isBusy} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#818cf8", background: "rgba(129,140,248,0.1)", opacity: isBusy ? 0.5 : 1 }}>
-              Bill client
-            </button>
-            <button onClick={() => onBill(cycle.id, true)} disabled={isBusy} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: isBusy ? 0.5 : 1 }}>
-              Bill + mark paid
-            </button>
-          </>
+          <button onClick={() => onBill(cycle.id)} disabled={isBusy} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: isBusy ? 0.5 : 1 }}>
+            Mark paid
+          </button>
         )}
         {status === "disputed" && (
-          <button onClick={() => onBill(cycle.id, false)} disabled={isBusy} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#818cf8", background: "rgba(129,140,248,0.1)", opacity: isBusy ? 0.5 : 1 }}>
-            Bill anyway
+          <button onClick={() => onBill(cycle.id)} disabled={isBusy} className="text-xs font-semibold px-3 py-1.5 rounded" style={{ color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: isBusy ? 0.5 : 1 }}>
+            Mark paid
           </button>
         )}
         <button onClick={() => onPatch(cycle.id, { action: "void" })} disabled={isBusy} className="text-xs px-3 py-1.5 rounded" style={{ color: "#475569" }}>
