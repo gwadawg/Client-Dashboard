@@ -162,7 +162,10 @@ export function fixedMonthCovered(
   for (const b of billings) {
     if (b.status === 'voided') continue;
     if (b.period_start && b.period_end) {
+      // Period bounds are authoritative — a late due_date must not cover a
+      // different service month (e.g. Jun–Jul cycle billed in August).
       if (periodCoversYearMonth(yearMonth, b.period_start, b.period_end)) return true;
+      continue;
     }
     const due = b.due_date ?? b.billed_on;
     if (due && yearMonthFromYmd(due) === yearMonth) return true;

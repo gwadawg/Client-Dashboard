@@ -4,6 +4,7 @@ import { computePerformanceAmount } from './billing-model';
 import {
   cadenceSetupHint,
   dueDateForMonth,
+  fixedMonthCovered,
   isCadenceLocked,
   isCadencePending,
   openCadenceMonths,
@@ -128,5 +129,20 @@ describe('billing-cadence', () => {
       { pay_per_show: 30, pay_per_bailed: 30 },
     );
     assert.equal(amount, 15 * 30 + 2 * 30);
+  });
+
+  it('does not treat a late due_date as covering a different period month', () => {
+    // Jun–Jul cycle billed late in August must not hide the Jul–Aug perf cycle.
+    const billings = [
+      {
+        due_date: '2026-08-25',
+        billed_on: '2026-08-25',
+        period_start: '2026-06-13',
+        period_end: '2026-07-12',
+        status: 'paid',
+      },
+    ];
+    assert.equal(fixedMonthCovered('2026-07', billings), true);
+    assert.equal(fixedMonthCovered('2026-08', billings), false);
   });
 });
