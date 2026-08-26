@@ -13,6 +13,7 @@ import { normalizeReportingType } from '@/lib/kpi-layouts';
 import { usesCallCenterKpiLayout } from '@/lib/reporting-types';
 import { fetchCombinedSpendForMetrics, fetchMetaClicksSum } from '@/lib/spend';
 import type { EventRow } from '@/lib/metrics';
+import { resolveUserLabels } from '@/lib/user-resolver';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -36,7 +37,18 @@ export async function GET(req: Request) {
 
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ actions: data ?? [] });
+
+  const rows = (data ?? []) as Array<{ created_by?: string | null }>;
+  const authorLabels = await resolveUserLabels(
+    ctx.service,
+    rows.map(r => r.created_by),
+  );
+  const actions = rows.map(r => ({
+    ...r,
+    created_by_label: r.created_by ? authorLabels[r.created_by] ?? null : null,
+  }));
+
+  return NextResponse.json({ actions });
 }
 
 export async function POST(req: Request) {

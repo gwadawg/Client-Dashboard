@@ -24,6 +24,8 @@ export type ActionLog = {
   id: string;
   client_id: string;
   created_at: string;
+  created_by?: string | null;
+  created_by_label?: string | null;
   change_date: string | null;
   planned_date: string | null;
   work_type: WorkType | string | null;
@@ -408,6 +410,11 @@ export default function ClientActionLog({
                       {a.review_date && type === "bet" && (
                         <span className="text-[10px]" style={{ color: "#475569" }}>
                           review {a.review_date}
+                        </span>
+                      )}
+                      {a.created_by_label && (
+                        <span className="text-[10px]" style={{ color: "#64748b" }} title="Logged by">
+                          by {a.created_by_label}
                         </span>
                       )}
                     </div>

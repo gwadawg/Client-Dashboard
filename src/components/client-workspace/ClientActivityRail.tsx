@@ -39,6 +39,8 @@ type ActionDetail = {
   planned_date?: string | null;
   review_date: string | null;
   created_at: string;
+  created_by?: string | null;
+  created_by_label?: string | null;
 };
 
 type FetchedActivity = {
@@ -163,6 +165,7 @@ function ActionDetails({ action }: { action: ActionDetail }) {
   return (
     <div className="mt-2 space-y-2 pt-2" style={{ borderTop: "1px solid var(--color-ws-hairline)" }}>
       <Field label="What">{action.title}</Field>
+      <Field label="Logged by">{action.created_by_label}</Field>
       <Field label="Type">{WORK_TYPE_META[type].label}</Field>
       <Field label="Status">{action.status.replaceAll("_", " ")}</Field>
       <Field label="Category">{category}</Field>
