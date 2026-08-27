@@ -53,7 +53,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   const recordingUrl = optionalText(body.recording_url);
-  if (body.recording_url !== undefined) updates.recording_url = recordingUrl;
+  if (body.recording_url !== undefined) {
+    if (!recordingUrl) {
+      return NextResponse.json({ error: 'Call / recording link is required' }, { status: 400 });
+    }
+    updates.recording_url = recordingUrl;
+  }
 
   const transcript = optionalText(body.transcript);
   if (body.transcript !== undefined) updates.transcript = transcript;
@@ -74,15 +79,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   if (body.checkin_form !== undefined) {
     const parsed = parseCheckinFormInput(body.checkin_form);
-    const effectiveType =
-      typeof updates.call_type === 'string'
-        ? updates.call_type
-        : undefined;
-    if (effectiveType === 'checkin' || body.call_type === 'checkin') {
-      const formError = validateCheckinFormForSave(parsed);
-      if (formError) {
-        return NextResponse.json({ error: formError }, { status: 400 });
-      }
+    const formError = validateCheckinFormForSave(parsed);
+    if (formError) {
+      return NextResponse.json({ error: formError }, { status: 400 });
     }
     updates.checkin_form = parsed;
   }

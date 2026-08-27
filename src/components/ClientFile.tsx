@@ -1,28 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import CheckinCallFormFields from "@/components/CheckinCallFormFields";
 import CheckinCallSummary from "@/components/CheckinCallSummary";
 import ClientCallFormFields from "@/components/ClientCallFormFields";
 import {
   defaultCallDraft,
   callDraftToApiBody,
+  rowToCallDraft,
   validateCallDraft,
   type ClientCallDraft,
 } from "@/lib/client-call-draft";
 import {
   CALL_DISPOSITION_OPTIONS,
-  CALL_TYPE_OPTIONS,
   callTypeLabel,
   dispositionLabel,
 } from "@/lib/client-calls";
 import {
-  buildCheckinSummary,
-  draftToStored,
-  storedToDraft,
-  type CheckinFormData,
-  type StoredCheckinForm,
-} from "@/lib/checkin-form";
+  callLogHasDisplayContent,
+  type StoredCallLogForm,
+} from "@/lib/call-log-form";
 import {
   LIFECYCLE_REASON_OPTIONS,
   NOTE_TYPE_OPTIONS,
@@ -158,7 +154,7 @@ type ClientCall = {
   transcript: string | null;
   notes: string | null;
   attendees: string | null;
-  checkin_form: StoredCheckinForm | null;
+  checkin_form: StoredCallLogForm | null;
   duration_seconds: number | null;
   disposition: string | null;
   follow_up_due_at: string | null;
@@ -480,38 +476,26 @@ export default function ClientFile({
     setSavingCall(false);
   }
 
-  async function saveCallEdit(call: ClientCall, form: {
-    call_type: string;
-    called_at: string;
-    recording_url: string;
-    transcript: string;
-    notes: string;
-    attendees: string;
-    checkin_form: CheckinFormData;
-    duration_seconds: string;
-    disposition: string;
-    follow_up_due_at: string;
-  }) {
-    const storedCheckin = form.call_type === "checkin" ? draftToStored(form.checkin_form) : null;
-    if (form.call_type === "checkin" && !storedCheckin?.client_sentiment) {
-      alert("Client sentiment is required for check-in calls");
+  async function saveCallEdit(
+    call: ClientCall,
+    form: {
+      draft: ClientCallDraft;
+      duration_seconds: string;
+      disposition: string;
+      follow_up_due_at: string;
+    },
+  ) {
+    const validationError = validateCallDraft(form.draft, false);
+    if (validationError) {
+      alert(validationError);
       return false;
     }
-    const notes =
-      form.notes.trim()
-      || (storedCheckin ? buildCheckinSummary(storedCheckin) : "");
 
     const res = await fetch(`/api/clients/${clientId}/calls/${call.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        call_type: form.call_type,
-        called_at: new Date(form.called_at).toISOString(),
-        recording_url: form.recording_url || null,
-        transcript: form.transcript || null,
-        notes: notes || null,
-        attendees: form.attendees || null,
-        checkin_form: storedCheckin,
+        ...callDraftToApiBody(form.draft),
         duration_seconds: form.duration_seconds.trim() ? Number(form.duration_seconds) : null,
         disposition: form.disposition || null,
         follow_up_due_at: form.follow_up_due_at ? new Date(form.follow_up_due_at).toISOString() : null,
@@ -1191,7 +1175,7 @@ export default function ClientFile({
                     opacity: savingCall ? 0.5 : 1,
                   }}
                 >
-                  {savingCall ? "Saving…" : callDraft.call_type === "checkin" ? "Save check-in" : "Add call"}
+                  {savingCall ? "Saving…" : "Save call"}
                 </button>
               </div>
               )}
@@ -1644,53 +1628,40 @@ function ClientCallCard({
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSave: (form: {
-    call_type: string;
-    called_at: string;
-    recording_url: string;
-    transcript: string;
-    notes: string;
-    attendees: string;
-    checkin_form: CheckinFormData;
+    draft: ClientCallDraft;
     duration_seconds: string;
     disposition: string;
     follow_up_due_at: string;
   }) => Promise<boolean>;
   onDelete: () => void;
 }) {
-  const [form, setForm] = useState({
-    call_type: call.call_type,
-    called_at: toDatetimeLocal(call.called_at),
-    recording_url: call.recording_url ?? "",
-    transcript: call.transcript ?? "",
-    notes: call.notes ?? "",
-    attendees: call.attendees ?? "",
-    checkin_form: storedToDraft(call.checkin_form),
-    duration_seconds: call.duration_seconds != null ? String(call.duration_seconds) : "",
-    disposition: call.disposition ?? "",
-    follow_up_due_at: call.follow_up_due_at ? toDatetimeLocal(call.follow_up_due_at) : "",
-  });
+  const [draft, setDraft] = useState<ClientCallDraft>(() => rowToCallDraft(call));
+  const [durationSeconds, setDurationSeconds] = useState(
+    call.duration_seconds != null ? String(call.duration_seconds) : "",
+  );
+  const [disposition, setDisposition] = useState(call.disposition ?? "");
+  const [followUpDue, setFollowUpDue] = useState(
+    call.follow_up_due_at ? toDatetimeLocal(call.follow_up_due_at) : "",
+  );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (editing) {
-      setForm({
-        call_type: call.call_type,
-        called_at: toDatetimeLocal(call.called_at),
-        recording_url: call.recording_url ?? "",
-        transcript: call.transcript ?? "",
-        notes: call.notes ?? "",
-        attendees: call.attendees ?? "",
-        checkin_form: storedToDraft(call.checkin_form),
-        duration_seconds: call.duration_seconds != null ? String(call.duration_seconds) : "",
-        disposition: call.disposition ?? "",
-        follow_up_due_at: call.follow_up_due_at ? toDatetimeLocal(call.follow_up_due_at) : "",
-      });
+      setDraft(rowToCallDraft(call));
+      setDurationSeconds(call.duration_seconds != null ? String(call.duration_seconds) : "");
+      setDisposition(call.disposition ?? "");
+      setFollowUpDue(call.follow_up_due_at ? toDatetimeLocal(call.follow_up_due_at) : "");
     }
   }, [editing, call]);
 
   async function handleSave() {
     setSaving(true);
-    await onSave(form);
+    await onSave({
+      draft,
+      duration_seconds: durationSeconds,
+      disposition,
+      follow_up_due_at: followUpDue,
+    });
     setSaving(false);
   }
 
@@ -1699,62 +1670,15 @@ function ClientCallCard({
   if (editing) {
     return (
       <div className="rounded-lg px-4 py-3 space-y-3" style={{ background: "#080f1e", border: "1px solid rgba(245,158,11,0.2)" }}>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Type</span>
-            <select
-              value={form.call_type}
-              disabled={saving}
-              onChange={e => setForm(f => ({ ...f, call_type: e.target.value }))}
-              className="mt-1 cursor-pointer"
-              style={fieldStyle}
-            >
-              {CALL_TYPE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Call date</span>
-            <input
-              type="datetime-local"
-              value={form.called_at}
-              disabled={saving}
-              onChange={e => setForm(f => ({ ...f, called_at: e.target.value }))}
-              className="mt-1"
-              style={fieldStyle}
-            />
-          </label>
-        </div>
-        <label className="block">
-          <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Recording URL</span>
-          <input
-            type="url"
-            value={form.recording_url}
-            disabled={saving}
-            onChange={e => setForm(f => ({ ...f, recording_url: e.target.value }))}
-            className="mt-1"
-            style={fieldStyle}
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Attendees</span>
-          <input
-            value={form.attendees}
-            disabled={saving}
-            onChange={e => setForm(f => ({ ...f, attendees: e.target.value }))}
-            className="mt-1"
-            style={fieldStyle}
-          />
-        </label>
+        <ClientCallFormFields draft={draft} onChange={setDraft} disabled={saving} />
         <div className="grid grid-cols-3 gap-3">
           <label className="block">
             <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Duration (sec)</span>
-            <input type="number" min={0} value={form.duration_seconds} disabled={saving} onChange={e => setForm(f => ({ ...f, duration_seconds: e.target.value }))} className="mt-1" style={fieldStyle} />
+            <input type="number" min={0} value={durationSeconds} disabled={saving} onChange={e => setDurationSeconds(e.target.value)} className="mt-1" style={fieldStyle} />
           </label>
           <label className="block">
             <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Disposition</span>
-            <select value={form.disposition} disabled={saving} onChange={e => setForm(f => ({ ...f, disposition: e.target.value }))} className="mt-1 cursor-pointer" style={fieldStyle}>
+            <select value={disposition} disabled={saving} onChange={e => setDisposition(e.target.value)} className="mt-1 cursor-pointer" style={fieldStyle}>
               <option value="">None</option>
               {CALL_DISPOSITION_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -1763,38 +1687,9 @@ function ClientCallCard({
           </label>
           <label className="block">
             <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Follow-up due</span>
-            <input type="datetime-local" value={form.follow_up_due_at} disabled={saving} onChange={e => setForm(f => ({ ...f, follow_up_due_at: e.target.value }))} className="mt-1" style={fieldStyle} />
+            <input type="datetime-local" value={followUpDue} disabled={saving} onChange={e => setFollowUpDue(e.target.value)} className="mt-1" style={fieldStyle} />
           </label>
         </div>
-        {form.call_type === "checkin" && (
-          <CheckinCallFormFields
-            value={form.checkin_form}
-            disabled={saving}
-            onChange={checkin_form => setForm(f => ({ ...f, checkin_form }))}
-          />
-        )}
-        <label className="block">
-          <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Transcript</span>
-          <textarea
-            value={form.transcript}
-            disabled={saving}
-            onChange={e => setForm(f => ({ ...f, transcript: e.target.value }))}
-            rows={5}
-            className="mt-1 resize-y"
-            style={fieldStyle}
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: "#475569" }}>Notes</span>
-          <textarea
-            value={form.notes}
-            disabled={saving}
-            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-            rows={3}
-            className="mt-1 resize-y"
-            style={fieldStyle}
-          />
-        </label>
         <div className="flex gap-2">
           <button
             type="button"
@@ -1857,7 +1752,7 @@ function ClientCallCard({
       {call.attendees && (
         <p className="text-xs mt-1.5" style={{ color: "#64748b" }}>Attendees: {call.attendees}</p>
       )}
-      {call.call_type === "checkin" && call.checkin_form && (
+      {call.checkin_form && callLogHasDisplayContent(call.checkin_form) && (
         <CheckinCallSummary form={call.checkin_form} />
       )}
       {call.notes && (

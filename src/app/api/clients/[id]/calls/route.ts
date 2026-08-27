@@ -47,14 +47,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const callType =
     typeof body.call_type === 'string' && body.call_type.trim()
       ? body.call_type.trim()
-      : null;
-  const calledAt = parseCalledAt(body.called_at);
+      : 'other';
+  const calledAt = parseCalledAt(body.called_at) ?? new Date().toISOString();
+  const recordingUrl = optionalText(body.recording_url);
 
-  if (!callType || !isValidCallType(callType)) {
+  if (!isValidCallType(callType)) {
     return NextResponse.json({ error: 'Valid call_type is required' }, { status: 400 });
   }
-  if (!calledAt) {
-    return NextResponse.json({ error: 'Valid called_at is required' }, { status: 400 });
+  if (!recordingUrl) {
+    return NextResponse.json({ error: 'Call / recording link is required' }, { status: 400 });
   }
 
   const { data: client, error: clientError } = await ctx.service
@@ -77,7 +78,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       : null;
 
   let checkinForm = null;
-  if (callType === 'checkin' && body.checkin_form !== undefined) {
+  if (body.checkin_form !== undefined) {
     checkinForm = parseCheckinFormInput(body.checkin_form);
     const formError = validateCheckinFormForSave(checkinForm);
     if (formError) {
@@ -105,7 +106,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       client_id: clientId,
       call_type: callType,
       called_at: calledAt,
-      recording_url: optionalText(body.recording_url),
+      recording_url: recordingUrl,
       transcript: optionalText(body.transcript),
       notes: optionalText(body.notes),
       attendees: optionalText(body.attendees),

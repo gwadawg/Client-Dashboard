@@ -380,7 +380,7 @@ export default function ClientCallsBrowser({ clients, startDate, endDate }: Prop
                   border: isCheckin ? "1px solid rgba(56,189,248,0.25)" : "1px solid rgba(245,158,11,0.25)",
                 }}
               >
-                {saving ? "Saving…" : modalMode === "add" ? (isCheckin ? "Save check-in" : "Save call") : "Save changes"}
+                {saving ? "Saving…" : modalMode === "add" ? "Save call" : "Save changes"}
               </button>
             </div>
           </div>
