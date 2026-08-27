@@ -11,6 +11,50 @@ function rateLimitKey(req: Request, email: string): string {
   return `${forwarded ?? 'local'}:${email.toLowerCase()}`;
 }
 
+async function parseMultipart(req: Request): Promise<{
+  body: Record<string, unknown>;
+  headshotFile: File | null;
+}> {
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch (e) {
+    const cause = e instanceof Error && 'cause' in e ? String((e as Error & { cause?: unknown }).cause) : '';
+    const detail = cause || (e instanceof Error ? e.message : String(e));
+    if (/FormData|boundary|CRLF/i.test(detail)) {
+      throw new Error(
+        'Headshot file is too large to upload. Please use a photo under 20MB (or skip the photo and submit).',
+      );
+    }
+    throw e instanceof Error ? e : new Error(String(e));
+  }
+
+  const body: Record<string, unknown> = {};
+  let headshotFile: File | null = null;
+
+  for (const [key, value] of form.entries()) {
+    if (key === 'headshot' && value instanceof File && value.size > 0) {
+      headshotFile = value;
+      continue;
+    }
+    if (key === 'states_licensed' || key === 'company_states_licensed' || key === 'additional_members') {
+      try {
+        body[key] = JSON.parse(String(value));
+      } catch {
+        if (key === 'additional_members') {
+          body[key] = [];
+        } else {
+          body[key] = String(value).split(',').map(s => s.trim()).filter(Boolean);
+        }
+      }
+      continue;
+    }
+    body[key] = typeof value === 'string' ? value : String(value);
+  }
+
+  return { body, headshotFile };
+}
+
 // POST /api/onboard/submit — public client onboarding form (multipart or JSON).
 export async function POST(req: Request) {
   try {
@@ -19,26 +63,7 @@ export async function POST(req: Request) {
     let headshotFile: File | null = null;
 
     if (contentType.includes('multipart/form-data')) {
-      const form = await req.formData();
-      for (const [key, value] of form.entries()) {
-        if (key === 'headshot' && value instanceof File && value.size > 0) {
-          headshotFile = value;
-          continue;
-        }
-        if (key === 'states_licensed' || key === 'company_states_licensed' || key === 'additional_members') {
-          try {
-            body[key] = JSON.parse(String(value));
-          } catch {
-            if (key === 'additional_members') {
-              body[key] = [];
-            } else {
-              body[key] = String(value).split(',').map(s => s.trim()).filter(Boolean);
-            }
-          }
-          continue;
-        }
-        body[key] = typeof value === 'string' ? value : String(value);
-      }
+      ({ body, headshotFile } = await parseMultipart(req));
     } else {
       body = await req.json();
     }
@@ -69,7 +94,8 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    const status = message.includes('required') ? 400 : 500;
+    const status =
+      message.includes('required') || message.includes('too large') ? 400 : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

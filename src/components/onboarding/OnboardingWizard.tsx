@@ -13,6 +13,7 @@ import {
 } from "@/components/onboarding/brand";
 import { CONTACT_TYPE_OPTIONS } from "@/lib/client-contacts";
 import { draftToSubmitBody } from "@/lib/onboarding-form";
+import { prepareOnboardingHeadshot } from "@/lib/onboarding-headshot";
 import {
   ACCOUNT_MANAGEMENT_OPTIONS,
   CRM_CHOICE_OPTIONS,
@@ -177,24 +178,32 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
 
     setSubmitting(true);
     setError(null);
-    const body = draftToSubmitBody(draft, variant);
-    const form = new FormData();
-    for (const [key, value] of Object.entries(body)) {
-      form.set(key, value);
-    }
-    if (draft.headshot) form.set("headshot", draft.headshot);
+    try {
+      const body = draftToSubmitBody(draft, variant);
+      const form = new FormData();
+      for (const [key, value] of Object.entries(body)) {
+        form.set(key, value);
+      }
+      if (draft.headshot) {
+        const headshot = await prepareOnboardingHeadshot(draft.headshot);
+        form.set("headshot", headshot);
+      }
 
-    const res = await fetch("/api/onboard/submit", { method: "POST", body: form });
-    const data = await res.json().catch(() => ({}));
-    setSubmitting(false);
-    if (!res.ok) {
-      setError(data.error ?? "Something went wrong. Please try again.");
-      return;
+      const res = await fetch("/api/onboard/submit", { method: "POST", body: form });
+      const data = await res.json().catch(() => ({}));
+      setSubmitting(false);
+      if (!res.ok) {
+        setError(data.error ?? "Something went wrong. Please try again.");
+        return;
+      }
+      setThankYou({
+        message: data.message ?? "Thank you — we received your information.",
+        matched: !!data.matched,
+      });
+    } catch (e) {
+      setSubmitting(false);
+      setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
     }
-    setThankYou({
-      message: data.message ?? "Thank you — we received your information.",
-      matched: !!data.matched,
-    });
   }
 
   if (thankYou) {
@@ -708,13 +717,27 @@ export default function OnboardingWizard({ variant = "core" }: Props) {
                   {draft.headshot ? draft.headshot.name : "Headshot / professional photo"}
                 </span>
                 <span style={{ fontFamily: FONT_BODY, color: WAIZ.muted, fontSize: ".8rem" }}>
-                  max 25MB — JPG, PNG, WEBP, or GIF
+                  JPG, PNG, WEBP, or GIF — large photos are compressed automatically
                 </span>
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif"
                   className="sr-only"
-                  onChange={e => patchDraft({ headshot: e.target.files?.[0] ?? null })}
+                  onChange={async e => {
+                    const file = e.target.files?.[0] ?? null;
+                    if (!file) {
+                      patchDraft({ headshot: null });
+                      return;
+                    }
+                    try {
+                      setError(null);
+                      const prepared = await prepareOnboardingHeadshot(file);
+                      patchDraft({ headshot: prepared });
+                    } catch (err) {
+                      patchDraft({ headshot: null });
+                      setError(err instanceof Error ? err.message : "Could not use that photo.");
+                    }
+                  }}
                 />
               </label>
               <ContinueButton onClick={goNext} label={draft.headshot ? "Continue" : "Skip for now"} />
