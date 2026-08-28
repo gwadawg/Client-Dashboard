@@ -45,6 +45,14 @@ const STATUS_OPTIONS: { value: AppointmentStatus; label: string }[] = [
   { value: "lo_bailed", label: "LO Bailed" },
 ];
 
+type StatusFilter = AppointmentStatus | "all";
+
+const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "All statuses" },
+  { value: "pending", label: "Pending (past-due)" },
+  ...STATUS_OPTIONS.filter(o => o.value !== "pending"),
+];
+
 // Each status gets a distinct colour; pending is amber so un-dispositioned
 // appointments visually jump out of the list.
 const STATUS_STYLES: Record<AppointmentStatus, { bg: string; border: string; color: string }> = {
@@ -81,7 +89,10 @@ export default function AppointmentsTable({ clientId, liveOnly, startDate, endDa
   // Table-local filters live in the URL, so "the 12 past-due appointments I was
   // just looking at" is a link you can send someone.
   const query = urlParams.get("q");
-  const pendingOnly = urlParams.get("status") === "pending";
+  const statusParam = urlParams.get("status");
+  const statusFilter: StatusFilter = STATUS_OPTIONS.some(o => o.value === statusParam)
+    ? (statusParam as AppointmentStatus)
+    : "all";
   const pageParam = Number(urlParams.get("page"));
   const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
   const [search, setSearch] = useState(query);
@@ -105,13 +116,13 @@ export default function AppointmentsTable({ clientId, liveOnly, startDate, endDa
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
     if (query) params.set("search", query);
-    if (pendingOnly) params.set("status", "pending");
+    if (statusFilter !== "all") params.set("status", statusFilter);
 
     fetch(`/api/raw?${params}`)
       .then(r => r.json())
       .then(d => { setRows(d.rows ?? []); setTotal(d.total ?? 0); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [clientId, liveOnly, pendingOnly, page, startDate, endDate, query]);
+  }, [clientId, liveOnly, statusFilter, page, startDate, endDate, query]);
 
   async function updateStatus(row: AppointmentRow, nextStatus: AppointmentStatus) {
     if (nextStatus === row.status) return;
@@ -132,8 +143,8 @@ export default function AppointmentsTable({ clientId, liveOnly, startDate, endDa
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Failed to update status");
       }
-      // When filtering to pending only, a freshly-dispositioned row drops out.
-      if (pendingOnly && nextStatus !== "pending") {
+      // When filtering by status, a row that no longer matches drops out.
+      if (statusFilter !== "all" && nextStatus !== statusFilter) {
         setRows(prev => prev.filter(r => r.id !== row.id));
         setTotal(t => Math.max(0, t - 1));
       }
@@ -174,17 +185,30 @@ export default function AppointmentsTable({ clientId, liveOnly, startDate, endDa
           )}
         </div>
 
-        <button
-          onClick={() => urlParams.setMany({ status: pendingOnly ? null : "pending", page: null })}
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        <select
+          value={statusFilter}
+          onChange={e => {
+            const next = e.target.value as StatusFilter;
+            urlParams.setMany({ status: next === "all" ? null : next, page: null });
+          }}
+          className="px-3 py-2 rounded-lg text-sm font-medium outline-none cursor-pointer"
           style={{
-            background: pendingOnly ? "rgba(245,158,11,0.18)" : "#0f2040",
-            border: `1px solid ${pendingOnly ? "rgba(245,158,11,0.55)" : "rgba(255,255,255,0.12)"}`,
-            color: pendingOnly ? "#fbbf24" : "#94a3b8",
+            background: "#0f2040",
+            border: `1px solid ${
+              statusFilter !== "all"
+                ? (STATUS_STYLES[statusFilter]?.border ?? "rgba(255,255,255,0.12)")
+                : "rgba(255,255,255,0.12)"
+            }`,
+            color: statusFilter !== "all" ? (STATUS_STYLES[statusFilter]?.color ?? "#e2e8f0") : "#94a3b8",
+            minWidth: "10rem",
           }}
         >
-          {pendingOnly ? "● Pending only" : "Pending only"}
-        </button>
+          {STATUS_FILTER_OPTIONS.map(o => (
+            <option key={o.value} value={o.value} style={{ background: "#0f2040", color: "#e2e8f0" }}>
+              {o.label}
+            </option>
+          ))}
+        </select>
 
         <span className="text-sm" style={{ color: "#334155" }}>
           {total.toLocaleString()} appointments

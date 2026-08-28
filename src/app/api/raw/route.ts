@@ -197,6 +197,52 @@ async function getGroupedAppointments(ctx: AuthCtx, p: GroupedParams) {
       return NextResponse.json({ rows, total: pending.length });
     }
 
+    // Filter by a resolved outcome status (show / no_show / etc.). Status is
+    // derived from linked outcome events, so we match in memory then paginate.
+    if (p.statusFilter && (OUTCOME_EVENT_TYPES as readonly string[]).includes(p.statusFilter)) {
+      const targetStatus = p.statusFilter;
+      const safeSearch = p.search ? p.search.replace(/[,()*]/g, ' ').trim() : '';
+
+      const bookings = await fetchAll<Record<string, unknown>>((from, to) => {
+        let bq = ctx.service
+          .from('events')
+          .select(BOOKING_SELECT)
+          .eq('event_type', 'appointment_booked');
+        if (p.client_id) bq = bq.eq('client_id', p.client_id);
+        else if (p.liveClientIds) bq = bq.in('client_id', liveClientFilter(p.liveClientIds));
+        if (!safeSearch) {
+          if (p.start_date) bq = bq.gte('occurred_at', `${p.start_date}T00:00:00.000Z`);
+          if (p.end_date) bq = bq.lte('occurred_at', `${p.end_date}T23:59:59.999Z`);
+        } else {
+          bq = bq.or(`lead_name.ilike.%${safeSearch}%,lead_phone.ilike.%${safeSearch}%,lead_email.ilike.%${safeSearch}%`);
+        }
+        return bq.order('occurred_at', { ascending: false }).range(from, to);
+      });
+
+      const outcomes = await fetchAll<OutcomeRecord>((from, to) => {
+        let oq = ctx.service
+          .from('events')
+          .select('id, event_type, external_id, raw, ghl_contact_id, scheduled_at')
+          .in('event_type', [...OUTCOME_EVENT_TYPES]);
+        if (p.client_id) oq = oq.eq('client_id', p.client_id);
+        else if (p.liveClientIds) oq = oq.in('client_id', liveClientFilter(p.liveClientIds));
+        return oq.range(from, to);
+      });
+
+      const index = buildOutcomeIndex(outcomes);
+      const matched = bookings.filter(b => {
+        const outcome = matchOutcome(b as unknown as BookingKey, index);
+        return (outcome?.event_type ?? 'pending') === targetStatus;
+      });
+
+      const rows = matched.slice(p.offset, p.offset + p.limit).map(b => {
+        const outcome = matchOutcome(b as unknown as BookingKey, index);
+        return { ...b, status: outcome?.event_type ?? 'pending', outcome_id: outcome?.id ?? null };
+      });
+
+      return NextResponse.json({ rows, total: matched.length });
+    }
+
     // Default: DB-paginate bookings, then attach each page row's status.
     // When searching, span ALL appointments (ignore the date filter) so a lookup
     // finds the person regardless of when their appointment was booked.
