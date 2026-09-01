@@ -9,6 +9,36 @@ function parseMoney(value: unknown): number | null {
 
 type Service = ReturnType<typeof createServiceClient>;
 
+const LOAN_DEAL_CONTACT_SELECT =
+  'id, stage, submitted_at, funded_at, loan_size, commission_amount, transaction_label, ghl_contact_id';
+
+const FORM_ACTIVITY_DEAL_SELECT =
+  'id, ghl_contact_id, lead_name, lead_phone, stage, submitted_at, funded_at, loan_size, transaction_label';
+
+export type FormActivityDealRow = {
+  id: string;
+  ghl_contact_id: string | null;
+  lead_name: string | null;
+  lead_phone: string | null;
+  stage: 'submitted' | 'funded';
+  submitted_at: string;
+  funded_at: string | null;
+  fell_out_at: string | null;
+  loan_size: number | null;
+  transaction_label: string | null;
+};
+
+function isMissingDbColumn(errorMessage: string, column: string): boolean {
+  return new RegExp(`${column}|does not exist|schema cache`, 'i').test(errorMessage);
+}
+
+function withNullFellOutAt<T extends Record<string, unknown>>(rows: T[]): FormActivityDealRow[] {
+  return rows.map(row => ({
+    ...(row as Omit<FormActivityDealRow, 'fell_out_at'>),
+    fell_out_at: null,
+  }));
+}
+
 export const LOAN_DEAL_STAGES = ['submitted', 'funded'] as const;
 export type LoanDealStage = (typeof LOAN_DEAL_STAGES)[number];
 
@@ -160,14 +190,50 @@ export async function loadContactLoanDeals(
   ghlContactId: string | null,
 ): Promise<LoanDealRecord[]> {
   if (!ghlContactId) return [];
-  const { data, error } = await service
-    .from('loan_deals')
-    .select('id, stage, submitted_at, funded_at, fell_out_at, loan_size, commission_amount, transaction_label, ghl_contact_id')
-    .eq('client_id', clientId)
-    .eq('ghl_contact_id', ghlContactId)
-    .limit(500);
-  if (error) throw new Error(error.message);
-  return (data ?? []) as LoanDealRecord[];
+  const base = () =>
+    service
+      .from('loan_deals')
+      .eq('client_id', clientId)
+      .eq('ghl_contact_id', ghlContactId)
+      .limit(500);
+
+  const withFellOut = await base().select(`${LOAN_DEAL_CONTACT_SELECT}, fell_out_at`);
+  if (!withFellOut.error) return (withFellOut.data ?? []) as LoanDealRecord[];
+
+  if (isMissingDbColumn(withFellOut.error.message, 'fell_out_at')) {
+    const legacy = await base().select(LOAN_DEAL_CONTACT_SELECT);
+    if (legacy.error) throw new Error(legacy.error.message);
+    return ((legacy.data ?? []) as LoanDealRecord[]).map(row => ({
+      ...row,
+      fell_out_at: null,
+    }));
+  }
+
+  throw new Error(withFellOut.error.message);
+}
+
+export async function loadFormLoanDealsForActivity(
+  service: Service,
+  clientId: string,
+): Promise<FormActivityDealRow[]> {
+  const base = () =>
+    service
+      .from('loan_deals')
+      .eq('client_id', clientId)
+      .eq('source', 'loan_log_form')
+      .order('submitted_at', { ascending: false })
+      .limit(500);
+
+  const withFellOut = await base().select(`${FORM_ACTIVITY_DEAL_SELECT}, fell_out_at`);
+  if (!withFellOut.error) return (withFellOut.data ?? []) as FormActivityDealRow[];
+
+  if (isMissingDbColumn(withFellOut.error.message, 'fell_out_at')) {
+    const legacy = await base().select(FORM_ACTIVITY_DEAL_SELECT);
+    if (legacy.error) throw new Error(legacy.error.message);
+    return withNullFellOutAt(legacy.data ?? []);
+  }
+
+  throw new Error(withFellOut.error.message);
 }
 
 export async function fetchLoanDealTotals(
@@ -303,7 +369,15 @@ export async function setLoanDealFellOut(
     .eq('client_id', clientId)
     .eq('stage', 'submitted');
 
-  if (updateError) throw new Error(updateError.message);
+  if (updateError) {
+    if (isMissingDbColumn(updateError.message, 'fell_out_at')) {
+      return {
+        error:
+          'Fell-out tracking is not enabled yet. Ask your Waiz contact to run the latest database update.',
+      };
+    }
+    throw new Error(updateError.message);
+  }
   return { ok: true };
 }
 
