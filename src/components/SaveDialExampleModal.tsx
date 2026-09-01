@@ -7,6 +7,7 @@ import {
   type DialExampleGrade,
   type DialExampleLeadType,
 } from "@/lib/dial-examples";
+import ModalCloseButton from "@/components/ModalCloseButton";
 import {
   dialExampleDraftToApiBody,
   draftFromCallCenterRecording,
@@ -92,18 +93,19 @@ export default function SaveDialExampleModal({ row, onClose, onSaved }: Props) {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.6)" }}
-      onClick={() => { if (!saving) onClose(); }}
     >
       <div
         className="w-full max-w-md rounded-2xl p-5 space-y-4"
         style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.1)" }}
-        onClick={e => e.stopPropagation()}
       >
-        <div>
-          <h2 className="text-lg font-bold" style={{ color: "#f1f5f9" }}>Save dial example</h2>
-          <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-            Add this call-rep recording to the examples library for coaching.
-          </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold" style={{ color: "#f1f5f9" }}>Save dial example</h2>
+            <p className="text-sm mt-1" style={{ color: "#64748b" }}>
+              Add this call-rep recording to the examples library for coaching.
+            </p>
+          </div>
+          <ModalCloseButton onClose={onClose} disabled={saving} />
         </div>
 
         <div

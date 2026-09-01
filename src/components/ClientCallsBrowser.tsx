@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import ClientCallFormFields from "@/components/ClientCallFormFields";
 import ClientFile from "@/components/ClientFile";
+import ModalCloseButton from "@/components/ModalCloseButton";
 import { CALL_TYPE_OPTIONS, callTypeLabel } from "@/lib/client-calls";
 import {
   callDraftToApiBody,
@@ -338,18 +339,19 @@ export default function ClientCallsBrowser({ clients, startDate, endDate }: Prop
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(2,6,15,0.7)" }}
-          onClick={closeModal}
         >
           <div
             className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-xl p-5 space-y-4"
             style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.1)" }}
-            onClick={e => e.stopPropagation()}
           >
-            <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>
-              {modalMode === "add"
-                ? "Log new client call"
-                : `Edit call — ${editingRow?.clients?.name ?? "Client"}`}
-            </h3>
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>
+                {modalMode === "add"
+                  ? "Log new client call"
+                  : `Edit call — ${editingRow?.clients?.name ?? "Client"}`}
+              </h3>
+              <ModalCloseButton onClose={closeModal} disabled={saving} />
+            </div>
 
             <ClientCallFormFields
               draft={draft}

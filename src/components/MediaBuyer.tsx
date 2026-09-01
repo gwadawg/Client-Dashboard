@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AdFormatPicker, useAdFormats } from "./AdFormatPicker";
 import { AdTagPicker, useAdTags } from "./AdTagPicker";
 import AdWorkspaceOverlay, { type AdWorkspaceDrilldown } from "./AdWorkspaceOverlay";
+import ModalCloseButton from "./ModalCloseButton";
 import CardActionsMenu from "./ad-library/CardActionsMenu";
 import FolderRail from "./ad-library/FolderRail";
 import LibraryBreadcrumb from "./ad-library/LibraryBreadcrumb";
@@ -1433,13 +1434,15 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
       ) : null}
 
       {linkTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setLinkTarget(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
           <div
             className="rounded-xl w-full max-w-md p-5 space-y-3"
             style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.1)" }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>Link to existing creative</h3>
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>Link to existing creative</h3>
+              <ModalCloseButton onClose={() => setLinkTarget(null)} disabled={linkSaving} />
+            </div>
             <p className="text-xs" style={{ color: "#94a3b8" }}>
               Link <span style={{ color: "#e2e8f0" }}>{linkTarget}</span> to a library entry. Metrics will roll up with other variants.
             </p>
@@ -2433,14 +2436,13 @@ function AdLibrary({
       </div>
 
       {form ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setForm(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
           <div
             className="rounded-xl w-full max-w-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto"
             style={{
               background: "var(--color-ws-panel)",
               border: "1px solid var(--color-ws-hairline)",
             }}
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -2453,20 +2455,23 @@ function AdLibrary({
                   </p>
                 ) : null}
               </div>
-              {form.id && form.drive_url ? (
-                <a
-                  href={form.drive_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold"
-                  style={{
-                    background: "var(--color-ws-accent-wash)",
-                    color: "var(--color-ws-accent-bright)",
-                  }}
-                >
-                  Open creative
-                </a>
-              ) : null}
+              <div className="flex items-center gap-2 shrink-0">
+                {form.id && form.drive_url ? (
+                  <a
+                    href={form.drive_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                    style={{
+                      background: "var(--color-ws-accent-wash)",
+                      color: "var(--color-ws-accent-bright)",
+                    }}
+                  >
+                    Open creative
+                  </a>
+                ) : null}
+                <ModalCloseButton onClose={() => setForm(null)} />
+              </div>
             </div>
             {form.id ? (
               <div className="flex gap-2">

@@ -183,12 +183,10 @@ function ActivityDetailPanel({
     <div
       className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4"
       style={{ background: "rgba(11,18,32,.45)" }}
-      onClick={onClose}
     >
       <div
         className="w-full max-w-md rounded-2xl p-6 space-y-5 max-h-[90vh] overflow-y-auto"
         style={{ background: WAIZ.white, boxShadow: SHADOW, fontFamily: FONT_BODY }}
-        onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
           <div>

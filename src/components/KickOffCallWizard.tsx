@@ -244,12 +244,10 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
     <div
       className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto py-6 px-4"
       style={{ background: shareMode ? "rgba(249,250,251,0.98)" : "rgba(2,6,15,0.85)" }}
-      onClick={onClose}
     >
       <div
         className="w-full rounded-xl shadow-2xl overflow-hidden"
         style={{ maxWidth: 640, background: shellBg, border: `1px solid ${borderColor}` }}
-        onClick={e => e.stopPropagation()}
       >
         <div
           className="px-6 py-4 flex items-start justify-between gap-4 sticky top-0 z-10"

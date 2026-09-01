@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ModalCloseButton from "@/components/ModalCloseButton";
 import {
   CLOSEBOT_NODE_TYPES,
   CLOSEBOT_NODE_TYPE_META,
@@ -503,22 +504,23 @@ export default function ClosebotAgentsSection({
         <div
           className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto"
           style={{ background: "rgba(0,0,0,0.65)" }}
-          onClick={() => !saving && setModalOpen(false)}
         >
           <div
             className="w-full max-w-2xl rounded-2xl p-5 space-y-4 my-8"
             style={{ background: "#0c1829", border: "1px solid rgba(255,255,255,0.1)" }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <div>
-              <h4 className="text-base font-semibold" style={{ color: "#f1f5f9" }}>
-                {editing ? "Edit agent" : "Add Closebot agent"}
-              </h4>
-              {editing && (
-                <p className="text-xs mt-1" style={{ color: "#64748b" }}>
-                  Edits save as pending until a prompt log for this agent is marked Worked.
-                </p>
-              )}
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-base font-semibold" style={{ color: "#f1f5f9" }}>
+                  {editing ? "Edit agent" : "Add Closebot agent"}
+                </h4>
+                {editing && (
+                  <p className="text-xs mt-1" style={{ color: "#64748b" }}>
+                    Edits save as pending until a prompt log for this agent is marked Worked.
+                  </p>
+                )}
+              </div>
+              <ModalCloseButton onClose={() => setModalOpen(false)} disabled={saving} />
             </div>
 
             <label className="block space-y-1">
@@ -942,16 +944,17 @@ export default function ClosebotAgentsSection({
         <div
           className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto"
           style={{ background: "rgba(0,0,0,0.65)" }}
-          onClick={() => setHistoryAgent(null)}
         >
           <div
             className="w-full max-w-xl rounded-2xl p-5 space-y-3 my-8"
             style={{ background: "#0c1829", border: "1px solid rgba(255,255,255,0.1)" }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <h4 className="text-base font-semibold" style={{ color: "#f1f5f9" }}>
-              History — {historyAgent.name}
-            </h4>
+            <div className="flex items-start justify-between gap-3">
+              <h4 className="text-base font-semibold" style={{ color: "#f1f5f9" }}>
+                History — {historyAgent.name}
+              </h4>
+              <ModalCloseButton onClose={() => setHistoryAgent(null)} />
+            </div>
             {historyLoading ? (
               <p className="text-sm" style={{ color: "#64748b" }}>
                 Loading versions…

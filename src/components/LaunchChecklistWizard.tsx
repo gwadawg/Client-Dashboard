@@ -162,12 +162,10 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
     <div
       className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto py-6 px-4"
       style={{ background: "rgba(2,6,15,0.85)" }}
-      onClick={onClose}
     >
       <div
         className="w-full rounded-xl shadow-2xl overflow-hidden"
         style={{ maxWidth: 640, background: "#060d1a", border: "1px solid rgba(255,255,255,0.08)" }}
-        onClick={e => e.stopPropagation()}
       >
         <div className="px-6 py-4 flex items-start justify-between gap-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
           <div>

@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import ClientFile from "@/components/ClientFile";
 import AddClientOfferModal from "@/components/AddClientOfferModal";
+import ModalCloseButton from "@/components/ModalCloseButton";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
@@ -1132,9 +1133,11 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
           style={{ background: "rgba(2,6,15,0.6)" }}
-          onClick={() => setShowAdd(false)}
         >
-          <div className="w-full max-w-3xl" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-3xl relative">
+            <div className="absolute top-3 right-3 z-10">
+              <ModalCloseButton onClose={() => setShowAdd(false)} />
+            </div>
             <AddClientForm busy={busy} showRevenue={showRevenue} onCreate={createClient} onCancel={() => setShowAdd(false)} />
           </div>
         </div>

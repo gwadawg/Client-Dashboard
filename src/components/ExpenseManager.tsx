@@ -1221,7 +1221,6 @@ function Modal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.65)" }}
-      onClick={onClose}
     >
       <div
         className="rounded-xl p-5 max-h-[90vh] overflow-auto"
@@ -1231,7 +1230,6 @@ function Modal({
           width: "100%",
           maxWidth: wide ? 640 : 420,
         }}
-        onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>

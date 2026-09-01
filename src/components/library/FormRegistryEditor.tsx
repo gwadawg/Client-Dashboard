@@ -70,7 +70,6 @@ export default function FormRegistryEditor({ state, setState, saving, error, onC
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(3,7,15,0.7)", backdropFilter: "blur(8px)" }}
-      onClick={onClose}
     >
       <div
         className="w-full max-w-lg rounded-[1.6rem] p-1.5"
@@ -79,7 +78,6 @@ export default function FormRegistryEditor({ state, setState, saving, error, onC
           border: "1px solid rgba(255,255,255,0.10)",
           boxShadow: "0 30px 70px rgba(0,0,0,0.6)",
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="rounded-[1.15rem] p-6" style={{ background: "#0a1628" }}>
           <div className="flex items-center justify-between mb-5">

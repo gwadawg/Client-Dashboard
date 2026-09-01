@@ -1483,8 +1483,8 @@ function ResourceModal({
   onSave: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(3,7,15,0.7)", backdropFilter: "blur(8px)" }} onClick={onClose}>
-      <div className="w-full max-w-lg rounded-[1.6rem] p-1.5" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 30px 70px rgba(0,0,0,0.6)", animation: `res-rise 400ms ${EASE} both` }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(3,7,15,0.7)", backdropFilter: "blur(8px)" }}>
+      <div className="w-full max-w-lg rounded-[1.6rem] p-1.5" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 30px 70px rgba(0,0,0,0.6)", animation: `res-rise 400ms ${EASE} both` }}>
         <div className="rounded-[1.15rem] p-6" style={{ background: "#0a1628", boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)" }}>
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-lg font-semibold" style={{ color: "#f1f5f9" }}>{form.id ? "Edit Link" : "Add Link"}</h3>

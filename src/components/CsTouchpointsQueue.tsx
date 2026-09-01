@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import ClientFile from "@/components/ClientFile";
+import ModalCloseButton from "@/components/ModalCloseButton";
 import {
   CS_TOUCHPOINT_LABELS,
   tenurePhaseLabel,
@@ -309,7 +310,6 @@ export default function CsTouchpointsQueue({ onOpenClient }: Props) {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.65)" }}
-          onClick={() => !saving && setCompleteId(null)}
         >
           <div
             className="w-full max-w-lg rounded-xl p-5 space-y-3"
@@ -317,11 +317,13 @@ export default function CsTouchpointsQueue({ onOpenClient }: Props) {
               background: "#0f172a",
               border: "1px solid rgba(255,255,255,0.12)",
             }}
-            onClick={e => e.stopPropagation()}
           >
-            <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
-              Mark complete
-            </h3>
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
+                Mark complete
+              </h3>
+              <ModalCloseButton onClose={() => setCompleteId(null)} disabled={saving} />
+            </div>
             <p className="text-xs" style={{ color: "#94a3b8" }}>
               Paste the Slack message you sent (required).
             </p>

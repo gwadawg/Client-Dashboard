@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import CallLibraryDetail from "@/components/CallLibraryDetail";
 import CallLibraryFormFields from "@/components/CallLibraryFormFields";
+import ModalCloseButton from "@/components/ModalCloseButton";
 import {
   TEAM_CALL_TYPE_OPTIONS,
   teamCallTypeLabel,
@@ -458,16 +459,17 @@ export default function CallLibrary({ canManage, startDate, endDate }: Props) {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.6)" }}
-          onClick={closeModal}
         >
           <div
             className="w-full max-w-lg rounded-xl p-5"
             style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.1)" }}
-            onClick={e => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold mb-4" style={{ color: "#f1f5f9" }}>
-              {modalMode === "add" ? "Add call to library" : "Edit call"}
-            </h2>
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h2 className="text-lg font-bold" style={{ color: "#f1f5f9" }}>
+                {modalMode === "add" ? "Add call to library" : "Edit call"}
+              </h2>
+              <ModalCloseButton onClose={closeModal} disabled={saving} />
+            </div>
             <CallLibraryFormFields draft={draft} onChange={setDraft} disabled={saving} />
             <div className="flex gap-2 mt-5">
               <button

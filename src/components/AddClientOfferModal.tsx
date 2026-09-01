@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { REPORTING_TYPE_META, REPORTING_TYPES } from "@/lib/reporting-types";
 import { normalizeReportingType } from "@/lib/kpi-layouts";
+import ModalCloseButton from "@/components/ModalCloseButton";
 
 export type AddClientOfferResult = {
   id: string;
@@ -112,18 +113,19 @@ export default function AddClientOfferModal({
     <div
       className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 sm:p-8"
       style={{ background: "rgba(2,6,15,0.72)" }}
-      onClick={onClose}
     >
       <div
         className="w-full max-w-lg rounded-xl shadow-2xl"
         style={{ background: "#0a1628", border: "1px solid rgba(56,189,248,0.2)" }}
-        onClick={e => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-          <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>Add offer to {accountDisplayName}</h3>
-          <p className="text-xs mt-1" style={{ color: "#64748b" }}>
-            Creates a new subaccount row under this client. You&apos;ll land in the new offer file to finish kick-off and GHL mapping.
-          </p>
+        <div className="px-5 py-4 border-b flex items-start justify-between gap-3" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+          <div>
+            <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>Add offer to {accountDisplayName}</h3>
+            <p className="text-xs mt-1" style={{ color: "#64748b" }}>
+              Creates a new subaccount row under this client. You&apos;ll land in the new offer file to finish kick-off and GHL mapping.
+            </p>
+          </div>
+          <ModalCloseButton onClose={onClose} disabled={saving} />
         </div>
 
         <div className="px-5 py-4 space-y-4">

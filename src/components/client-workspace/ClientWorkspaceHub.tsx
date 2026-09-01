@@ -6,6 +6,7 @@ import ViewHub from "../nav/ViewHub";
 import WorkspaceSubTabs from "./WorkspaceSubTabs";
 import WorkspaceFilterBar from "./WorkspaceFilterBar";
 import ClientActivityRail from "./ClientActivityRail";
+import ModalCloseButton from "@/components/ModalCloseButton";
 import ClientKpiPanel, { type ClientKpiPanelData } from "./ClientKpiPanel";
 import {
   CLIENT_WORKSPACE_SUBTABS,
@@ -176,7 +177,6 @@ export default function ClientWorkspaceHub({
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(2,8,20,0.72)" }}
-          onClick={() => setLogOpen(false)}
         >
           <div
             className="w-full max-w-lg rounded-xl p-5"
@@ -184,20 +184,13 @@ export default function ClientWorkspaceHub({
               background: "#0a1628",
               border: "1px solid rgba(255,255,255,0.1)",
             }}
-            onClick={e => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 mb-3">
               <div>
                 <h3 className="text-base font-semibold text-slate-100">Log work</h3>
                 <p className="text-xs text-slate-500 mt-0.5">{selected.name}</p>
               </div>
-              <button
-                type="button"
-                className="text-xs text-slate-500"
-                onClick={() => setLogOpen(false)}
-              >
-                Close
-              </button>
+              <ModalCloseButton onClose={() => setLogOpen(false)} />
             </div>
             <WorkLogComposer
               clientId={selected.id}

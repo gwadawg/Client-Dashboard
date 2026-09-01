@@ -18,6 +18,7 @@ import KpiCard from "./kpi/KpiCard";
 import MetricInfoTip, { type MetricHint } from "./kpi/MetricInfoTip";
 import FinanceRevenueLedger from "./FinanceRevenueLedger";
 import ExpenseManager from "./ExpenseManager";
+import ModalCloseButton from "./ModalCloseButton";
 import { reasonLabel } from "@/lib/client-feedback";
 import {
   listRecentMonths,
@@ -1708,19 +1709,21 @@ function FinancialInputsEditor({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
       <div
         className="rounded-xl w-full max-w-lg p-5 space-y-3"
         style={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.1)" }}
-        onClick={(e) => e.stopPropagation()}
       >
-        <div>
-          <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
-            Financial inputs — {monthLabel(month)}
-          </h3>
-          <p className="text-xs mt-0.5" style={{ color: MUTED }}>
-            These power CAC, LTV:CAC, ROAS, gross margin, profit, and runway. Leave blank to clear. Imports write to the same place.
-          </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
+              Financial inputs — {monthLabel(month)}
+            </h3>
+            <p className="text-xs mt-0.5" style={{ color: MUTED }}>
+              These power CAC, LTV:CAC, ROAS, gross margin, profit, and runway. Leave blank to clear. Imports write to the same place.
+            </p>
+          </div>
+          <ModalCloseButton onClose={onClose} disabled={saving} />
         </div>
         {INPUT_FIELDS.map((f) => (
           <label key={f.key} className="block">

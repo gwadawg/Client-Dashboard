@@ -134,11 +134,9 @@ export default function ContactRateHelperModal({
       aria-modal="true"
       aria-labelledby={titleId}
     >
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
-        aria-label="Close contact rate helper"
-        onClick={onClose}
+      <div
+        className="absolute inset-0 bg-black/75 backdrop-blur-sm pointer-events-none"
+        aria-hidden
       />
       <div
         className="relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto shadow-2xl"

@@ -342,7 +342,6 @@ export default function LibraryDocEditor({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(3,7,15,0.7)", backdropFilter: "blur(8px)" }}
-      onClick={onClose}
     >
       <div
         className="w-full max-w-3xl max-h-[90dvh] flex flex-col rounded-[1.6rem] p-1.5"
@@ -352,7 +351,6 @@ export default function LibraryDocEditor({
           boxShadow: "0 30px 70px rgba(0,0,0,0.6)",
           animation: `lib-editor-rise 400ms ${EASE} both`,
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div
           className="flex flex-col min-h-0 rounded-[1.15rem] p-6"

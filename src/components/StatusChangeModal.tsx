@@ -6,6 +6,7 @@ import {
   lifecycleStatusLabel,
   requiresReasonOnChurn,
 } from "@/lib/client-feedback";
+import ModalCloseButton from "@/components/ModalCloseButton";
 
 type Props = {
   open: boolean;
@@ -63,19 +64,22 @@ export default function StatusChangeModal({
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center px-4"
       style={{ background: "rgba(2,6,15,0.75)" }}
-      onClick={() => { if (!saving) onCancel(); }}
     >
       <div
         className="w-full max-w-md rounded-xl p-5"
         style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.1)" }}
-        onClick={e => e.stopPropagation()}
       >
-        <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
-          Mark as {lifecycleStatusLabel(targetStatus)}
-        </h3>
-        <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-          {clientName} — capture why for future analysis.
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold" style={{ color: "#e2e8f0" }}>
+              Mark as {lifecycleStatusLabel(targetStatus)}
+            </h3>
+            <p className="text-sm mt-1" style={{ color: "#64748b" }}>
+              {clientName} — capture why for future analysis.
+            </p>
+          </div>
+          <ModalCloseButton onClose={onCancel} disabled={saving} label="Cancel status change" />
+        </div>
 
         <div className="mt-4 space-y-3">
           <label className="block">
