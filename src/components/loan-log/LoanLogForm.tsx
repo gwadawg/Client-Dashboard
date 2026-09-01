@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import {
   BTN_PRIMARY_BG,
   FONT_BODY,
@@ -8,15 +8,13 @@ import {
   WAIZ,
   WaizWordmark,
 } from "@/components/onboarding/brand";
+import LeadSearchField, { type LeadHit } from "@/components/loan-log/LeadSearchField";
+import { DQ_REASONS, type DqReasonSlug } from "@/lib/dq-reasons";
 import { LOAN_LOG_STAGES, loanLogStageLabel, type LoanLogStage } from "@/lib/loan-log-form";
 
-type LeadHit = {
-  lead_name: string;
-  lead_phone: string;
-  ghl_contact_id: string;
-};
-
 type Props = { token: string };
+
+type LogType = "conversion" | "dq";
 
 const INPUT: CSSProperties = {
   width: "100%",
@@ -29,6 +27,12 @@ const INPUT: CSSProperties = {
   outline: "none",
 };
 
+const TEXTAREA: CSSProperties = {
+  ...INPUT,
+  minHeight: 96,
+  resize: "vertical" as const,
+};
+
 function todayIso(): string {
   const d = new Date();
   const y = d.getFullYear();
@@ -37,13 +41,19 @@ function todayIso(): string {
   return `${y}-${m}-${day}`;
 }
 
+function chipStyle(active: boolean): CSSProperties {
+  return {
+    border: `1px solid ${active ? WAIZ.accent : WAIZ.line}`,
+    background: active ? WAIZ.tint : WAIZ.soft,
+    color: WAIZ.navy,
+  };
+}
+
 export default function LoanLogForm({ token }: Props) {
   const [clientName, setClientName] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
+  const [logType, setLogType] = useState<LogType>("conversion");
   const [stage, setStage] = useState<LoanLogStage | "">("");
-  const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<LeadHit[]>([]);
-  const [openList, setOpenList] = useState(false);
   const [picked, setPicked] = useState<LeadHit | null>(null);
   const [cantFind, setCantFind] = useState(false);
   const [newName, setNewName] = useState("");
@@ -52,10 +62,12 @@ export default function LoanLogForm({ token }: Props) {
   const [loanSize, setLoanSize] = useState("");
   const [transactionLabel, setTransactionLabel] = useState("");
   const [commission, setCommission] = useState("");
+  const [dqReasons, setDqReasons] = useState<DqReasonSlug[]>([]);
+  const [dqOther, setDqOther] = useState("");
+  const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState<{ lead_name: string; stage: string } | null>(null);
-  const boxRef = useRef<HTMLDivElement>(null);
+  const [done, setDone] = useState<{ lead_name: string; log_type: LogType; stage?: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,27 +89,9 @@ export default function LoanLogForm({ token }: Props) {
     };
   }, [token]);
 
-  useEffect(() => {
-    if (cantFind || picked || query.trim().length < 2) {
-      setHits([]);
-      return;
-    }
-    const handle = window.setTimeout(() => {
-      fetch(`/api/forms/loans/${encodeURIComponent(token)}/leads?q=${encodeURIComponent(query.trim())}`)
-        .then(res => res.json())
-        .then(data => {
-          setHits(Array.isArray(data.leads) ? data.leads : []);
-          setOpenList(true);
-        })
-        .catch(() => setHits([]));
-    }, 220);
-    return () => window.clearTimeout(handle);
-  }, [query, token, cantFind, picked]);
-
   const reset = useCallback(() => {
+    setLogType("conversion");
     setStage("");
-    setQuery("");
-    setHits([]);
     setPicked(null);
     setCantFind(false);
     setNewName("");
@@ -106,6 +100,9 @@ export default function LoanLogForm({ token }: Props) {
     setLoanSize("");
     setTransactionLabel("");
     setCommission("");
+    setDqReasons([]);
+    setDqOther("");
+    setNotes("");
     setError(null);
     setDone(null);
   }, []);
@@ -115,29 +112,58 @@ export default function LoanLogForm({ token }: Props) {
     return picked?.lead_name ?? "";
   }, [cantFind, newName, picked]);
 
+  function toggleDqReason(slug: DqReasonSlug) {
+    setDqReasons(prev =>
+      prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug],
+    );
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!stage) {
+
+    if (logType === "conversion" && !stage) {
       setError("Choose Proposal, Submitted, or Funded.");
       return;
     }
+
+    if (logType === "dq") {
+      if (dqReasons.length === 0) {
+        setError("Select at least one reason.");
+        return;
+      }
+      if (dqReasons.includes("other") && !dqOther.trim()) {
+        setError("Describe the other reason.");
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
+      const payload: Record<string, unknown> = {
+        log_type: logType,
+        occurred_on: occurredOn,
+        cant_find: cantFind,
+        lead_name: cantFind ? newName : picked?.lead_name,
+        lead_phone: cantFind ? newPhone : picked?.lead_phone,
+        ghl_contact_id: cantFind ? undefined : picked?.ghl_contact_id,
+      };
+
+      if (logType === "conversion") {
+        payload.stage = stage;
+        payload.loan_size = loanSize;
+        payload.transaction_label = transactionLabel || undefined;
+        if (stage === "funded") payload.commission_amount = commission;
+      } else {
+        payload.dq_reasons = dqReasons;
+        if (dqReasons.includes("other")) payload.dq_other = dqOther;
+        if (notes.trim()) payload.notes = notes.trim();
+      }
+
       const res = await fetch(`/api/forms/loans/${encodeURIComponent(token)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stage,
-          occurred_on: occurredOn,
-          loan_size: loanSize,
-          transaction_label: transactionLabel || undefined,
-          commission_amount: stage === "funded" ? commission : undefined,
-          cant_find: cantFind,
-          lead_name: cantFind ? newName : picked?.lead_name,
-          lead_phone: cantFind ? newPhone : picked?.lead_phone,
-          ghl_contact_id: cantFind ? undefined : picked?.ghl_contact_id,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -146,7 +172,8 @@ export default function LoanLogForm({ token }: Props) {
       }
       setDone({
         lead_name: typeof data.lead_name === "string" ? data.lead_name : leadLabel,
-        stage,
+        log_type: logType,
+        stage: typeof data.stage === "string" ? data.stage : undefined,
       });
     } catch {
       setError("Couldn't save. Try again.");
@@ -177,6 +204,11 @@ export default function LoanLogForm({ token }: Props) {
   }
 
   if (done) {
+    const successMessage =
+      done.log_type === "dq"
+        ? `${done.lead_name} — Disqualified logged.`
+        : `${done.lead_name} — ${loanLogStageLabel(done.stage ?? "")}. Same borrower, another transaction? Log it next.`;
+
     return (
       <div className="min-h-full flex items-center justify-center px-4" style={{ fontFamily: FONT_BODY }}>
         <div
@@ -187,9 +219,7 @@ export default function LoanLogForm({ token }: Props) {
           <h1 className="text-2xl font-semibold" style={{ fontFamily: FONT_DISPLAY, color: WAIZ.navy }}>
             Logged
           </h1>
-          <p style={{ color: WAIZ.muted }}>
-            {done.lead_name} — {loanLogStageLabel(done.stage)}. Same borrower, another transaction? Log it next.
-          </p>
+          <p style={{ color: WAIZ.muted }}>{successMessage}</p>
           <button
             type="button"
             onClick={reset}
@@ -213,138 +243,46 @@ export default function LoanLogForm({ token }: Props) {
         <div className="space-y-2">
           <WaizWordmark height={24} color={WAIZ.navy} />
           <h1 className="text-2xl font-semibold leading-tight" style={{ fontFamily: FONT_DISPLAY, color: WAIZ.navy }}>
-            {clientName} — Log a loan
+            {clientName} — Log activity
           </h1>
         </div>
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium" style={{ color: WAIZ.ink }}>
-            What happened?
+            What are you logging?
           </legend>
-          <div className="grid grid-cols-3 gap-2">
-            {LOAN_LOG_STAGES.map(value => (
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                { value: "conversion" as const, label: "Conversion" },
+                { value: "dq" as const, label: "Disqualified" },
+              ] as const
+            ).map(({ value, label }) => (
               <button
                 key={value}
                 type="button"
-                onClick={() => setStage(value)}
-                className="rounded-xl py-3 text-xs sm:text-sm font-semibold"
-                style={{
-                  border: `1px solid ${stage === value ? WAIZ.accent : WAIZ.line}`,
-                  background: stage === value ? WAIZ.tint : WAIZ.soft,
-                  color: WAIZ.navy,
-                }}
+                onClick={() => setLogType(value)}
+                className="rounded-xl py-3 text-sm font-semibold transition-colors"
+                style={chipStyle(logType === value)}
               >
-                {loanLogStageLabel(value)}
+                {label}
               </button>
             ))}
           </div>
         </fieldset>
 
-        <div ref={boxRef} className="space-y-2 relative">
-          <label className="text-sm font-medium" style={{ color: WAIZ.ink }}>
-            Lead
-          </label>
-          {picked && !cantFind ? (
-            <div
-              className="flex items-center justify-between gap-2 rounded-xl px-3 py-3"
-              style={{ background: WAIZ.tint, border: `1px solid ${WAIZ.line}` }}
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-semibold truncate">{picked.lead_name}</p>
-                <p className="text-xs" style={{ color: WAIZ.muted }}>{picked.lead_phone || "No phone"}</p>
-              </div>
-              <button
-                type="button"
-                className="text-xs font-semibold"
-                style={{ color: WAIZ.accent700 }}
-                onClick={() => {
-                  setPicked(null);
-                  setQuery("");
-                }}
-              >
-                Change
-              </button>
-            </div>
-          ) : cantFind ? (
-            <div className="space-y-2">
-              <input
-                style={INPUT}
-                placeholder="Lead name"
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                required
-              />
-              <input
-                style={INPUT}
-                placeholder="Phone"
-                value={newPhone}
-                onChange={e => setNewPhone(e.target.value)}
-                required
-              />
-              <button
-                type="button"
-                className="text-xs font-semibold"
-                style={{ color: WAIZ.accent700 }}
-                onClick={() => {
-                  setCantFind(false);
-                  setNewName("");
-                  setNewPhone("");
-                }}
-              >
-                Search existing leads
-              </button>
-            </div>
-          ) : (
-            <>
-              <input
-                style={INPUT}
-                placeholder="Search by name"
-                value={query}
-                onChange={e => {
-                  setQuery(e.target.value);
-                  setOpenList(true);
-                }}
-                onFocus={() => hits.length > 0 && setOpenList(true)}
-                autoComplete="off"
-              />
-              {openList && hits.length > 0 && (
-                <ul
-                  className="absolute z-10 left-0 right-0 mt-1 rounded-xl overflow-hidden max-h-56 overflow-y-auto"
-                  style={{ background: WAIZ.white, border: `1px solid ${WAIZ.line}`, boxShadow: "0 8px 24px rgba(6,26,74,.12)" }}
-                >
-                  {hits.map(hit => (
-                    <li key={`${hit.ghl_contact_id}-${hit.lead_phone}`}>
-                      <button
-                        type="button"
-                        className="w-full text-left px-3 py-2.5 hover:bg-slate-50"
-                        onClick={() => {
-                          setPicked(hit);
-                          setOpenList(false);
-                          setQuery("");
-                        }}
-                      >
-                        <span className="block text-sm font-medium">{hit.lead_name}</span>
-                        <span className="block text-xs" style={{ color: WAIZ.muted }}>{hit.lead_phone || "No phone"}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <button
-                type="button"
-                className="text-xs font-semibold"
-                style={{ color: WAIZ.accent700 }}
-                onClick={() => {
-                  setCantFind(true);
-                  setPicked(null);
-                  setOpenList(false);
-                }}
-              >
-                Can’t find this lead
-              </button>
-            </>
-          )}
-        </div>
+        <LeadSearchField
+          token={token}
+          inputStyle={INPUT}
+          picked={picked}
+          onPickedChange={setPicked}
+          cantFind={cantFind}
+          onCantFindChange={setCantFind}
+          newName={newName}
+          onNewNameChange={setNewName}
+          newPhone={newPhone}
+          onNewPhoneChange={setNewPhone}
+        />
 
         <label className="block space-y-2">
           <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>When</span>
@@ -357,48 +295,120 @@ export default function LoanLogForm({ token }: Props) {
           />
         </label>
 
-        <label className="block space-y-2">
-          <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>Loan size</span>
-          <input
-            style={INPUT}
-            inputMode="decimal"
-            placeholder="250000"
-            value={loanSize}
-            onChange={e => setLoanSize(e.target.value)}
-            required
-          />
-        </label>
+        <div
+          className="space-y-5 transition-opacity duration-200"
+          style={{ opacity: 1 }}
+        >
+          {logType === "conversion" ? (
+            <>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium" style={{ color: WAIZ.ink }}>
+                  What happened?
+                </legend>
+                <div className="grid grid-cols-3 gap-2">
+                  {LOAN_LOG_STAGES.map(value => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setStage(value)}
+                      className="rounded-xl py-3 text-xs sm:text-sm font-semibold"
+                      style={chipStyle(stage === value)}
+                    >
+                      {loanLogStageLabel(value)}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
 
-        {(stage === "submitted" || stage === "funded") && (
-          <label className="block space-y-2">
-            <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>Transaction</span>
-            <input
-              style={INPUT}
-              placeholder="Optional — 1st loan, cash-out, address"
-              value={transactionLabel}
-              onChange={e => setTransactionLabel(e.target.value)}
-            />
-            <span className="block text-xs" style={{ color: WAIZ.muted }}>
-              One submit per loan. Same house, two loans = two submits. Name it if two files are the same size the same day.
-            </span>
-          </label>
-        )}
+              <label className="block space-y-2">
+                <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>Loan size</span>
+                <input
+                  style={INPUT}
+                  inputMode="decimal"
+                  placeholder="250000"
+                  value={loanSize}
+                  onChange={e => setLoanSize(e.target.value)}
+                  required={logType === "conversion"}
+                />
+              </label>
 
-        {stage === "funded" && (
-          <label className="block space-y-2">
-            <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>What you made</span>
-            <input
-              style={INPUT}
-              inputMode="decimal"
-              placeholder="Optional"
-              value={commission}
-              onChange={e => setCommission(e.target.value)}
-            />
-            <span className="block text-xs" style={{ color: WAIZ.muted }}>
-              Only if you want ROAS on your dashboard. You can skip this.
-            </span>
-          </label>
-        )}
+              {(stage === "submitted" || stage === "funded") && (
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>Transaction</span>
+                  <input
+                    style={INPUT}
+                    placeholder="Optional — 1st loan, cash-out, address"
+                    value={transactionLabel}
+                    onChange={e => setTransactionLabel(e.target.value)}
+                  />
+                  <span className="block text-xs" style={{ color: WAIZ.muted }}>
+                    One submit per loan. Same house, two loans = two submits. Name it if two files are the same size the same day.
+                  </span>
+                </label>
+              )}
+
+              {stage === "funded" && (
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>What you made</span>
+                  <input
+                    style={INPUT}
+                    inputMode="decimal"
+                    placeholder="Optional"
+                    value={commission}
+                    onChange={e => setCommission(e.target.value)}
+                  />
+                  <span className="block text-xs" style={{ color: WAIZ.muted }}>
+                    Only if you want ROAS on your dashboard. You can skip this.
+                  </span>
+                </label>
+              )}
+            </>
+          ) : (
+            <>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium" style={{ color: WAIZ.ink }}>
+                  Why not qualified?
+                </legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {DQ_REASONS.map(({ slug, label }) => (
+                    <button
+                      key={slug}
+                      type="button"
+                      onClick={() => toggleDqReason(slug)}
+                      className="rounded-xl py-3 text-xs sm:text-sm font-semibold text-left px-3"
+                      style={chipStyle(dqReasons.includes(slug))}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              {dqReasons.includes("other") && (
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>Other reason</span>
+                  <input
+                    style={INPUT}
+                    placeholder="Describe why this lead wasn't qualified"
+                    value={dqOther}
+                    onChange={e => setDqOther(e.target.value)}
+                    required
+                  />
+                </label>
+              )}
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>Notes</span>
+                <textarea
+                  style={TEXTAREA}
+                  placeholder="Optional — property details, conversation context"
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                />
+              </label>
+            </>
+          )}
+        </div>
 
         {error && (
           <p className="text-sm" style={{ color: "#b42318" }}>{error}</p>

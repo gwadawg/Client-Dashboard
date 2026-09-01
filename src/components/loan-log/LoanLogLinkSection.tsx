@@ -33,9 +33,10 @@ export default function LoanLogLinkSection({ clientId }: Props) {
   return (
     <div className="space-y-3">
       <p className="text-sm" style={{ color: "#94a3b8" }}>
-        Permanent public form for this office to log proposals, submissions, and funded loans.
-        Log each transaction separately — same borrower or same house, another loan is a new submit. Anyone with
-        the URL can submit. Copy as many times as you want — the link stays the same.
+        Permanent public form for this office to log conversions (proposals, submissions, funded loans)
+        and disqualified leads. Log each transaction separately — same borrower or same house, another
+        loan is a new submit. Anyone with the URL can submit. Copy as many times as you want — the link
+        stays the same.
       </p>
       {url && (
         <p className="text-xs font-mono break-all" style={{ color: "#64748b" }}>{url}</p>
@@ -48,7 +49,7 @@ export default function LoanLogLinkSection({ clientId }: Props) {
         className="rounded-lg px-3 py-1.5 text-xs font-semibold"
         style={{ background: "#1e3a5f", color: "#e2e8f0" }}
       >
-        {copied ? "Copied" : "Copy loan log link"}
+        {copied ? "Copied" : "Copy client log link"}
       </button>
     </div>
   );

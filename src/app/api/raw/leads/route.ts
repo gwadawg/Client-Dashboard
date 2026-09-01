@@ -44,6 +44,7 @@ type EventRow = {
   is_hot: boolean | null;
   is_out_of_state: boolean | null;
   lead_source: string | null;
+  dq_reason: string | null;
   raw: unknown;
   clients:
     | { name: string; ghl_location_id: string | null }
@@ -78,6 +79,7 @@ type TimelineItem = {
   calendar_id: string | null;
   stage_booked: string | null;
   recording_url: string | null;
+  dq_reason: string | null;
 };
 
 type LeadCounts = {
@@ -467,6 +469,7 @@ function toTimelineItem(row: EventRow): TimelineItem {
     calendar_id: row.calendar_id,
     stage_booked: row.stage_booked,
     recording_url: row.recording_url,
+    dq_reason: row.dq_reason,
   };
 }
 
@@ -494,7 +497,7 @@ function clampUnscopedStart(
 }
 
 const EVENT_SELECT =
-  'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, lead_source, raw, clients(name, ghl_location_id)';
+  'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, lead_source, dq_reason, raw, clients(name, ghl_location_id)';
 
 function applyClientScope<T extends { eq: Function; in: Function }>(
   q: T,

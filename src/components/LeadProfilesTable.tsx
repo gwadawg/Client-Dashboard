@@ -38,6 +38,7 @@ type TimelineItem = {
   calendar_id: string | null;
   stage_booked: string | null;
   recording_url: string | null;
+  dq_reason: string | null;
 };
 
 type LeadProfile = {
@@ -109,6 +110,7 @@ const EVENT_LABELS: Record<string, string> = {
   loan_funded: "Funded",
   lo_audit: "LO audit",
   out_of_state_lead: "Out of State",
+  manual_dq: "Disqualified",
 };
 
 function fmtDate(iso: string, withTime = true) {
@@ -327,6 +329,9 @@ function TimelineRow({ item }: { item: TimelineItem }) {
   if (item.calendar_name) detail.push(item.calendar_name);
   if (item.stage_booked) detail.push(item.stage_booked);
   if (item.scheduled_at) detail.push(`sched ${fmtDate(item.scheduled_at)}`);
+  if (item.event_type === "manual_dq" && item.dq_reason) {
+    detail.push(item.dq_reason);
+  }
   if (TIMELINE_APPT_TYPES.has(item.event_type) && item.external_id) {
     detail.push(`appt ${item.external_id}`);
   }
