@@ -32,9 +32,11 @@ function isMissingDbColumn(errorMessage: string, column: string): boolean {
   return new RegExp(`${column}|does not exist|schema cache`, 'i').test(errorMessage);
 }
 
-function withNullFellOutAt<T extends Record<string, unknown>>(rows: T[]): FormActivityDealRow[] {
+function withNullFellOutAt(
+  rows: Array<Omit<FormActivityDealRow, 'fell_out_at'>>,
+): FormActivityDealRow[] {
   return rows.map(row => ({
-    ...(row as Omit<FormActivityDealRow, 'fell_out_at'>),
+    ...row,
     fell_out_at: null,
   }));
 }
@@ -190,18 +192,22 @@ export async function loadContactLoanDeals(
   ghlContactId: string | null,
 ): Promise<LoanDealRecord[]> {
   if (!ghlContactId) return [];
-  const base = () =>
-    service
-      .from('loan_deals')
-      .eq('client_id', clientId)
-      .eq('ghl_contact_id', ghlContactId)
-      .limit(500);
 
-  const withFellOut = await base().select(`${LOAN_DEAL_CONTACT_SELECT}, fell_out_at`);
+  const withFellOut = await service
+    .from('loan_deals')
+    .select(`${LOAN_DEAL_CONTACT_SELECT}, fell_out_at`)
+    .eq('client_id', clientId)
+    .eq('ghl_contact_id', ghlContactId)
+    .limit(500);
   if (!withFellOut.error) return (withFellOut.data ?? []) as LoanDealRecord[];
 
   if (isMissingDbColumn(withFellOut.error.message, 'fell_out_at')) {
-    const legacy = await base().select(LOAN_DEAL_CONTACT_SELECT);
+    const legacy = await service
+      .from('loan_deals')
+      .select(LOAN_DEAL_CONTACT_SELECT)
+      .eq('client_id', clientId)
+      .eq('ghl_contact_id', ghlContactId)
+      .limit(500);
     if (legacy.error) throw new Error(legacy.error.message);
     return ((legacy.data ?? []) as LoanDealRecord[]).map(row => ({
       ...row,
@@ -216,21 +222,25 @@ export async function loadFormLoanDealsForActivity(
   service: Service,
   clientId: string,
 ): Promise<FormActivityDealRow[]> {
-  const base = () =>
-    service
+  const withFellOut = await service
+    .from('loan_deals')
+    .select(`${FORM_ACTIVITY_DEAL_SELECT}, fell_out_at`)
+    .eq('client_id', clientId)
+    .eq('source', 'loan_log_form')
+    .order('submitted_at', { ascending: false })
+    .limit(500);
+  if (!withFellOut.error) return (withFellOut.data ?? []) as FormActivityDealRow[];
+
+  if (isMissingDbColumn(withFellOut.error.message, 'fell_out_at')) {
+    const legacy = await service
       .from('loan_deals')
+      .select(FORM_ACTIVITY_DEAL_SELECT)
       .eq('client_id', clientId)
       .eq('source', 'loan_log_form')
       .order('submitted_at', { ascending: false })
       .limit(500);
-
-  const withFellOut = await base().select(`${FORM_ACTIVITY_DEAL_SELECT}, fell_out_at`);
-  if (!withFellOut.error) return (withFellOut.data ?? []) as FormActivityDealRow[];
-
-  if (isMissingDbColumn(withFellOut.error.message, 'fell_out_at')) {
-    const legacy = await base().select(FORM_ACTIVITY_DEAL_SELECT);
     if (legacy.error) throw new Error(legacy.error.message);
-    return withNullFellOutAt(legacy.data ?? []);
+    return withNullFellOutAt((legacy.data ?? []) as Array<Omit<FormActivityDealRow, 'fell_out_at'>>);
   }
 
   throw new Error(withFellOut.error.message);
