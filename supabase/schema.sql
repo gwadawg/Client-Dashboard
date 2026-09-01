@@ -1485,6 +1485,7 @@ create table if not exists loan_deals (
   stage                text not null,
   submitted_at         timestamptz not null,
   funded_at            timestamptz,
+  fell_out_at          timestamptz,
   loan_size            numeric(14, 2),
   commission_amount    numeric(12, 2),
   conversion_event_id  uuid references events(id) on delete set null,

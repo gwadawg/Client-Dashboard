@@ -4,11 +4,20 @@ import {
   activityRangeWindow,
   buildClientLogActivity,
   dateInRange,
+  filterActivityRows,
   parseActivityRange,
+  resolveActivityDealStage,
 } from './client-log-activity';
 
 const CLIENT = 'client-uuid-1';
 const NOW = new Date('2026-09-01T15:00:00.000Z');
+
+const dealBase = {
+  ghl_contact_id: 'ghl-1',
+  lead_name: 'Alice',
+  lead_phone: '5551112222',
+  fell_out_at: null as string | null,
+};
 
 describe('parseActivityRange', () => {
   it('defaults to 30d', () => {
@@ -44,6 +53,62 @@ describe('dateInRange', () => {
   });
 });
 
+describe('resolveActivityDealStage', () => {
+  it('maps submitted with fell_out_at to fell_out', () => {
+    assert.equal(
+      resolveActivityDealStage({
+        stage: 'submitted',
+        fell_out_at: '2026-08-22T12:00:00.000Z',
+      }),
+      'fell_out',
+    );
+  });
+});
+
+describe('filterActivityRows', () => {
+  const rows = buildClientLogActivity(
+    CLIENT,
+    [
+      {
+        id: 'deal-sub',
+        ...dealBase,
+        stage: 'submitted',
+        submitted_at: '2026-08-20T12:00:00.000Z',
+        funded_at: null,
+        loan_size: 250000,
+        transaction_label: 'HELOC',
+      },
+      {
+        id: 'deal-out',
+        ...dealBase,
+        ghl_contact_id: 'ghl-2',
+        lead_name: 'Bob',
+        stage: 'submitted',
+        submitted_at: '2026-08-18T12:00:00.000Z',
+        funded_at: null,
+        fell_out_at: '2026-08-25T12:00:00.000Z',
+        loan_size: 180000,
+        transaction_label: null,
+      },
+    ],
+    [],
+    '30d',
+    NOW,
+  ).rows;
+
+  it('filters by stage', () => {
+    const fellOut = filterActivityRows(rows, 'fell_out', '');
+    assert.equal(fellOut.length, 1);
+    assert.equal(fellOut[0].lead_name, 'Bob');
+  });
+
+  it('filters by name search', () => {
+    const alice = filterActivityRows(rows, 'all', 'alice');
+    assert.equal(alice.length, 1);
+    assert.equal(alice[0].lead_name, 'Alice');
+  });
+});
+
 describe('buildClientLogActivity', () => {
   it('builds deal rows and summary counts', () => {
     const result = buildClientLogActivity(
@@ -51,9 +116,7 @@ describe('buildClientLogActivity', () => {
       [
         {
           id: 'deal-sub',
-          ghl_contact_id: 'ghl-1',
-          lead_name: 'Alice',
-          lead_phone: '5551112222',
+          ...dealBase,
           stage: 'submitted',
           submitted_at: '2026-08-20T12:00:00.000Z',
           funded_at: null,
@@ -68,6 +131,7 @@ describe('buildClientLogActivity', () => {
           stage: 'funded',
           submitted_at: '2026-07-01T12:00:00.000Z',
           funded_at: '2026-08-25T12:00:00.000Z',
+          fell_out_at: null,
           loan_size: 400000,
           transaction_label: null,
         },
@@ -78,9 +142,36 @@ describe('buildClientLogActivity', () => {
     );
 
     assert.equal(result.summary.submitted, 1);
+    assert.equal(result.summary.fell_out, 0);
     assert.equal(result.summary.funded, 1);
     assert.equal(result.rows.length, 2);
     assert.equal(result.rows.find(r => r.id === 'deal-fund')?.stage, 'funded');
+    assert.equal(result.rows.find(r => r.id === 'deal-sub')?.editable, true);
+  });
+
+  it('counts fell out inside submitted total', () => {
+    const result = buildClientLogActivity(
+      CLIENT,
+      [
+        {
+          id: 'deal-out',
+          ...dealBase,
+          stage: 'submitted',
+          submitted_at: '2026-08-20T12:00:00.000Z',
+          funded_at: null,
+          fell_out_at: '2026-08-28T12:00:00.000Z',
+          loan_size: 250000,
+          transaction_label: null,
+        },
+      ],
+      [],
+      '30d',
+      NOW,
+    );
+
+    assert.equal(result.summary.submitted, 1);
+    assert.equal(result.summary.fell_out, 1);
+    assert.equal(result.rows[0].stage, 'fell_out');
   });
 
   it('shows orphan proposals and drops them when a deal exists', () => {
@@ -112,9 +203,7 @@ describe('buildClientLogActivity', () => {
       [
         {
           id: 'deal-1',
-          ghl_contact_id: 'ghl-1',
-          lead_name: 'Alice',
-          lead_phone: '5551112222',
+          ...dealBase,
           stage: 'submitted',
           submitted_at: '2026-08-20T12:00:00.000Z',
           funded_at: null,
@@ -179,6 +268,7 @@ describe('buildClientLogActivity', () => {
           stage: 'submitted',
           submitted_at: '2026-01-01T12:00:00.000Z',
           funded_at: null,
+          fell_out_at: null,
           loan_size: 100000,
           transaction_label: null,
         },

@@ -1,4 +1,4 @@
-import { type LoanDealRecord, parseLoanSizeFromRaw } from '@/lib/loan-deals';
+import { isOpenSubmittedDeal, type LoanDealRecord, parseLoanSizeFromRaw } from '@/lib/loan-deals';
 
 const PROPOSAL_TYPES = new Set(['proposal_made', 'proposal_sent']);
 
@@ -64,7 +64,7 @@ export function filterOpenDeals(deals: LoanDealRecord[]): LeadContextDeal[] {
   return deals
     .filter(
       deal =>
-        deal.stage === 'submitted' &&
+        isOpenSubmittedDeal(deal) &&
         deal.loan_size != null &&
         Number.isFinite(deal.loan_size) &&
         deal.loan_size > 0,

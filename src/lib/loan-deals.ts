@@ -17,11 +17,16 @@ export type LoanDealRecord = {
   stage: LoanDealStage;
   submitted_at: string;
   funded_at: string | null;
+  fell_out_at?: string | null;
   loan_size: number | null;
   commission_amount: number | null;
   transaction_label: string | null;
   ghl_contact_id: string | null;
 };
+
+export function isOpenSubmittedDeal(deal: Pick<LoanDealRecord, 'stage' | 'fell_out_at'>): boolean {
+  return deal.stage === 'submitted' && !deal.fell_out_at;
+}
 
 export type LoanDealTotals = {
   submitted_deals: number;
@@ -92,7 +97,8 @@ export function findPromotableDeal(
   input: Omit<LoanDealMatchInput, 'stage'>,
 ): LoanDealRecord | null {
   const submitted = deals.filter(
-    deal => deal.stage === 'submitted' && sameMoney(deal.loan_size, input.loanSize),
+    deal =>
+      isOpenSubmittedDeal(deal) && sameMoney(deal.loan_size, input.loanSize),
   );
   if (submitted.length === 0) return null;
   if (input.transactionLabel) {
@@ -156,7 +162,7 @@ export async function loadContactLoanDeals(
   if (!ghlContactId) return [];
   const { data, error } = await service
     .from('loan_deals')
-    .select('id, stage, submitted_at, funded_at, loan_size, commission_amount, transaction_label, ghl_contact_id')
+    .select('id, stage, submitted_at, funded_at, fell_out_at, loan_size, commission_amount, transaction_label, ghl_contact_id')
     .eq('client_id', clientId)
     .eq('ghl_contact_id', ghlContactId)
     .limit(500);
@@ -254,6 +260,7 @@ export async function promoteLoanDeal(
     .update({
       stage: 'funded',
       funded_at: input.funded_at,
+      fell_out_at: null,
       loan_size: input.loan_size,
       commission_amount: input.commission_amount,
       transaction_label: input.transaction_label,
@@ -262,6 +269,42 @@ export async function promoteLoanDeal(
     .eq('id', dealId)
     .eq('stage', 'submitted');
   if (error) throw new Error(error.message);
+}
+
+export async function setLoanDealFellOut(
+  service: Service,
+  dealId: string,
+  clientId: string,
+  fellOut: boolean,
+): Promise<{ ok: true } | { error: string }> {
+  const { data, error } = await service
+    .from('loan_deals')
+    .select('id, stage, source')
+    .eq('id', dealId)
+    .eq('client_id', clientId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return { error: 'This loan file was not found.' };
+  if (data.source !== 'loan_log_form') {
+    return { error: 'Only form-logged loans can be updated here.' };
+  }
+  if (data.stage !== 'submitted') {
+    return { error: 'Only submitted loans can be marked as fell out.' };
+  }
+
+  const { error: updateError } = await service
+    .from('loan_deals')
+    .update({
+      fell_out_at: fellOut ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', dealId)
+    .eq('client_id', clientId)
+    .eq('stage', 'submitted');
+
+  if (updateError) throw new Error(updateError.message);
+  return { ok: true };
 }
 
 export async function ensureDealFromConversionEvent(

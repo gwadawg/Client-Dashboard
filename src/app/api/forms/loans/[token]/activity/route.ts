@@ -11,7 +11,7 @@ import { createServiceClient } from '@/lib/supabase';
 const INVALID = 'This link isn’t valid. Ask your Waiz contact for a new one.';
 
 const DEAL_SELECT =
-  'id, ghl_contact_id, lead_name, lead_phone, stage, submitted_at, funded_at, loan_size, transaction_label';
+  'id, ghl_contact_id, lead_name, lead_phone, stage, submitted_at, funded_at, fell_out_at, loan_size, transaction_label';
 
 const EVENT_SELECT =
   'id, event_type, ghl_contact_id, lead_name, lead_phone, occurred_at, dq_reason, raw';
