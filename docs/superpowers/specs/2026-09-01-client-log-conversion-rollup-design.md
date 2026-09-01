@@ -1,6 +1,6 @@
 ---
 title: Client Log Conversion Rollup — Design
-status: approved
+status: implemented
 last_updated: 2026-09-01
 artifact_type: design
 related_docs:

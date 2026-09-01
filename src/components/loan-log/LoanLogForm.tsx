@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from "react";
 import {
   BTN_PRIMARY_BG,
   FONT_BODY,
@@ -10,6 +18,18 @@ import {
 } from "@/components/onboarding/brand";
 import LeadSearchField, { type LeadHit } from "@/components/loan-log/LeadSearchField";
 import { DQ_REASONS, type DqReasonSlug } from "@/lib/dq-reasons";
+import {
+  formatDealPickerLabel,
+  formatMoney,
+  loanSizeInputValue,
+  type LeadContext,
+  type LeadContextDeal,
+} from "@/lib/loan-log-lead-context";
+import {
+  formatTransactionLabel,
+  TRANSACTION_TYPES,
+  type TransactionTypeSlug,
+} from "@/lib/transaction-types";
 import { LOAN_LOG_STAGES, loanLogStageLabel, type LoanLogStage } from "@/lib/loan-log-form";
 
 type Props = { token: string };
@@ -49,6 +69,23 @@ function chipStyle(active: boolean): CSSProperties {
   };
 }
 
+function leadContextQuery(
+  picked: LeadHit | null,
+  cantFind: boolean,
+  newPhone: string,
+): string | null {
+  if (picked) {
+    const params = new URLSearchParams();
+    if (picked.ghl_contact_id) params.set("ghl_contact_id", picked.ghl_contact_id);
+    if (picked.lead_phone?.trim()) params.set("phone", picked.lead_phone.trim());
+    return params.toString() || null;
+  }
+  if (cantFind && newPhone.trim()) {
+    return new URLSearchParams({ phone: newPhone.trim() }).toString();
+  }
+  return null;
+}
+
 export default function LoanLogForm({ token }: Props) {
   const [clientName, setClientName] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
@@ -60,14 +97,54 @@ export default function LoanLogForm({ token }: Props) {
   const [newPhone, setNewPhone] = useState("");
   const [occurredOn, setOccurredOn] = useState(todayIso);
   const [loanSize, setLoanSize] = useState("");
-  const [transactionLabel, setTransactionLabel] = useState("");
+  const [transactionType, setTransactionType] = useState<TransactionTypeSlug | "">("");
+  const [transactionOther, setTransactionOther] = useState("");
   const [commission, setCommission] = useState("");
   const [dqReasons, setDqReasons] = useState<DqReasonSlug[]>([]);
   const [dqOther, setDqOther] = useState("");
   const [notes, setNotes] = useState("");
+  const [leadContext, setLeadContext] = useState<LeadContext | null>(null);
+  const [contextLoading, setContextLoading] = useState(false);
+  const [contextError, setContextError] = useState(false);
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
+  const [fundedManualMode, setFundedManualMode] = useState(false);
+  const [loanFieldsTouched, setLoanFieldsTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<{ lead_name: string; log_type: LogType; stage?: string } | null>(null);
+  const applyContextRef = useRef<(ctx: LeadContext | null, nextStage: LoanLogStage | "") => void>(() => {});
+
+  applyContextRef.current = (ctx, nextStage) => {
+    if (loanFieldsTouched || !ctx) return;
+
+    if (nextStage === "submitted" && ctx.proposal_loan_size != null) {
+      setLoanSize(loanSizeInputValue(ctx.proposal_loan_size));
+    }
+
+    if (nextStage === "funded") {
+      if (ctx.open_deals.length === 1) {
+        setSelectedDealId(ctx.open_deals[0].id);
+        setFundedManualMode(false);
+      } else if (ctx.open_deals.length === 0) {
+        setSelectedDealId(null);
+        setFundedManualMode(true);
+      } else {
+        setSelectedDealId(null);
+        setFundedManualMode(false);
+      }
+    }
+  };
+
+  const resetLeadDerivedState = useCallback(() => {
+    setLeadContext(null);
+    setContextError(false);
+    setSelectedDealId(null);
+    setFundedManualMode(false);
+    setLoanFieldsTouched(false);
+    setLoanSize("");
+    setTransactionType("");
+    setTransactionOther("");
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +166,74 @@ export default function LoanLogForm({ token }: Props) {
     };
   }, [token]);
 
+  const contextQuery = useMemo(
+    () => leadContextQuery(picked, cantFind, newPhone),
+    [picked, cantFind, newPhone],
+  );
+
+  useEffect(() => {
+    if (logType !== "conversion") {
+      setLeadContext(null);
+      setContextLoading(false);
+      setContextError(false);
+      return;
+    }
+
+    if (!contextQuery) {
+      resetLeadDerivedState();
+      return;
+    }
+
+    let cancelled = false;
+    setContextLoading(true);
+    setContextError(false);
+    resetLeadDerivedState();
+
+    fetch(`/api/forms/loans/${encodeURIComponent(token)}/lead-context?${contextQuery}`)
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          setLeadContext(null);
+          setContextError(true);
+          setFundedManualMode(true);
+          return;
+        }
+        const ctx: LeadContext = {
+          proposal_loan_size:
+            typeof data.proposal_loan_size === "number" ? data.proposal_loan_size : null,
+          open_deals: Array.isArray(data.open_deals)
+            ? data.open_deals.filter(
+                (d: LeadContextDeal) =>
+                  d &&
+                  typeof d.id === "string" &&
+                  typeof d.loan_size === "number" &&
+                  typeof d.submitted_at === "string",
+              )
+            : [],
+        };
+        setLeadContext(ctx);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLeadContext(null);
+        setContextError(true);
+        setFundedManualMode(true);
+      })
+      .finally(() => {
+        if (!cancelled) setContextLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contextQuery, logType, token, resetLeadDerivedState]);
+
+  useEffect(() => {
+    if (logType !== "conversion" || loanFieldsTouched) return;
+    applyContextRef.current(leadContext, stage);
+  }, [stage, leadContext, logType, loanFieldsTouched]);
+
   const reset = useCallback(() => {
     setLogType("conversion");
     setStage("");
@@ -98,19 +243,69 @@ export default function LoanLogForm({ token }: Props) {
     setNewPhone("");
     setOccurredOn(todayIso());
     setLoanSize("");
-    setTransactionLabel("");
+    setTransactionType("");
+    setTransactionOther("");
     setCommission("");
     setDqReasons([]);
     setDqOther("");
     setNotes("");
+    setLeadContext(null);
+    setContextLoading(false);
+    setContextError(false);
+    setSelectedDealId(null);
+    setFundedManualMode(false);
+    setLoanFieldsTouched(false);
     setError(null);
     setDone(null);
   }, []);
+
+  const selectedDeal = useMemo(
+    () => leadContext?.open_deals.find(d => d.id === selectedDealId) ?? null,
+    [leadContext, selectedDealId],
+  );
+
+  const showFundedPicker =
+    logType === "conversion" &&
+    stage === "funded" &&
+    !fundedManualMode &&
+    (leadContext?.open_deals.length ?? 0) > 0;
+
+  const showManualLoanFields =
+    logType === "conversion" &&
+    stage !== "" &&
+    (!showFundedPicker || !selectedDeal);
+
+  const showSubmittedPrefillHint =
+    stage === "submitted" &&
+    !loanFieldsTouched &&
+    leadContext?.proposal_loan_size != null &&
+    loanSize === loanSizeInputValue(leadContext.proposal_loan_size);
 
   const leadLabel = useMemo(() => {
     if (cantFind) return newName.trim();
     return picked?.lead_name ?? "";
   }, [cantFind, newName, picked]);
+
+  function handlePickedChange(hit: LeadHit | null) {
+    resetLeadDerivedState();
+    setPicked(hit);
+  }
+
+  function handleCantFindChange(value: boolean) {
+    resetLeadDerivedState();
+    setCantFind(value);
+  }
+
+  function handleStageChange(value: LoanLogStage) {
+    setStage(value);
+    if (!loanFieldsTouched) {
+      setLoanSize("");
+      setTransactionType("");
+      setTransactionOther("");
+      setSelectedDealId(null);
+      if (value !== "funded") setFundedManualMode(false);
+    }
+  }
 
   function toggleDqReason(slug: DqReasonSlug) {
     setDqReasons(prev =>
@@ -124,6 +319,22 @@ export default function LoanLogForm({ token }: Props) {
 
     if (logType === "conversion" && !stage) {
       setError("Choose Proposal, Submitted, or Funded.");
+      return;
+    }
+
+    if (logType === "conversion" && stage === "funded" && showFundedPicker && !selectedDeal) {
+      setError("Pick which loan funded.");
+      return;
+    }
+
+    if (
+      logType === "conversion" &&
+      (stage === "submitted" || stage === "funded") &&
+      showManualLoanFields &&
+      transactionType === "other" &&
+      !transactionOther.trim()
+    ) {
+      setError("Describe the transaction type.");
       return;
     }
 
@@ -151,8 +362,14 @@ export default function LoanLogForm({ token }: Props) {
 
       if (logType === "conversion") {
         payload.stage = stage;
-        payload.loan_size = loanSize;
-        payload.transaction_label = transactionLabel || undefined;
+        if (selectedDeal && showFundedPicker) {
+          payload.loan_size = String(selectedDeal.loan_size);
+          payload.transaction_label = selectedDeal.transaction_label || undefined;
+        } else {
+          payload.loan_size = loanSize;
+          const label = formatTransactionLabel(transactionType, transactionOther);
+          payload.transaction_label = label || undefined;
+        }
         if (stage === "funded") payload.commission_amount = commission;
       } else {
         payload.dq_reasons = dqReasons;
@@ -275,30 +492,26 @@ export default function LoanLogForm({ token }: Props) {
           token={token}
           inputStyle={INPUT}
           picked={picked}
-          onPickedChange={setPicked}
+          onPickedChange={handlePickedChange}
           cantFind={cantFind}
-          onCantFindChange={setCantFind}
+          onCantFindChange={handleCantFindChange}
           newName={newName}
           onNewNameChange={setNewName}
           newPhone={newPhone}
           onNewPhoneChange={setNewPhone}
         />
 
-        <label className="block space-y-2">
-          <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>When</span>
-          <input
-            type="date"
-            style={INPUT}
-            value={occurredOn}
-            onChange={e => setOccurredOn(e.target.value)}
-            required
-          />
-        </label>
+        {logType === "conversion" && contextQuery && (
+          <p className="text-xs" style={{ color: contextError ? "#b42318" : WAIZ.muted }}>
+            {contextLoading
+              ? "Checking prior logs…"
+              : contextError
+                ? "Couldn't load prior logs — enter details manually."
+                : null}
+          </p>
+        )}
 
-        <div
-          className="space-y-5 transition-opacity duration-200"
-          style={{ opacity: 1 }}
-        >
+        <div className="space-y-5 transition-opacity duration-200">
           {logType === "conversion" ? (
             <>
               <fieldset className="space-y-2">
@@ -310,7 +523,7 @@ export default function LoanLogForm({ token }: Props) {
                     <button
                       key={value}
                       type="button"
-                      onClick={() => setStage(value)}
+                      onClick={() => handleStageChange(value)}
                       className="rounded-xl py-3 text-xs sm:text-sm font-semibold"
                       style={chipStyle(stage === value)}
                     >
@@ -320,31 +533,121 @@ export default function LoanLogForm({ token }: Props) {
                 </div>
               </fieldset>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>Loan size</span>
-                <input
-                  style={INPUT}
-                  inputMode="decimal"
-                  placeholder="250000"
-                  value={loanSize}
-                  onChange={e => setLoanSize(e.target.value)}
-                  required={logType === "conversion"}
-                />
-              </label>
+              {showFundedPicker && leadContext && (
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium" style={{ color: WAIZ.ink }}>
+                    Which loan funded?
+                  </legend>
+                  <div className="space-y-2">
+                    {leadContext.open_deals.map(deal => (
+                      <button
+                        key={deal.id}
+                        type="button"
+                        onClick={() => setSelectedDealId(deal.id)}
+                        className="w-full rounded-xl py-3 px-3 text-left text-xs sm:text-sm font-semibold"
+                        style={chipStyle(selectedDealId === deal.id)}
+                      >
+                        {formatDealPickerLabel(deal)}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold"
+                    style={{ color: WAIZ.accent700 }}
+                    onClick={() => {
+                      setFundedManualMode(true);
+                      setSelectedDealId(null);
+                      setLoanSize("");
+                      setTransactionType("");
+                      setTransactionOther("");
+                      setLoanFieldsTouched(false);
+                    }}
+                  >
+                    Fund a different loan
+                  </button>
+                </fieldset>
+              )}
 
-              {(stage === "submitted" || stage === "funded") && (
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>Transaction</span>
-                  <input
-                    style={INPUT}
-                    placeholder="Optional — 1st loan, cash-out, address"
-                    value={transactionLabel}
-                    onChange={e => setTransactionLabel(e.target.value)}
-                  />
-                  <span className="block text-xs" style={{ color: WAIZ.muted }}>
-                    One submit per loan. Same house, two loans = two submits. Name it if two files are the same size the same day.
-                  </span>
-                </label>
+              {selectedDeal && showFundedPicker && (
+                <div
+                  className="rounded-xl px-3 py-3 space-y-1"
+                  style={{ background: WAIZ.tint, border: `1px solid ${WAIZ.line}` }}
+                >
+                  <p className="text-sm font-semibold" style={{ color: WAIZ.navy }}>
+                    {formatMoney(selectedDeal.loan_size)}
+                    {selectedDeal.transaction_label
+                      ? ` · ${selectedDeal.transaction_label}`
+                      : ""}
+                  </p>
+                  <p className="text-xs" style={{ color: WAIZ.muted }}>
+                    Using the loan size and transaction from your earlier submission.
+                  </p>
+                </div>
+              )}
+
+              {showManualLoanFields && (
+                <>
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>Loan size</span>
+                    <input
+                      style={INPUT}
+                      inputMode="decimal"
+                      placeholder="250000"
+                      value={loanSize}
+                      onChange={e => {
+                        setLoanFieldsTouched(true);
+                        setLoanSize(e.target.value);
+                      }}
+                      required
+                    />
+                    {showSubmittedPrefillHint && (
+                      <span className="block text-xs" style={{ color: WAIZ.muted }}>
+                        From your earlier proposal — change if this file is different.
+                      </span>
+                    )}
+                  </label>
+
+                  {(stage === "submitted" || stage === "funded") && (
+                    <div className="block space-y-2">
+                      <label className="text-sm font-medium" style={{ color: WAIZ.ink }}>
+                        Transaction type
+                      </label>
+                      <select
+                        style={INPUT}
+                        value={transactionType}
+                        onChange={e => {
+                          setLoanFieldsTouched(true);
+                          const value = e.target.value;
+                          setTransactionType(value as TransactionTypeSlug | "");
+                          if (value !== "other") setTransactionOther("");
+                        }}
+                      >
+                        <option value="">Optional — select type</option>
+                        {TRANSACTION_TYPES.map(({ slug, label }) => (
+                          <option key={slug} value={slug}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                      {transactionType === "other" && (
+                        <input
+                          style={INPUT}
+                          placeholder="Describe the transaction"
+                          value={transactionOther}
+                          onChange={e => {
+                            setLoanFieldsTouched(true);
+                            setTransactionOther(e.target.value);
+                          }}
+                          required
+                        />
+                      )}
+                      <span className="block text-xs" style={{ color: WAIZ.muted }}>
+                        One submit per loan. Same house, two loans = two submits. Pick a type if two files are the same size the same day.
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
 
               {stage === "funded" && (
@@ -362,9 +665,31 @@ export default function LoanLogForm({ token }: Props) {
                   </span>
                 </label>
               )}
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>When</span>
+                <input
+                  type="date"
+                  style={INPUT}
+                  value={occurredOn}
+                  onChange={e => setOccurredOn(e.target.value)}
+                  required
+                />
+              </label>
             </>
           ) : (
             <>
+              <label className="block space-y-2">
+                <span className="text-sm font-medium" style={{ color: WAIZ.ink }}>When</span>
+                <input
+                  type="date"
+                  style={INPUT}
+                  value={occurredOn}
+                  onChange={e => setOccurredOn(e.target.value)}
+                  required
+                />
+              </label>
+
               <fieldset className="space-y-2">
                 <legend className="text-sm font-medium" style={{ color: WAIZ.ink }}>
                   Why not qualified?
