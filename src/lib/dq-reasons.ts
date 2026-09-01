@@ -2,6 +2,8 @@ export const DQ_REASONS = [
   { slug: 'ltv', label: 'LTV' },
   { slug: 'fico', label: 'FICO' },
   { slug: 'low_property_value', label: 'Low Property Value' },
+  { slug: 'seasoning', label: 'Seasoning' },
+  { slug: 'low_income', label: 'Low Income' },
   { slug: 'other', label: 'Other' },
 ] as const;
 
