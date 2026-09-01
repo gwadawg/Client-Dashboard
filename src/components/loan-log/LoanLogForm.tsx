@@ -32,7 +32,12 @@ import {
 } from "@/lib/transaction-types";
 import { LOAN_LOG_STAGES, loanLogStageLabel, type LoanLogStage } from "@/lib/loan-log-form";
 
-type Props = { token: string };
+type Props = {
+  token: string;
+  embedded?: boolean;
+  clientName?: string;
+  onLogged?: () => void;
+};
 
 type LogType = "conversion" | "dq";
 
@@ -86,8 +91,11 @@ function leadContextQuery(
   return null;
 }
 
-export default function LoanLogForm({ token }: Props) {
-  const [clientName, setClientName] = useState<string | null>(null);
+export default function LoanLogForm({ token, embedded, clientName: clientNameProp, onLogged }: Props) {
+  const [clientNameLocal, setClientNameLocal] = useState<string | null>(
+    embedded && clientNameProp ? clientNameProp : null,
+  );
+  const clientName = embedded && clientNameProp ? clientNameProp : clientNameLocal;
   const [invalid, setInvalid] = useState(false);
   const [logType, setLogType] = useState<LogType>("conversion");
   const [stage, setStage] = useState<LoanLogStage | "">("");
@@ -147,6 +155,7 @@ export default function LoanLogForm({ token }: Props) {
   }, []);
 
   useEffect(() => {
+    if (embedded && clientNameProp) return;
     let cancelled = false;
     fetch(`/api/forms/loans/${encodeURIComponent(token)}`)
       .then(async res => {
@@ -156,7 +165,7 @@ export default function LoanLogForm({ token }: Props) {
           setInvalid(true);
           return;
         }
-        setClientName(typeof data.client_name === "string" ? data.client_name : "Your office");
+        setClientNameLocal(typeof data.client_name === "string" ? data.client_name : "Your office");
       })
       .catch(() => {
         if (!cancelled) setInvalid(true);
@@ -164,7 +173,7 @@ export default function LoanLogForm({ token }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, embedded, clientNameProp]);
 
   const contextQuery = useMemo(
     () => leadContextQuery(picked, cantFind, newPhone),
@@ -392,6 +401,7 @@ export default function LoanLogForm({ token }: Props) {
         log_type: logType,
         stage: typeof data.stage === "string" ? data.stage : undefined,
       });
+      onLogged?.();
     } catch {
       setError("Couldn't save. Try again.");
     } finally {
@@ -399,7 +409,7 @@ export default function LoanLogForm({ token }: Props) {
     }
   }
 
-  if (invalid) {
+  if (invalid && !embedded) {
     return (
       <div className="min-h-full flex items-center justify-center px-4" style={{ fontFamily: FONT_BODY }}>
         <div className="max-w-md text-center space-y-3">
@@ -426,6 +436,25 @@ export default function LoanLogForm({ token }: Props) {
         ? `${done.lead_name} — Disqualified logged.`
         : `${done.lead_name} — ${loanLogStageLabel(done.stage ?? "")}. Same borrower, another transaction? Log it next.`;
 
+    if (embedded) {
+      return (
+        <div className="space-y-4 py-2">
+          <h2 className="text-xl font-semibold" style={{ fontFamily: FONT_DISPLAY, color: WAIZ.navy }}>
+            Logged
+          </h2>
+          <p style={{ color: WAIZ.muted }}>{successMessage}</p>
+          <button
+            type="button"
+            onClick={reset}
+            className="w-full rounded-xl py-3 text-sm font-semibold text-white"
+            style={{ background: BTN_PRIMARY_BG }}
+          >
+            Log another
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-full flex items-center justify-center px-4" style={{ fontFamily: FONT_BODY }}>
         <div
@@ -450,20 +479,8 @@ export default function LoanLogForm({ token }: Props) {
     );
   }
 
-  return (
-    <div className="min-h-full px-4 py-10" style={{ fontFamily: FONT_BODY }}>
-      <form
-        onSubmit={onSubmit}
-        className="mx-auto w-full max-w-md rounded-2xl p-6 sm:p-8 space-y-5"
-        style={{ background: WAIZ.white, boxShadow: "0 18px 50px -22px rgba(6,26,74,.35)" }}
-      >
-        <div className="space-y-2">
-          <WaizWordmark height={24} color={WAIZ.navy} />
-          <h1 className="text-2xl font-semibold leading-tight" style={{ fontFamily: FONT_DISPLAY, color: WAIZ.navy }}>
-            {clientName} — Log activity
-          </h1>
-        </div>
-
+  const formFields = (
+    <>
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium" style={{ color: WAIZ.ink }}>
             What are you logging?
@@ -747,6 +764,31 @@ export default function LoanLogForm({ token }: Props) {
         >
           {submitting ? "Saving…" : "Submit"}
         </button>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <form onSubmit={onSubmit} className="space-y-5">
+        {formFields}
+      </form>
+    );
+  }
+
+  return (
+    <div className="min-h-full px-4 py-10" style={{ fontFamily: FONT_BODY }}>
+      <form
+        onSubmit={onSubmit}
+        className="mx-auto w-full max-w-md rounded-2xl p-6 sm:p-8 space-y-5"
+        style={{ background: WAIZ.white, boxShadow: "0 18px 50px -22px rgba(6,26,74,.35)" }}
+      >
+        <div className="space-y-2">
+          <WaizWordmark height={24} color={WAIZ.navy} />
+          <h1 className="text-2xl font-semibold leading-tight" style={{ fontFamily: FONT_DISPLAY, color: WAIZ.navy }}>
+            {clientName} — Log activity
+          </h1>
+        </div>
+        {formFields}
       </form>
     </div>
   );
