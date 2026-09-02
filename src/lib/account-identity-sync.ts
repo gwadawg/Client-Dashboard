@@ -105,15 +105,17 @@ export async function resolveAccountIdentityClientId(
   if (error) throw new Error(error.message);
   if (!client) return clientId;
 
-  if (client.account_group_id) {
+  const row = client as unknown as ClientIdentityRow;
+
+  if (row.account_group_id) {
     const { data: siblings, error: sibErr } = await service
       .from('clients')
       .select(ACCOUNT_MEMBER_SELECT)
-      .eq('account_group_id', client.account_group_id);
+      .eq('account_group_id', row.account_group_id);
     if (sibErr) throw new Error(sibErr.message);
     const root = pickAccountIdentityRootId((siblings ?? []) as unknown as ClientIdentityRow[]);
     if (root) return root;
   }
 
-  return resolveIdentityClientId(client as ClientIdentityRow);
+  return resolveIdentityClientId(row);
 }
