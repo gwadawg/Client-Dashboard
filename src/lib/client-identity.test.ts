@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   isKickoffIdentityFieldComplete,
   mergeIdentityFields,
+  mergeIdentityFromMembers,
+  pickAccountIdentityRootId,
   pickIdentitySource,
   resolveIdentityClientId,
   withIdentityProfile,
@@ -73,5 +75,58 @@ describe('client-identity', () => {
     const base = { id: '1', name: 'X', states_licensed: ['TX'] };
     const source = { id: '2', name: 'Y', states_licensed: [] };
     assert.deepEqual(mergeIdentityFields(base, source).states_licensed, ['TX']);
+  });
+
+  it('mergeIdentityFromMembers fills each field from whichever offer has it', () => {
+    const merged = mergeIdentityFromMembers([
+      {
+        id: 'he',
+        name: 'HE subaccount',
+        email: 'lo@example.com',
+        phone: null,
+        nmls: '111',
+        states_licensed: ['TX'],
+      },
+      {
+        id: 'dscr',
+        name: 'DSCR subaccount',
+        email: null,
+        phone: '5559876543',
+        nmls: null,
+        states_licensed: null,
+        timezone: 'America/Chicago',
+      },
+    ]);
+    assert.equal(merged?.email, 'lo@example.com');
+    assert.equal(merged?.phone, '5559876543');
+    assert.equal(merged?.nmls, '111');
+    assert.deepEqual(merged?.states_licensed, ['TX']);
+    assert.equal(merged?.timezone, 'America/Chicago');
+  });
+
+  it('pickAccountIdentityRootId prefers the fullest profile', () => {
+    const root = pickAccountIdentityRootId([
+      {
+        id: 'he',
+        name: 'HE',
+        identity_client_id: null,
+        engagement_kind: 'initial',
+        created_at: '2026-01-01',
+        email: null,
+        phone: null,
+        nmls: null,
+      },
+      {
+        id: 'dscr',
+        name: 'DSCR',
+        identity_client_id: null,
+        engagement_kind: 'cross_sell',
+        created_at: '2026-02-01',
+        email: 'lo@example.com',
+        phone: '5551234567',
+        nmls: '12345',
+      },
+    ]);
+    assert.equal(root, 'dscr');
   });
 });

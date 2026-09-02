@@ -42,6 +42,9 @@ export type ClientIdentityRow = {
   id: string;
   name: string;
   identity_client_id?: string | null;
+  account_group_id?: string | null;
+  engagement_kind?: string | null;
+  created_at?: string;
   reporting_type?: string | null;
   offer?: string | null;
   lifecycle_status?: string | null;
@@ -85,11 +88,17 @@ const IDENTITY_SELECT = [
   'id',
   'name',
   'identity_client_id',
+  'account_group_id',
+  'engagement_kind',
+  'created_at',
   'reporting_type',
   'offer',
   'lifecycle_status',
   ...CLIENT_IDENTITY_FIELDS,
 ].join(', ');
+
+/** Fields loaded when resolving members of a multi-offer account. */
+export const ACCOUNT_MEMBER_SELECT = IDENTITY_SELECT;
 
 function trimOrNull(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -175,6 +184,38 @@ export function pickIdentitySource(clients: ClientIdentityRow[]): ClientIdentity
   return [...clients].sort((a, b) => countIdentityFields(b) - countIdentityFields(a))[0];
 }
 
+/**
+ * Build one profile from every linked offer row — each field comes from whichever
+ * row has it filled. Never overwrites a populated value with an empty one.
+ */
+export function mergeIdentityFromMembers(members: ClientIdentityRow[]): ClientIdentityRow | null {
+  if (!members.length) return null;
+  let merged: ClientIdentityRow = { ...pickIdentitySource(members) };
+  for (const member of members) {
+    merged = mergeIdentityFields(merged, member);
+  }
+  return merged;
+}
+
+/**
+ * Canonical row id for identity links and account-level calls/notes.
+ * Prefers the offer with the most profile data filled; ties break to initial, then oldest.
+ */
+export function pickAccountIdentityRootId(
+  siblings: ClientIdentityRow[],
+): string | null {
+  if (!siblings.length) return null;
+  const ranked = [...siblings].sort((a, b) => {
+    const fieldDelta = countIdentityFields(b) - countIdentityFields(a);
+    if (fieldDelta !== 0) return fieldDelta;
+    const aInitial = a.engagement_kind === 'initial' ? 0 : 1;
+    const bInitial = b.engagement_kind === 'initial' ? 0 : 1;
+    if (aInitial !== bInitial) return aInitial - bInitial;
+    return (a.created_at ?? '').localeCompare(b.created_at ?? '');
+  });
+  return resolveIdentityClientId(ranked[0]);
+}
+
 export function identityFieldsFromPatch(
   patch: Record<string, unknown>,
 ): Partial<Record<ClientIdentityField, unknown>> {
@@ -205,22 +246,40 @@ export async function loadClientIdentityGroup(
 ): Promise<ClientIdentityGroup | null> {
   const { data: current, error } = await service
     .from('clients')
-    .select(IDENTITY_SELECT)
+    .select(ACCOUNT_MEMBER_SELECT)
     .eq('id', clientId)
     .single();
   if (error || !current) return null;
 
   const row = current as unknown as ClientIdentityRow;
+  const memberIds = new Set<string>([row.id]);
+
+  if (row.account_group_id) {
+    const { data: groupSiblings, error: groupErr } = await service
+      .from('clients')
+      .select('id')
+      .eq('account_group_id', row.account_group_id);
+    if (groupErr) throw new Error(groupErr.message);
+    for (const sibling of groupSiblings ?? []) memberIds.add(sibling.id as string);
+  }
+
   const identityId = resolveIdentityClientId(row);
-
-  const { data: linked } = await service
+  const { data: linked, error: linkErr } = await service
     .from('clients')
-    .select(IDENTITY_SELECT)
+    .select('id')
     .or(`id.eq.${identityId},identity_client_id.eq.${identityId}`);
+  if (linkErr) throw new Error(linkErr.message);
+  for (const linkedRow of linked ?? []) memberIds.add(linkedRow.id as string);
 
-  const members = (linked ?? []) as unknown as ClientIdentityRow[];
-  const identityRow = members.find(c => c.id === identityId) ?? members[0];
-  const identity = pickIdentitySource(members.length ? members : [row]);
+  const { data: memberRows, error: membersErr } = await service
+    .from('clients')
+    .select(ACCOUNT_MEMBER_SELECT)
+    .in('id', [...memberIds]);
+  if (membersErr) throw new Error(membersErr.message);
+
+  const members = (memberRows ?? []) as unknown as ClientIdentityRow[];
+  const mergedIdentity = mergeIdentityFromMembers(members) ?? row;
+  const identityRootId = pickAccountIdentityRootId(members) ?? identityId;
 
   const offers: RelatedOfferSummary[] = members
     .map(c => ({
@@ -234,8 +293,8 @@ export async function loadClientIdentityGroup(
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return {
-    identity_client_id: identityId,
-    identity: identityRow ? mergeIdentityFields({ ...identityRow }, identity) : identity,
+    identity_client_id: identityRootId,
+    identity: mergedIdentity,
     offers,
   };
 }

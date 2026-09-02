@@ -136,18 +136,9 @@ type StatusHistoryEntry = {
   source: string | null;
 };
 
-type ClientNote = {
-  id: string;
-  note_type: string;
-  reason_code: string | null;
-  body: string;
-  created_at: string;
-  created_by_label?: string | null;
-  updated_at?: string | null;
-};
-
 type ClientCall = {
   id: string;
+  client_id?: string;
   call_type: string;
   called_at: string;
   recording_url: string | null;
@@ -159,7 +150,20 @@ type ClientCall = {
   disposition: string | null;
   follow_up_due_at: string | null;
   created_by_label?: string | null;
+  offer_label?: string | null;
   updated_at: string;
+};
+
+type ClientNote = {
+  id: string;
+  client_id?: string;
+  note_type: string;
+  reason_code: string | null;
+  body: string;
+  created_at: string;
+  created_by_label?: string | null;
+  updated_at?: string | null;
+  offer_label?: string | null;
 };
 
 type ActivityRow = {
@@ -171,16 +175,39 @@ type ActivityRow = {
   source_table: string;
 };
 
-type TabKey = "overview" | "records" | "activity" | "cs_calls" | "touchpoints" | "billing";
+/** Legacy tab keys — mapped into account/offer tabs for deep links. */
+type LegacyTabKey = "overview" | "records" | "activity" | "cs_calls" | "touchpoints" | "billing";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "overview", label: "Overview" },
+type AccountTabKey = "client" | "calls" | "contacts";
+type OfferTabKey = "operations" | "records" | "cs" | "billing";
+
+const ACCOUNT_TABS: { key: AccountTabKey; label: string }[] = [
+  { key: "client", label: "Client" },
+  { key: "calls", label: "Calls & notes" },
+  { key: "contacts", label: "Contacts" },
+];
+
+const OFFER_TABS: { key: OfferTabKey; label: string }[] = [
+  { key: "operations", label: "Operations" },
   { key: "records", label: "Forms & history" },
-  { key: "activity", label: "Calls & notes" },
-  { key: "cs_calls", label: "CS Calls" },
-  { key: "touchpoints", label: "Touchpoints" },
+  { key: "cs", label: "CS & touchpoints" },
   { key: "billing", label: "Billing" },
 ];
+
+function resolveInitialTabs(
+  legacy: LegacyTabKey | undefined,
+  opts: { scrollToCalls?: boolean; scrollToNotes?: boolean; openKickoff?: boolean },
+): { account: AccountTabKey; offer: OfferTabKey } {
+  if (legacy === "billing") return { account: "client", offer: "billing" };
+  if (legacy === "records") return { account: "client", offer: "records" };
+  if (legacy === "cs_calls" || legacy === "touchpoints") return { account: "client", offer: "cs" };
+  if (legacy === "activity" || opts.scrollToCalls || opts.scrollToNotes) {
+    return { account: "calls", offer: "operations" };
+  }
+  if (opts.openKickoff) return { account: "client", offer: "operations" };
+  if (legacy === "overview") return { account: "client", offer: "operations" };
+  return { account: "client", offer: "operations" };
+}
 
 const ACTIVITY_STYLE: Record<string, { color: string; bg: string }> = {
   lifecycle: { color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
@@ -273,8 +300,8 @@ export default function ClientFile({
   openCheckinForm?: boolean;
   openKickoff?: boolean;
   openAddOffer?: boolean;
-  /** Open a specific tab (e.g. billing from Finance ledger). */
-  initialTab?: TabKey;
+  /** Open a specific tab (legacy deep links — mapped to account/offer tabs). */
+  initialTab?: LegacyTabKey;
 }) {
   const [client, setClient] = useState<FileClient | null>(null);
   const [billings, setBillings] = useState<FileBilling[]>([]);
@@ -283,6 +310,8 @@ export default function ClientFile({
   const [notes, setNotes] = useState<ClientNote[]>([]);
   const [contacts, setContacts] = useState<ClientContact[]>([]);
   const [calls, setCalls] = useState<ClientCall[]>([]);
+  const [identityClientId, setIdentityClientId] = useState<string>(clientId);
+  const [accountDisplayName, setAccountDisplayName] = useState<string | null>(null);
   const [canViewRevenue, setCanViewRevenue] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -297,11 +326,9 @@ export default function ClientFile({
   const [callFollowUp, setCallFollowUp] = useState("");
   // Deep links from the roster (logged via a remount key) decide the initial
   // tab + open composer, so no post-mount effect is needed.
-  const [activeTab, setActiveTab] = useState<TabKey>(
-    () =>
-      initialTab ??
-      (scrollToCalls || openCheckinForm || scrollToNotes ? "activity" : "overview"),
-  );
+  const initialTabs = resolveInitialTabs(initialTab, { scrollToCalls, scrollToNotes, openKickoff });
+  const [accountTab, setAccountTab] = useState<AccountTabKey>(initialTabs.account);
+  const [offerTab, setOfferTab] = useState<OfferTabKey>(initialTabs.offer);
   const [showCallComposer, setShowCallComposer] = useState(() => scrollToCalls || openCheckinForm);
   const [showNoteComposer, setShowNoteComposer] = useState(() => scrollToNotes);
   const [editingCallId, setEditingCallId] = useState<string | null>(null);
@@ -355,8 +382,9 @@ export default function ClientFile({
     return Promise.all([
       fetch(`/api/clients/${clientId}`).then(r => r.json()),
       fetch(`/api/clients/${clientId}/activity?limit=80`).then(r => r.json()),
+      fetch(`/api/clients/${clientId}/relationship`).then(r => r.json()),
     ])
-      .then(async ([d, activityRes]) => {
+      .then(async ([d, activityRes, relationshipRes]) => {
         if (d.error) {
           setError(d.error);
           setCsAppointments([]);
@@ -367,12 +395,22 @@ export default function ClientFile({
           setOfferRow(d.offer ? { name: d.offer.name, reporting_type: d.offer.reporting_type ?? null } : null);
           setBillings(d.billings ?? []);
           setStatusHistory(d.status_history ?? []);
-          setNotes(d.notes ?? []);
-          setContacts(d.contacts ?? []);
-          setCalls(d.calls ?? []);
           setFormSubmissions(d.form_submissions ?? []);
           if (typeof d.can_view_revenue === "boolean") setCanViewRevenue(d.can_view_revenue);
+          if (d.identity_client_id) setIdentityClientId(d.identity_client_id);
           setError(null);
+
+          if (!relationshipRes.error) {
+            setIdentityClientId(relationshipRes.identity_client_id ?? d.identity_client_id ?? clientId);
+            setAccountDisplayName(relationshipRes.account_display_name ?? null);
+            setCalls(relationshipRes.calls ?? []);
+            setNotes(relationshipRes.notes ?? []);
+            setContacts(relationshipRes.contacts ?? []);
+          } else {
+            setNotes(d.notes ?? []);
+            setContacts(d.contacts ?? []);
+            setCalls(d.calls ?? []);
+          }
 
           const clickupId = (d.client?.clickup_task_id as string | null | undefined)?.trim();
           if (clickupId) {
@@ -442,6 +480,10 @@ export default function ClientFile({
     return { collected, retainer, performance, passthrough, count: billings.length, lastPaidOn };
   }, [billings]);
 
+  useEffect(() => {
+    setCallDraft(defaultCallDraft(identityClientId, "checkin"));
+  }, [identityClientId]);
+
   async function submitCall() {
     const validationError = validateCallDraft(callDraft, false);
     if (validationError) {
@@ -450,7 +492,7 @@ export default function ClientFile({
     }
 
     setSavingCall(true);
-    const res = await fetch(`/api/clients/${clientId}/calls`, {
+    const res = await fetch(`/api/clients/${identityClientId}/calls`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -466,7 +508,7 @@ export default function ClientFile({
       setSavingCall(false);
       return;
     }
-    setCallDraft(defaultCallDraft(clientId, "checkin"));
+    setCallDraft(defaultCallDraft(identityClientId, "checkin"));
     setCallDuration("");
     setCallDisposition("");
     setCallFollowUp("");
@@ -491,7 +533,8 @@ export default function ClientFile({
       return false;
     }
 
-    const res = await fetch(`/api/clients/${clientId}/calls/${call.id}`, {
+    const callClientId = call.client_id ?? identityClientId;
+    const res = await fetch(`/api/clients/${callClientId}/calls/${call.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -512,9 +555,10 @@ export default function ClientFile({
     return true;
   }
 
-  async function deleteCall(callId: string) {
+  async function deleteCall(call: ClientCall) {
     if (!confirm("Remove this call from the client file? (Soft-delete — can be restored from DB.)")) return;
-    const res = await fetch(`/api/clients/${clientId}/calls/${callId}`, { method: "DELETE" });
+    const callClientId = call.client_id ?? identityClientId;
+    const res = await fetch(`/api/clients/${callClientId}/calls/${call.id}`, { method: "DELETE" });
     const d = await res.json();
     if (!res.ok) {
       alert(d.error ?? "Failed to remove call");
@@ -535,7 +579,8 @@ export default function ClientFile({
     const body = editNoteBody.trim();
     if (!body) return;
     setSavingNoteEdit(true);
-    const res = await fetch(`/api/clients/${clientId}/notes/${noteId}`, {
+    const noteClientId = notes.find(n => n.id === noteId)?.client_id ?? identityClientId;
+    const res = await fetch(`/api/clients/${noteClientId}/notes/${noteId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -558,7 +603,8 @@ export default function ClientFile({
 
   async function deleteNote(noteId: string) {
     if (!confirm("Remove this note?")) return;
-    const res = await fetch(`/api/clients/${clientId}/notes/${noteId}`, { method: "DELETE" });
+    const noteClientId = notes.find(n => n.id === noteId)?.client_id ?? identityClientId;
+    const res = await fetch(`/api/clients/${noteClientId}/notes/${noteId}`, { method: "DELETE" });
     const d = await res.json();
     if (!res.ok) {
       alert(d.error ?? "Failed to remove note");
@@ -581,7 +627,7 @@ export default function ClientFile({
     const body = noteBody.trim();
     if (!body) return;
     setSavingNote(true);
-    const res = await fetch(`/api/clients/${clientId}/notes`, {
+    const res = await fetch(`/api/clients/${identityClientId}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -661,7 +707,12 @@ export default function ClientFile({
     await commitProfileSave(body);
   }
 
-  const name = client?.name ?? fallbackName;
+  const offerName = client?.name ?? fallbackName;
+  const accountName =
+    accountDisplayName ||
+    client?.primary_contact_name ||
+    client?.primary_contact ||
+    offerName;
   const lifecycle = client?.lifecycle_status ?? "—";
   const missingCount = countMissingFields(client);
   const onboardingCall = calls.find(c => c.call_type === "onboarding") ?? null;
@@ -672,7 +723,7 @@ export default function ClientFile({
     {showKickoff && (
       <KickOffCallWizard
         clientId={clientId}
-        fallbackName={name}
+        fallbackName={offerName}
         onClose={() => setShowKickoff(false)}
         onCompleted={() => {
           load();
@@ -683,7 +734,7 @@ export default function ClientFile({
     {showLaunch && (
       <LaunchChecklistWizard
         clientId={clientId}
-        fallbackName={name}
+        fallbackName={offerName}
         onClose={() => setShowLaunch(false)}
         onCompleted={() => {
           load();
@@ -694,7 +745,7 @@ export default function ClientFile({
     {showOffboard && (
       <ChurnOffboardingWizard
         clientId={clientId}
-        fallbackName={name}
+        fallbackName={offerName}
         onClose={() => setShowOffboard(false)}
         onCompleted={() => {
           load();
@@ -704,7 +755,7 @@ export default function ClientFile({
     )}
     <StatusChangeModal
       open={!!statusChange}
-      clientName={name}
+      clientName={offerName}
       targetStatus={statusChange?.targetStatus ?? "paused"}
       saving={savingProfile}
       onConfirm={confirmLifecycleChange}
@@ -719,7 +770,7 @@ export default function ClientFile({
         <div className="sticky top-0 z-10 px-6 py-4 flex items-start justify-between gap-4" style={{ background: "#0a1628", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>{name}</h2>
+              <h2 className="text-lg font-semibold" style={{ color: "#e2e8f0" }}>{accountName}</h2>
               {client?.reporting_type && <ReportingTypeBadge value={client.reporting_type} size="md" />}
               {client?.service_program && <ServiceProgramBadge value={client.service_program} size="md" />}
               {client && !editing ? (
@@ -758,8 +809,16 @@ export default function ClientFile({
                 </span>
               )}
             </div>
-            <p className="text-xs mt-1" style={{ color: "#475569" }}>
-              {editing ? "Editing profile & billing setup" : "Client file — profile, billing, lifecycle, calls & notes"}
+            <p className="text-xs mt-1" style={{ color: "#64748b" }}>
+              {editing
+                ? "Editing profile & billing setup"
+                : (
+                  <>
+                    <span style={{ color: "#94a3b8" }}>Offer:</span>{" "}
+                    <span style={{ color: "#cbd5e1" }}>{offerName}</span>
+                    <span style={{ color: "#475569" }}> · lifecycle & billing are per subaccount</span>
+                  </>
+                )}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -832,66 +891,17 @@ export default function ClientFile({
           </div>
         ) : (
           <div className="px-6 py-5 space-y-7">
-            <ClientAccountOffersPanel
-              clientId={clientId}
-              canViewRevenue={canViewRevenue}
-              defaultShowAdd={openAddOffer}
-              onSwitchClient={(id, siblingName) => {
-                if (onSwitchClient) onSwitchClient(id, siblingName);
-              }}
-              onOfferAdded={(id, siblingName) => {
-                if (onOfferCreated) onOfferCreated(id, siblingName);
-                else {
-                  onSwitchClient?.(id, siblingName);
-                  setShowKickoff(true);
-                }
-                onUpdated?.();
-              }}
-            />
-
-            {(kickoffPending || isKickoffLifecycle(client?.lifecycle_status)) && (
-              <div
-                className="rounded-lg px-4 py-3 flex items-start justify-between gap-4 flex-wrap"
-                style={{
-                  background: kickoffPending ? "rgba(245,158,11,0.08)" : "rgba(34,197,94,0.08)",
-                  border: kickoffPending ? "1px solid rgba(245,158,11,0.25)" : "1px solid rgba(34,197,94,0.25)",
-                }}
-              >
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: kickoffPending ? "#f59e0b" : "#22c55e" }}>
-                    {kickoffPending ? "Kick-off call incomplete" : "Kick-off call wizard"}
-                  </p>
-                  <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
-                    {kickoffPending
-                      ? "Run the kick-off wizard to confirm client details and save the GHL location ID + recording."
-                      : "Open the kick-off wizard to review or update onboarding details with the client."}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowKickoff(true)}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
-                  style={{
-                    color: kickoffPending ? "#f59e0b" : "#22c55e",
-                    background: kickoffPending ? "rgba(245,158,11,0.12)" : "rgba(34,197,94,0.12)",
-                    border: kickoffPending ? "1px solid rgba(245,158,11,0.3)" : "1px solid rgba(34,197,94,0.3)",
-                  }}
-                >
-                  Open kick-off
-                </button>
-              </div>
-            )}
-
             <div className="flex items-center gap-1 border-b border-white/[0.08]">
-              {TABS.map(t => (
+              <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-2" style={{ color: "#475569" }}>Client</span>
+              {ACCOUNT_TABS.map(t => (
                 <button
                   key={t.key}
                   type="button"
-                  onClick={() => setActiveTab(t.key)}
+                  onClick={() => setAccountTab(t.key)}
                   className="px-3 py-2 text-sm font-semibold -mb-px transition-colors"
                   style={{
-                    color: activeTab === t.key ? "#e2e8f0" : "#64748b",
-                    borderBottom: `2px solid ${activeTab === t.key ? "#38bdf8" : "transparent"}`,
+                    color: accountTab === t.key ? "#e2e8f0" : "#64748b",
+                    borderBottom: `2px solid ${accountTab === t.key ? "#38bdf8" : "transparent"}`,
                   }}
                 >
                   {t.label}
@@ -899,9 +909,8 @@ export default function ClientFile({
               ))}
             </div>
 
-            {activeTab === "overview" && (
+            {accountTab === "client" && (
             <div className="space-y-7">
-
             <Section title="Client profile">
               <p className="text-xs mb-3" style={{ color: "#64748b" }}>
                 Shared across all offers for this loan officer. Edits here update every linked offer row.
@@ -925,71 +934,17 @@ export default function ClientFile({
                 <Detail label="Timezone" value={timezoneLabel(client?.timezone)} missing={!client?.timezone} />
               </div>
             </Section>
+            </div>
+            )}
 
-            <Section title="This offer">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
-                <Detail label="GHL sub-account name" value={offerRow?.name ?? client?.name} />
-                <Detail
-                  label="GHL location ID"
-                  value={client?.ghl_location_id ? (
-                    <span className="font-mono text-sm">{client.ghl_location_id}</span>
-                  ) : null}
-                  missing={!client?.ghl_location_id}
-                />
-                <Detail
-                  label="Accepts live transfers"
-                  value={client?.live_transfer_approved === true ? "Yes" : client?.live_transfer_approved === false ? "No" : null}
-                  missing={client?.live_transfer_approved == null}
-                />
-                <Detail label="Live transfer phone" value={client?.phone_live_transfer} missing={!client?.phone_live_transfer} />
-                <Detail label="Offer summary" value={client?.offer_summary} wide missing={!client?.offer_summary} />
-                <Detail
-                  label="Client vertical"
-                  value={client?.reporting_type ? (
-                    <span className="inline-flex items-center gap-2">
-                      <ReportingTypeBadge value={client.reporting_type} size="md" />
-                      <span>{getReportingTypeLabel(client.reporting_type)}</span>
-                    </span>
-                  ) : null}
-                  missing={!client?.reporting_type}
-                />
-                <Detail
-                  label="Service program"
-                  value={client?.service_program ? (
-                    <span className="inline-flex items-center gap-2">
-                      <ServiceProgramBadge value={client.service_program} size="md" />
-                      <span>{getServiceProgramLabel(client.service_program)}</span>
-                    </span>
-                  ) : "—"}
-                />
-                <Detail
-                  label="Offer"
-                  value={client?.offer ? (
-                    <span className="inline-flex items-center gap-2">
-                      <ReportingTypeBadge value={client.offer} size="md" />
-                      <span>{getReportingTypeLabel(client.offer)}</span>
-                    </span>
-                  ) : null}
-                />
-                <Detail
-                  label="ClickUp task"
-                  value={client?.clickup_task_id ? (
-                    <a
-                      href={`https://app.clickup.com/t/${client.clickup_task_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sky-400 hover:underline"
-                    >
-                      {client.clickup_task_id} ↗
-                    </a>
-                  ) : null}
-                />
-              </div>
-            </Section>
-
+            {accountTab === "contacts" && (
+            <div className="space-y-7">
             <Section title={`Contacts (${contacts.length + 1})`}>
+              <p className="text-xs mb-3" style={{ color: "#64748b" }}>
+                Team members and the primary LO — shared across all offers for this client.
+              </p>
               <ClientContactsSection
-                clientId={clientId}
+                clientId={identityClientId}
                 primary={{
                   primary_contact_name: client?.primary_contact_name ?? null,
                   primary_contact: client?.primary_contact ?? null,
@@ -1000,136 +955,22 @@ export default function ClientFile({
                   states_licensed: client?.states_licensed ?? null,
                 }}
                 contacts={contacts}
-                onReload={() => { load(); }}
+                onReload={() => { void load(); }}
                 onEditProfile={() => setEditing(true)}
               />
             </Section>
-
-            <Section title="Work log">
-              <ClientInterventionHistory clientId={clientId} compact />
-            </Section>
-
-            <Section title="Account work (week plans)">
-              <AccountWeekPlansClientHistory clientId={clientId} compact />
-            </Section>
-
-            <Section title="Account timeline">
-              {activities.length === 0 ? (
-                <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>
-                  No account activity yet — lifecycle changes, calls, notes, interventions, and billings appear here.
-                </p>
-              ) : (
-                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                  {activities.map(a => {
-                    const subtypeStyle =
-                      a.activity_type === "action" && a.subtype
-                        ? ACTION_SUBTYPE_STYLE[a.subtype]
-                        : null;
-                    const style = subtypeStyle ?? ACTIVITY_STYLE[a.activity_type] ?? { color: "#94a3b8", bg: "rgba(148,163,184,0.1)" };
-                    const label = subtypeStyle?.label ?? a.activity_type;
-                    return (
-                      <div
-                        key={`${a.source_table}-${a.source_id}-${a.occurred_at}`}
-                        className="rounded-lg px-3 py-2.5 flex gap-3 items-start"
-                        style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.04)" }}
-                      >
-                        <span
-                          className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
-                          style={{ color: style.color, background: style.bg }}
-                        >
-                          {label}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs" style={{ color: "#64748b" }}>{formatDateTime(a.occurred_at)}</p>
-                          <p className="text-sm mt-0.5 break-words" style={{ color: "#cbd5e1" }}>{a.summary ?? "—"}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Section>
-
-            <Section title="Billing setup">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
-                <Detail label="Billing type" value={billingTypeLabel(client?.billing_type)} missing={!client?.billing_type} />
-                {canViewRevenue && <Detail label="Monthly $ (base)" value={money(client?.mrr)} />}
-                <Detail label="Billing day" value={client?.billing_day ? `Day ${client.billing_day}` : "launch day"} />
-                <Detail label="Launch date" value={client?.launch_date} missing={!client?.launch_date} />
-                <Detail label="Date signed" value={client?.date_signed} missing={!client?.date_signed} />
-                <Detail label="Contract term" value={client?.contract_term_months ? `${client.contract_term_months} mo` : null} missing={client?.contract_term_months == null} />
-                <Detail label="Contract end" value={client?.contract_end_date} />
-                {canViewRevenue && <Detail label="Daily ad spend" value={money(client?.daily_adspend)} />}
-                <Detail label="Churned" value={client?.churned_at ? toDateInputValue(client.churned_at) || client.churned_at : null} />
-              </div>
-              {client?.performance_terms && (
-                <div className="mt-4">
-                  <Detail label="Performance terms" value={client.performance_terms} wide />
-                </div>
-              )}
-            </Section>
             </div>
             )}
 
-            {activeTab === "records" && (
+            {accountTab === "calls" && (
             <div className="space-y-7">
-            <Section title="Loan log form">
-              <LoanLogLinkSection clientId={clientId} />
-            </Section>
-            <Section title={`Onboarding forms (${formSubmissions.length})`}>
-              <ClientFormsSection submissions={formSubmissions} />
-            </Section>
-
-            <Section title={`Success interventions`}>
-              <ClientInterventionHistory clientId={clientId} />
-            </Section>
-
-            <Section title="Account work (week plans)">
-              <AccountWeekPlansClientHistory clientId={clientId} />
-            </Section>
-
-            <Section title={`Lifecycle history (${statusHistory.length})`}>
-              {statusHistory.length === 0 ? (
-                <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>No lifecycle transitions recorded yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {statusHistory.map(h => (
-                    <div
-                      key={h.id}
-                      className="rounded-lg px-4 py-3"
-                      style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.06)" }}
-                    >
-                      <div className="flex items-start justify-between gap-3 flex-wrap">
-                        <p className="text-sm font-medium" style={{ color: "#e2e8f0" }}>
-                          {lifecycleStatusLabel(h.previous_status)} → {lifecycleStatusLabel(h.new_status)}
-                        </p>
-                        <span className="text-xs whitespace-nowrap" style={{ color: "#475569" }}>{formatDateTime(h.changed_at)}</span>
-                      </div>
-                      {h.reason_code && (
-                        <p className="text-xs mt-1.5 font-semibold" style={{ color: "#f59e0b" }}>
-                          Reason: {reasonLabel(h.reason_code)}
-                        </p>
-                      )}
-                      {h.note && (
-                        <p className="text-sm mt-1.5" style={{ color: "#94a3b8" }}>{h.note}</p>
-                      )}
-                      {canViewRevenue && h.mrr_at_change != null && (
-                        <p className="text-xs mt-1" style={{ color: "#475569" }}>MRR at change: {money(h.mrr_at_change)}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Section>
-            </div>
-            )}
-
-            {activeTab === "activity" && (
-            <div className="space-y-7">
+            <p className="text-xs" style={{ color: "#64748b" }}>
+              Relationship history with this loan officer — aggregated across all offers. New calls and notes are saved to the primary client record.
+            </p>
             <section>
               <div className="flex items-center justify-between gap-3 mb-3">
                 <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#cbd5e1" }}>
-                  Account calls ({calls.length})
+                  Client calls ({calls.length})
                 </h3>
                 <button
                   type="button"
@@ -1194,7 +1035,7 @@ export default function ClientFile({
                       onStartEdit={() => setEditingCallId(call.id)}
                       onCancelEdit={() => setEditingCallId(null)}
                       onSave={form => saveCallEdit(call, form)}
-                      onDelete={() => deleteCall(call.id)}
+                      onDelete={() => deleteCall(call)}
                     />
                   ))}
                 </div>
@@ -1333,7 +1174,241 @@ export default function ClientFile({
             </div>
             )}
 
-            {activeTab === "cs_calls" && (
+            <ClientAccountOffersPanel
+              clientId={clientId}
+              canViewRevenue={canViewRevenue}
+              defaultShowAdd={openAddOffer}
+              onSwitchClient={(id, siblingName) => {
+                if (onSwitchClient) onSwitchClient(id, siblingName);
+              }}
+              onOfferAdded={(id, siblingName) => {
+                if (onOfferCreated) onOfferCreated(id, siblingName);
+                else {
+                  onSwitchClient?.(id, siblingName);
+                  setShowKickoff(true);
+                }
+                onUpdated?.();
+              }}
+            />
+
+            <div className="flex items-center gap-1 border-b border-white/[0.08] pt-2">
+              <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-2" style={{ color: "#475569" }}>Offer</span>
+              {OFFER_TABS.map(t => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setOfferTab(t.key)}
+                  className="px-3 py-2 text-sm font-semibold -mb-px transition-colors"
+                  style={{
+                    color: offerTab === t.key ? "#e2e8f0" : "#64748b",
+                    borderBottom: `2px solid ${offerTab === t.key ? "#f59e0b" : "transparent"}`,
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {offerTab === "operations" && (
+            <div className="space-y-7">
+            {(kickoffPending || isKickoffLifecycle(client?.lifecycle_status)) && (
+              <div
+                className="rounded-lg px-4 py-3 flex items-start justify-between gap-4 flex-wrap"
+                style={{
+                  background: kickoffPending ? "rgba(245,158,11,0.08)" : "rgba(34,197,94,0.08)",
+                  border: kickoffPending ? "1px solid rgba(245,158,11,0.25)" : "1px solid rgba(34,197,94,0.25)",
+                }}
+              >
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: kickoffPending ? "#f59e0b" : "#22c55e" }}>
+                    {kickoffPending ? "Kick-off call incomplete" : "Kick-off call wizard"}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
+                    {kickoffPending
+                      ? "Run the kick-off wizard to confirm client details and save the GHL location ID + recording."
+                      : "Open the kick-off wizard to review or update onboarding details with the client."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowKickoff(true)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                  style={{
+                    color: kickoffPending ? "#f59e0b" : "#22c55e",
+                    background: kickoffPending ? "rgba(245,158,11,0.12)" : "rgba(34,197,94,0.12)",
+                    border: kickoffPending ? "1px solid rgba(245,158,11,0.3)" : "1px solid rgba(34,197,94,0.3)",
+                  }}
+                >
+                  Open kick-off
+                </button>
+              </div>
+            )}
+
+            <Section title="This offer / subaccount">
+              <p className="text-xs mb-3" style={{ color: "#64748b" }}>
+                GHL subaccount settings for this offer. Lifecycle and ads controls are in the header above.
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
+                <Detail label="GHL sub-account name" value={offerRow?.name ?? client?.name} />
+                <Detail
+                  label="GHL location ID"
+                  value={client?.ghl_location_id ? (
+                    <span className="font-mono text-sm">{client.ghl_location_id}</span>
+                  ) : null}
+                  missing={!client?.ghl_location_id}
+                />
+                <Detail
+                  label="Accepts live transfers"
+                  value={client?.live_transfer_approved === true ? "Yes" : client?.live_transfer_approved === false ? "No" : null}
+                  missing={client?.live_transfer_approved == null}
+                />
+                <Detail label="Live transfer phone" value={client?.phone_live_transfer} missing={!client?.phone_live_transfer} />
+                <Detail label="Offer summary" value={client?.offer_summary} wide missing={!client?.offer_summary} />
+                <Detail
+                  label="Client vertical"
+                  value={client?.reporting_type ? (
+                    <span className="inline-flex items-center gap-2">
+                      <ReportingTypeBadge value={client.reporting_type} size="md" />
+                      <span>{getReportingTypeLabel(client.reporting_type)}</span>
+                    </span>
+                  ) : null}
+                  missing={!client?.reporting_type}
+                />
+                <Detail
+                  label="Service program"
+                  value={client?.service_program ? (
+                    <span className="inline-flex items-center gap-2">
+                      <ServiceProgramBadge value={client.service_program} size="md" />
+                      <span>{getServiceProgramLabel(client.service_program)}</span>
+                    </span>
+                  ) : "—"}
+                />
+                <Detail
+                  label="Offer"
+                  value={client?.offer ? (
+                    <span className="inline-flex items-center gap-2">
+                      <ReportingTypeBadge value={client.offer} size="md" />
+                      <span>{getReportingTypeLabel(client.offer)}</span>
+                    </span>
+                  ) : null}
+                />
+                <Detail
+                  label="ClickUp task"
+                  value={client?.clickup_task_id ? (
+                    <a
+                      href={`https://app.clickup.com/t/${client.clickup_task_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sky-400 hover:underline"
+                    >
+                      {client.clickup_task_id} ↗
+                    </a>
+                  ) : null}
+                />
+              </div>
+            </Section>
+
+            <Section title="Work log">
+              <ClientInterventionHistory clientId={clientId} compact />
+            </Section>
+
+            <Section title="Account work (week plans)">
+              <AccountWeekPlansClientHistory clientId={clientId} compact />
+            </Section>
+
+            <Section title="Subaccount timeline">
+              {activities.length === 0 ? (
+                <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>
+                  No activity yet for this subaccount — lifecycle changes, interventions, and billings appear here.
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                  {activities.map(a => {
+                    const subtypeStyle =
+                      a.activity_type === "action" && a.subtype
+                        ? ACTION_SUBTYPE_STYLE[a.subtype]
+                        : null;
+                    const style = subtypeStyle ?? ACTIVITY_STYLE[a.activity_type] ?? { color: "#94a3b8", bg: "rgba(148,163,184,0.1)" };
+                    const label = subtypeStyle?.label ?? a.activity_type;
+                    return (
+                      <div
+                        key={`${a.source_table}-${a.source_id}-${a.occurred_at}`}
+                        className="rounded-lg px-3 py-2.5 flex gap-3 items-start"
+                        style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.04)" }}
+                      >
+                        <span
+                          className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
+                          style={{ color: style.color, background: style.bg }}
+                        >
+                          {label}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs" style={{ color: "#64748b" }}>{formatDateTime(a.occurred_at)}</p>
+                          <p className="text-sm mt-0.5 break-words" style={{ color: "#cbd5e1" }}>{a.summary ?? "—"}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Section>
+            </div>
+            )}
+
+            {offerTab === "records" && (
+            <div className="space-y-7">
+            <Section title="Loan log form">
+              <LoanLogLinkSection clientId={clientId} />
+            </Section>
+            <Section title={`Onboarding forms (${formSubmissions.length})`}>
+              <ClientFormsSection submissions={formSubmissions} />
+            </Section>
+
+            <Section title={`Success interventions`}>
+              <ClientInterventionHistory clientId={clientId} />
+            </Section>
+
+            <Section title="Account work (week plans)">
+              <AccountWeekPlansClientHistory clientId={clientId} />
+            </Section>
+
+            <Section title={`Lifecycle history (${statusHistory.length})`}>
+              {statusHistory.length === 0 ? (
+                <p className="text-sm py-4 text-center rounded-lg" style={{ color: "#334155", background: "#080f1e" }}>No lifecycle transitions recorded yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {statusHistory.map(h => (
+                    <div
+                      key={h.id}
+                      className="rounded-lg px-4 py-3"
+                      style={{ background: "#080f1e", border: "1px solid rgba(255,255,255,0.06)" }}
+                    >
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <p className="text-sm font-medium" style={{ color: "#e2e8f0" }}>
+                          {lifecycleStatusLabel(h.previous_status)} → {lifecycleStatusLabel(h.new_status)}
+                        </p>
+                        <span className="text-xs whitespace-nowrap" style={{ color: "#475569" }}>{formatDateTime(h.changed_at)}</span>
+                      </div>
+                      {h.reason_code && (
+                        <p className="text-xs mt-1.5 font-semibold" style={{ color: "#f59e0b" }}>
+                          Reason: {reasonLabel(h.reason_code)}
+                        </p>
+                      )}
+                      {h.note && (
+                        <p className="text-sm mt-1.5" style={{ color: "#94a3b8" }}>{h.note}</p>
+                      )}
+                      {canViewRevenue && h.mrr_at_change != null && (
+                        <p className="text-xs mt-1" style={{ color: "#475569" }}>MRR at change: {money(h.mrr_at_change)}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Section>
+            </div>
+            )}
+
+            {offerTab === "cs" && (
             <div className="space-y-7">
               <Section title="CS call history">
                 <p className="text-xs mb-3" style={{ color: "#64748b" }}>
@@ -1410,14 +1485,9 @@ export default function ClientFile({
                   </div>
                 )}
               </Section>
-            </div>
-            )}
-
-            {activeTab === "touchpoints" && (
-            <div className="space-y-7">
               <Section title="Open follow-ups">
                 <p className="text-xs mb-3" style={{ color: "#64748b" }}>
-                  Slack touchpoints due for this account. Clear them from Client Success → Follow-ups.
+                  Slack touchpoints due for this subaccount. Clear them from Client Success → Follow-ups.
                 </p>
                 {touchpointsOpen.length === 0 ? (
                   <p className="text-sm py-6 text-center" style={{ color: "#334155" }}>
@@ -1483,8 +1553,29 @@ export default function ClientFile({
             </div>
             )}
 
-            {activeTab === "billing" && (
+            {offerTab === "billing" && (
             <div className="space-y-7">
+            <Section title="Billing setup">
+              <p className="text-xs mb-3" style={{ color: "#64748b" }}>
+                Contract and billing terms for this offer / subaccount only.
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
+                <Detail label="Billing type" value={billingTypeLabel(client?.billing_type)} missing={!client?.billing_type} />
+                {canViewRevenue && <Detail label="Monthly $ (base)" value={money(client?.mrr)} />}
+                <Detail label="Billing day" value={client?.billing_day ? `Day ${client.billing_day}` : "launch day"} />
+                <Detail label="Launch date" value={client?.launch_date} missing={!client?.launch_date} />
+                <Detail label="Date signed" value={client?.date_signed} missing={!client?.date_signed} />
+                <Detail label="Contract term" value={client?.contract_term_months ? `${client.contract_term_months} mo` : null} missing={client?.contract_term_months == null} />
+                <Detail label="Contract end" value={client?.contract_end_date} />
+                {canViewRevenue && <Detail label="Daily ad spend" value={money(client?.daily_adspend)} />}
+                <Detail label="Churned" value={client?.churned_at ? toDateInputValue(client.churned_at) || client.churned_at : null} />
+              </div>
+              {client?.performance_terms && (
+                <div className="mt-4">
+                  <Detail label="Performance terms" value={client.performance_terms} wide />
+                </div>
+              )}
+            </Section>
             <Section title={`Billing history (${summary.count})`}>
               {canViewRevenue && (
                 <div className="flex gap-3 flex-wrap mb-4">

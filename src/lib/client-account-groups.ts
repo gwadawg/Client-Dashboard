@@ -2,6 +2,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { deriveServiceProgram, normalizeSalesPackage } from '@/lib/offer-catalog';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import { normalizeReportingType, type ReportingType } from '@/lib/reporting-types';
+import {
+  resolveAccountIdentityClientId,
+  syncIdentityLinksForAccountGroup,
+} from '@/lib/account-identity-sync';
 
 export const ENGAGEMENT_KINDS = ['initial', 'upsell', 'cross_sell'] as const;
 export type EngagementKind = (typeof ENGAGEMENT_KINDS)[number];
@@ -218,6 +222,7 @@ export async function createOfferForAccount(
     ? normalizeReportingType(origin.reporting_type)
     : null;
   const engagementKind = deriveEngagementKind(originType, reportingType, input.engagement_kind);
+  const identityRootId = await resolveAccountIdentityClientId(service, origin.id);
 
   const salesPackage = input.sales_package ? normalizeSalesPackage(input.sales_package) : null;
   const insert: Record<string, unknown> = {
@@ -227,6 +232,7 @@ export async function createOfferForAccount(
     account_group_id: accountGroupId,
     engagement_kind: engagementKind,
     origin_client_id: origin.id,
+    identity_client_id: identityRootId,
     service_program: deriveServiceProgram(reportingType, salesPackage ?? 'core_offer'),
   };
   if (salesPackage) insert.sales_package = salesPackage;
@@ -260,6 +266,8 @@ export async function createOfferForAccount(
     logged_by: input.logged_by ?? null,
     acquisition_close_id: input.acquisition_close_id ?? null,
   });
+
+  await syncIdentityLinksForAccountGroup(service, accountGroupId);
 
   return { client, engagement_kind: engagementKind };
 }
