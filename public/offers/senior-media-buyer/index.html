@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Senior Media Buyer + Creative Strategist · Waiz Media</title>
+<meta name="description" content="Own Meta performance across our full client book, direct the creative, and grow with the agency. R$5.000–R$7.000/month once ramped.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #061A4A;
+    --royal: #0E2F73;
+    --accent: #4FA3FF;
+    --accent-deep: #2B7DE0;
+    --green: #7CFF7A;
+    --gold: #F5C842;
+    --white: #FFFFFF;
+    --light: #F4F7FC;
+    --dark: #0B1220;
+    --mid: #5B6475;
+    --soft: #8B93A7;
+    --divider: #D1D9F0;
+    --line: rgba(255, 255, 255, 0.12);
+    --shadow: 0 22px 56px rgba(6, 26, 74, 0.14);
+    --radius: 8px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--light);
+    color: var(--dark);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  section.block { padding: 84px 0; }
+
+  .label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 12px;
+  }
+
+  .block h2 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(34px, 4.5vw, 48px);
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1.05;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    max-width: 22ch;
+  }
+
+  .block .lead {
+    font-size: 17px;
+    color: var(--mid);
+    max-width: 44em;
+    line-height: 1.65;
+    margin-bottom: 44px;
+  }
+  .block .lead strong { color: var(--navy); font-weight: 600; }
+
+  /* ── Banner ── */
+  .banner {
+    background: var(--royal);
+    color: rgba(255, 255, 255, 0.92);
+    text-align: center;
+    padding: 11px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .banner strong { color: var(--white); font-weight: 600; }
+
+  /* ── Hero ── */
+  .hero {
+    position: relative;
+    background:
+      radial-gradient(ellipse 65% 70% at 95% 5%, rgba(79, 163, 255, 0.28), transparent 55%),
+      radial-gradient(ellipse 45% 55% at 5% 95%, rgba(124, 255, 122, 0.1), transparent 50%),
+      linear-gradient(165deg, #041436 0%, var(--navy) 55%, #0a2458 100%);
+    color: var(--white);
+    padding: 68px 28px 84px;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, black, transparent);
+    pointer-events: none;
+  }
+
+  .hero-inner {
+    position: relative;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 20px;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 28px;
+    height: 2px;
+    background: var(--accent);
+  }
+
+  .hero h1 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(44px, 6.5vw, 76px);
+    font-weight: 900;
+    line-height: 0.94;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    margin-bottom: 22px;
+    max-width: 16ch;
+  }
+  .hero h1 em {
+    font-style: normal;
+    color: var(--accent);
+    display: block;
+  }
+
+  .hero-sub {
+    font-size: clamp(16px, 1.8vw, 19px);
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.78);
+    max-width: 40em;
+    line-height: 1.65;
+    margin-bottom: 30px;
+  }
+  .hero-sub strong { color: var(--white); font-weight: 500; }
+
+  .hero-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .pill {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 7px 13px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line);
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  /* ── Comp strip ── */
+  .comp {
+    background: var(--white);
+    border-bottom: 1px solid var(--divider);
+  }
+
+  .comp-grid {
+    display: grid;
+    grid-template-columns: 0.9fr 1.1fr;
+    gap: 48px;
+    align-items: center;
+  }
+
+  .comp-figure {
+    background: var(--navy);
+    border-radius: var(--radius);
+    padding: 36px 32px;
+    color: var(--white);
+    box-shadow: var(--shadow);
+  }
+  .comp-figure .comp-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  .comp-figure .amount {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(38px, 5vw, 54px);
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: 0.01em;
+  }
+  .comp-figure .per {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-top: 8px;
+  }
+  .comp-figure .note {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.8);
+  }
+  .comp-figure .note strong { color: var(--gold); font-weight: 600; }
+
+  .comp-copy h2 { margin-bottom: 16px; }
+  .comp-copy p {
+    font-size: 16px;
+    color: var(--mid);
+    line-height: 1.7;
+    margin-bottom: 14px;
+  }
+  .comp-copy p strong { color: var(--navy); font-weight: 600; }
+  .comp-copy p:last-child { margin-bottom: 0; }
+
+  /* ── Own / Don't own ── */
+  .own { background: var(--light); }
+
+  .own-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+
+  .own-card {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 26px 24px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .own-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+  }
+  .own-card .num {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    color: var(--accent-deep);
+    margin-bottom: 10px;
+  }
+  .own-card h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 25px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    line-height: 1.1;
+    margin-bottom: 10px;
+  }
+  .own-card p {
+    font-size: 15px;
+    color: var(--mid);
+    line-height: 1.6;
+  }
+
+  /* ── Not yours ── */
+  .notyours {
+    background: var(--white);
+    border-top: 1px solid var(--divider);
+    border-bottom: 1px solid var(--divider);
+  }
+
+  .notyours-list {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+  }
+  .notyours-list li {
+    background: #f8f9fc;
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 20px 22px 20px 46px;
+    position: relative;
+    font-size: 15px;
+    color: var(--mid);
+    line-height: 1.55;
+  }
+  .notyours-list li::before {
+    content: "×";
+    position: absolute;
+    left: 20px;
+    top: 18px;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--soft);
+  }
+  .notyours-list li strong {
+    display: block;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--navy);
+    margin-bottom: 3px;
+  }
+
+  /* ── Measured vs raised ── */
+  .split { background: var(--light); }
+
+  .split-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .split-card {
+    border-radius: var(--radius);
+    padding: 34px 30px;
+    border: 1px solid var(--divider);
+    background: var(--white);
+  }
+  .split-card.growth {
+    background: var(--navy);
+    color: var(--white);
+    border-color: transparent;
+    box-shadow: var(--shadow);
+  }
+
+  .split-card .tag {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    color: var(--accent-deep);
+  }
+  .split-card.growth .tag { color: var(--gold); }
+
+  .split-card h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 30px;
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: 1.05;
+    margin-bottom: 14px;
+    color: var(--navy);
+  }
+  .split-card.growth h3 { color: var(--white); }
+
+  .split-card p {
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--mid);
+    margin-bottom: 16px;
+  }
+  .split-card.growth p { color: rgba(255, 255, 255, 0.78); }
+  .split-card p:last-child { margin-bottom: 0; }
+  .split-card p strong { color: var(--navy); font-weight: 600; }
+  .split-card.growth p strong { color: var(--white); font-weight: 600; }
+
+  /* ── Bar ── */
+  .bar { background: var(--white); }
+
+  .bar-grid {
+    display: grid;
+    grid-template-columns: 1.25fr 0.75fr;
+    gap: 48px;
+    align-items: start;
+  }
+
+  .bar-list {
+    list-style: none;
+    display: grid;
+    gap: 2px;
+  }
+  .bar-list li {
+    padding: 16px 0 16px 32px;
+    border-top: 1px solid var(--divider);
+    position: relative;
+    font-size: 16px;
+    color: var(--dark);
+    line-height: 1.6;
+  }
+  .bar-list li:last-child { border-bottom: 1px solid var(--divider); }
+  .bar-list li::before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    top: 16px;
+    color: var(--accent-deep);
+    font-weight: 600;
+  }
+
+  .bar-aside {
+    background: #f8f9fc;
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 28px 26px;
+  }
+  .bar-aside h4 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    line-height: 1.1;
+    margin-bottom: 8px;
+  }
+  .bar-aside p {
+    font-size: 14px;
+    color: var(--mid);
+    line-height: 1.6;
+    margin-bottom: 16px;
+  }
+  .bar-aside ul {
+    list-style: none;
+    display: grid;
+    gap: 9px;
+  }
+  .bar-aside li {
+    font-size: 14px;
+    color: var(--mid);
+    padding-left: 18px;
+    position: relative;
+    line-height: 1.5;
+  }
+  .bar-aside li::before {
+    content: "–";
+    position: absolute;
+    left: 0;
+    color: var(--soft);
+  }
+
+  /* ── Systems ── */
+  .systems {
+    background: var(--navy);
+    color: var(--white);
+    position: relative;
+    overflow: hidden;
+  }
+  .systems::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 50% 60% at 85% 15%, rgba(79, 163, 255, 0.22), transparent 60%);
+    pointer-events: none;
+  }
+  .systems .wrap { position: relative; }
+  .systems .label { color: var(--accent); }
+  .systems h2 { color: var(--white); }
+  .systems .lead { color: rgba(255, 255, 255, 0.72); }
+  .systems .lead strong { color: var(--white); }
+
+  .systems-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+  }
+  .system-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px 22px;
+  }
+  .system-card h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--gold);
+    line-height: 1.1;
+    margin-bottom: 9px;
+  }
+  .system-card p {
+    font-size: 14.5px;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.6;
+  }
+
+  /* ── Close ── */
+  .close { background: var(--light); }
+  .close-inner {
+    max-width: 42em;
+  }
+  .close h2 { margin-bottom: 18px; }
+  .close p {
+    font-size: 17px;
+    color: var(--mid);
+    line-height: 1.75;
+    margin-bottom: 16px;
+  }
+  .close p strong { color: var(--navy); font-weight: 600; }
+  .close p:last-child { margin-bottom: 0; }
+
+  footer {
+    background: var(--dark);
+    color: rgba(255, 255, 255, 0.5);
+    padding: 28px;
+    text-align: center;
+    font-size: 13px;
+  }
+  footer strong {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  @media (max-width: 900px) {
+    .comp-grid,
+    .split-grid,
+    .bar-grid { grid-template-columns: 1fr; gap: 32px; }
+    section.block { padding: 60px 0; }
+    .hero { padding: 52px 24px 64px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="banner">
+  Waiz Media · <strong>Now hiring</strong> · Remote
+</div>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="eyebrow">Role Overview</div>
+    <h1>Senior Media Buyer <em>+ Creative Strategist</em></h1>
+    <p class="hero-sub">
+      Own Meta performance across our entire client book — and own the thinking behind the creative that drives it.
+      You read the data, find what's working, and turn it into the next round of angles, concepts, and scripts.
+      <strong>This is an existing seat with proven systems behind it</strong>, not an experiment we're figuring out as we go.
+    </p>
+    <div class="hero-pills">
+      <span class="pill">Meta / Facebook + Instagram</span>
+      <span class="pill">Full client book</span>
+      <span class="pill">Creative strategy + scripting</span>
+      <span class="pill">Remote</span>
+      <span class="pill">English required</span>
+    </div>
+  </div>
+</header>
+
+<section class="block comp">
+  <div class="wrap">
+    <div class="comp-grid">
+      <div class="comp-figure">
+        <div class="comp-label">Compensation</div>
+        <div class="amount">R$5.000&ndash;7.000</div>
+        <div class="per">per month, once ramped</div>
+        <div class="note">
+          Base salary <strong>+ commission</strong> tied to account performance. As our client
+          book grows, so does the commission side — there's no fixed ceiling on this seat.
+        </div>
+      </div>
+      <div class="comp-copy">
+        <div class="label">Straight Answer First</div>
+        <h2>What you'll earn</h2>
+        <p>
+          We put the number up front because we'd rather you decide early whether this fits.
+          <strong>R$5.000&ndash;7.000 per month</strong> once you're ramped and running accounts independently.
+        </p>
+        <p>
+          The structure is base plus commission. Commission is tied to your accounts hitting their
+          cost-per-lead targets, so strong months pay more than quiet ones.
+        </p>
+        <p>
+          <strong>The range moves with the agency.</strong> More clients means more accounts under
+          your management and more commission. Strong creative work is the other lever — more on that below.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block own">
+  <div class="wrap">
+    <div class="label">The Job</div>
+    <h2>What you own</h2>
+    <p class="lead">
+      Seven areas, and they're genuinely yours. <strong>You're the person accountable for Meta
+      performance at this company</strong> — nobody is going to sit above you approving every budget change.
+    </p>
+
+    <div class="own-grid">
+      <article class="own-card">
+        <div class="num">01</div>
+        <h3>Meta buying, full book</h3>
+        <p>Every client account. Budgets, campaign structure, targeting, testing, scaling what works, killing what doesn't.</p>
+      </article>
+
+      <article class="own-card">
+        <div class="num">02</div>
+        <h3>CPL &amp; CPQL outcomes</h3>
+        <p>Each account has a written cost-per-lead target. Hitting those targets across the book is how the role is graded.</p>
+      </article>
+
+      <article class="own-card">
+        <div class="num">03</div>
+        <h3>Creative strategy</h3>
+        <p>Read performance data, identify what's actually working and why, then develop new angles and concepts — including writing the scripts.</p>
+      </article>
+
+      <article class="own-card">
+        <div class="num">04</div>
+        <h3>Basic statics</h3>
+        <p>Produce simple static ads using our documented process. AI image prompting is the skill here, not graphic design.</p>
+      </article>
+
+      <article class="own-card">
+        <div class="num">05</div>
+        <h3>Funnel test ideas</h3>
+        <p>Write new headlines and concepts to test in client funnels. You propose and write them; someone else implements.</p>
+      </article>
+
+      <article class="own-card">
+        <div class="num">06</div>
+        <h3>Client ad updates</h3>
+        <p>Proactively tell clients what's working, what changed, and what you're testing. Keeping them in the loop is part of the job.</p>
+      </article>
+
+      <article class="own-card">
+        <div class="num">07</div>
+        <h3>New account launches</h3>
+        <p>The ads side of onboarding a new client — campaign builds and launch. CRM and booking tech is handled by ops.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="block notyours">
+  <div class="wrap">
+    <div class="label">Just As Important</div>
+    <h2>What you don't own</h2>
+    <p class="lead">
+      Roles fail when the edges are vague. <strong>These are explicitly not your responsibility</strong>,
+      and we won't quietly slide them onto your plate six months in.
+    </p>
+
+    <ul class="notyours-list">
+      <li><strong>Video &amp; UGC production</strong> You can concept and script it. Someone else produces it.</li>
+      <li><strong>Funnel building</strong> You write the test ideas. Implementation happens elsewhere.</li>
+      <li><strong>Client relationships</strong> Retention calls and account relationships belong to Client Success.</li>
+      <li><strong>CRM, bots &amp; booking tech</strong> Owned by operations. Not your inbox.</li>
+      <li><strong>Non-Meta channels</strong> No Google, no TikTok, no LinkedIn. Meta only.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="block split">
+  <div class="wrap">
+    <div class="label">Incentives, Plainly</div>
+    <h2>How you're measured vs. how you grow</h2>
+    <p class="lead">
+      Two different things, and we keep them separate on purpose.
+    </p>
+
+    <div class="split-grid">
+      <article class="split-card">
+        <div class="tag">The Standard</div>
+        <h3>Measured on performance</h3>
+        <p>
+          <strong>CPL and CPQL against written targets.</strong> Every account you manage has a
+          number on file. Hitting those numbers consistently is what keeps the seat.
+        </p>
+        <p>
+          It's the clearest signal we have, it's not subjective, and you'll always know
+          where you stand without waiting for a review.
+        </p>
+      </article>
+
+      <article class="split-card growth">
+        <div class="tag">The Upside</div>
+        <h3>Raised on creative thinking</h3>
+        <p>
+          <strong>The quality of your ideas is how you earn more.</strong> Angles and concepts
+          you developed from real performance data, that got tested, and that moved the numbers.
+        </p>
+        <p>
+          Producing statics is table stakes — anyone can follow the process. Knowing
+          <strong>what to make and why</strong> is the rare part, and it's what we pay up for.
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="block bar">
+  <div class="wrap">
+    <div class="label">The Senior Bar</div>
+    <h2>What you should already be able to do</h2>
+    <p class="lead">
+      This is a senior seat, so we're expecting someone who can run without supervision from
+      early on. <strong>Concretely, that means:</strong>
+    </p>
+
+    <div class="bar-grid">
+      <ul class="bar-list">
+        <li>Run Meta ad accounts independently, without needing direction on daily decisions</li>
+        <li>Diagnose underperformance with evidence — is it the creative, the offer, the audience, or the funnel?</li>
+        <li>Research ads (ad libraries, competitors, our own winners) and turn patterns into concepts worth testing</li>
+        <li>Write ad scripts and concepts clear enough for someone else to produce</li>
+        <li>Prompt AI image tools well enough to ship clean static ads</li>
+        <li>Communicate with clients about their ads clearly, without overpromising</li>
+        <li>Spot a problem and arrive with a proposed solution, not just the problem</li>
+      </ul>
+
+      <aside class="bar-aside">
+        <h4>Not required on day one</h4>
+        <p>Don't rule yourself out over these — they're trainable, and we'll teach them.</p>
+        <ul>
+          <li>Deep graphic design or Canva craft</li>
+          <li>Video editing skills</li>
+          <li>Funnel platform administration</li>
+          <li>Reverse mortgage or DSCR product knowledge</li>
+        </ul>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="block systems">
+  <div class="wrap">
+    <div class="label">What You're Walking Into</div>
+    <h2>You're not starting from a blank page</h2>
+    <p class="lead">
+      The creative side of this role sounds heavy until you see what's already built.
+      <strong>Most of the raw material is waiting for you.</strong>
+    </p>
+
+    <div class="systems-grid">
+      <article class="system-card">
+        <h3>A proven statics process</h3>
+        <p>Documented, step by step. You're following a system that already produces ads that work — not inventing a design workflow.</p>
+      </article>
+
+      <article class="system-card">
+        <h3>An ad library with real data</h3>
+        <p>Every ad we've run, tagged and logged with performance attached. Your creative research starts with our own winners.</p>
+      </article>
+
+      <article class="system-card">
+        <h3>Documented playbooks</h3>
+        <p>Angle libraries, copy standards, and compliance guardrails per product. The context you'd normally spend months absorbing.</p>
+      </article>
+
+      <article class="system-card">
+        <h3>Clear reporting</h3>
+        <p>Account performance is already tracked and visible. You spend your time acting on numbers, not assembling them.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="block close">
+  <div class="wrap">
+    <div class="close-inner">
+      <div class="label">In Short</div>
+      <h2>Who this is really for</h2>
+      <p>
+        This is more than a media buyer seat. We can find people who log into Ads Manager and
+        adjust budgets. <strong>What's harder to find is someone who looks at the data and has an
+        opinion about what to do next</strong> — who notices a pattern across accounts, connects it
+        to something they saw in the market, and comes back with an idea worth testing.
+      </p>
+      <p>
+        If you're the kind of person who finds problems and shows up with solutions attached,
+        who gets genuinely interested in why one ad outperformed another, and who wants
+        the room to shape how a growing agency runs its creative — this seat is built for you.
+      </p>
+      <p>
+        The performance targets keep you honest. The creative work is where you grow.
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <strong>Waiz Media</strong><br>
+  Senior Media Buyer + Creative Strategist
+</footer>
+
+</body>
+</html>
