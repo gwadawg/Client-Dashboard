@@ -26,6 +26,14 @@ const nextConfig: NextConfig = {
         source: "/offers/team-westside/post-pay",
         destination: "/offers/team-westside/post-pay.html",
       },
+      {
+        source: "/offers/senior-media-buyer",
+        destination: "/offers/senior-media-buyer/index.html",
+      },
+      {
+        source: "/offers/senior-media-buyer/",
+        destination: "/offers/senior-media-buyer/index.html",
+      },
     ];
   },
 };
