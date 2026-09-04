@@ -40,7 +40,7 @@ import {
   rosterAccountDisplayName,
   type RosterAccountGroup,
 } from "@/lib/roster-account-groups";
-import { compactLicensedStates } from "@/lib/roster-media-view";
+import { compactLicensedStates, countSecondaryRosterFilters } from "@/lib/roster-media-view";
 import { timezoneLabel } from "@/lib/us-timezones";
 
 type DataSummary = {
@@ -528,6 +528,10 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     const saved = window.localStorage.getItem("rosterView");
     return saved === "cs" || saved === "media" ? saved : "full";
   });
+  const [filtersOpen, setFiltersOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("rosterFiltersOpen") === "1";
+  });
   const [collapsedAccounts, setCollapsedAccounts] = useState<Set<string>>(() => new Set());
   const [sectionTab, setSectionTab] = useState<"clients" | "forms">(() => {
     if (typeof window === "undefined") return "clients";
@@ -596,6 +600,17 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     setRosterView(v);
     window.localStorage.setItem("rosterView", v);
   }
+
+  function changeFiltersOpen(open: boolean) {
+    setFiltersOpen(open);
+    window.localStorage.setItem("rosterFiltersOpen", open ? "1" : "0");
+  }
+
+  const secondaryFilterCount = countSecondaryRosterFilters({
+    offer: offerFilter,
+    package: packageFilter,
+    ads: adsFilter,
+  });
 
   const columns = resolveColumns(rosterView, showRevenue);
   const colSpan = columns.length + 3;
@@ -978,138 +993,216 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 </button>
               )}
             </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {([{ key: "all", label: "All" }, ...ROSTER_SECTIONS] as const).map(opt => {
-                const isAll = opt.key === "all";
-                const count = isAll ? accountTotal : counts[opt.key as SectionKey].length;
-                const active = statusFilter === opt.key;
-                const accent = isAll ? "#94a3b8" : SECTION_ACCENT[opt.key as SectionKey];
-                return (
-                  <button
-                    key={opt.key}
-                    onClick={() => setStatusFilter(opt.key as SectionKey | "all")}
-                    className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5"
-                    style={{
-                      color: active ? "#e2e8f0" : "#64748b",
-                      background: active ? "rgba(255,255,255,0.07)" : "transparent",
-                      border: `1px solid ${active ? "rgba(255,255,255,0.14)" : "transparent"}`,
-                    }}
-                  >
-                    {!isAll && <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: accent }} />}
-                    {opt.label}
-                    <span style={{ color: active ? accent : "#475569" }}>{count}</span>
-                  </button>
-                );
-              })}
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wider" style={{ color: "#64748b" }}>
+                Status
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {([{ key: "all", label: "All" }, ...ROSTER_SECTIONS] as const).map(opt => {
+                  const isAll = opt.key === "all";
+                  const count = isAll ? accountTotal : counts[opt.key as SectionKey].length;
+                  const active = statusFilter === opt.key;
+                  const accent = isAll ? "#94a3b8" : SECTION_ACCENT[opt.key as SectionKey];
+                  return (
+                    <button
+                      key={opt.key}
+                      onClick={() => setStatusFilter(opt.key as SectionKey | "all")}
+                      className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5"
+                      style={{
+                        color: active ? "#e2e8f0" : "#64748b",
+                        background: active ? "rgba(255,255,255,0.07)" : "transparent",
+                        border: `1px solid ${active ? "rgba(255,255,255,0.14)" : "transparent"}`,
+                      }}
+                    >
+                      {!isAll && <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: accent }} />}
+                      {opt.label}
+                      <span style={{ color: active ? accent : "#475569" }}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex items-center gap-1 flex-wrap" title="Filter by client vertical">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wider" style={{ color: "#64748b" }}>
+                View
+              </span>
+              <div className="flex items-center gap-0.5 rounded-lg p-0.5" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.1)" }} title="Choose which columns are most relevant to your role">
+                {ROSTER_VIEWS.map(v => {
+                  const active = rosterView === v.key;
+                  return (
+                    <button
+                      key={v.key}
+                      onClick={() => changeRosterView(v.key)}
+                      className="text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap transition-colors"
+                      style={{
+                        color: active ? "#e2e8f0" : "#64748b",
+                        background: active ? "rgba(56,189,248,0.14)" : "transparent",
+                      }}
+                    >
+                      {v.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wider" style={{ color: "#64748b" }}>
+                Refine
+              </span>
               <button
-                onClick={() => setOfferFilter("all")}
-                className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors"
+                type="button"
+                onClick={() => changeFiltersOpen(!filtersOpen)}
+                className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap flex items-center gap-1.5"
                 style={{
-                  color: offerFilter === "all" ? "#e2e8f0" : "#64748b",
-                  background: offerFilter === "all" ? "rgba(255,255,255,0.07)" : "transparent",
-                  border: `1px solid ${offerFilter === "all" ? "rgba(255,255,255,0.14)" : "transparent"}`,
+                  color: secondaryFilterCount > 0 || filtersOpen ? "#93c5fd" : "#64748b",
+                  background: filtersOpen ? "rgba(59,130,246,0.12)" : "transparent",
+                  border: `1px solid ${
+                    secondaryFilterCount > 0 || filtersOpen
+                      ? "rgba(59,130,246,0.45)"
+                      : "rgba(255,255,255,0.12)"
+                  }`,
                 }}
+                aria-expanded={filtersOpen}
               >
-                All verticals
+                Filters
+                {secondaryFilterCount > 0 && (
+                  <span
+                    className="text-[10px] font-semibold px-1.5 rounded-full"
+                    style={{ background: "#2563eb", color: "#fff" }}
+                  >
+                    {secondaryFilterCount}
+                  </span>
+                )}
+                <span aria-hidden>{filtersOpen ? "▴" : "▾"}</span>
               </button>
-              {REPORTING_TYPES.map(type => {
-                const active = offerFilter === type;
-                const meta = REPORTING_TYPE_META[type];
-                const count = countRosterAccounts(
-                  clients.filter(c => normalizeReportingType(c.reporting_type) === type),
-                );
-                return (
-                  <button
-                    key={type}
-                    onClick={() => setOfferFilter(type)}
-                    className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5"
-                    style={{
-                      color: active ? meta.color : "#64748b",
-                      background: active ? meta.background : "transparent",
-                      border: `1px solid ${active ? `${meta.color}55` : "transparent"}`,
-                    }}
-                    title={meta.description}
-                  >
-                    {meta.shortLabel}
-                    <span style={{ color: active ? meta.color : "#475569" }}>{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex items-center gap-1 flex-wrap" title="Filter by sales package">
-              {([
-                { key: "all", label: "All packages" },
-                { key: "core_offer", label: "Core Offer" },
-                { key: "mid_offer", label: "Mid Offer" },
-                { key: "skool", label: "Skool" },
-                { key: "unset", label: "Unset" },
-              ] as const).map(opt => {
-                const active = packageFilter === opt.key;
-                return (
-                  <button
-                    key={opt.key}
-                    onClick={() => setPackageFilter(opt.key)}
-                    className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors"
-                    style={{
-                      color: active ? "#e2e8f0" : "#64748b",
-                      background: active ? "rgba(255,255,255,0.07)" : "transparent",
-                      border: `1px solid ${active ? "rgba(255,255,255,0.14)" : "transparent"}`,
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex items-center gap-1 flex-wrap" title="Filter by whether Meta/ads spend is on or paused">
-              {([
-                { key: "all", label: "All ads", count: clients.length },
-                { key: "on", label: "Ads on", count: clients.length - adsPausedCount },
-                { key: "paused", label: "Ads paused", count: adsPausedCount },
-              ] as const).map(opt => {
-                const active = adsFilter === opt.key;
-                const accent = opt.key === "paused" ? "#f59e0b" : opt.key === "on" ? "#34d399" : "#94a3b8";
-                return (
-                  <button
-                    key={opt.key}
-                    onClick={() => setAdsFilter(opt.key)}
-                    className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5"
-                    style={{
-                      color: active ? "#e2e8f0" : "#64748b",
-                      background: active ? "rgba(255,255,255,0.07)" : "transparent",
-                      border: `1px solid ${active ? "rgba(255,255,255,0.14)" : "transparent"}`,
-                    }}
-                  >
-                    {opt.key !== "all" && (
-                      <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: accent }} />
-                    )}
-                    {opt.label}
-                    <span style={{ color: active ? accent : "#475569" }}>{opt.count}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex items-center gap-0.5 rounded-lg p-0.5" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.1)" }} title="Choose which columns are most relevant to your role">
-              {ROSTER_VIEWS.map(v => {
-                const active = rosterView === v.key;
-                return (
-                  <button
-                    key={v.key}
-                    onClick={() => changeRosterView(v.key)}
-                    className="text-xs font-medium px-2.5 py-1 rounded-md whitespace-nowrap transition-colors"
-                    style={{
-                      color: active ? "#e2e8f0" : "#64748b",
-                      background: active ? "rgba(56,189,248,0.14)" : "transparent",
-                    }}
-                  >
-                    {v.label}
-                  </button>
-                );
-              })}
             </div>
           </div>
+
+          {filtersOpen && (
+            <div
+              className="flex flex-wrap items-end gap-4 px-3 pb-2.5"
+              style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <div className="flex flex-col gap-1 pt-2">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: "#64748b" }}>
+                  Vertical
+                </span>
+                <div className="flex items-center gap-1 flex-wrap" title="Filter by client vertical">
+                  <button
+                    onClick={() => setOfferFilter("all")}
+                    className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors"
+                    style={{
+                      color: offerFilter === "all" ? "#e2e8f0" : "#64748b",
+                      background: offerFilter === "all" ? "rgba(255,255,255,0.07)" : "transparent",
+                      border: `1px solid ${offerFilter === "all" ? "rgba(255,255,255,0.14)" : "transparent"}`,
+                    }}
+                  >
+                    All verticals
+                  </button>
+                  {REPORTING_TYPES.map(type => {
+                    const active = offerFilter === type;
+                    const meta = REPORTING_TYPE_META[type];
+                    const count = countRosterAccounts(
+                      clients.filter(c => normalizeReportingType(c.reporting_type) === type),
+                    );
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => setOfferFilter(type)}
+                        className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5"
+                        style={{
+                          color: active ? meta.color : "#64748b",
+                          background: active ? meta.background : "transparent",
+                          border: `1px solid ${active ? `${meta.color}55` : "transparent"}`,
+                        }}
+                        title={meta.description}
+                      >
+                        {meta.shortLabel}
+                        <span style={{ color: active ? meta.color : "#475569" }}>{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex flex-col gap-1 pt-2">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: "#64748b" }}>
+                  Package
+                </span>
+                <div className="flex items-center gap-1 flex-wrap" title="Filter by sales package">
+                  {([
+                    { key: "all", label: "All packages" },
+                    { key: "core_offer", label: "Core Offer" },
+                    { key: "mid_offer", label: "Mid Offer" },
+                    { key: "skool", label: "Skool" },
+                    { key: "unset", label: "Unset" },
+                  ] as const).map(opt => {
+                    const active = packageFilter === opt.key;
+                    return (
+                      <button
+                        key={opt.key}
+                        onClick={() => setPackageFilter(opt.key)}
+                        className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors"
+                        style={{
+                          color: active ? "#e2e8f0" : "#64748b",
+                          background: active ? "rgba(255,255,255,0.07)" : "transparent",
+                          border: `1px solid ${active ? "rgba(255,255,255,0.14)" : "transparent"}`,
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex flex-col gap-1 pt-2">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: "#64748b" }}>
+                  Ads
+                </span>
+                <div className="flex items-center gap-1 flex-wrap" title="Filter by whether Meta/ads spend is on or paused">
+                  {([
+                    { key: "all", label: "All ads", count: clients.length },
+                    { key: "on", label: "Ads on", count: clients.length - adsPausedCount },
+                    { key: "paused", label: "Ads paused", count: adsPausedCount },
+                  ] as const).map(opt => {
+                    const active = adsFilter === opt.key;
+                    const accent = opt.key === "paused" ? "#f59e0b" : opt.key === "on" ? "#34d399" : "#94a3b8";
+                    return (
+                      <button
+                        key={opt.key}
+                        onClick={() => setAdsFilter(opt.key)}
+                        className="text-xs font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors flex items-center gap-1.5"
+                        style={{
+                          color: active ? "#e2e8f0" : "#64748b",
+                          background: active ? "rgba(255,255,255,0.07)" : "transparent",
+                          border: `1px solid ${active ? "rgba(255,255,255,0.14)" : "transparent"}`,
+                        }}
+                      >
+                        {opt.key !== "all" && (
+                          <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: accent }} />
+                        )}
+                        {opt.label}
+                        <span style={{ color: active ? accent : "#475569" }}>{opt.count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {secondaryFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOfferFilter("all");
+                    setPackageFilter("all");
+                    setAdsFilter("all");
+                  }}
+                  className="text-xs font-medium px-2 py-1.5 rounded-lg self-end mb-0.5"
+                  style={{ color: "#94a3b8" }}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          )}
 
           {isFiltering && (
             <p className="text-xs px-3 py-1.5" style={{ color: "#475569", background: "#080f1e" }}>
