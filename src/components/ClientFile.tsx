@@ -109,6 +109,7 @@ type FileClient = {
   phone: string | null;
   source: string | null;
   website: string | null;
+  drive_folder_url: string | null;
   brokerage_name: string | null;
   legal_business_name: string | null;
   nmls: string | null;
@@ -1263,6 +1264,21 @@ export default function ClientFile({
                   missing={client?.live_transfer_approved == null}
                 />
                 <Detail label="Live transfer phone" value={client?.phone_live_transfer} missing={!client?.phone_live_transfer} />
+                <Detail
+                  label="Drive folder"
+                  value={client?.drive_folder_url ? (
+                    <a
+                      href={client.drive_folder_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:opacity-80"
+                      style={{ color: "#38bdf8" }}
+                    >
+                      Open in Drive
+                    </a>
+                  ) : null}
+                  missing={!client?.drive_folder_url}
+                />
                 <Detail label="Offer summary" value={client?.offer_summary} wide missing={!client?.offer_summary} />
                 <Detail
                   label="Client vertical"

@@ -23,6 +23,7 @@ export type EditableClient = {
   clickup_task_id?: string | null;
   source: string | null;
   website: string | null;
+  drive_folder_url: string | null;
   brokerage_name: string | null;
   legal_business_name: string | null;
   nmls: string | null;
@@ -59,6 +60,7 @@ type Draft = {
   ghl_location_id: string;
   source: string;
   website: string;
+  drive_folder_url: string;
   brokerage_name: string;
   legal_business_name: string;
   nmls: string;
@@ -103,6 +105,7 @@ export function clientToDraft(c: EditableClient): Draft {
     ghl_location_id: c.ghl_location_id ?? "",
     source: normalizeClientLeadSource(c.source) ?? "",
     website: c.website ?? "",
+    drive_folder_url: c.drive_folder_url ?? "",
     brokerage_name: c.brokerage_name ?? "",
     legal_business_name: c.legal_business_name ?? "",
     nmls: c.nmls ?? "",
@@ -140,6 +143,7 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     ghl_location_id: draft.ghl_location_id.trim() || null,
     source: normalizeClientLeadSource(draft.source),
     website: draft.website.trim() || null,
+    drive_folder_url: draft.drive_folder_url.trim() || null,
     brokerage_name: draft.brokerage_name.trim() || null,
     legal_business_name: draft.legal_business_name.trim() || null,
     nmls: draft.nmls.trim() || null,
@@ -268,6 +272,12 @@ export default function ClientFileEditForm({
             />
           </label>
           <Field label="Website" value={draft.website} onChange={v => patch("website", v)} highlightEmpty />
+          <Field
+            label="Drive folder URL"
+            value={draft.drive_folder_url}
+            onChange={v => patch("drive_folder_url", v)}
+            placeholder="https://drive.google.com/drive/folders/…"
+          />
           <Field label="Company / brand" value={draft.legal_business_name} onChange={v => patch("legal_business_name", v)} />
           <Field label="Brokerage" value={draft.brokerage_name} onChange={v => patch("brokerage_name", v)} highlightEmpty />
           <Field label="NMLS" value={draft.nmls} onChange={v => patch("nmls", v)} highlightEmpty />
