@@ -40,6 +40,8 @@ import {
   rosterAccountDisplayName,
   type RosterAccountGroup,
 } from "@/lib/roster-account-groups";
+import { compactLicensedStates } from "@/lib/roster-media-view";
+import { timezoneLabel } from "@/lib/us-timezones";
 
 type DataSummary = {
   events: number;
@@ -76,6 +78,8 @@ type Client = {
   primary_contact_name?: string | null;
   states_licensed?: string[] | null;
   timezone?: string | null;
+  drive_folder_url?: string | null;
+  facebook_page_name?: string | null;
   kpi_benchmarks?: ClientKpiBenchmarks | null;
   kpi_benchmarks_updated_at?: string | null;
   kpi_benchmarks_updated_by?: string | null;
@@ -142,7 +146,18 @@ const SECTION_ACCENT: Record<SectionKey, string> = {
 };
 
 /** Optional middle columns, swapped per role-based view preset. */
-type ColumnKey = "stage" | "tenure" | "adspend" | "ads" | "launch" | "cs_call";
+type ColumnKey =
+  | "stage"
+  | "tenure"
+  | "adspend"
+  | "ads"
+  | "launch"
+  | "cs_call"
+  | "drive"
+  | "states"
+  | "page"
+  | "tz"
+  | "product";
 
 type RosterView = "full" | "cs" | "media";
 
@@ -155,7 +170,7 @@ const ROSTER_VIEWS: { key: RosterView; label: string }[] = [
 const VIEW_COLUMNS: Record<RosterView, ColumnKey[]> = {
   full: ["stage", "tenure", "cs_call", "adspend"],
   cs: ["stage", "tenure", "cs_call"],
-  media: ["launch", "adspend", "ads", "tenure"],
+  media: ["drive", "states", "page", "tz", "product", "adspend", "ads"],
 };
 
 function moneyShort(n: number | null | undefined): string {
@@ -222,6 +237,68 @@ const COLUMN_DEFS: Record<ColumnKey, { header: string; revenueOnly?: boolean; re
         </span>
       );
     },
+  },
+  drive: {
+    header: "Drive",
+    render: () => null, // ClientRow renders the link
+  },
+  states: {
+    header: "States",
+    render: c => {
+      const r = compactLicensedStates(c.states_licensed);
+      return (
+        <span
+          className="text-xs whitespace-nowrap"
+          style={{ color: r.muted ? "#334155" : "#cbd5e1" }}
+          title={r.title}
+        >
+          {r.text}
+        </span>
+      );
+    },
+  },
+  page: {
+    header: "Page",
+    render: c => {
+      const name = c.facebook_page_name?.trim();
+      if (!name) {
+        return <span className="text-xs" style={{ color: "#334155" }}>—</span>;
+      }
+      return (
+        <span
+          className="text-xs truncate max-w-[10rem] inline-block align-bottom"
+          style={{ color: "#cbd5e1" }}
+          title={name}
+        >
+          {name}
+        </span>
+      );
+    },
+  },
+  tz: {
+    header: "TZ",
+    render: c => {
+      const label = timezoneLabel(c.timezone);
+      const muted = !c.timezone;
+      return (
+        <span
+          className="text-xs whitespace-nowrap"
+          style={{ color: muted ? "#334155" : "#cbd5e1" }}
+          title={c.timezone ?? undefined}
+        >
+          {label}
+        </span>
+      );
+    },
+  },
+  product: {
+    header: "Product",
+    render: c => (
+      <span className="flex items-center gap-1.5 min-w-0">
+        <ReportingTypeBadge value={c.reporting_type} />
+        <SalesPackageBadge value={c.sales_package} />
+      </span>
+    ),
   },
 };
 
@@ -1416,6 +1493,22 @@ function ClientRow({
               disabled={busy}
               onUpdated={next => onAdsUpdated(c.id, next)}
             />
+          ) : key === "drive" ? (
+            c.drive_folder_url ? (
+              <a
+                href={c.drive_folder_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="text-xs font-medium whitespace-nowrap"
+                style={{ color: "#38bdf8" }}
+                title="Open Drive folder"
+              >
+                Drive ↗
+              </a>
+            ) : (
+              <span className="text-xs" style={{ color: "#334155" }}>—</span>
+            )
           ) : (
             COLUMN_DEFS[key].render(c)
           )}
