@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'crypto';
 import { NextResponse } from 'next/server';
 import { createServiceClient } from './supabase';
 import { getAuthContext, isAuthError, type AuthContext } from './api-auth';
-import { canAccessScope } from './ai/data-chat/scopes';
+import { requireCsmApiAccess } from './csm-api';
 
 /** SHA-256 hex of the plaintext Bearer token. */
 export function hashCsmApiToken(token: string): string {
@@ -51,22 +51,9 @@ export async function getCsmAuthContext(req: Request): Promise<AuthContext | Nex
   return getAuthContext();
 }
 
-/** Require client_success Data Chat scope permissions. */
+/** @deprecated use requireCsmApiAccess from csm-api */
 export function requireCsmBriefAccess(ctx: AuthContext): NextResponse | null {
-  const subject = {
-    isOwner: ctx.isOwner,
-    allowedPermissions: ctx.allowedPermissions,
-  };
-  if (!canAccessScope('client_success', subject)) {
-    return NextResponse.json(
-      {
-        error: 'Forbidden',
-        detail: 'Needs client_health, admin_clients, or resources permission',
-      },
-      { status: 403 },
-    );
-  }
-  return null;
+  return requireCsmApiAccess(ctx);
 }
 
 export function assertCsmAuth(ctx: AuthContext | NextResponse): ctx is AuthContext {

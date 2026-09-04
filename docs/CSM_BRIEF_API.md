@@ -1,7 +1,7 @@
 # CSM Brief API
 
-**Purpose:** Let the CSM Cursor kit pull a finance-safe client history brief from Mr. Waiz.  
-**Status:** live (code) — apply migration + issue token before use  
+**Purpose:** Let the CSM Cursor kit pull finance-safe client + team ops data from Mr. Waiz.  
+**Status:** live  
 **Related:** [DATA_CHAT.md](DATA_CHAT.md); Wm-os sibling `docs/operations/systems/csm-kit-sync.md`
 
 ---
@@ -10,42 +10,40 @@
 
 | Method | Path | Auth |
 |--------|------|------|
-| GET | `/api/csm/client-brief?clientId=&start_date=&end_date=` | Session cookie **or** Bearer `csm_…` |
+| GET | `/api/csm/client-brief?clientId=&start_date=&end_date=&include=calls,dials,scorecards` | Session **or** Bearer `csm_…` |
+| GET | `/api/csm/team-performance?start_date=&end_date=&clientId=&live_only=1` | Same |
+| GET | `/api/csm/pay-structures?active=1` | Same |
 | GET | `/api/csm/clients?search=` | Same |
 
-Permissions (any-of): `client_health` | `admin_clients` | `resources` — same as Data Chat `client_success`.
+**Gate:** `client_health` or `admin_clients`.
 
-## Brief payload (includes)
+## What is included
 
-- Profile + contacts (`SAFE_CLIENT_FIELDS` — no MRR/billing contracts)
-- Health snapshot + open interventions
-- Notes + interventions (capped)
-- Fulfillment funnel + dials
-- Ad-spend / CPL KPI `cost` block (fulfillment ops money)
+- Client profile/contacts, health, notes, interventions
+- Funnel **conversions** (leads → books → shows) + account dial KPIs
+- Team dial performance + agent scorecards
+- Account call search (when `include` has `calls`)
+- Agent pay **structures** (rates / pay_type) — not posted payroll-run payout totals
+- Optional `fulfillment_ad_kpis` (client ad CPL/spend for coaching only)
 
 ## Hard exclusions
 
-MRR, invoices, Stripe, payroll amounts, expense ledger, retainers, owner P&L.
+MRR, invoices, Stripe, client billing totals, expenses/Amex, CAC/COGS ledgers, owner P&L, CEO finance, retainers, payroll **run** totals.
 
 ## Setup
 
-1. Apply migration: `supabase/migrations/add_csm_api_token_hash.sql`
-2. Ensure CSM user has `client_health` (not CEO / expense / `view_client_revenue` unless intentional)
-3. Issue token:
-
-```bash
-npx tsx scripts/issue-csm-api-token.ts --email csm@example.com
-```
-
-4. Put token in sibling `wm-csm-kit` `.env.local` as `CSM_API_TOKEN` + `MR_WAIZ_BASE_URL`
-5. Revoke: `npx tsx scripts/issue-csm-api-token.ts --email csm@example.com --revoke`
+1. Migration `add_csm_api_token_hash.sql` (already applied in prod)
+2. CSM user: `client_health` + dial/call/agents views as needed; **do not** grant `ceo`, `admin_billing`, or `view_client_revenue`
+3. Token: `npx tsx scripts/issue-csm-api-token.ts --email …`
 
 ## Code map
 
 ```
 src/lib/csm-auth.ts
+src/lib/csm-api.ts
 src/app/api/csm/client-brief/route.ts
+src/app/api/csm/team-performance/route.ts
+src/app/api/csm/pay-structures/route.ts
 src/app/api/csm/clients/route.ts
-src/lib/ai/data-chat/tools.ts   # executeDataChatTool
 scripts/issue-csm-api-token.ts
 ```

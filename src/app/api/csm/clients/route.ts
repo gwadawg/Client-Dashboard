@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  assertCsmAuth,
-  getCsmAuthContext,
-  requireCsmBriefAccess,
-} from '@/lib/csm-auth';
+import { assertCsmAuth, getCsmAuthContext } from '@/lib/csm-auth';
+import { requireCsmApiAccess } from '@/lib/csm-api';
 import { executeDataChatTool, type DataChatFilters } from '@/lib/ai/data-chat';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +13,7 @@ export async function GET(req: NextRequest) {
   const ctx = await getCsmAuthContext(req);
   if (!assertCsmAuth(ctx)) return ctx;
 
-  const denied = requireCsmBriefAccess(ctx);
+  const denied = requireCsmApiAccess(ctx);
   if (denied) return denied;
 
   const search = req.nextUrl.searchParams.get('search')?.trim() || undefined;

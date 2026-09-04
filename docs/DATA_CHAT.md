@@ -64,11 +64,14 @@ Chat SDK / Slack can reuse the same `runDataChat` + scopes later; keep one brain
 
 ## CSM Cursor bridge
 
-Deterministic brief (no LLM) for the sibling **wm-csm-kit**:
+Deterministic APIs (no LLM) for the sibling **wm-csm-kit**:
 
 - [`docs/CSM_BRIEF_API.md`](CSM_BRIEF_API.md)
-- `GET /api/csm/client-brief` — composes `client_success` tools
+- `GET /api/csm/client-brief` — client history + dials/calls/conversions
+- `GET /api/csm/team-performance` — team dials + scorecards
+- `GET /api/csm/pay-structures` — agent pay rates (not expense/P&L)
 - Auth: session **or** user-scoped Bearer (`profiles.csm_api_token_hash`)
+- Blocked: MRR, billing, expenses, CEO revenue
 
 ---
 
