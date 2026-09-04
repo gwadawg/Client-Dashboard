@@ -62,6 +62,16 @@ Chat SDK / Slack can reuse the same `runDataChat` + scopes later; keep one brain
 
 ---
 
+## CSM Cursor bridge
+
+Deterministic brief (no LLM) for the sibling **wm-csm-kit**:
+
+- [`docs/CSM_BRIEF_API.md`](CSM_BRIEF_API.md)
+- `GET /api/csm/client-brief` — composes `client_success` tools
+- Auth: session **or** user-scoped Bearer (`profiles.csm_api_token_hash`)
+
+---
+
 ## Code map
 
 ```

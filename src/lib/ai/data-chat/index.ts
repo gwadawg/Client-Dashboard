@@ -23,3 +23,4 @@ export {
 } from './scopes';
 
 export { runDataChat } from './run';
+export { executeDataChatTool } from './tools';
