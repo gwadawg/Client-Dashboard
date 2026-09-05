@@ -29,3 +29,17 @@ export function countSecondaryRosterFilters(filters: {
   if (filters.ads !== 'all') n += 1;
   return n;
 }
+
+const HIDDEN_ON_MAIN = new Set(['off_boarding', 'churned']);
+
+/** Hide offboarded/churned offer rows when Status is All or Active. */
+export function offerVisibleForStatusFilter(
+  lifecycleStatus: string | null | undefined,
+  statusFilter: string,
+): boolean {
+  const status = lifecycleStatus ?? 'active';
+  if (statusFilter === 'all' || statusFilter === 'active') {
+    return !HIDDEN_ON_MAIN.has(status);
+  }
+  return true;
+}

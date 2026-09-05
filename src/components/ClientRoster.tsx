@@ -40,8 +40,9 @@ import {
   rosterAccountDisplayName,
   type RosterAccountGroup,
 } from "@/lib/roster-account-groups";
-import { compactLicensedStates, countSecondaryRosterFilters } from "@/lib/roster-media-view";
+import { countSecondaryRosterFilters, offerVisibleForStatusFilter } from "@/lib/roster-media-view";
 import { timezoneLabel } from "@/lib/us-timezones";
+import RosterStatesCell from "@/components/RosterStatesCell";
 
 type DataSummary = {
   events: number;
@@ -244,18 +245,7 @@ const COLUMN_DEFS: Record<ColumnKey, { header: string; revenueOnly?: boolean; re
   },
   states: {
     header: "States",
-    render: c => {
-      const r = compactLicensedStates(c.states_licensed);
-      return (
-        <span
-          className="text-xs whitespace-nowrap"
-          style={{ color: r.muted ? "#334155" : "#cbd5e1" }}
-          title={r.title}
-        >
-          {r.text}
-        </span>
-      );
-    },
+    render: c => <RosterStatesCell codes={c.states_licensed} />,
   },
   page: {
     header: "Page",
@@ -751,6 +741,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 
   const q = query.trim().toLowerCase();
   const matched = clients.filter(c => {
+    if (!offerVisibleForStatusFilter(c.lifecycle_status, statusFilter)) return false;
     if (offerFilter !== "all" && normalizeReportingType(c.reporting_type) !== offerFilter) return false;
     if (packageFilter === "core_offer" && normalizeSalesPackage(c.sales_package) !== "core_offer") return false;
     if (packageFilter === "mid_offer" && normalizeSalesPackage(c.sales_package) !== "mid_offer") return false;
@@ -762,7 +753,10 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
     return clientMatchesQuery(c, q);
   });
   const grouped = groupAccountsBySection(groupClientsIntoAccounts(matched));
-  const accountTotal = countRosterAccounts(clients);
+  // All chip excludes offboarded/churned; section chips keep full counts so tabs stay discoverable.
+  const accountTotal = countRosterAccounts(
+    clients.filter(c => offerVisibleForStatusFilter(c.lifecycle_status, "all")),
+  );
   const counts = groupAccountsBySection(groupClientsIntoAccounts(clients));
   const isFiltering = q.length > 0 || statusFilter !== "all" || offerFilter !== "all" || packageFilter !== "all" || adsFilter !== "all";
   const adsPausedCount = clients.filter(c => c.ads_paused).length;

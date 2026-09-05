@@ -6,6 +6,12 @@ import TimezoneSelect from "@/components/TimezoneSelect";
 import ReportingTypeBadge, { ReportingTypeSelectOptions } from "@/components/ReportingTypeBadge";
 import { normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import { getReportingTypeLabel } from "@/lib/reporting-types";
+import {
+  normalizeServiceProgram,
+  serviceProgramApplies,
+  SERVICE_PROGRAM_OPTIONS,
+  type ServiceProgram,
+} from "@/lib/service-program";
 import { toDateInputValue } from "@/lib/client-dates";
 import ClientLeadSourceSelect from "@/components/ClientLeadSourceSelect";
 import { normalizeClientLeadSource } from "@/lib/client-lead-source";
@@ -56,6 +62,7 @@ type Draft = {
   billing_email: string;
   phone: string;
   reporting_type: ReportingType;
+  service_program: ServiceProgram | "";
   clickup_task_id: string;
   ghl_location_id: string;
   source: string;
@@ -101,6 +108,7 @@ export function clientToDraft(c: EditableClient): Draft {
     billing_email: c.billing_email ?? "",
     phone: c.phone ?? "",
     reporting_type: normalizeReportingType(c.reporting_type),
+    service_program: normalizeServiceProgram(c.service_program) ?? "",
     clickup_task_id: c.clickup_task_id ?? "",
     ghl_location_id: c.ghl_location_id ?? "",
     source: normalizeClientLeadSource(c.source) ?? "",
@@ -139,6 +147,9 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     billing_email: draft.billing_email.trim() || null,
     phone: draft.phone.trim() || null,
     reporting_type: draft.reporting_type,
+    service_program: serviceProgramApplies(draft.reporting_type)
+      ? draft.service_program || null
+      : null,
     clickup_task_id: draft.clickup_task_id.trim() || null,
     ghl_location_id: draft.ghl_location_id.trim() || null,
     source: normalizeClientLeadSource(draft.source),
@@ -256,10 +267,24 @@ export default function ClientFileEditForm({
           <Field label="Billing email" type="email" value={draft.billing_email} onChange={v => patch("billing_email", v)} highlightEmpty />
           <Field label="Phone" value={draft.phone} onChange={v => patch("phone", v)} highlightEmpty />
           <SelectField label="Product" value={draft.reporting_type} onChange={v => {
-            patch("reporting_type", normalizeReportingType(v));
+            const next = normalizeReportingType(v);
+            patch("reporting_type", next);
+            if (!serviceProgramApplies(next)) patch("service_program", "");
           }}>
             <ReportingTypeSelectOptions />
           </SelectField>
+          {serviceProgramApplies(draft.reporting_type) && (
+            <SelectField
+              label="Service program"
+              value={draft.service_program}
+              onChange={v => patch("service_program", (normalizeServiceProgram(v) ?? "") as ServiceProgram | "")}
+            >
+              <option value="">Unset</option>
+              {SERVICE_PROGRAM_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </SelectField>
+          )}
           <label className="flex flex-col gap-1">
             <span className="text-xs uppercase tracking-wider" style={{ color: !draft.source ? "#f59e0b" : "#475569" }}>
               Lead source{!draft.source ? " · missing" : ""}

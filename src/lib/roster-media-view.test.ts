@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   compactLicensedStates,
   countSecondaryRosterFilters,
+  offerVisibleForStatusFilter,
 } from './roster-media-view';
 
 describe('compactLicensedStates', () => {
@@ -35,5 +36,20 @@ describe('countSecondaryRosterFilters', () => {
       countSecondaryRosterFilters({ offer: 'dscr', package: 'all', ads: 'paused' }),
       2,
     );
+  });
+});
+
+describe('offerVisibleForStatusFilter', () => {
+  it('hides off_boarding and churned on all/active', () => {
+    assert.equal(offerVisibleForStatusFilter('off_boarding', 'all'), false);
+    assert.equal(offerVisibleForStatusFilter('churned', 'active'), false);
+    assert.equal(offerVisibleForStatusFilter('active', 'all'), true);
+    assert.equal(offerVisibleForStatusFilter('paused', 'all'), true);
+  });
+
+  it('shows all lifecycles on paused/churned/onboarding tabs', () => {
+    assert.equal(offerVisibleForStatusFilter('churned', 'churned'), true);
+    assert.equal(offerVisibleForStatusFilter('off_boarding', 'paused'), true);
+    assert.equal(offerVisibleForStatusFilter('churned', 'onboarding'), true);
   });
 });
