@@ -42,6 +42,14 @@ const nextConfig: NextConfig = {
         source: "/offers/mandi-stephens/",
         destination: "/offers/mandi-stephens/index.html",
       },
+      {
+        source: "/offers/romik-yeghnazary",
+        destination: "/offers/romik-yeghnazary/index.html",
+      },
+      {
+        source: "/offers/romik-yeghnazary/",
+        destination: "/offers/romik-yeghnazary/index.html",
+      },
     ];
   },
 };
