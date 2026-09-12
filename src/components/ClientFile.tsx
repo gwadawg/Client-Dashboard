@@ -41,6 +41,7 @@ import ClientFormsSection, { type FormSubmissionSummary } from "@/components/Cli
 import LoanLogLinkSection from "@/components/loan-log/LoanLogLinkSection";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
+import LaunchKitWizard from "@/components/LaunchKitWizard";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import ClientInterventionHistory from "@/components/ClientInterventionHistory";
@@ -48,6 +49,7 @@ import AccountWeekPlansClientHistory from "@/components/AccountWeekPlansClientHi
 import ClientAccountOffersPanel from "@/components/ClientAccountOffersPanel";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
+import { isLaunchKitLifecycle } from "@/lib/launch-kit/intake";
 import type { ClientContact } from "@/lib/client-contacts";
 import { csCallTypeLabel, type CsCallType } from "@/lib/cs-appointments";
 
@@ -346,6 +348,7 @@ export default function ClientFile({
   const [statusChange, setStatusChange] = useState<{ targetStatus: string; pendingBody: Record<string, unknown> } | null>(null);
   const [showKickoff, setShowKickoff] = useState(openKickoff);
   const [showLaunch, setShowLaunch] = useState(false);
+  const [showLaunchKit, setShowLaunchKit] = useState(false);
   const [showOffboard, setShowOffboard] = useState(false);
   const [offerRow, setOfferRow] = useState<{ name: string; reporting_type: string | null } | null>(null);
   const [csAppointments, setCsAppointments] = useState<
@@ -743,6 +746,17 @@ export default function ClientFile({
         }}
       />
     )}
+    {showLaunchKit && (
+      <LaunchKitWizard
+        clientId={clientId}
+        fallbackName={offerName}
+        onClose={() => setShowLaunchKit(false)}
+        onGenerated={() => {
+          load();
+          onUpdated?.();
+        }}
+      />
+    )}
     {showOffboard && (
       <ChurnOffboardingWizard
         clientId={clientId}
@@ -825,6 +839,17 @@ export default function ClientFile({
           <div className="flex items-center gap-2 flex-shrink-0">
             {!loading && !error && client && !editing && (
               <>
+                {isLaunchKitLifecycle(client.lifecycle_status) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowLaunchKit(true)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                    style={{ color: "#4FA3FF", background: "rgba(79,163,255,0.1)", border: "1px solid rgba(79,163,255,0.25)" }}
+                    title="Generate or download the client Launch Kit PDF"
+                  >
+                    Kit
+                  </button>
+                )}
                 {(client.lifecycle_status === "onboarding" || client.lifecycle_status === "new_account") && (
                   <button
                     type="button"
@@ -1241,6 +1266,39 @@ export default function ClientFile({
                   }}
                 >
                   Open kick-off
+                </button>
+              </div>
+            )}
+
+            {isLaunchKitLifecycle(client?.lifecycle_status) && (
+              <div
+                className="rounded-lg px-4 py-3 flex items-start justify-between gap-4 flex-wrap"
+                style={{
+                  background: "rgba(79,163,255,0.08)",
+                  border: "1px solid rgba(79,163,255,0.25)",
+                }}
+              >
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: "#4FA3FF" }}>
+                    Client Launch Kit
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
+                    {kickoffPending
+                      ? "Finish kick-off first, then generate the branded Launch Kit PDF for the Launch Call."
+                      : "Fill the kit intake and generate the branded PDF — download it here or send the link to the client Slack channel."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowLaunchKit(true)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                  style={{
+                    color: "#4FA3FF",
+                    background: "rgba(79,163,255,0.12)",
+                    border: "1px solid rgba(79,163,255,0.3)",
+                  }}
+                >
+                  Open Launch Kit
                 </button>
               </div>
             )}
