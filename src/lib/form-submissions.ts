@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export const FORM_TYPES = ['new_client', 'onboarding', 'kickoff', 'launch', 'churn'] as const;
+export const FORM_TYPES = ['new_client', 'onboarding', 'kickoff', 'launch', 'launch_kit', 'churn'] as const;
 export type FormType = (typeof FORM_TYPES)[number];
 
 export const FORM_STATUSES = ['draft', 'submitted', 'unmapped', 'applied', 'dismissed'] as const;
@@ -11,6 +11,7 @@ export const FORM_TYPE_LABELS: Record<FormType, string> = {
   onboarding: 'Onboarding',
   kickoff: 'Kickoff',
   launch: 'Launch',
+  launch_kit: 'Launch Kit',
   churn: 'Churn / Offboarding',
 };
 

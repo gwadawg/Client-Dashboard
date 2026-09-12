@@ -152,7 +152,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { id: clientId } = await params;
 
-  const [clientRes, launchSubRes, onboardingCallRes, assignableUsers] = await Promise.all([
+  const [clientRes, launchSubRes, onboardingCallRes, assignableUsers, launchKitRes] = await Promise.all([
     ctx.service
       .from('clients')
       .select('id, name, lifecycle_status, ghl_location_id, primary_contact_name, launch_date, slack_id, reporting_type, service_program')
@@ -176,6 +176,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .limit(1)
       .maybeSingle(),
     listAssignableLaunchUsers(ctx.service),
+    ctx.service
+      .from('client_form_submissions')
+      .select('id', { count: 'exact', head: true })
+      .eq('client_id', clientId)
+      .eq('form_type', 'launch_kit')
+      .eq('status', 'applied'),
   ]);
 
   if (clientRes.error) {
@@ -194,6 +200,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     client: clientRes.data,
     kickoff_complete: !kickoffIncomplete,
     already_launched: !!operationalLaunch,
+    has_launch_kit: (launchKitRes.count ?? 0) > 0,
     default_launch_date: clientRes.data.launch_date ?? new Date().toISOString().slice(0, 10),
     form_profile: formProfile,
     checklist_config: getLaunchChecklistConfig(formProfile),

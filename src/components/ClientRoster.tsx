@@ -6,6 +6,8 @@ import AddClientOfferModal from "@/components/AddClientOfferModal";
 import ModalCloseButton from "@/components/ModalCloseButton";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
+import LaunchKitWizard from "@/components/LaunchKitWizard";
+import { isLaunchKitLifecycle } from "@/lib/launch-kit/intake";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
 import PendingEventsPanel from "@/components/PendingEventsPanel";
 import PendingFormSubmissionsPanel from "@/components/PendingFormSubmissionsPanel";
@@ -92,7 +94,7 @@ type Client = {
   account_primary_email?: string | null;
   engagement_kind?: string | null;
   total_paid?: number;
-  form_progress?: Partial<Record<"new_client" | "onboarding" | "kickoff" | "launch", boolean>>;
+  form_progress?: Partial<Record<"new_client" | "onboarding" | "kickoff" | "launch_kit" | "launch", boolean>>;
   next_cs_call?: {
     scheduled_at: string;
     call_type: "onboarding" | "launch" | "checkin" | null;
@@ -503,6 +505,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   } | null>(null);
   const [kickoffFor, setKickoffFor] = useState<{ id: string; name: string } | null>(null);
   const [launchFor, setLaunchFor] = useState<{ id: string; name: string } | null>(null);
+  const [launchKitFor, setLaunchKitFor] = useState<{ id: string; name: string } | null>(null);
   const [offboardFor, setOffboardFor] = useState<{ id: string; name: string } | null>(null);
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
   const [query, setQuery] = useState("");
@@ -841,6 +844,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         onOpenFile={() => openClientFile(c.id, c.name)}
         onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
         onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
+        onOpenLaunchKit={() => setLaunchKitFor({ id: c.id, name: c.name })}
         onOpenOffboard={() => setOffboardFor({ id: c.id, name: c.name })}
         onOpenNotes={() => openClientFile(c.id, c.name, { scrollToNotes: true })}
         onOpenCalls={() => openClientFile(c.id, c.name, { scrollToCalls: true })}
@@ -1334,6 +1338,15 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         />
       )}
 
+      {launchKitFor && (
+        <LaunchKitWizard
+          clientId={launchKitFor.id}
+          fallbackName={launchKitFor.name}
+          onClose={() => setLaunchKitFor(null)}
+          onGenerated={reload}
+        />
+      )}
+
       {offboardFor && (
         <ChurnOffboardingWizard
           clientId={offboardFor.id}
@@ -1460,7 +1473,7 @@ function AccountGroupHeaderRow({
 }
 
 function ClientRow({
-  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange,   columns, colSpan, benchmarksOpen, actionsOpen, onToggleActions, onRequestStatusChange, onPatch, onAdsUpdated, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onAddOffer, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete, variant = "standalone",
+  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange,   columns, colSpan, benchmarksOpen, actionsOpen, onToggleActions, onRequestStatusChange, onPatch, onAdsUpdated, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenLaunchKit, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onAddOffer, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete, variant = "standalone",
 }: {
   client: Client;
   allClients: Client[];
@@ -1482,6 +1495,7 @@ function ClientRow({
   onOpenFile: () => void;
   onOpenKickoff: () => void;
   onOpenLaunch: () => void;
+  onOpenLaunchKit: () => void;
   onOpenOffboard: () => void;
   onOpenNotes: () => void;
   onOpenCalls: () => void;
@@ -1504,6 +1518,8 @@ function ClientRow({
   const needsGhlMapping = clientNeedsGhlMapping(c);
   const showKickoffAction = isKickoffLifecycle(c.lifecycle_status) || kickoffPending;
   const showLaunchAction = c.lifecycle_status === "onboarding" || c.lifecycle_status === "new_account";
+  const showLaunchKitAction = isLaunchKitLifecycle(c.lifecycle_status);
+  const launchKitDone = !!c.form_progress?.launch_kit;
   const showOffboardAction = isChurnOffboardEligible(c.lifecycle_status);
 
   const status = c.lifecycle_status ?? "active";
@@ -1680,6 +1696,15 @@ function ClientRow({
             {showKickoffAction && (
               <ActionButton onClick={onOpenKickoff} color={kickoffPending ? "#f59e0b" : "#22c55e"} title={kickoffPending ? "Kick-off call incomplete" : "Open kick-off call wizard"}>
                 Kick-off{kickoffPending ? " ⚠" : ""}
+              </ActionButton>
+            )}
+            {showLaunchKitAction && (
+              <ActionButton
+                onClick={onOpenLaunchKit}
+                color={launchKitDone ? "#4FA3FF" : kickoffPending ? "#64748b" : "#4FA3FF"}
+                title={launchKitDone ? "Launch Kit on file — view, regenerate, or send" : kickoffPending ? "Launch Kit — complete kick-off first" : "Generate the client Launch Kit PDF"}
+              >
+                Kit{launchKitDone ? " ✓" : ""}
               </ActionButton>
             )}
             {showLaunchAction && (

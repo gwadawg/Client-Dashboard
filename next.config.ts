@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyClientMaxBodySize: "30mb",
   },
+  // Launch Kit PDFs render server-side; keep the renderer out of the bundler.
+  serverExternalPackages: ["@react-pdf/renderer"],
   async rewrites() {
     return [
       // Public client offer pages (static HTML under public/offers/)

@@ -260,7 +260,7 @@ export default function FormSubmissionsTab({ onOpenClient, onResolved }: Props) 
                           {s.submitted_by && (
                             <p className="text-xs" style={{ color: "#64748b" }}>Submitted by {s.submitted_by}</p>
                           )}
-                          <ClientFormsSection submissions={[s]} alwaysExpanded />
+                          <ClientFormsSection submissions={[s]} alwaysExpanded clientId={s.client_id ?? undefined} />
                           {isUnmappedOb && (
                             <div
                               className="flex flex-wrap items-center gap-2 pt-2 mt-2 border-t border-white/5"

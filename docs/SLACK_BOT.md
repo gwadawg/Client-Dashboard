@@ -16,6 +16,8 @@ Under **OAuth & Permissions** → **Bot Token Scopes**, add:
 | `chat:write` | Post messages to channels the bot is a member of |
 | `chat:write.public` | (Optional) Post to public channels without joining first |
 
+Launch Kit posts (ops notice + "Send to client") use `chat:write` with a signed download link — no `files:write` needed. Native file attachment is a later phase.
+
 ## 3. Install to workspace
 
 1. On the same page, click **Install to Workspace** → allow.

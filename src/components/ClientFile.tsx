@@ -1377,7 +1377,7 @@ export default function ClientFile({
               <LoanLogLinkSection clientId={clientId} />
             </Section>
             <Section title={`Onboarding forms (${formSubmissions.length})`}>
-              <ClientFormsSection submissions={formSubmissions} />
+              <ClientFormsSection submissions={formSubmissions} clientId={clientId} />
             </Section>
 
             <Section title={`Success interventions`}>

@@ -48,6 +48,7 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
   const [clientName, setClientName] = useState(fallbackName);
   const [kickoffComplete, setKickoffComplete] = useState(true);
   const [alreadyLaunched, setAlreadyLaunched] = useState(false);
+  const [hasLaunchKit, setHasLaunchKit] = useState(true);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
   const [formProfile, setFormProfile] = useState<OnboardingFormProfile>("marketing_core");
   const [checklistConfig, setChecklistConfig] = useState<ChecklistConfig | null>(null);
@@ -70,6 +71,7 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
       setClientName(data.client?.name ?? fallbackName);
       setKickoffComplete(!!data.kickoff_complete);
       setAlreadyLaunched(!!data.already_launched);
+      setHasLaunchKit(data.has_launch_kit !== false);
       setAssignableUsers(data.assignable_users ?? []);
       setFormProfile(profile);
       setChecklistConfig(data.checklist_config ?? null);
@@ -200,6 +202,11 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
               {!kickoffComplete && (
                 <p className="text-sm text-amber-300 rounded-lg px-4 py-3 bg-amber-950/40 border border-amber-500/30">
                   Kick-off is not complete yet (GHL mapping + OB recording required).
+                </p>
+              )}
+              {!hasLaunchKit && (
+                <p className="text-sm text-sky-300 rounded-lg px-4 py-3 bg-sky-950/40 border border-sky-500/30">
+                  No Launch Kit has been generated for this client. The kit is the leave-behind for the Launch Call — open <strong>Kit</strong> from the roster actions to generate it. You can still mark the client live.
                 </p>
               )}
 

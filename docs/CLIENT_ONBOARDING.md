@@ -9,6 +9,7 @@ Mr. Waiz (Supabase `clients` table) is the **source of truth** for client data. 
 | 1. New Client | Closer | GHL form → Make → `POST /api/admin/onboard` | `lifecycle_status: new_account`, signing billing, sales call, ClickUp task |
 | 2. Onboarding | Client | `/onboard` (static link in GHL emails) | Match by email/phone → update client; else unmapped queue |
 | 3. Kickoff | CS manager | Kick-Off wizard in Client Roster | Ops fields + PM brief (JSON audit) |
+| 3b. Launch Kit | CSM | **Kit** wizard in Client Roster | Branded client PDF → Storage, `launch_kit` submission, Slack links |
 | 4. Launch | Ops | Launch checklist wizard | `lifecycle_status: active`, `launch_date`, Slack via Make |
 
 **Scheduled CS calls** (onboarding / launch / check-in calendars from GHL Client Success) sync via Make into `cs_appointments` and show on Ops Overview + Client Roster/File. See [`docs/CS_APPOINTMENTS.md`](CS_APPOINTMENTS.md).
@@ -123,6 +124,48 @@ Create a public Supabase Storage bucket `client-headshots` for headshot uploads.
 
 Open **Kick-off** from Client Roster after the OB call. Confirms client info, captures GHL location ID + sub-account name, PM landing-page brief (stored in `client_form_submissions`, not `clients` columns).
 
+## 3b. Launch Kit (CSM)
+
+The Launch Kit is the client's leave-behind from the Launch Call: a branded PDF covering what is live, how to run Week 1, and where every file lives. Process owner and copy source of truth: Wm-os `docs/client-fulfillment/onboarding/sop-client-launch-kit.md` + `docs/templates/client-launch-kit-template.md`. Mr. Waiz is the execution surface.
+
+Open **Kit** from Client Roster once kickoff is complete (available for `new_account`, `onboarding`, and `active` so a kit can be regenerated after go-live).
+
+### Variant matrix
+
+The PDF is deterministic — no AI, no free-form copy. Only per-client fields are substituted. Two axes pick the pages:
+
+| Axis | Source | Values |
+|------|--------|--------|
+| Product | `clients.reporting_type` | `rm` (Reverse mortgage) · `dscr` |
+| Who works leads | `clients.service_program` | `core` → **Waiz** (call center / Laura) · `lead_gen` → **client** (LO / VA, gets playbooks) |
+
+`CALL_CENTER` clients prefill "Waiz" and require the CSM to choose the product. Both can be overridden in step 1 of the wizard.
+
+### Wizard steps
+
+1. **Variant** — product, who works leads, contact first name, company / DBA, go-live date, market.
+2. **What's live** — funnel, CRM, calendar, Meta ads, Skool, Launch Kit Drive folder, Slack channel name. Every URL must be a full `http(s)` link or explicitly marked *Not part of this account* (funnel and CRM can never be N/A). `[TO FILL]` is rejected at generate.
+3. **Operator setup** — CSM name, who works leads (sentence subject), speed standard *as sold* (blank → kit says "as sold on your Kickoff" instead of inventing a number), internal notes.
+4. **Review & generate** — intake table, blocking errors, version list with **Download** and **Send to client**.
+
+**Save draft** stores a `client_form_submissions` row with `status: draft`; reopening the wizard resumes from it. Drafts are dismissed once a kit is generated.
+
+### On generate
+
+- Renders with `@react-pdf/renderer` (server-side, Node — no Chromium). Template copy lives in `src/lib/launch-kit/copy/` with `TEMPLATE_VERSION`; edit Wm-os first, then mirror here and bump the version.
+- Uploads to the private bucket **`client-launch-kits`** at `{client_id}/{slug}-launch-kit-v{n}.pdf`. Every generate is a new version; nothing is overwritten.
+- Inserts `client_form_submissions` (`form_type: launch_kit`, `status: applied`) with the intake, `storage_path`, `version`, `template_version`, `variant`. Changed funnel / CRM URLs are written back to `clients` (`applied_patch`).
+- Posts to the **ops** team channel (`SLACK_OPS_CHANNEL_SLUG`) with an app link + 7-day signed download URL, and to the `mrwaiz` activity feed.
+- Does **not** post to the client. Drive upload is manual: CSM downloads → drops into `{Client Drive}/Launch Kit/01-Launch-PDF/`.
+
+### Send to client
+
+**Send to client** (per version) posts a 7-day signed link + the Launch Kit folder link to `clients.slack_id`. Done by the CSM on the Launch Call, never automatically. Stamps `sent_to_client_at` on the submission. Requires the client channel to be mapped in Admin → Automations.
+
+### Launch checklist gate
+
+The Launch wizard shows a non-blocking notice when no kit exists. It does not prevent go-live.
+
 ## 4. Launch checklist
 
 Open **Launch** from Client Roster when kickoff is complete. The wizard is a 4-department checklist (18 items). All answers live in `client_form_submissions.responses` JSON — no extra columns on `clients`.
@@ -199,7 +242,7 @@ Grant the **Automations** tab in **Admin → Users** so ops can manage channel I
 
 **Client File → Onboarding forms** shows every submission (type, date, submitter, expandable answers).
 
-Roster shows progress strip: Sign | OB | KO | Live.
+Roster shows progress strip: Sign | OB | KO | Kit | Live. Launch Kit rows in Client File → Forms & history include a **Download Launch Kit PDF** link.
 
 ## API reference
 
@@ -212,6 +255,9 @@ Roster shows progress strip: Sign | OB | KO | Live.
 | `GET/POST /api/clients/[id]/team-invite` | Admin session | Copy / rotate team invite URL |
 | `GET/POST /api/form-submissions/pending` | Admin session | Unmapped OB queue |
 | `POST /api/clients/[id]/kickoff` | Admin session | Kickoff wizard |
+| `GET/POST /api/clients/[id]/launch-kit` | Admin session (`admin_clients` / `admin_billing`) | Prefill + versions / `{ mode: 'draft' \| 'generate', draft }` |
+| `POST /api/clients/[id]/launch-kit/send` | Admin session | Post a kit version to the client Slack channel |
+| `GET /api/clients/[id]/launch-kit/download?submission=` | Admin session (+ `client_health`) | Redirect to a fresh 15-min signed URL |
 | `POST /api/clients/[id]/launch` | Admin session | Launch checklist |
 
 ## Environment variables
@@ -222,7 +268,12 @@ Roster shows progress strip: Sign | OB | KO | Live.
 | `CLICKUP_API_TOKEN` | If auto-creating Hub tasks | When `clickup_task_id` not sent |
 | `MAKE_ONBOARDING_COMPLETE_WEBHOOK_URL` | No | GHL confirmation email trigger |
 | `MAKE_LAUNCH_COMPLETE_WEBHOOK_URL` | No | Launch go-live fallback when Slack unavailable |
-| `SLACK_OPS_CHANNEL_SLUG` | No | Team channel for launch audit (default `ops_alerts`) |
+| `SLACK_OPS_CHANNEL_SLUG` | No | Team channel for launch audit + Launch Kit notices (default `ops_alerts`) |
+| `SLACK_BOT_TOKEN` | For Launch Kit Slack posts | Existing bot; no new scopes needed (`chat:write` only — links, not file uploads) |
+
+### Launch Kit storage
+
+Run `supabase/migrations/add_launch_kit_form_type.sql` — adds the `launch_kit` form type and creates the private `client-launch-kits` bucket (PDF only, 10 MB). `node scripts/verify-onboard-infra.mjs` checks both buckets.
 
 ## Decommission (ops)
 
@@ -238,4 +289,5 @@ Roster shows progress strip: Sign | OB | KO | Live.
 3. Submit `/onboard` with matching email → client fields updated + `onboarding` submission.
 4. Submit with unknown email → appears in unmapped queue; assign works.
 5. Complete kickoff → `kickoff` submission in Client File.
-6. Complete launch → `active`, launch date, Slack webhook fires.
+6. Open Kit → generate → PDF in `client-launch-kits`, `launch_kit` submission, ops Slack post with download link; Send to client posts to `slack_id`.
+7. Complete launch → `active`, launch date, Slack webhook fires.

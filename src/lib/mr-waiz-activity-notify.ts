@@ -22,6 +22,8 @@ export const MR_WAIZ_ACTIVITY_EVENT_KEYS = [
   'closebot.ticket_created',
   'closebot.ticket_status_changed',
   'closebot.agent_log_created',
+  'client.launch_kit_generated',
+  'client.launch_kit_sent',
 ] as const;
 
 export type MrWaizActivityEventKey = (typeof MR_WAIZ_ACTIVITY_EVENT_KEYS)[number];
@@ -190,6 +192,28 @@ export function formatMrWaizActivityMessage(
           fields.outcome_notes
             ? line('Outcome notes', truncate(fields.outcome_notes))
             : null,
+        ]),
+      ].join('\n');
+
+    case 'client.launch_kit_generated':
+      return [
+        '📘 *Launch Kit generated*',
+        details([
+          line('Client', fields.client_name),
+          line('Version', fields.version),
+          line('Variant', fields.variant),
+          line('Go-live', fields.go_live_date),
+          fields.app_url ? line('Open', fields.app_url) : null,
+        ]),
+      ].join('\n');
+
+    case 'client.launch_kit_sent':
+      return [
+        '📤 *Launch Kit sent to client*',
+        details([
+          line('Client', fields.client_name),
+          line('Version', fields.version),
+          fields.channel ? line('Channel', fields.channel) : null,
         ]),
       ].join('\n');
 

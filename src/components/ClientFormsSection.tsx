@@ -93,9 +93,54 @@ function humanizeLaunchResponses(responses: Record<string, unknown>): { label: s
   return rows;
 }
 
+const LAUNCH_KIT_LABELS: Record<string, string> = {
+  version: "Version",
+  template_version: "Template",
+  product: "Product",
+  dial_owner: "Who works leads",
+  contact_first_name: "Contact",
+  company_name: "Company / DBA",
+  go_live_date: "Go-live",
+  csm_name: "CSM",
+  who_works_leads: "Who works leads (copy)",
+  speed_standard: "Speed standard",
+  market: "Market",
+  slack_channel_name: "Slack channel",
+  funnel_url: "Funnel / lander",
+  crm_url: "CRM",
+  calendar_url: "Calendar",
+  ads_url: "Meta ads",
+  skool_url: "Skool / training",
+  launch_kit_folder_url: "Launch Kit folder",
+  sent_to_client_at: "Sent to client",
+  notes: "Internal notes",
+};
+
+function humanizeLaunchKitResponses(responses: Record<string, unknown>): { label: string; value: string }[] {
+  const rows: { label: string; value: string }[] = [];
+  const na = (responses.property_na ?? {}) as Record<string, unknown>;
+  for (const [k, label] of Object.entries(LAUNCH_KIT_LABELS)) {
+    if (na[k] === true) {
+      rows.push({ label, value: "N/A" });
+      continue;
+    }
+    const v = responses[k];
+    if (v == null || v === "") continue;
+    if (k === "product") rows.push({ label, value: v === "rm" ? "Reverse mortgage" : v === "dscr" ? "DSCR" : String(v) });
+    else if (k === "dial_owner") rows.push({ label, value: v === "waiz" ? "Waiz" : v === "client" ? "Client" : String(v) });
+    else if (k === "sent_to_client_at") rows.push({ label, value: new Date(String(v)).toLocaleString() });
+    else rows.push({ label, value: formatValue(k, v) });
+  }
+  return rows;
+}
+
 function humanizeResponses(formType: FormType, responses: Record<string, unknown>): { label: string; value: string; section?: string }[] {
   if (formType === "launch") {
     return humanizeLaunchResponses(responses);
+  }
+
+  if (formType === "launch_kit") {
+    return humanizeLaunchKitResponses(responses);
   }
 
   if (formType === "kickoff") {
@@ -129,12 +174,21 @@ function humanizeResponses(formType: FormType, responses: Record<string, unknown
     .map(([k, v]) => ({ label: k.replace(/_/g, " "), value: formatValue(k, v) }));
 }
 
+function launchKitDownloadHref(clientId: string | undefined, s: FormSubmissionSummary): string | null {
+  if (s.form_type !== "launch_kit" || s.status !== "applied" || !clientId) return null;
+  if (typeof s.responses?.storage_path !== "string") return null;
+  return `/api/clients/${clientId}/launch-kit/download?submission=${s.id}`;
+}
+
 export default function ClientFormsSection({
   submissions,
   alwaysExpanded = false,
+  clientId,
 }: {
   submissions: FormSubmissionSummary[];
   alwaysExpanded?: boolean;
+  /** Enables the Download link on Launch Kit rows. */
+  clientId?: string;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -151,9 +205,15 @@ export default function ClientFormsSection({
       {submissions.map(s => {
         const isOpen = alwaysExpanded || expanded === s.id;
         const rows = humanizeResponses(s.form_type, s.responses ?? {});
+        const kitHref = launchKitDownloadHref(clientId, s);
         if (alwaysExpanded) {
           return (
             <div key={s.id} className="space-y-2">
+              {kitHref && (
+                <a href={kitHref} target="_blank" rel="noopener noreferrer" className="inline-block text-xs font-semibold underline" style={{ color: "#4FA3FF" }}>
+                  Download Launch Kit PDF
+                </a>
+              )}
               {rows.map(row => (
                 row.value === "" && row.section ? (
                   <p key={row.label} className="text-xs font-semibold pt-3" style={{ color: "#94a3b8" }}>
@@ -198,6 +258,11 @@ export default function ClientFormsSection({
             </button>
             {isOpen && (
               <div className="px-4 pb-4 space-y-2 border-t border-white/5">
+                {kitHref && (
+                  <a href={kitHref} target="_blank" rel="noopener noreferrer" className="inline-block text-xs font-semibold underline pt-3" style={{ color: "#4FA3FF" }}>
+                    Download Launch Kit PDF
+                  </a>
+                )}
                 {rows.map(row => (
                   row.value === "" && row.section ? (
                     <p key={row.label} className="text-xs font-semibold pt-3" style={{ color: "#94a3b8" }}>
@@ -223,11 +288,12 @@ const PROGRESS_STEPS: { key: FormType; label: string; full: string }[] = [
   { key: "new_client", label: "Sign", full: "Signed" },
   { key: "onboarding", label: "OB", full: "Onboarding" },
   { key: "kickoff", label: "KO", full: "Kick-off" },
+  { key: "launch_kit", label: "Kit", full: "Launch Kit" },
   { key: "launch", label: "Live", full: "Launched" },
 ];
 
 /**
- * Process-stage cards (Sign → OB → KO → Live). Each step reads as a discrete
+ * Process-stage cards (Sign → OB → KO → Kit → Live). Each step reads as a discrete
  * card that fills green once the matching form exists, giving an at-a-glance
  * read of where a client sits in the onboarding process.
  */
