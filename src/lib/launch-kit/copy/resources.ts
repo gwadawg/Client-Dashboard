@@ -34,8 +34,9 @@ function rmRows(dialOwner: KitVariant['dialOwner']): string[][] {
 function dscrRows(dialOwner: KitVariant['dialOwner']): string[][] {
   if (dialOwner === 'client') {
     return [
-      ['Working a DSCR lead in the first 48 hours', 'DSCR Self-Serve Lead Response'],
-      ['Booking the next step on the phone', 'BAMFAM — covered inside the self-serve playbook'],
+      ['How to structure the campaign and work every lead', 'Launch Kit folder / 05-Playbooks / DSCR-Prospecting-Playbook.pdf'],
+      ['CRM drip when they go quiet (cash-out angle)', 'Launch Kit folder / 05-Playbooks / DSCR-Cash-Out-Drip.md'],
+      ['Booking the next step on the phone', 'BAMFAM — covered inside the Prospecting Playbook'],
       SWIPE_ROW,
     ];
   }

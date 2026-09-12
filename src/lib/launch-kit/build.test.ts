@@ -192,8 +192,11 @@ describe('buildLaunchKitBlocks', () => {
     const waizKit = buildLaunchKitBlocks(completeDraft({ product: 'dscr', dial_owner: 'waiz' }), { version: 1, clientName: 'x' });
     const clientText = flattenBlockText(clientKit.blocks).join('\n');
     const waizText = flattenBlockText(waizKit.blocks).join('\n');
-    assert.ok(clientText.includes('DSCR Self-Serve Lead Response'));
-    assert.equal(waizText.includes('DSCR Self-Serve Lead Response'), false);
+    assert.ok(clientText.includes('DSCR-Prospecting-Playbook.pdf'));
+    assert.ok(clientText.includes('DSCR-Cash-Out-Drip.md'));
+    assert.ok(clientText.includes('05-Playbooks'));
+    assert.equal(waizText.includes('DSCR-Prospecting-Playbook.pdf'), false);
+    assert.equal(waizText.includes('05-Playbooks'), false);
     assert.ok(waizText.includes('owns SMS and booking'));
   });
 

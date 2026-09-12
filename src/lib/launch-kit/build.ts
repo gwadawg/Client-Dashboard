@@ -155,7 +155,7 @@ export function buildLaunchKitBlocks(
     // 04 + 05 on one page
     ...RESOURCE_INDEX_INTRO,
     resourceTable(variant),
-    ...creativeBlocks(launchKitFolderValue(draft)),
+    ...creativeBlocks(launchKitFolderValue(draft), variant),
     { type: 'pagebreak' },
 
     // 06 First 30 days

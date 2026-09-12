@@ -8,7 +8,7 @@
  * or internal doc names.
  */
 
-import type { KitBlock } from '../types';
+import type { KitBlock, KitVariant } from '../types';
 
 // ---------------------------------------------------------------------------
 // 00 Welcome
@@ -154,7 +154,23 @@ export const RESOURCE_INDEX_INTRO: KitBlock[] = [
   },
 ];
 
-export function creativeBlocks(launchKitFolderValue: string): KitBlock[] {
+export function creativeBlocks(
+  launchKitFolderValue: string,
+  variant?: KitVariant | null,
+): KitBlock[] {
+  const rows: string[][] = [
+    ['Launch Kit (root)', launchKitFolderValue],
+    ['01-Launch-PDF', 'This document'],
+    ['02-Links', 'Shortcuts to every page in Section 01'],
+    ['03-Swipe-and-Ads', 'Your live ads plus approved examples you can reference or remix'],
+    ['04-Recordings', 'Launch-call recording, posted after the call'],
+  ];
+  if (variant?.product === 'dscr' && variant.dialOwner === 'client') {
+    rows.push([
+      '05-Playbooks',
+      'DSCR-Prospecting-Playbook.pdf (how to work leads) + DSCR-Cash-Out-Drip.md (CRM sequence when they go quiet)',
+    ]);
+  }
   return [
     { type: 'h1', text: '05  Creative and swipe files' },
     { type: 'body', text: 'The files that change live in Drive, not in this PDF.' },
@@ -162,17 +178,19 @@ export function creativeBlocks(launchKitFolderValue: string): KitBlock[] {
       type: 'table',
       headers: ['Folder', "What's in it"],
       col_widths: [0.3, 0.7],
-      rows: [
-        ['Launch Kit (root)', launchKitFolderValue],
-        ['01-Launch-PDF', 'This document'],
-        ['02-Links', 'Shortcuts to every page in Section 01'],
-        ['03-Swipe-and-Ads', 'Your live ads plus approved examples you can reference or remix'],
-        ['04-Recordings', 'Launch-call recording, posted after the call'],
-      ],
+      rows,
     },
     { type: 'bullet', text: 'Use the swipe pack to see what is running and what we have already approved.' },
     { type: 'bullet', text: 'Send ad ideas to Slack — we will tell you if they are usable. Do not drop competitor ads into the folder.' },
     { type: 'bullet', text: 'We own the live campaigns. Ask for changes; do not edit ads or budgets yourself.' },
+    ...(variant?.product === 'dscr' && variant.dialOwner === 'client'
+      ? [
+          {
+            type: 'bullet' as const,
+            text: 'Open 05-Playbooks before you start dialing — the Prospecting Playbook is the daily system; the Cash-Out Drip is the safety net in your CRM.',
+          },
+        ]
+      : []),
   ];
 }
 

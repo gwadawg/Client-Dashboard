@@ -561,6 +561,14 @@ function ReviewStep({
 
   return (
     <div className="space-y-4">
+      {draft.product === "dscr" && draft.dial_owner === "client" && (
+        <Banner tone="info">
+          Before Send to client: drop <code>DSCR-Prospecting-Playbook.pdf</code> and{" "}
+          <code>DSCR-Cash-Out-Drip.md</code> into Drive <code>Launch Kit / 05-Playbooks/</code>{" "}
+          (from Wm-os <code>dscr-dna/assets/playbook-self-serve-nurture/</code>). The PDF resource
+          index points there.
+        </Banner>
+      )}
       <section className="rounded-lg overflow-hidden" style={panelStyle}>
         <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <h3 className="text-sm font-semibold text-slate-200">Review</h3>
