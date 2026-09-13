@@ -12,6 +12,7 @@ type PendingGroup = {
   event_types: string[];
   first_received_at: string;
   last_received_at: string;
+  suggested_client_id?: string | null;
 };
 
 type RosterClient = {
@@ -38,9 +39,19 @@ export default function PendingEventsPanel({ onReplayed }: { onReplayed?: () => 
     const d = await res.json().catch(() => ({}));
     if (res.ok) {
       const nextTotal = d.total ?? 0;
+      const nextGroups = (d.groups ?? []) as PendingGroup[];
       setTotal(nextTotal);
-      setGroups(d.groups ?? []);
+      setGroups(nextGroups);
       setClients(d.clients ?? []);
+      setAssignTo(prev => {
+        const next = { ...prev };
+        for (const g of nextGroups) {
+          if (!next[g.client_name] && g.suggested_client_id) {
+            next[g.client_name] = g.suggested_client_id;
+          }
+        }
+        return next;
+      });
       setDismissed(isRosterPanelDismissed(PANEL_KEY, nextTotal));
     }
     setLoading(false);
@@ -97,7 +108,7 @@ export default function PendingEventsPanel({ onReplayed }: { onReplayed?: () => 
             Unmapped events ({total})
           </h3>
           <p className="text-xs mt-1" style={{ color: "#a8a29e" }}>
-            These webhooks arrived before a matching sub-account name existed. Assign them to the correct client file — or set the GHL sub-account name on kick-off and they replay automatically.
+            These webhooks could not be matched when they arrived (unknown sub-account name, or a bad placeholder like &quot;Not Synced&quot;). Opening this panel auto-replays any that now map to a roster client; assign the rest manually.
           </p>
         </div>
         <button

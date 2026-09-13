@@ -155,22 +155,11 @@ export type ReplayResult = {
   errors: string[];
 };
 
-export async function replayPendingEventsForClient(
+export async function replayPendingEventRows(
   service: SupabaseClient,
   client: { id: string; name: string; ghl_location_id?: string | null },
+  rows: PendingEventRow[],
 ): Promise<ReplayResult> {
-  const { data: pending, error } = await service
-    .from('pending_events')
-    .select('*')
-    .eq('status', 'pending')
-    .order('occurred_at', { ascending: true, nullsFirst: false })
-    .order('received_at', { ascending: true });
-  if (error) throw new Error(error.message);
-
-  const rows = (pending ?? []).filter(r =>
-    pendingEventMatchesClient(r as PendingEventRow, client),
-  ) as PendingEventRow[];
-
   const result: ReplayResult = { replayed: 0, skipped: 0, failed: 0, errors: [] };
 
   for (const row of rows) {
@@ -234,6 +223,134 @@ export async function replayPendingEventsForClient(
       })
       .eq('id', row.id);
     result.replayed += 1;
+  }
+
+  return result;
+}
+
+export async function replayPendingEventsForClient(
+  service: SupabaseClient,
+  client: { id: string; name: string; ghl_location_id?: string | null },
+): Promise<ReplayResult> {
+  const { data: pending, error } = await service
+    .from('pending_events')
+    .select('*')
+    .eq('status', 'pending')
+    .order('occurred_at', { ascending: true, nullsFirst: false })
+    .order('received_at', { ascending: true });
+  if (error) throw new Error(error.message);
+
+  const rows = (pending ?? []).filter(r =>
+    pendingEventMatchesClient(r as PendingEventRow, client),
+  ) as PendingEventRow[];
+
+  return replayPendingEventRows(service, client, rows);
+}
+
+export type ReconcilePendingResult = ReplayResult & {
+  matched_rows: number;
+  clients_touched: number;
+};
+
+/**
+ * Self-heal stuck pending rows that now uniquely map to a roster client
+ * (exact/normalized name, location id, or prior events for the same GHL contact).
+ */
+export async function reconcilePendingEvents(
+  service: SupabaseClient,
+): Promise<ReconcilePendingResult> {
+  const { data: pending, error } = await service
+    .from('pending_events')
+    .select('*')
+    .eq('status', 'pending')
+    .order('occurred_at', { ascending: true, nullsFirst: false })
+    .order('received_at', { ascending: true });
+  if (error) throw new Error(error.message);
+
+  const rows = (pending ?? []) as PendingEventRow[];
+  const empty: ReconcilePendingResult = {
+    replayed: 0,
+    skipped: 0,
+    failed: 0,
+    errors: [],
+    matched_rows: 0,
+    clients_touched: 0,
+  };
+  if (rows.length === 0) return empty;
+
+  const { data: clients, error: clientErr } = await service
+    .from('clients')
+    .select('id, name, ghl_location_id');
+  if (clientErr) throw new Error(clientErr.message);
+
+  const contactIds = [
+    ...new Set(
+      rows
+        .map(r => r.ghl_contact_id ?? jsonStringField(r.payload?.ghl_contact_id))
+        .filter((v): v is string => Boolean(v)),
+    ),
+  ];
+
+  const contactToClient = new Map<string, string>();
+  const CHUNK = 100;
+  for (let i = 0; i < contactIds.length; i += CHUNK) {
+    const chunk = contactIds.slice(i, i + CHUNK);
+    const { data: evs, error: evErr } = await service
+      .from('events')
+      .select('ghl_contact_id, client_id')
+      .in('ghl_contact_id', chunk)
+      .not('client_id', 'is', null);
+    if (evErr) throw new Error(evErr.message);
+
+    const bucket = new Map<string, Set<string>>();
+    for (const ev of evs ?? []) {
+      const gid = typeof ev.ghl_contact_id === 'string' ? ev.ghl_contact_id : '';
+      const cid = typeof ev.client_id === 'string' ? ev.client_id : '';
+      if (!gid || !cid) continue;
+      const set = bucket.get(gid) ?? new Set<string>();
+      set.add(cid);
+      bucket.set(gid, set);
+    }
+    for (const [gid, set] of bucket) {
+      if (set.size === 1) contactToClient.set(gid, [...set][0]!);
+    }
+  }
+
+  const byClientId = new Map<string, PendingEventRow[]>();
+  for (const row of rows) {
+    const nameMatches = (clients ?? []).filter(c => pendingEventMatchesClient(row, c));
+    let clientId: string | null =
+      nameMatches.length === 1 ? (nameMatches[0]!.id as string) : null;
+
+    if (!clientId) {
+      const gid = row.ghl_contact_id ?? jsonStringField(row.payload?.ghl_contact_id);
+      if (gid) clientId = contactToClient.get(gid) ?? null;
+    }
+
+    if (!clientId) continue;
+    const list = byClientId.get(clientId) ?? [];
+    list.push(row);
+    byClientId.set(clientId, list);
+  }
+
+  const result: ReconcilePendingResult = {
+    replayed: 0,
+    skipped: 0,
+    failed: 0,
+    errors: [],
+    matched_rows: 0,
+    clients_touched: byClientId.size,
+  };
+
+  for (const [clientId, clientRows] of byClientId) {
+    const client = (clients ?? []).find(c => c.id === clientId);
+    if (!client) continue;
+    result.matched_rows += clientRows.length;
+    const part = await replayPendingEventRows(service, client, clientRows);
+    result.replayed += part.replayed;
+    result.skipped += part.skipped;
+    result.failed += part.failed;
+    result.errors.push(...part.errors);
   }
 
   return result;

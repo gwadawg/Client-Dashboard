@@ -24,6 +24,7 @@ export const VALID_EVENT_TYPES = [
   'live_transfer', 'proposal_sent', 'loan_processing', 'closed', 'out_of_state_lead',
   'proposal_made', 'submission_made', 'loan_funded',
   'appointment_cancelled', 'appointment_rescheduled', 'lo_bailed', 'lo_audit', 'claimed',
+  'manual_dq',
 ] as const;
 
 const QUOTE_ONLY_VALUE = /^["'`\s]+$/;
@@ -284,6 +285,7 @@ export async function ingestWebhookEvent(
   }
 
   const isLead = eventType === 'lead';
+  const isManualDq = normalizedEventType === 'manual_dq';
   const duration_seconds = numberField(payload.duration_seconds);
   const isDial = eventType === 'dial';
   const is_pickup =
@@ -326,6 +328,33 @@ export async function ingestWebhookEvent(
   const previous_external_id = jsonStringField(
     payload.previous_external_id ?? payload.previous_appointment_id ?? payload.prior_external_id,
   );
+
+  let dq_reason = isManualDq
+    ? jsonStringField(payload.dq_reason ?? payload.reason ?? payload.disqualify_reason)
+    : null;
+  if (isManualDq && !dq_reason) {
+    const reasons = payload.dq_reasons;
+    if (Array.isArray(reasons) && reasons.length > 0) {
+      dq_reason = reasons
+        .map(r => (typeof r === 'string' ? r.trim() : ''))
+        .filter(Boolean)
+        .join('; ');
+    }
+  }
+
+  let lead_event_id = isManualDq ? jsonStringField(payload.lead_event_id) : null;
+  if (isManualDq && !lead_event_id && ghl_contact_id && client_id) {
+    const { data: sourceLead } = await service
+      .from('events')
+      .select('id')
+      .eq('client_id', client_id)
+      .eq('event_type', 'lead')
+      .eq('ghl_contact_id', ghl_contact_id)
+      .order('occurred_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    lead_event_id = sourceLead?.id ?? null;
+  }
 
   // Outcomes (show / no_show / …) often arrive from GHL with blank agent_name.
   // Inherit the booking agent so payroll + KPIs credit the setter who booked.
@@ -390,6 +419,8 @@ export async function ingestWebhookEvent(
     utm_content,
     lead_source: isLead ? lead_source : null,
     is_ai_booked,
+    dq_reason: isManualDq ? dq_reason : null,
+    lead_event_id: isManualDq ? lead_event_id : null,
     raw:
       inheritedBookingId && typeof payload === 'object' && payload
         ? {
@@ -399,6 +430,49 @@ export async function ingestWebhookEvent(
           }
         : payload,
   };
+
+  // Same contact can only have one manual_dq — update reason/metadata in place.
+  if (isManualDq && ghl_contact_id && client_id) {
+    const { data: existingDq, error: findDqErr } = await service
+      .from('events')
+      .select('id')
+      .eq('client_id', client_id)
+      .eq('event_type', 'manual_dq')
+      .eq('ghl_contact_id', ghl_contact_id)
+      .maybeSingle();
+    if (findDqErr) return { error: findDqErr.message, status: 500 };
+
+    if (existingDq?.id) {
+      const { error: updErr } = await service
+        .from('events')
+        .update({
+          occurred_at: occurredAtIso,
+          occurred_at_has_time: occurredHasTime,
+          dq_reason,
+          lead_event_id,
+          lead_name,
+          lead_phone,
+          lead_email,
+          agent_name: resolvedAgentName,
+          ad_name,
+          adset_name,
+          campaign_name,
+          utm_source,
+          utm_campaign,
+          utm_content,
+          raw: payload,
+        })
+        .eq('id', existingDq.id);
+      if (updErr) return { error: updErr.message, status: 500 };
+      return {
+        ok: true,
+        updated: true,
+        event_id: existingDq.id,
+        normalized_event_type: normalizedEventType,
+        source_event_type: eventType,
+      };
+    }
+  }
 
   // Same GHL appointment id → update scheduled time / metadata in place (reschedule
   // that keeps appointment.id). Matches acquisition/CS upsert behavior.
