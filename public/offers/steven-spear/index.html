@@ -1,0 +1,2219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Steven Spear · DSCR Call Center · Waiz Media</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #061A4A;
+    --royal: #0E2F73;
+    --accent: #4FA3FF;
+    --accent-deep: #2B7DE0;
+    --green: #7CFF7A;
+    --gold: #F5C842;
+    --white: #FFFFFF;
+    --light: #F4F7FC;
+    --dark: #0B1220;
+    --mid: #5B6475;
+    --soft: #8B93A7;
+    --divider: #D1D9F0;
+    --line: rgba(255, 255, 255, 0.12);
+    --shadow: 0 22px 56px rgba(6, 26, 74, 0.14);
+    --radius: 8px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--light);
+    color: var(--dark);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  /* ── Banner ── */
+  .banner {
+    background: var(--royal);
+    color: rgba(255, 255, 255, 0.92);
+    text-align: center;
+    padding: 11px 20px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .banner strong { color: var(--white); font-weight: 600; }
+
+  /* ── Hero ── */
+  .hero {
+    position: relative;
+    background:
+      radial-gradient(ellipse 65% 70% at 95% 5%, rgba(79, 163, 255, 0.28), transparent 55%),
+      radial-gradient(ellipse 45% 55% at 5% 95%, rgba(124, 255, 122, 0.1), transparent 50%),
+      linear-gradient(165deg, #041436 0%, var(--navy) 55%, #0a2458 100%);
+    color: var(--white);
+    padding: 56px 28px 80px;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, black, transparent);
+    pointer-events: none;
+  }
+
+  .hero-inner {
+    position: relative;
+    max-width: 1180px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 48px;
+    align-items: center;
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 18px;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 28px;
+    height: 2px;
+    background: var(--accent);
+  }
+
+  .hero h1 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(44px, 6.5vw, 72px);
+    font-weight: 900;
+    line-height: 0.94;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    margin-bottom: 20px;
+  }
+  .hero h1 em {
+    font-style: normal;
+    color: var(--accent);
+    display: block;
+  }
+
+  .hero-sub {
+    font-size: clamp(16px, 1.8vw, 18px);
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.78);
+    max-width: 34em;
+    line-height: 1.65;
+    margin-bottom: 28px;
+  }
+  .hero-sub strong { color: var(--white); font-weight: 500; }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--navy);
+    padding: 14px 24px;
+    font-size: 15px;
+  }
+  .btn-primary:hover {
+    background: #6ab3ff;
+    box-shadow: 0 8px 24px rgba(79, 163, 255, 0.35);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.88);
+    padding: 14px 20px;
+    font-size: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+  }
+  .btn-ghost:hover { border-color: rgba(255, 255, 255, 0.5); color: var(--white); }
+
+  .hero-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .pill {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line);
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  /* Hero brand card mock */
+  .hero-visual {
+    display: flex;
+    justify-content: center;
+    perspective: 900px;
+  }
+
+  .brand-card {
+    width: min(100%, 340px);
+    background: linear-gradient(160deg, #0c2a6b, #061A4A 70%);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 16px;
+    padding: 28px 24px 24px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+    transform: rotateY(-6deg) rotateX(4deg);
+    animation: floatCard 6s ease-in-out infinite;
+  }
+
+  @keyframes floatCard {
+    0%, 100% { transform: rotateY(-6deg) rotateX(4deg) translateY(0); }
+    50% { transform: rotateY(-4deg) rotateX(2deg) translateY(-10px); }
+  }
+
+  .brand-card-top {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 22px;
+  }
+
+  .avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background:
+      linear-gradient(135deg, var(--accent), var(--royal));
+    display: grid;
+    place-items: center;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--white);
+    border: 2px solid rgba(255, 255, 255, 0.25);
+  }
+
+  .brand-card-top h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .brand-card-top p {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.55);
+    margin-top: 4px;
+  }
+
+  .brand-tag {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--navy);
+    background: var(--gold);
+    padding: 3px 8px;
+    border-radius: 2px;
+  }
+
+  .brand-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .brand-stat {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .brand-stat span {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+    margin-bottom: 4px;
+  }
+  .brand-stat strong {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+  }
+
+  .brand-feed {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 12px;
+    border: 1px solid var(--line);
+  }
+  .brand-feed-label {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .feed-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.82);
+  }
+  .feed-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+
+  /* ── Layout ── */
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  section.block { padding: 80px 0; }
+
+  .label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 12px;
+  }
+
+  .block h2 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(34px, 4.5vw, 48px);
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1.05;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    max-width: 20ch;
+  }
+
+  .block .lead {
+    font-size: 17px;
+    color: var(--mid);
+    max-width: 42em;
+    line-height: 1.65;
+    margin-bottom: 40px;
+  }
+  .block .lead strong { color: var(--navy); font-weight: 600; }
+
+  /* ── Contrast strip ── */
+  .contrast {
+    background: var(--white);
+    border-bottom: 1px solid var(--divider);
+  }
+
+  .contrast-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .contrast-card {
+    border-radius: var(--radius);
+    padding: 28px 26px;
+    border: 1px solid var(--divider);
+  }
+  .contrast-card.old {
+    background: #f8f9fc;
+  }
+  .contrast-card.new {
+    background: var(--navy);
+    color: var(--white);
+    border-color: transparent;
+    box-shadow: var(--shadow);
+  }
+
+  .contrast-card h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .contrast-card.old h3 { color: var(--soft); }
+  .contrast-card.new h3 { color: var(--gold); }
+
+  .contrast-card p {
+    font-size: 15px;
+    line-height: 1.6;
+    margin-bottom: 16px;
+  }
+  .contrast-card.old p { color: var(--mid); }
+  .contrast-card.new p { color: rgba(255, 255, 255, 0.75); }
+
+  .contrast-card ul {
+    list-style: none;
+    display: grid;
+    gap: 8px;
+  }
+  .contrast-card li {
+    font-size: 14px;
+    padding-left: 18px;
+    position: relative;
+  }
+  .contrast-card.old li { color: var(--mid); }
+  .contrast-card.old li::before {
+    content: "–";
+    position: absolute;
+    left: 0;
+    color: var(--soft);
+  }
+  .contrast-card.new li { color: rgba(255, 255, 255, 0.88); }
+  .contrast-card.new li::before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    color: var(--green);
+  }
+
+  /* ── Pillar nav ── */
+  .pillar-nav {
+    background: var(--light);
+    border-bottom: 1px solid var(--divider);
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    backdrop-filter: blur(10px);
+  }
+  .pillar-nav-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 28px;
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pillar-nav a {
+    flex: 0 0 auto;
+    padding: 16px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--mid);
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+  .pillar-nav a:hover,
+  .pillar-nav a:focus {
+    color: var(--navy);
+    border-bottom-color: var(--accent);
+  }
+  .pillar-nav a span {
+    display: inline-block;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--accent-deep);
+    margin-right: 6px;
+  }
+
+  /* ── Pillars ── */
+  .pillars { background: var(--white); }
+
+  .pillar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: center;
+    padding: 72px 0;
+    border-top: 1px solid var(--divider);
+  }
+  .pillar:first-child { border-top: none; padding-top: 0; }
+  .pillar:nth-child(even) .pillar-copy { order: 2; }
+  .pillar:nth-child(even) .pillar-demo { order: 1; }
+
+  .pillar-num {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 10px;
+  }
+
+  .pillar h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(30px, 3.5vw, 40px);
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    line-height: 1.05;
+    margin-bottom: 14px;
+  }
+
+  .pillar-body {
+    font-size: 16px;
+    color: var(--mid);
+    line-height: 1.65;
+    margin-bottom: 20px;
+  }
+  .pillar-body strong { color: var(--navy); font-weight: 600; }
+
+  .meta-row {
+    display: grid;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .meta-item {
+    background: var(--light);
+    border: 1px solid var(--divider);
+    border-radius: 6px;
+    padding: 14px 16px;
+  }
+  .meta-item dt {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 4px;
+  }
+  .meta-item dd {
+    font-size: 14px;
+    color: var(--dark);
+    line-height: 1.5;
+  }
+
+  .deliver-list {
+    list-style: none;
+    display: grid;
+    gap: 8px;
+  }
+  .deliver-list li {
+    font-size: 14px;
+    color: var(--dark);
+    padding: 10px 12px 10px 36px;
+    background: var(--light);
+    border-radius: 6px;
+    position: relative;
+    line-height: 1.45;
+  }
+  .deliver-list li::before {
+    content: "";
+    position: absolute;
+    left: 12px;
+    top: 14px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgba(79, 163, 255, 0.18);
+    box-shadow: inset 0 0 0 3px var(--accent);
+  }
+
+  /* ── Demo frames ── */
+  .demo-stage {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 420px;
+  }
+
+  .demo-glow {
+    position: absolute;
+    width: 70%;
+    height: 70%;
+    background: radial-gradient(circle, rgba(79, 163, 255, 0.18), transparent 70%);
+    filter: blur(20px);
+    pointer-events: none;
+  }
+
+  /* Phone shell */
+  .phone {
+    position: relative;
+    width: 260px;
+    background: #111827;
+    border-radius: 32px;
+    padding: 10px;
+    box-shadow: var(--shadow), 0 0 0 1px rgba(255,255,255,0.08);
+    z-index: 1;
+  }
+  .phone-notch {
+    width: 90px;
+    height: 18px;
+    background: #0b1220;
+    border-radius: 0 0 12px 12px;
+    margin: 0 auto 8px;
+  }
+  .phone-screen {
+    background: #f3f5f9;
+    border-radius: 24px;
+    overflow: hidden;
+    min-height: 460px;
+  }
+
+  .phone.phone-dark .phone-screen { background: #0f172a; }
+
+  /* Ad mock */
+  .ad-feed {
+    padding: 12px;
+  }
+  .ad-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .ad-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--royal));
+    display: grid;
+    place-items: center;
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .ad-header strong {
+    display: block;
+    font-size: 12px;
+    color: #111;
+  }
+  .ad-header span {
+    font-size: 10px;
+    color: #6b7280;
+  }
+  .ad-sponsored {
+    font-size: 10px;
+    color: #9ca3af;
+    margin-left: auto;
+  }
+
+  .ad-copy {
+    font-size: 12px;
+    color: #1f2937;
+    line-height: 1.45;
+    margin-bottom: 10px;
+  }
+
+  .carousel {
+    display: flex;
+    gap: 8px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .carousel-card {
+    flex: 0 0 78%;
+    background: var(--navy);
+    border-radius: 10px;
+    padding: 14px;
+    color: white;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    animation: slideHint 8s ease-in-out infinite;
+  }
+  .carousel-card.alt {
+    background: linear-gradient(145deg, #0e2f73, #163e94);
+    flex-basis: 70%;
+  }
+  @keyframes slideHint {
+    0%, 40% { transform: translateX(0); }
+    50%, 90% { transform: translateX(-12px); }
+    100% { transform: translateX(0); }
+  }
+  .carousel-card .chip {
+    align-self: flex-start;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: var(--gold);
+    color: var(--navy);
+    padding: 3px 6px;
+    border-radius: 2px;
+  }
+  .carousel-card h4 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: 1.05;
+    margin: 10px 0;
+  }
+  .carousel-card p {
+    font-size: 11px;
+    color: rgba(255,255,255,0.7);
+  }
+
+  .ad-cta {
+    display: block;
+    text-align: center;
+    background: var(--accent);
+    color: var(--navy);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 10px;
+    border-radius: 6px;
+  }
+
+  /* Browser lander mock */
+  .browser {
+    width: min(100%, 420px);
+    background: var(--white);
+    border-radius: 12px;
+    border: 1px solid var(--divider);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    z-index: 1;
+    position: relative;
+  }
+  .browser-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #eef1f7;
+    border-bottom: 1px solid var(--divider);
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #c5ccd8;
+  }
+  .dot:nth-child(1) { background: #ff5f57; }
+  .dot:nth-child(2) { background: #febc2e; }
+  .dot:nth-child(3) { background: #28c840; }
+  .url {
+    flex: 1;
+    background: white;
+    border: 1px solid var(--divider);
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-size: 11px;
+    color: var(--mid);
+  }
+
+  .lander {
+    padding: 20px 18px 22px;
+    background:
+      linear-gradient(180deg, #061A4A 0%, #0a2460 42%, #f4f7fc 42%);
+  }
+  .lander-kicker {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .lander h4 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: white;
+    line-height: 1.05;
+    max-width: 14ch;
+    margin-bottom: 8px;
+  }
+  .lander .sub {
+    font-size: 12px;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 14px;
+    max-width: 28ch;
+  }
+  .lander-cta {
+    display: inline-block;
+    background: var(--accent);
+    color: var(--navy);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 9px 14px;
+    border-radius: 4px;
+    margin-bottom: 28px;
+  }
+  .lander-panel {
+    background: white;
+    border-radius: 8px;
+    border: 1px solid var(--divider);
+    padding: 14px;
+    box-shadow: 0 10px 30px rgba(6, 26, 74, 0.08);
+  }
+  .lander-panel h5 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    margin-bottom: 8px;
+  }
+  .fit-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .fit-item {
+    font-size: 11px;
+    background: var(--light);
+    border-radius: 4px;
+    padding: 8px;
+    color: var(--dark);
+  }
+  .fit-item span {
+    display: block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 2px;
+  }
+
+  /* Quiz phone overlay */
+  .quiz-float {
+    position: absolute;
+    right: -8px;
+    bottom: -24px;
+    width: 180px;
+    background: white;
+    border-radius: 16px;
+    border: 1px solid var(--divider);
+    box-shadow: var(--shadow);
+    padding: 12px;
+    z-index: 2;
+    animation: riseIn 0.8s ease both;
+  }
+  @keyframes riseIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .quiz-float .step {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 6px;
+  }
+  .quiz-float h5 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--navy);
+    margin-bottom: 10px;
+    line-height: 1.35;
+  }
+  .quiz-opt {
+    font-size: 11px;
+    padding: 8px 10px;
+    border: 1px solid var(--divider);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    color: var(--dark);
+  }
+  .quiz-opt.active {
+    border-color: var(--accent);
+    background: #eef5ff;
+    font-weight: 600;
+  }
+  .quiz-progress {
+    height: 4px;
+    background: #e5eaf3;
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .quiz-progress i {
+    display: block;
+    width: 45%;
+    height: 100%;
+    background: var(--accent);
+  }
+
+  /* SMS mock */
+  .sms-thread {
+    padding: 14px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 460px;
+  }
+  .sms-day {
+    align-self: center;
+    font-size: 10px;
+    color: #94a3b8;
+    margin: 4px 0 8px;
+  }
+  .bubble {
+    max-width: 88%;
+    padding: 10px 12px;
+    border-radius: 14px;
+    font-size: 12px;
+    line-height: 1.45;
+    animation: bubbleIn 0.5s ease both;
+  }
+  .bubble.from {
+    align-self: flex-start;
+    background: #1e293b;
+    color: #e2e8f0;
+    border-bottom-left-radius: 4px;
+  }
+  .bubble.to {
+    align-self: flex-end;
+    background: #2563eb;
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .bubble .who {
+    display: block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.65;
+    margin-bottom: 4px;
+  }
+  .bubble:nth-child(3) { animation-delay: 0.15s; }
+  .bubble:nth-child(4) { animation-delay: 0.3s; }
+  .bubble:nth-child(5) { animation-delay: 0.45s; }
+  .bubble:nth-child(6) { animation-delay: 0.6s; }
+  @keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .sms-book {
+    margin-top: auto;
+    background: rgba(124, 255, 122, 0.12);
+    border: 1px solid rgba(124, 255, 122, 0.35);
+    border-radius: 10px;
+    padding: 12px;
+    color: #bbf7d0;
+  }
+  .sms-book strong {
+    display: block;
+    font-size: 12px;
+    margin-bottom: 4px;
+    color: var(--green);
+  }
+  .sms-book span {
+    font-size: 11px;
+    color: #94a3b8;
+  }
+
+  /* Dashboard mock */
+  .dash {
+    width: min(100%, 440px);
+    background: white;
+    border: 1px solid var(--divider);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    z-index: 1;
+    position: relative;
+  }
+  .dash-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    background: var(--navy);
+    color: white;
+  }
+  .dash-head h4 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .dash-head span {
+    font-size: 11px;
+    color: rgba(255,255,255,0.55);
+  }
+  .dash-kpis {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--divider);
+    border-bottom: 1px solid var(--divider);
+  }
+  .kpi {
+    background: white;
+    padding: 14px 12px;
+  }
+  .kpi span {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--soft);
+    margin-bottom: 4px;
+  }
+  .kpi strong {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1;
+  }
+  .kpi em {
+    font-style: normal;
+    font-size: 11px;
+    color: #168a3a;
+    font-weight: 600;
+  }
+  .funnel-bars {
+    padding: 16px;
+    display: grid;
+    gap: 10px;
+  }
+  .bar-row {
+    display: grid;
+    grid-template-columns: 90px 1fr 36px;
+    gap: 10px;
+    align-items: center;
+  }
+  .bar-row label {
+    font-size: 11px;
+    color: var(--mid);
+  }
+  .bar-track {
+    height: 8px;
+    background: #eef1f7;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .bar-track i {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, var(--royal), var(--accent));
+    border-radius: 4px;
+    transform-origin: left;
+    animation: growBar 1.2s ease both;
+  }
+  .bar-row:nth-child(1) i { width: 100%; }
+  .bar-row:nth-child(2) i { width: 62%; animation-delay: 0.1s; }
+  .bar-row:nth-child(3) i { width: 41%; animation-delay: 0.2s; }
+  .bar-row:nth-child(4) i { width: 28%; animation-delay: 0.3s; }
+  .bar-row:nth-child(5) i { width: 14%; animation-delay: 0.4s; }
+  @keyframes growBar {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+  .bar-row b {
+    font-size: 11px;
+    color: var(--navy);
+    text-align: right;
+  }
+
+  /* ── Scale ── */
+  .scale {
+    background:
+      radial-gradient(ellipse 50% 60% at 100% 0%, rgba(79, 163, 255, 0.12), transparent 55%),
+      var(--light);
+    border-top: 1px solid var(--divider);
+    border-bottom: 1px solid var(--divider);
+  }
+
+  .scale-steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .scale-card {
+    background: white;
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 24px 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .scale-card::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--accent);
+  }
+  .scale-card:nth-child(2)::after { background: var(--gold); }
+  .scale-card:nth-child(3)::after { background: var(--green); }
+
+  .scale-card .phase {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 8px;
+  }
+  .scale-card h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    margin-bottom: 10px;
+    line-height: 1.05;
+  }
+  .scale-card p {
+    font-size: 14px;
+    color: var(--mid);
+    line-height: 1.55;
+  }
+
+  /* ── Checklist / next ── */
+  .next {
+    background: var(--navy);
+    color: white;
+  }
+  .next .label { color: var(--accent); }
+  .next h2 { color: white; max-width: 22ch; }
+  .next .lead { color: rgba(255,255,255,0.7); }
+  .next .lead strong { color: white; }
+
+  .checklist {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 36px;
+  }
+  .check-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .check-item .mark {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(124, 255, 122, 0.15);
+    border: 1.5px solid var(--green);
+    display: grid;
+    place-items: center;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 1px;
+  }
+  .check-item strong {
+    display: block;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .check-item span {
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.45;
+  }
+
+  .timeline {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .t-step {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 18px;
+  }
+  .t-step b {
+    display: block;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 6px;
+  }
+  .t-step p {
+    font-size: 14px;
+    color: rgba(255,255,255,0.75);
+    line-height: 1.5;
+  }
+
+  /* Pricing */
+  .pricing {
+    background: var(--light);
+    border-top: 1px solid var(--divider);
+    border-bottom: 1px solid var(--divider);
+  }
+
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 18px;
+    align-items: start;
+  }
+
+  .offer-card {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 28px 26px;
+    box-shadow: var(--shadow);
+  }
+
+  .offer-card.featured {
+    background: var(--navy);
+    color: var(--white);
+    border-color: transparent;
+  }
+
+  .offer-card h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: 1.05;
+    margin-bottom: 8px;
+    color: var(--navy);
+  }
+
+  .offer-card.featured h3 { color: var(--white); }
+
+  .offer-card .sub {
+    font-size: 15px;
+    color: var(--mid);
+    line-height: 1.55;
+    margin-bottom: 22px;
+  }
+
+  .offer-card.featured .sub { color: rgba(255,255,255,0.72); }
+
+  .price-hero {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+
+  .price-hero .amt {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 56px;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--navy);
+  }
+
+  .offer-card.featured .price-hero .amt { color: var(--gold); }
+
+  .price-hero .was {
+    font-size: 18px;
+    color: var(--soft);
+    text-decoration: line-through;
+  }
+
+  .offer-card.featured .price-hero .was { color: rgba(255,255,255,0.4); }
+
+  .price-note {
+    font-size: 14px;
+    color: var(--mid);
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  .offer-card.featured .price-note { color: rgba(255,255,255,0.6); }
+
+  .price-rows {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+
+  .price-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: baseline;
+    padding: 12px 14px;
+    background: var(--light);
+    border: 1px solid var(--divider);
+    border-radius: 6px;
+    font-size: 14px;
+  }
+
+  .offer-card.featured .price-row {
+    background: rgba(255,255,255,0.06);
+    border-color: var(--line);
+    color: rgba(255,255,255,0.88);
+  }
+
+  .price-row span { color: var(--mid); }
+  .offer-card.featured .price-row span { color: rgba(255,255,255,0.55); }
+
+  .price-row strong {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--navy);
+    white-space: nowrap;
+  }
+
+  .offer-card.featured .price-row strong { color: var(--white); }
+
+  .waived-tag {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: var(--green);
+    color: var(--navy);
+    padding: 3px 7px;
+    border-radius: 2px;
+    vertical-align: middle;
+  }
+
+  .benchmark {
+    background: #eef4ff;
+    border: 1px solid rgba(14, 47, 115, 0.18);
+    border-radius: var(--radius);
+    padding: 22px 20px;
+  }
+
+  .benchmark h4 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    margin-bottom: 8px;
+  }
+
+  .benchmark p {
+    font-size: 14px;
+    color: var(--mid);
+    line-height: 1.55;
+    margin-bottom: 14px;
+  }
+
+  .benchmark-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--divider);
+  }
+
+  .benchmark-stat strong {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 42px;
+    font-weight: 900;
+    color: var(--royal);
+    line-height: 1;
+  }
+
+  .benchmark-stat span {
+    font-size: 14px;
+    color: var(--mid);
+    line-height: 1.4;
+  }
+
+  .spend-phases {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .spend-phase {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-radius: 6px;
+    padding: 14px;
+  }
+
+  .spend-phase b {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 6px;
+  }
+
+  .spend-phase strong {
+    display: block;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--navy);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .spend-phase span {
+    font-size: 13px;
+    color: var(--mid);
+    line-height: 1.45;
+  }
+
+  .fine-print {
+    font-size: 13px;
+    color: var(--soft);
+    line-height: 1.5;
+    margin-top: 14px;
+  }
+
+  .offer-card.featured .fine-print { color: rgba(255,255,255,0.45); }
+
+  footer {
+    background: #041436;
+    color: rgba(255,255,255,0.5);
+    text-align: center;
+    padding: 28px;
+    font-size: 13px;
+  }
+  footer strong { color: rgba(255,255,255,0.85); font-weight: 600; }
+
+  /* Motion entrance */
+  .reveal {
+    animation: revealUp 0.7s ease both;
+  }
+  @keyframes revealUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Responsive */
+  @media (max-width: 960px) {
+    .hero-inner,
+    .pillar,
+    .contrast-grid,
+    .scale-steps,
+    .checklist,
+    .timeline,
+    .pricing-grid,
+    .spend-phases {
+      grid-template-columns: 1fr;
+    }
+    .pillar:nth-child(even) .pillar-copy,
+    .pillar:nth-child(even) .pillar-demo {
+      order: unset;
+    }
+    .hero-visual { display: none; }
+    .quiz-float {
+      right: 12px;
+      bottom: -12px;
+    }
+    .brand-card { transform: none; animation: none; }
+  }
+
+  @media (max-width: 640px) {
+    .hero { padding: 40px 20px 56px; }
+    .wrap { padding: 0 20px; }
+    section.block { padding: 56px 0; }
+    .pillar { padding: 48px 0; gap: 28px; }
+    .phone { width: 230px; }
+    .phone-screen { min-height: 400px; }
+    .quiz-float { position: relative; right: auto; bottom: auto; width: 100%; margin-top: 16px; }
+    .demo-stage { flex-direction: column; min-height: auto; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+
+  .price-hero .per {
+    font-size: 15px;
+    color: rgba(255,255,255,0.55);
+  }
+  .offer-card:not(.featured) .price-hero .per { color: var(--mid); }
+  .packages-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-items: stretch;
+    margin-bottom: 28px;
+  }
+  .offer-card:not(.featured) .price-hero .amt { color: var(--navy); }
+  .offer-card:not(.featured) .price-note { color: var(--mid); }
+  .offer-card:not(.featured) .price-row {
+    background: var(--light);
+    border-color: var(--divider);
+    color: var(--dark);
+  }
+  .offer-card:not(.featured) .price-row span { color: var(--mid); }
+  .offer-card:not(.featured) .price-row strong { color: var(--navy); }
+  .offer-card:not(.featured) .fine-print { color: var(--soft); }
+  .tag-rec {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: var(--gold);
+    color: var(--navy);
+    padding: 3px 7px;
+    border-radius: 2px;
+    vertical-align: middle;
+  }
+  .math-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin: 28px 0 20px;
+  }
+  .math-card {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 18px 16px;
+  }
+  .math-card span {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--soft);
+    margin-bottom: 8px;
+  }
+  .math-card strong {
+    display: block;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 32px;
+    font-weight: 900;
+    color: var(--navy);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .math-card p {
+    font-size: 13px;
+    color: var(--mid);
+    line-height: 1.45;
+  }
+  .honest {
+    background: #eef4ff;
+    border: 1px solid rgba(14, 47, 115, 0.16);
+    border-radius: var(--radius);
+    padding: 22px 22px;
+    margin-top: 8px;
+  }
+  .honest h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    margin-bottom: 8px;
+  }
+  .honest p {
+    font-size: 15px;
+    color: var(--mid);
+    line-height: 1.6;
+  }
+  .honest p + p { margin-top: 10px; }
+  .honest strong { color: var(--navy); }
+  .terms-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: 24px;
+  }
+  .term {
+    background: var(--white);
+    border: 1px solid var(--divider);
+    border-radius: var(--radius);
+    padding: 18px 16px;
+  }
+  .term b {
+    display: block;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--navy);
+    margin-bottom: 6px;
+  }
+  .term p {
+    font-size: 14px;
+    color: var(--mid);
+    line-height: 1.5;
+  }
+  @media (max-width: 960px) {
+    .packages-grid,
+    .math-grid,
+    .terms-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+</style>
+</head>
+<body>
+
+<div class="banner">
+  <strong>Custom for Steven Spear</strong> · DSCR-first · Call center plan · From our Sept 14 call
+</div>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="reveal">
+      <div class="eyebrow">Waiz Media × Steven Spear</div>
+      <h1>Your DSCR brand.<em>Your pipeline.</em>Not the lead store.</h1>
+      <p class="hero-sub">
+        You said it on the call: you’re done burning spend on states you don’t want
+        just to unlock “golden” leads — and you’re ready to own a channel built for
+        the deals you actually want. We stand up <strong>Steven Spear — DSCR specialist</strong>
+        under your name: ads, lander, nurture, dialing, and booked conversations.
+        Cash-flow first. Reverse can come later.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#offer">Your two packages</a>
+        <a class="btn btn-ghost" href="#math">See the math</a>
+      </div>
+      <div class="hero-pills">
+        <span class="pill">Exclusive to you</span>
+        <span class="pill">DSCR first · reverse later</span>
+        <span class="pill">~43% contact (not 9%)</span>
+        <span class="pill">Month-to-month</span>
+      </div>
+    </div>
+
+    <div class="hero-visual reveal" aria-hidden="true">
+      <div class="brand-card">
+        <div class="brand-card-top">
+          <div class="avatar">SS</div>
+          <div>
+            <h3>Steven Spear</h3>
+            <p>DSCR · Investment Property Specialist</p>
+            <span class="brand-tag">Inbound · Owned</span>
+          </div>
+        </div>
+        <div class="brand-stats">
+          <div class="brand-stat">
+            <span>Channel</span>
+            <strong>Meta</strong>
+          </div>
+          <div class="brand-stat">
+            <span>Product</span>
+            <strong>DSCR</strong>
+          </div>
+        </div>
+        <div class="brand-feed">
+          <div class="brand-feed-label">What investors see</div>
+          <div class="feed-row"><span class="feed-dot"></span> Ads under Steven’s name</div>
+          <div class="feed-row"><span class="feed-dot"></span> Branded lander + quiz</div>
+          <div class="feed-row"><span class="feed-dot"></span> Assistant dials &amp; books</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav class="pillar-nav" aria-label="Pillars">
+  <div class="pillar-nav-inner">
+    <a href="#why"><span>→</span> Why this</a>
+    <a href="#pillar-1"><span>01</span> Attention</a>
+    <a href="#pillar-2"><span>02</span> Capture</a>
+    <a href="#pillar-3"><span>03</span> Nurture</a>
+    <a href="#pillar-4"><span>04</span> Visibility</a>
+    <a href="#math"><span>$</span> Math</a>
+    <a href="#offer"><span>✓</span> Packages</a>
+    <a href="#deliverables"><span>→</span> Next steps</a>
+  </div>
+</nav>
+
+<section class="block contrast" id="why">
+  <div class="wrap">
+    <div class="label">From our call</div>
+    <h2>Control back. Better unit economics.</h2>
+    <p class="lead">
+      Lead-store contact maxing around <strong>9%</strong> while owned inbound hits
+      <strong>35–49%</strong> (and ~43% on a live Westcap DSCR account we walked).
+      You’re paying for tier access — licenses and spend in states that don’t return —
+      when you’d rather put every dollar into high-value counties and investor intent.
+    </p>
+    <div class="contrast-grid">
+      <div class="contrast-card old">
+        <h3>Lead store today</h3>
+        <p>Shared names. Tier games. Consumer-weighted pipe.</p>
+        <ul>
+          <li>~9% max contact you’ve seen</li>
+          <li>Burn on low-ROAS states for “golden” access</li>
+          <li>No dedicated DSCR source — accidental pivots only</li>
+          <li>~$3.5k avg commission on consumer deals</li>
+        </ul>
+      </div>
+      <div class="contrast-card new">
+        <h3>Steven Spear system</h3>
+        <p>Direct Meta. Your brand. DSCR-first for cash flow.</p>
+        <ul>
+          <li>Exclusive leads under your name</li>
+          <li>Focus counties / higher property values</li>
+          <li>Target max ~$1,600 cost per funding</li>
+          <li>Path to $7k–$9k+ DSCR units (and HELOC pivots)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block pillars" id="pillars">
+  <div class="wrap">
+    <div class="label">The system</div>
+    <h2>Four pillars. One outcome.</h2>
+    <p class="lead">
+      Each layer has one job. Together they turn cold Meta traffic into
+      <strong>primed DSCR conversations</strong> on your calendar — not another shared lead dump.
+    </p>
+
+    <article class="pillar" id="pillar-1">
+      <div class="pillar-copy">
+        <div class="pillar-num">Pillar 01 · Attention</div>
+        <h3>Ads under your name</h3>
+        <p class="pillar-body">
+          We don’t run generic “apply now” lender ads. We deploy education-first creatives —
+          video + statics — that introduce DSCR the way investors actually buy:
+          grow the portfolio without W-2 theater. Your Facebook page. Your ad account.
+          Your name on every impression.
+        </p>
+        <dl class="meta-row">
+          <div class="meta-item">
+            <dt>Why it matters</dt>
+            <dd>You’re reaching people who aren’t already blasting five LOs. Creative is the targeting — investor language filters the audience before they opt in.</dd>
+          </div>
+          <div class="meta-item">
+            <dt>How you scale</dt>
+            <dd>More spend → more creative volume → faster learning. The accounts that win on Meta are the ones that feed the algorithm consistently.</dd>
+          </div>
+        </dl>
+        <ul class="deliver-list">
+          <li>Custom Team Westside creative treatment (not cookie-cutter agency ads)</li>
+          <li>Messaging that filters FICO / LTV intent in the ad itself</li>
+          <li>We help create your FB page + ad account if you don’t have one yet</li>
+        </ul>
+      </div>
+      <div class="pillar-demo">
+        <div class="demo-stage">
+          <div class="demo-glow"></div>
+          <div class="phone" aria-label="Sneak peek: Meta ad mockup">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="ad-feed">
+                <div class="ad-header">
+                  <div class="ad-avatar">SS</div>
+                  <div>
+                    <strong>Steven Spear</strong>
+                    <span>Sponsored</span>
+                  </div>
+                  <span class="ad-sponsored">···</span>
+                </div>
+                <p class="ad-copy">
+                  Real estate investors: see if your rental can qualify on its own income — not your W-2s.
+                </p>
+                <div class="carousel">
+                  <div class="carousel-card">
+                    <span class="chip">Carousel 1/4</span>
+                    <h4>Turn rental income into your next down payment</h4>
+                    <p>Property qualifies. You grow the portfolio.</p>
+                  </div>
+                  <div class="carousel-card alt">
+                    <span class="chip">2/4</span>
+                    <h4>Exit the balloon on your terms</h4>
+                    <p>Map a DSCR refi before the clock runs out.</p>
+                  </div>
+                </div>
+                <a class="ad-cta" href="#pillar-2">See if your property qualifies →</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="pillar" id="pillar-2">
+      <div class="pillar-copy">
+        <div class="pillar-num">Pillar 02 · Capture</div>
+        <h3>Branded lander + qualification quiz</h3>
+        <p class="pillar-body">
+          After the click, they don’t hit a bare form. They land on a page built around
+          <strong>you</strong> — then walk education and a short quiz. Congruent messaging
+          from ad → page (same promise, same pain). That’s why opt-in rates hold up.
+        </p>
+        <dl class="meta-row">
+          <div class="meta-item">
+            <dt>Why it matters</dt>
+            <dd>Broad landers kill intent. Congruency keeps the investor who clicked “grow my portfolio” in that story until they submit.</dd>
+          </div>
+          <div class="meta-item">
+            <dt>How you scale</dt>
+            <dd>Multiple landers / funnels matched to ad angles — not one generic page for every creative.</dd>
+          </div>
+        </dl>
+        <ul class="deliver-list">
+          <li>Full DSCR landing page branded to Steven Spear</li>
+          <li>Multi-step quiz that creates intent before they’re a lead</li>
+          <li>Thank-you page that sets expectations for what’s next</li>
+        </ul>
+      </div>
+      <div class="pillar-demo">
+        <div class="demo-stage">
+          <div class="demo-glow"></div>
+          <div class="browser" aria-label="Sneak peek: landing page mockup">
+            <div class="browser-bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              <div class="url">stevenspear.dscr-review · secure</div>
+            </div>
+            <div class="lander">
+              <div class="lander-kicker">With Steven Spear</div>
+              <h4>See what your rental qualifies for on its own income</h4>
+              <p class="sub">No W-2 theater. Operator-to-operator review for investors.</p>
+              <span class="lander-cta">Start property check</span>
+              <div class="lander-panel">
+                <h5>Good fit if…</h5>
+                <div class="fit-grid">
+                  <div class="fit-item"><span>Own</span> Investment property</div>
+                  <div class="fit-item"><span>Income</span> Currently rented</div>
+                  <div class="fit-item"><span>Goal</span> Cash-out / balloon exit</div>
+                  <div class="fit-item"><span>Mindset</span> Ready to talk numbers</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="quiz-float" aria-label="Sneak peek: quiz step">
+            <div class="step">Step 2 of 5</div>
+            <h5>What’s your main refinance goal?</h5>
+            <div class="quiz-opt active">Cash-out for next purchase</div>
+            <div class="quiz-opt">Exit hard money / balloon</div>
+            <div class="quiz-opt">Stabilize the payment</div>
+            <div class="quiz-progress"><i></i></div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="pillar" id="pillar-3">
+      <div class="pillar-copy">
+        <div class="pillar-num">Pillar 03 · Nurture + call center</div>
+        <h3>Humans dialing. You close.</h3>
+        <p class="pillar-body">
+          Live setters — not AI — ~10 hours a day. Dial within minutes of opt-in,
+          book, or live-transfer. Messaging goes out as <strong>Steven’s assistant</strong>
+          (branch manager at Westcap). Congruent drips by ad angle. You can still
+          work leads in Bonzo and <strong>snipe</strong> — if you get them first, that
+          conversation doesn’t bill the $30.
+        </p>
+        <dl class="meta-row">
+          <div class="meta-item">
+            <dt>Why it matters</dt>
+            <dd>Lead-store contact ~9%. Owned inbound + this cadence is how we see 35–49% real conversations. Speed-to-lead is the whole game.</dd>
+          </div>
+          <div class="meta-item">
+            <dt>Your time</dt>
+            <dd>If you’re capped, we free you for sales calls and higher-ticket work. If you want volume in Bonzo too, dual-route — we’ll show you how.</dd>
+          </div>
+        </dl>
+        <ul class="deliver-list">
+          <li>Speed-to-lead dialing + appointment booking / live transfer</li>
+          <li>Assistant-branded SMS &amp; follow-up (congruent to the ad)</li>
+          <li>Optional: leads also land in your Bonzo so you can snipe</li>
+        </ul>
+      </div>
+      <div class="pillar-demo">
+        <div class="demo-stage">
+          <div class="demo-glow"></div>
+          <div class="phone phone-dark" aria-label="Sneak peek: assistant SMS thread">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="sms-thread">
+                <div class="sms-day">Today · under 5 minutes</div>
+                <div class="bubble from">
+                  <span class="who">Steven’s assistant</span>
+                  Hey — this is Steven Spear’s assistant. Saw you checked whether your rental could qualify on DSCR. Steven specializes in helping investors structure this the right way — want me to grab a time with him this week?
+                </div>
+                <div class="bubble to">
+                  Yeah, mornings are better.
+                </div>
+                <div class="bubble from">
+                  <span class="who">Steven’s assistant</span>
+                  Perfect. Tue 9:30 or Wed 10:00 work? He’ll walk the property numbers with you and map what actually gets you where you want to go.
+                </div>
+                <div class="bubble to">
+                  Tue 9:30
+                </div>
+                <div class="sms-book">
+                  <strong>Booked · Tue 9:30 AM</strong>
+                  <span>On Steven’s calendar · reminder set</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="pillar" id="pillar-4">
+      <div class="pillar-copy">
+        <div class="pillar-num">Pillar 04 · Visibility</div>
+        <h3>Cost per funding — not vanity CPL</h3>
+        <p class="pillar-body">
+          You’re analytical. So are we. North star is <strong>how much cash in the engine
+          to get a funded deal out</strong> — not “leads this month.” We track conversations,
+          shows, submissions, and feed outcomes back into Meta so the account gets sharper.
+        </p>
+        <dl class="meta-row">
+          <div class="meta-item">
+            <dt>Targets we’re betting on</dt>
+            <dd>DSCR cost per submission ~$1,200 avg. Max cost per funding we want to see: <strong>~$1,600</strong>. Even at $2k CPF you’re still profitable vs $7k–$9k DSCR comps.</dd>
+          </div>
+          <div class="meta-item">
+            <dt>3X mindset</dt>
+            <dd>Goal: ~3X return on the acquisition cost of a funded unit. Referrals / multi-property LTV on top is yours — we don’t bake that into the front-end math.</dd>
+          </div>
+        </dl>
+        <ul class="deliver-list">
+          <li>Full-funnel reporting (leads → conversations → shows → funds)</li>
+          <li>Geo / creative feedback so spend moves to higher loan sizes</li>
+          <li>First 90 days: take everything, give feedback, then tighten filters</li>
+        </ul>
+      </div>
+      <div class="pillar-demo">
+        <div class="demo-stage">
+          <div class="demo-glow"></div>
+          <div class="dash" aria-label="Sneak peek: funnel dashboard mockup">
+            <div class="dash-head">
+              <h4>Steven Spear · DSCR</h4>
+              <span>Illustrative · peer account snapshot</span>
+            </div>
+            <div class="dash-kpis">
+              <div class="kpi"><span>Leads</span><strong>177</strong></div>
+              <div class="kpi"><span>Convos</span><strong>75</strong> <em>↑</em></div>
+              <div class="kpi"><span>Contact</span><strong>43%</strong></div>
+            </div>
+            <div class="funnel-bars">
+              <div class="bar-row">
+                <label>Ad spend</label>
+                <div class="bar-track"><i></i></div>
+                <b>~$17k</b>
+              </div>
+              <div class="bar-row">
+                <label>CPL</label>
+                <div class="bar-track"><i></i></div>
+                <b>~$42</b>
+              </div>
+              <div class="bar-row">
+                <label>Hand-raise</label>
+                <div class="bar-track"><i></i></div>
+                <b>53%</b>
+              </div>
+              <div class="bar-row">
+                <label>Conversations</label>
+                <div class="bar-track"><i></i></div>
+                <b>43%</b>
+              </div>
+              <div class="bar-row">
+                <label>In pipe (at check-in)</label>
+                <div class="bar-track"><i></i></div>
+                <b>~5</b>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="block scale" id="math">
+  <div class="wrap">
+    <div class="label">Honest math · from the call</div>
+    <h2>Plant seeds. Judge at ~90 days.</h2>
+    <p class="lead">
+      DSCR is faster than reverse — that’s why we start here for cash flow.
+      Still Meta-inbound: more nurturing than a lead-store one-call close.
+      Three months is enough to know if the unit economics work.
+    </p>
+    <div class="math-grid">
+      <div class="math-card">
+        <span>At $5k ad spend</span>
+        <strong>~50</strong>
+        <p>Conversations (peer ~$100 cost per conversation from ads alone).</p>
+      </div>
+      <div class="math-card">
+        <span>Call center month</span>
+        <strong>~$8.5k</strong>
+        <p>$5k ads + $2k retainer + ~$1.5k in $30 shows (~50).</p>
+      </div>
+      <div class="math-card">
+        <span>At $7.5k ads</span>
+        <strong>~$11.8k</strong>
+        <p>Your stretch scenario: ~75 conversations · ~$2,250 in $30s + $2k retainer.</p>
+      </div>
+      <div class="math-card">
+        <span>Max CPF target</span>
+        <strong>$1.6k</strong>
+        <p>Cost per funding ceiling we’re betting on for DSCR.</p>
+      </div>
+    </div>
+    <div class="honest">
+      <h3>Expectation set</h3>
+      <p>
+        Nothing is guaranteed except taxes and death — but the pricing is built so that
+        with enough volume it’s <strong>mathematically improbable</strong> you don’t get
+        capital back if conversion is in the range we’re seeing. First 90 days: take the
+        leads (including HELOC pivots), give feedback, then tighten.
+      </p>
+      <p>
+        Reverse stays on the table later. Use DSCR cash flow to sprinkle reverse when
+        you’re ready — we can add it without reinventing the stack.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="block pricing" id="offer">
+  <div class="wrap">
+    <div class="label">Your packages · Westcap pricing</div>
+    <h2>Call center (recommended). Or lead-gen.</h2>
+    <p class="lead">
+      Same ads. Same landers. Same brand. Difference is who works the phone and
+      how performance is billed. You leaned call center on the call — that’s featured.
+    </p>
+
+    <div class="packages-grid">
+      <article class="offer-card featured">
+        <h3>Call center <span class="tag-rec">Recommended</span></h3>
+        <p class="sub">Full stack: ads, lander, nurture, dialing, booking / live transfer. You show up for conversations.</p>
+        <div class="price-hero">
+          <span class="amt">$3,000</span>
+          <span class="per">startup + first month</span>
+        </div>
+        <p class="price-note">Covers onboarding (however long it takes) + your first full month of live ads. Next bill is after that month.</p>
+        <div class="price-rows">
+          <div class="price-row">
+            <span>Month 2+ retainer</span>
+            <strong>$2,000 / mo</strong>
+          </div>
+          <div class="price-row">
+            <span>Per real conversation</span>
+            <strong>$30</strong>
+          </div>
+          <div class="price-row">
+            <span>Ad spend (your Meta)</span>
+            <strong>$5,000 min</strong>
+          </div>
+          <div class="price-row">
+            <span>Typical month @ $5k ads</span>
+            <strong>~$8,500 total</strong>
+          </div>
+        </div>
+        <p class="fine-print">
+          Ad spend never touches us — you fund Meta. $30 only on a real conversation (not “take me off the list”). Snipe first in Bonzo and that one doesn’t bill. No long-term lock — month to month on deliverables. Minimum $5k ad spend to make call center worth it; push higher when you’re ready ($7.5k+ learns faster).
+        </p>
+      </article>
+
+      <article class="offer-card">
+        <h3>Lead-gen only</h3>
+        <p class="sub">We build and run ads + landers + drips into Bonzo. You (or your team) own speed-to-lead.</p>
+        <div class="price-hero">
+          <span class="amt">$2,000</span>
+          <span class="per">startup + first month</span>
+        </div>
+        <p class="price-note">Onboarding + first live month covered. Then lower retainer + a slice of spend for creative volume.</p>
+        <div class="price-rows">
+          <div class="price-row">
+            <span>Month 2+ service</span>
+            <strong>$1,500 / mo</strong>
+          </div>
+          <div class="price-row">
+            <span>Performance</span>
+            <strong>15% of ad spend</strong>
+          </div>
+          <div class="price-row">
+            <span>Call center / $30</span>
+            <strong>None</strong>
+          </div>
+          <div class="price-row">
+            <span>Example @ $5k ads</span>
+            <strong>$1.5k + $750</strong>
+          </div>
+        </div>
+        <p class="fine-print">
+          Example month 2+: $1,500 + 15% of $5,000 ($750) = $2,250 service + your $5k ads. You can start here and add call center later when time is the bottleneck — easy upsell path.
+        </p>
+      </article>
+    </div>
+
+    <div class="pricing-grid" style="margin-top:8px;">
+      <aside class="benchmark" style="grid-column:1 / -1;">
+        <h4>What “conversation” means</h4>
+        <p>
+          A real verbal conversation with a borrower from your lead — not a hang-up,
+          not “remove me.” Same definition we used when we said peer contact ~43%
+          vs lead-store ~9%. If they book a show / live transfer and you connect, it counts.
+        </p>
+        <div class="benchmark-stat">
+          <strong>Heath</strong>
+          <span>Westcap peer · ~2 months · 177 leads · ~$42 CPL · 43% conversations · ask him what it’s like working with us</span>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="block" style="background:var(--white);">
+  <div class="wrap">
+    <div class="label">How we work</div>
+    <h2>Clear terms.</h2>
+    <p class="lead">
+      Everything we covered on Sept 14, in writing — so you can decide without
+      reconstructing the call.
+    </p>
+    <div class="terms-grid">
+      <div class="term">
+        <b>Exclusive leads</b>
+        <p>Yours only. Ads and page under Steven Spear. We don’t resell the pipe.</p>
+      </div>
+      <div class="term">
+        <b>Ads on your card</b>
+        <p>Meta bills you directly. Service fees are separate. More spend = better learning.</p>
+      </div>
+      <div class="term">
+        <b>Month to month</b>
+        <p>Contract for deliverables — not a year lock. Success still needs ~90 days of planting.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block next" id="deliverables">
+  <div class="wrap">
+    <div class="label">Your build</div>
+    <h2>Everything custom. Built for Steven.</h2>
+    <p class="lead">
+      Westside referral path: <strong>your account, your brand, your leads</strong> —
+      not a shared pool. Here’s what gets stood up in onboarding (~2 weeks; can rush if you move fast).
+    </p>
+
+    <div class="checklist">
+      <div class="check-item">
+        <div class="mark">✓</div>
+        <div>
+          <strong>Meta ads under Steven Spear</strong>
+          <span>Concepts, copy, creatives, and ongoing tests for DSCR investors — Team Westside creative lane.</span>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="mark">✓</div>
+        <div>
+          <strong>Facebook page + ad account setup</strong>
+          <span>You don’t have one yet — we hand-hold creation, polish presence, grant access.</span>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="mark">✓</div>
+        <div>
+          <strong>Branded DSCR lander + quiz</strong>
+          <span>Education-first page with your positioning, fit grid, and congruent funnels by ad angle.</span>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="mark">✓</div>
+        <div>
+          <strong>Call center — dial, nurture &amp; book</strong>
+          <span>Our team works every lead through to a booked conversation / live transfer. You take the calls.</span>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="mark">✓</div>
+        <div>
+          <strong>Bonzo dual-route (optional)</strong>
+          <span>Leads can land in your Bonzo so you can snipe. $30 only when we get the conversation.</span>
+        </div>
+      </div>
+      <div class="check-item">
+        <div class="mark">✓</div>
+        <div>
+          <strong>Reporting &amp; feedback loop</strong>
+          <span>Conversations, shows, submissions, cost-per-funding visibility — not vanity lead counts.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="label" style="margin-bottom: 14px;">Onboarding · ~2 weeks (rush available)</div>
+    <div class="timeline">
+      <div class="t-step">
+        <b>Decide</b>
+        <p>Pick call center vs lead-gen. Reply to Gabe. Invoice for startup + first month.</p>
+      </div>
+      <div class="t-step">
+        <b>Week 1</b>
+        <p>Create FB page + ad account with us. Kickoff with PM. Assets, compliance, CRM / Bonzo path locked.</p>
+      </div>
+      <div class="t-step">
+        <b>Build → launch</b>
+        <p>Ads, lander, quiz, nurture. Second training call. Leads the same day we flip spend live — early October is realistic if we start mid-week.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <strong>Waiz Media</strong> · Custom DSCR offer sheet for Steven Spear · September 14, 2026<br>
+  Questions? Text Gabe — happy to walk any number live. Recording:
+  <a href="https://fathom.video/share/PiPzASad_Nx8HuVmXSxC9y6k3yW85Qpa" style="color:var(--accent);">Fathom · 79 min</a>
+</footer>
+
+</body>
+</html>

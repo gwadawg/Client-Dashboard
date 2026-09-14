@@ -52,6 +52,14 @@ const nextConfig: NextConfig = {
         source: "/offers/romik-yeghnazary/",
         destination: "/offers/romik-yeghnazary/index.html",
       },
+      {
+        source: "/offers/steven-spear",
+        destination: "/offers/steven-spear/index.html",
+      },
+      {
+        source: "/offers/steven-spear/",
+        destination: "/offers/steven-spear/index.html",
+      },
     ];
   },
 };
