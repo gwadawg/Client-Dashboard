@@ -1,7 +1,251 @@
 {
   "version": 1,
-  "updated_at": "2026-07-22",
+  "updated_at": "2026-09-15",
   "docs": [
+    {
+      "slug": "diagnosing-constraints-beginner-playbook",
+      "title": "Diagnosing Constraints SOP",
+      "description": "Teach anyone on the team how to diagnose and fix constraints in client ad accounts using Mr. Waiz KPIs.",
+      "domain": "client-fulfillment",
+      "owner": "operations",
+      "status": "active",
+      "artifact_type": "sop",
+      "last_updated": "2026-09-15T00:00:00.000Z",
+      "review_cycle": "monthly",
+      "script_version": null,
+      "path": "client-fulfillment/client-success/diagnosing-constraints-beginner-playbook.md",
+      "headings": [
+        {
+          "level": 2,
+          "title": "Purpose",
+          "id": "purpose"
+        },
+        {
+          "level": 2,
+          "title": "Scope",
+          "id": "scope"
+        },
+        {
+          "level": 2,
+          "title": "The #1 rule",
+          "id": "the-1-rule"
+        },
+        {
+          "level": 2,
+          "title": "Our North Star",
+          "id": "our-north-star"
+        },
+        {
+          "level": 3,
+          "title": "Default \"healthy\" bands (global)",
+          "id": "default-healthy-bands-global"
+        },
+        {
+          "level": 3,
+          "title": "Leading Meta / landing metrics (diagnose ads, not the verdict)",
+          "id": "leading-meta-landing-metrics-diagnose-ads-not-the-verdict"
+        },
+        {
+          "level": 2,
+          "title": "The funnel as an element tree",
+          "id": "the-funnel-as-an-element-tree"
+        },
+        {
+          "level": 2,
+          "title": "How the process works",
+          "id": "how-the-process-works"
+        },
+        {
+          "level": 3,
+          "title": "Golden guardrails",
+          "id": "golden-guardrails"
+        },
+        {
+          "level": 2,
+          "title": "Worked example (do the math)",
+          "id": "worked-example-do-the-math"
+        },
+        {
+          "level": 3,
+          "title": "Goals (example account)",
+          "id": "goals-example-account"
+        },
+        {
+          "level": 3,
+          "title": "Actuals after ~1 month",
+          "id": "actuals-after-1-month"
+        },
+        {
+          "level": 3,
+          "title": "Calculate",
+          "id": "calculate"
+        },
+        {
+          "level": 3,
+          "title": "What is the constraint?",
+          "id": "what-is-the-constraint"
+        },
+        {
+          "level": 2,
+          "title": "Priority levels (DEFCON)",
+          "id": "priority-levels-defcon"
+        },
+        {
+          "level": 3,
+          "title": "Trajectory (every Monday)",
+          "id": "trajectory-every-monday"
+        },
+        {
+          "level": 2,
+          "title": "Theory of Constraints (why we only fix one thing)",
+          "id": "theory-of-constraints-why-we-only-fix-one-thing"
+        },
+        {
+          "level": 2,
+          "title": "KPI cards (beginner reference)",
+          "id": "kpi-cards-beginner-reference"
+        },
+        {
+          "level": 3,
+          "title": "L1 \u2014 Ads",
+          "id": "l1-ads"
+        },
+        {
+          "level": 4,
+          "title": "CTR",
+          "id": "ctr"
+        },
+        {
+          "level": 4,
+          "title": "Frequency",
+          "id": "frequency"
+        },
+        {
+          "level": 4,
+          "title": "CPL",
+          "id": "cpl"
+        },
+        {
+          "level": 3,
+          "title": "L2 \u2014 Landing / quality",
+          "id": "l2-landing-quality"
+        },
+        {
+          "level": 4,
+          "title": "Opt-in rate",
+          "id": "opt-in-rate"
+        },
+        {
+          "level": 4,
+          "title": "Lead \u2192 Qualified %",
+          "id": "lead-qualified-"
+        },
+        {
+          "level": 4,
+          "title": "CPQL",
+          "id": "cpql"
+        },
+        {
+          "level": 3,
+          "title": "L3 \u2014 Call center",
+          "id": "l3-call-center"
+        },
+        {
+          "level": 4,
+          "title": "Hand-raise rate (graded conversion)",
+          "id": "hand-raise-rate-graded-conversion"
+        },
+        {
+          "level": 4,
+          "title": "Booking rate (reference)",
+          "id": "booking-rate-reference"
+        },
+        {
+          "level": 3,
+          "title": "L4 \u2014 Show quality",
+          "id": "l4-show-quality"
+        },
+        {
+          "level": 4,
+          "title": "Show Rate (graded)",
+          "id": "show-rate-graded"
+        },
+        {
+          "level": 4,
+          "title": "True Show (secondary)",
+          "id": "true-show-secondary"
+        },
+        {
+          "level": 3,
+          "title": "North star + client-side",
+          "id": "north-star-client-side"
+        },
+        {
+          "level": 4,
+          "title": "CPConv",
+          "id": "cpconv"
+        },
+        {
+          "level": 4,
+          "title": "Close rate / LO bail",
+          "id": "close-rate-lo-bail"
+        },
+        {
+          "level": 2,
+          "title": "Role ownership (who pulls which lever)",
+          "id": "role-ownership-who-pulls-which-lever"
+        },
+        {
+          "level": 2,
+          "title": "Quick diagnosis flowchart",
+          "id": "quick-diagnosis-flowchart"
+        },
+        {
+          "level": 2,
+          "title": "HE / Call Center clients (short)",
+          "id": "he-call-center-clients-short"
+        },
+        {
+          "level": 2,
+          "title": "Related docs (go deeper when ready)",
+          "id": "related-docs-go-deeper-when-ready"
+        },
+        {
+          "level": 2,
+          "title": "Quality bar",
+          "id": "quality-bar"
+        }
+      ],
+      "stage_nav": [
+        {
+          "level": 2,
+          "title": "Our North Star",
+          "id": "our-north-star"
+        },
+        {
+          "level": 2,
+          "title": "Quality bar",
+          "id": "quality-bar"
+        }
+      ],
+      "opening_pills": [],
+      "icp_pills": [],
+      "related_docs": [
+        {
+          "slug": "under-kpi-diagnosis-ladder",
+          "label": "Under-KPI Diagnosis Ladder",
+          "relation": "implements"
+        },
+        {
+          "slug": "kpi-review-meeting-sop",
+          "label": "KPI Review Meeting SOP",
+          "relation": "reference"
+        }
+      ],
+      "featured": false,
+      "bundle": "custom",
+      "department": "client-success"
+    },
     {
       "slug": "financial-qualification",
       "title": "Disqualifying And Financial Qualification",
@@ -222,7 +466,7 @@
         },
         {
           "level": 3,
-          "title": "Signals They’re Unqualified:",
+          "title": "Signals They\u2019re Unqualified:",
           "id": "signals-theyre-unqualified"
         },
         {
@@ -297,7 +541,7 @@
         },
         {
           "level": 3,
-          "title": "It all boils down to the perceived value of said thing they’re buying…",
+          "title": "It all boils down to the perceived value of said thing they\u2019re buying\u2026",
           "id": "it-all-boils-down-to-the-perceived-value-of-said-thing-theyre-buying"
         },
         {
@@ -602,7 +846,7 @@
     {
       "slug": "dscr-setter-appointment-script",
       "title": "DSCR Setter / Appointment-Setting Call Script",
-      "description": "Get a refi-ready investor **live-transferred to the LO** or **booked + confirmed** on the LO's calendar, with clean notes — without making them re-tell their story. Position **[LO NAME] as the DSCR sp",
+      "description": "Get a refi-ready investor **live-transferred to the LO** or **booked + confirmed** on the LO's calendar, with clean notes \u2014 without making them re-tell their story. Position **[LO NAME] as the DSCR sp",
       "domain": "client-fulfillment",
       "owner": "setter",
       "status": "active",
@@ -639,12 +883,12 @@
         },
         {
           "level": 3,
-          "title": "LO positioning bank (weave in naturally — pick what fits)",
+          "title": "LO positioning bank (weave in naturally \u2014 pick what fits)",
           "id": "lo-positioning-bank-weave-in-naturally-pick-what-fits"
         },
         {
           "level": 2,
-          "title": "STAGE 1 — CONNECTION (first 15 seconds)",
+          "title": "STAGE 1 \u2014 CONNECTION (first 15 seconds)",
           "id": "stage-1-connection-first-15-seconds"
         },
         {
@@ -654,12 +898,12 @@
         },
         {
           "level": 3,
-          "title": "Pivot back to business (optional — keep it short for investors)",
+          "title": "Pivot back to business (optional \u2014 keep it short for investors)",
           "id": "pivot-back-to-business-optional-keep-it-short-for-investors"
         },
         {
           "level": 2,
-          "title": "STAGE 2 — FRAME (the non-negotiable)",
+          "title": "STAGE 2 \u2014 FRAME (the non-negotiable)",
           "id": "stage-2-frame-the-non-negotiable"
         },
         {
@@ -674,7 +918,7 @@
         },
         {
           "level": 2,
-          "title": "STAGE 3 — QUICK QUALIFICATION (notes for the LO — NOT underwriting)",
+          "title": "STAGE 3 \u2014 QUICK QUALIFICATION (notes for the LO \u2014 NOT underwriting)",
           "id": "stage-3-quick-qualification-notes-for-the-lo-not-underwriting"
         },
         {
@@ -689,17 +933,17 @@
         },
         {
           "level": 3,
-          "title": "Follow-up questions (ask only what's missing — max 3–5 total)",
+          "title": "Follow-up questions (ask only what's missing \u2014 max 3\u20135 total)",
           "id": "follow-up-questions-ask-only-whats-missing-max-35-total"
         },
         {
           "level": 3,
-          "title": "Hard disqualifiers (acknowledge, note, escalate — don't promise)",
+          "title": "Hard disqualifiers (acknowledge, note, escalate \u2014 don't promise)",
           "id": "hard-disqualifiers-acknowledge-note-escalate-dont-promise"
         },
         {
           "level": 2,
-          "title": "STAGE 4 — TRANSITION TO TRANSFER OR BOOK",
+          "title": "STAGE 4 \u2014 TRANSITION TO TRANSFER OR BOOK",
           "id": "stage-4-transition-to-transfer-or-book"
         },
         {
@@ -714,7 +958,7 @@
         },
         {
           "level": 3,
-          "title": "If transfer is not possible — book",
+          "title": "If transfer is not possible \u2014 book",
           "id": "if-transfer-is-not-possible-book"
         },
         {
@@ -729,22 +973,22 @@
         },
         {
           "level": 2,
-          "title": "STAGE 5 — WRAP-UP",
+          "title": "STAGE 5 \u2014 WRAP-UP",
           "id": "stage-5-wrap-up"
         },
         {
           "level": 2,
-          "title": "CALL VARIANT A — Laura-booked (AI) appointment confirmation",
+          "title": "CALL VARIANT A \u2014 Laura-booked (AI) appointment confirmation",
           "id": "call-variant-a-laura-booked-ai-appointment-confirmation"
         },
         {
           "level": 2,
-          "title": "CALL VARIANT B — Callback after \"not a good time\"",
+          "title": "CALL VARIANT B \u2014 Callback after \"not a good time\"",
           "id": "call-variant-b-callback-after-not-a-good-time"
         },
         {
           "level": 2,
-          "title": "OBJECTION HANDLING (front-desk version — keep the call alive, hand off)",
+          "title": "OBJECTION HANDLING (front-desk version \u2014 keep the call alive, hand off)",
           "id": "objection-handling-front-desk-version-keep-the-call-alive-hand-off"
         },
         {
@@ -771,7 +1015,7 @@
         },
         {
           "level": 2,
-          "title": "STAGE 1 — CONNECTION (first 15 seconds)",
+          "title": "STAGE 1 \u2014 CONNECTION (first 15 seconds)",
           "id": "stage-1-connection-first-15-seconds"
         },
         {
@@ -800,7 +1044,7 @@
     },
     {
       "slug": "dscr-team-product-faq",
-      "title": "DSCR Team Product FAQ — Internal Training",
+      "title": "DSCR Team Product FAQ \u2014 Internal Training",
       "description": "Give every internal Waiz team member a single, scannable primer on the DSCR refinance product: who the borrower is, what the product is, how it differs from other financing, vocabulary for calls, and ",
       "domain": "client-fulfillment",
       "owner": "setter",
@@ -958,8 +1202,8 @@
     },
     {
       "slug": "flip-the-frame",
-      "title": "Flip the Frame — Company Description Framework",
-      "description": "Give setters and closers a repeatable way to answer **“What do you do?”** / **“Just give me the rundown”** without pitching on command — so reverse mortgage LOs **qualify themselves** instead of evalu",
+      "title": "Flip the Frame \u2014 Company Description Framework",
+      "description": "Give setters and closers a repeatable way to answer **\u201cWhat do you do?\u201d** / **\u201cJust give me the rundown\u201d** without pitching on command \u2014 so reverse mortgage LOs **qualify themselves** instead of evalu",
       "domain": "acquisition",
       "owner": "sales-leadership",
       "status": "active",
@@ -996,12 +1240,12 @@
         },
         {
           "level": 2,
-          "title": "Framework 1 — Reclaim the frame (don’t pitch on command)",
+          "title": "Framework 1 \u2014 Reclaim the frame (don\u2019t pitch on command)",
           "id": "framework-1-reclaim-the-frame-dont-pitch-on-command"
         },
         {
           "level": 2,
-          "title": "Framework 2 — Answer it, but speak to their pain first",
+          "title": "Framework 2 \u2014 Answer it, but speak to their pain first",
           "id": "framework-2-answer-it-but-speak-to-their-pain-first"
         },
         {
@@ -1118,7 +1362,7 @@
         },
         {
           "level": 2,
-          "title": "How to apply FUN criteria — softly and only hard-qualifying when necessary",
+          "title": "How to apply FUN criteria \u2014 softly and only hard-qualifying when necessary",
           "id": "how-to-apply-fun-criteria-softly-and-only-hard-qualifying-when-necessary"
         },
         {
@@ -1133,7 +1377,7 @@
         },
         {
           "level": 3,
-          "title": "📌  The North Star",
+          "title": "\ud83d\udccc  The North Star",
           "id": "-the-north-star"
         },
         {
@@ -1143,7 +1387,7 @@
         },
         {
           "level": 3,
-          "title": "Every Intro Call must accomplish exactly three things — in this order:",
+          "title": "Every Intro Call must accomplish exactly three things \u2014 in this order:",
           "id": "every-intro-call-must-accomplish-exactly-three-things-in-this-order"
         },
         {
@@ -1203,7 +1447,7 @@
         },
         {
           "level": 3,
-          "title": "Objective 1 — Qualify the Prospect (FUN)",
+          "title": "Objective 1 \u2014 Qualify the Prospect (FUN)",
           "id": "objective-1-qualify-the-prospect-fun"
         },
         {
@@ -1253,7 +1497,7 @@
         },
         {
           "level": 2,
-          "title": "F — Financially Qualified",
+          "title": "F \u2014 Financially Qualified",
           "id": "f-financially-qualified"
         },
         {
@@ -1278,17 +1522,17 @@
         },
         {
           "level": 3,
-          "title": "⚠️  Warning — Hard Qualifying Lowers Show Rates",
+          "title": "\u26a0\ufe0f  Warning \u2014 Hard Qualifying Lowers Show Rates",
           "id": "-warning-hard-qualifying-lowers-show-rates"
         },
         {
           "level": 3,
-          "title": "🚨  What NOT to Do",
+          "title": "\ud83d\udea8  What NOT to Do",
           "id": "-what-not-to-do"
         },
         {
           "level": 2,
-          "title": "U — Urgency",
+          "title": "U \u2014 Urgency",
           "id": "u-urgency"
         },
         {
@@ -1308,7 +1552,7 @@
         },
         {
           "level": 2,
-          "title": "Proceed — book the Demo",
+          "title": "Proceed \u2014 book the Demo",
           "id": "proceed-book-the-demo"
         },
         {
@@ -1323,22 +1567,22 @@
         },
         {
           "level": 3,
-          "title": "💡  Pro Tip",
+          "title": "\ud83d\udca1  Pro Tip",
           "id": "-pro-tip"
         },
         {
           "level": 2,
-          "title": "N — Need",
+          "title": "N \u2014 Need",
           "id": "n-need"
         },
         {
           "level": 3,
-          "title": "📌  Rule",
+          "title": "\ud83d\udccc  Rule",
           "id": "-rule"
         },
         {
           "level": 2,
-          "title": "Objective 2 — Identify What Motivates Them to Buy",
+          "title": "Objective 2 \u2014 Identify What Motivates Them to Buy",
           "id": "objective-2-identify-what-motivates-them-to-buy"
         },
         {
@@ -1398,7 +1642,7 @@
         },
         {
           "level": 2,
-          "title": "Wants relief — time and mental load back",
+          "title": "Wants relief \u2014 time and mental load back",
           "id": "wants-relief-time-and-mental-load-back"
         },
         {
@@ -1423,7 +1667,7 @@
         },
         {
           "level": 2,
-          "title": "Trust is broken — skepticism is high",
+          "title": "Trust is broken \u2014 skepticism is high",
           "id": "trust-is-broken-skepticism-is-high"
         },
         {
@@ -1438,7 +1682,7 @@
         },
         {
           "level": 3,
-          "title": "Take notes during the call — write down exact words and phrases they use",
+          "title": "Take notes during the call \u2014 write down exact words and phrases they use",
           "id": "take-notes-during-the-call-write-down-exact-words-and-phrases-they-use"
         },
         {
@@ -1448,7 +1692,7 @@
         },
         {
           "level": 3,
-          "title": "Note emotional emphasis — what do they say with the most energy?",
+          "title": "Note emotional emphasis \u2014 what do they say with the most energy?",
           "id": "note-emotional-emphasis-what-do-they-say-with-the-most-energy"
         },
         {
@@ -1458,12 +1702,12 @@
         },
         {
           "level": 3,
-          "title": "⭐  Why This Matters",
+          "title": "\u2b50  Why This Matters",
           "id": "-why-this-matters"
         },
         {
           "level": 2,
-          "title": "Objective 3 — Sell the Next Call",
+          "title": "Objective 3 \u2014 Sell the Next Call",
           "id": "objective-3-sell-the-next-call"
         },
         {
@@ -1473,7 +1717,7 @@
         },
         {
           "level": 3,
-          "title": "💡  Use This Frame",
+          "title": "\ud83d\udca1  Use This Frame",
           "id": "-use-this-frame"
         },
         {
@@ -1483,7 +1727,7 @@
         },
         {
           "level": 3,
-          "title": "⚠️  What Happens If You Skip This",
+          "title": "\u26a0\ufe0f  What Happens If You Skip This",
           "id": "-what-happens-if-you-skip-this"
         },
         {
@@ -1573,7 +1817,7 @@
         },
         {
           "level": 3,
-          "title": "\"Listen more than you talk — what they say matters more than what I say\"",
+          "title": "\"Listen more than you talk \u2014 what they say matters more than what I say\"",
           "id": "listen-more-than-you-talk-what-they-say-matters-more-than-what-i-say"
         },
         {
@@ -1583,7 +1827,7 @@
         },
         {
           "level": 3,
-          "title": "\"I'll give a confident number and move on — no rabbit holes\"",
+          "title": "\"I'll give a confident number and move on \u2014 no rabbit holes\"",
           "id": "ill-give-a-confident-number-and-move-on-no-rabbit-holes"
         },
         {
@@ -1598,7 +1842,7 @@
         },
         {
           "level": 3,
-          "title": "⭐  Energy Over Words",
+          "title": "\u2b50  Energy Over Words",
           "id": "-energy-over-words"
         },
         {
@@ -1653,7 +1897,7 @@
         },
         {
           "level": 3,
-          "title": "📌  What You're Handing Off",
+          "title": "\ud83d\udccc  What You're Handing Off",
           "id": "-what-youre-handing-off"
         },
         {
@@ -1698,7 +1942,7 @@
     {
       "slug": "intro-call-script",
       "title": "Intro Call Script",
-      "description": "Word-for-word guide for setter intro calls: low-pressure discovery, operational qualification, demo booking, and pre-call nurture — without pitching programs or pricing on this call.",
+      "description": "Word-for-word guide for setter intro calls: low-pressure discovery, operational qualification, demo booking, and pre-call nurture \u2014 without pitching programs or pricing on this call.",
       "domain": "acquisition",
       "owner": "setter",
       "status": "active",
@@ -1755,17 +1999,17 @@
         },
         {
           "level": 3,
-          "title": "If they ask “What do you do?” / want a rundown",
+          "title": "If they ask \u201cWhat do you do?\u201d / want a rundown",
           "id": "if-they-ask-what-do-you-do-want-a-rundown"
         },
         {
           "level": 3,
-          "title": "If they push “how does it work?” (programs / implementation)",
+          "title": "If they push \u201chow does it work?\u201d (programs / implementation)",
           "id": "if-they-push-how-does-it-work-programs-implementation"
         },
         {
           "level": 3,
-          "title": "If they push price / “what does it cost?”",
+          "title": "If they push price / \u201cwhat does it cost?\u201d",
           "id": "if-they-push-price-what-does-it-cost"
         },
         {
@@ -1775,42 +2019,42 @@
         },
         {
           "level": 2,
-          "title": "Stage 1 — Introduction (pick one opening)",
+          "title": "Stage 1 \u2014 Introduction (pick one opening)",
           "id": "stage-1-introduction-pick-one-opening"
         },
         {
           "level": 3,
-          "title": "Opening 1 — Booked call",
+          "title": "Opening 1 \u2014 Booked call",
           "id": "opening-1-booked-call"
         },
         {
           "level": 3,
-          "title": "Opening 2 — Appointment confirmation (early intro)",
+          "title": "Opening 2 \u2014 Appointment confirmation (early intro)",
           "id": "opening-2-appointment-confirmation-early-intro"
         },
         {
           "level": 3,
-          "title": "Opening 3 — Dialer / impromptu",
+          "title": "Opening 3 \u2014 Dialer / impromptu",
           "id": "opening-3-dialer-impromptu"
         },
         {
           "level": 3,
-          "title": "Opening 4 — Intro no-show recovery",
+          "title": "Opening 4 \u2014 Intro no-show recovery",
           "id": "opening-4-intro-no-show-recovery"
         },
         {
           "level": 2,
-          "title": "Stages 2–7 (shared)",
+          "title": "Stages 2\u20137 (shared)",
           "id": "stages-27-shared"
         },
         {
           "level": 3,
-          "title": "Stage 2 — Expectations while building trust",
+          "title": "Stage 2 \u2014 Expectations while building trust",
           "id": "stage-2-expectations-while-building-trust"
         },
         {
           "level": 3,
-          "title": "Stage 3 — Qualifying questions",
+          "title": "Stage 3 \u2014 Qualifying questions",
           "id": "stage-3-qualifying-questions"
         },
         {
@@ -1820,67 +2064,67 @@
         },
         {
           "level": 4,
-          "title": "1 — Licensed states",
+          "title": "1 \u2014 Licensed states",
           "id": "1-licensed-states"
         },
         {
           "level": 4,
-          "title": "2 — Role",
+          "title": "2 \u2014 Role",
           "id": "2-role"
         },
         {
           "level": 4,
-          "title": "3 — Product focus (forward / reverse / both)",
+          "title": "3 \u2014 Product focus (forward / reverse / both)",
           "id": "3-product-focus-forward-reverse-both"
         },
         {
           "level": 4,
-          "title": "4 — Lead generation today",
+          "title": "4 \u2014 Lead generation today",
           "id": "4-lead-generation-today"
         },
         {
           "level": 4,
-          "title": "5 — Production",
+          "title": "5 \u2014 Production",
           "id": "5-production"
         },
         {
           "level": 4,
-          "title": "6 — Timeline and blockers",
+          "title": "6 \u2014 Timeline and blockers",
           "id": "6-timeline-and-blockers"
         },
         {
           "level": 4,
-          "title": "After qualifying — routing",
+          "title": "After qualifying \u2014 routing",
           "id": "after-qualifying-routing"
         },
         {
           "level": 2,
-          "title": "ICP tracks (pick one before “who we are” + demo pitch)",
+          "title": "ICP tracks (pick one before \u201cwho we are\u201d + demo pitch)",
           "id": "icp-tracks-pick-one-before-who-we-are-demo-pitch"
         },
         {
           "level": 3,
-          "title": "Track 1 — Referral LO",
+          "title": "Track 1 \u2014 Referral LO",
           "id": "track-1-referral-lo"
         },
         {
           "level": 3,
-          "title": "Track 2 — Marketing / system LO",
+          "title": "Track 2 \u2014 Marketing / system LO",
           "id": "track-2-marketing-system-lo"
         },
         {
           "level": 3,
-          "title": "Track 3 — Forward → reverse",
+          "title": "Track 3 \u2014 Forward \u2192 reverse",
           "id": "track-3-forward-reverse"
         },
         {
           "level": 3,
-          "title": "Stage 4 — Show fit + sell the demo",
+          "title": "Stage 4 \u2014 Show fit + sell the demo",
           "id": "stage-4-show-fit-sell-the-demo"
         },
         {
           "level": 4,
-          "title": "Label — confirm understanding",
+          "title": "Label \u2014 confirm understanding",
           "id": "label-confirm-understanding"
         },
         {
@@ -1895,17 +2139,17 @@
         },
         {
           "level": 3,
-          "title": "Stage 5 — Book the demo",
+          "title": "Stage 5 \u2014 Book the demo",
           "id": "stage-5-book-the-demo"
         },
         {
           "level": 3,
-          "title": "Stage 6 — Pre-call content tie-down",
+          "title": "Stage 6 \u2014 Pre-call content tie-down",
           "id": "stage-6-pre-call-content-tie-down"
         },
         {
           "level": 3,
-          "title": "Stage 7 — Contact and message verification",
+          "title": "Stage 7 \u2014 Contact and message verification",
           "id": "stage-7-contact-and-message-verification"
         },
         {
@@ -1942,47 +2186,47 @@
         },
         {
           "level": 2,
-          "title": "Stage 1 — Introduction (pick one opening)",
+          "title": "Stage 1 \u2014 Introduction (pick one opening)",
           "id": "stage-1-introduction-pick-one-opening"
         },
         {
           "level": 2,
-          "title": "Stages 2–7 (shared)",
+          "title": "Stages 2\u20137 (shared)",
           "id": "stages-27-shared"
         },
         {
           "level": 2,
-          "title": "ICP tracks (pick one before “who we are” + demo pitch)",
+          "title": "ICP tracks (pick one before \u201cwho we are\u201d + demo pitch)",
           "id": "icp-tracks-pick-one-before-who-we-are-demo-pitch"
         },
         {
           "level": 3,
-          "title": "Stage 2 — Expectations while building trust",
+          "title": "Stage 2 \u2014 Expectations while building trust",
           "id": "stage-2-expectations-while-building-trust"
         },
         {
           "level": 3,
-          "title": "Stage 3 — Qualifying questions",
+          "title": "Stage 3 \u2014 Qualifying questions",
           "id": "stage-3-qualifying-questions"
         },
         {
           "level": 3,
-          "title": "Stage 4 — Show fit + sell the demo",
+          "title": "Stage 4 \u2014 Show fit + sell the demo",
           "id": "stage-4-show-fit-sell-the-demo"
         },
         {
           "level": 3,
-          "title": "Stage 5 — Book the demo",
+          "title": "Stage 5 \u2014 Book the demo",
           "id": "stage-5-book-the-demo"
         },
         {
           "level": 3,
-          "title": "Stage 6 — Pre-call content tie-down",
+          "title": "Stage 6 \u2014 Pre-call content tie-down",
           "id": "stage-6-pre-call-content-tie-down"
         },
         {
           "level": 3,
-          "title": "Stage 7 — Contact and message verification",
+          "title": "Stage 7 \u2014 Contact and message verification",
           "id": "stage-7-contact-and-message-verification"
         }
       ],
@@ -2015,7 +2259,7 @@
         },
         {
           "id": "3-product-focus-forward-reverse-both",
-          "label": "Forward→Reverse"
+          "label": "Forward\u2192Reverse"
         }
       ],
       "related_docs": [
@@ -2066,8 +2310,8 @@
     },
     {
       "slug": "intro-icp-tracks",
-      "title": "Intro ICP Tracks — Referral, Marketing, Forward-to-Reverse",
-      "description": "Three ICP-specific talk tracks for setter intros: **“who we are”** (Framework 2) and **demo pre-pitch** (Stage 4). Same call flow everywhere — pick the track that matches how they actually get busines",
+      "title": "Intro ICP Tracks \u2014 Referral, Marketing, Forward-to-Reverse",
+      "description": "Three ICP-specific talk tracks for setter intros: **\u201cwho we are\u201d** (Framework 2) and **demo pre-pitch** (Stage 4). Same call flow everywhere \u2014 pick the track that matches how they actually get busines",
       "domain": "acquisition",
       "owner": "sales-leadership",
       "status": "active",
@@ -2094,7 +2338,7 @@
         },
         {
           "level": 2,
-          "title": "Track 1 — Referral LO",
+          "title": "Track 1 \u2014 Referral LO",
           "id": "track-1-referral-lo"
         },
         {
@@ -2109,7 +2353,7 @@
         },
         {
           "level": 2,
-          "title": "Track 2 — Marketing / system LO",
+          "title": "Track 2 \u2014 Marketing / system LO",
           "id": "track-2-marketing-system-lo"
         },
         {
@@ -2124,7 +2368,7 @@
         },
         {
           "level": 2,
-          "title": "Track 3 — Forward → reverse",
+          "title": "Track 3 \u2014 Forward \u2192 reverse",
           "id": "track-3-forward-reverse"
         },
         {
@@ -2161,7 +2405,7 @@
         },
         {
           "id": "track-3-forward-reverse",
-          "label": "Forward→Reverse"
+          "label": "Forward\u2192Reverse"
         }
       ],
       "related_docs": [],
@@ -2172,7 +2416,7 @@
     {
       "slug": "kpi-review-meeting-sop",
       "title": "KPI Review Meeting SOP",
-      "description": "Run Monday Week Plan and Thursday Commitment Check so every under-KPI account leaves with an **action plan** and a short **explanation of what went wrong** — without turning the meeting into a diagnos",
+      "description": "Run Monday Week Plan and Thursday Commitment Check so every under-KPI account leaves with an **action plan** and a short **explanation of what went wrong** \u2014 without turning the meeting into a diagnos",
       "domain": "operations",
       "owner": "operations",
       "status": "draft",
@@ -2219,7 +2463,7 @@
         },
         {
           "level": 2,
-          "title": "Section A — Monday Week Plan (~25 min)",
+          "title": "Section A \u2014 Monday Week Plan (~25 min)",
           "id": "section-a-monday-week-plan-25-min"
         },
         {
@@ -2244,7 +2488,7 @@
         },
         {
           "level": 2,
-          "title": "Section B — Thursday Commitment Check (~25 min)",
+          "title": "Section B \u2014 Thursday Commitment Check (~25 min)",
           "id": "section-b-thursday-commitment-check-25-min"
         },
         {
@@ -2458,7 +2702,7 @@
         },
         {
           "level": 3,
-          "title": "Pre-call video assets (canonical URLs + objection map): Pre-Call Objection Video Assets — use **prospect_page_url** from the index; default sequence 1→2→3 or jump-send per quick-send table; tie-down language in demo confirmation script",
+          "title": "Pre-call video assets (canonical URLs + objection map): Pre-Call Objection Video Assets \u2014 use **prospect_page_url** from the index; default sequence 1\u21922\u21923 or jump-send per quick-send table; tie-down language in demo confirmation script",
           "id": "pre-call-video-assets-canonical-urls-objection-map-pre-call-objection-video-assets-use-prospect_page_url-from-the-index-default-sequence-123-or-jump-send-per-quick-send-table-tie-down-language-in-demo-confirmation-script"
         },
         {
@@ -2622,7 +2866,7 @@
       "icp_pills": [
         {
           "id": "attempt-to-push-the-demo-call-time-forward-within-next-24hrs-is-ideal",
-          "label": "Forward→Reverse"
+          "label": "Forward\u2192Reverse"
         }
       ],
       "related_docs": [],
@@ -2732,37 +2976,37 @@
         },
         {
           "level": 2,
-          "title": "Priority 1 — Intro Calls",
+          "title": "Priority 1 \u2014 Intro Calls",
           "id": "priority-1-intro-calls"
         },
         {
           "level": 2,
-          "title": "Priority 2 — Watchshift",
+          "title": "Priority 2 \u2014 Watchshift",
           "id": "priority-2-watchshift"
         },
         {
           "level": 2,
-          "title": "Priority 3 — Confirm Demo Appointments (Closer Calls)",
+          "title": "Priority 3 \u2014 Confirm Demo Appointments (Closer Calls)",
           "id": "priority-3-confirm-demo-appointments-closer-calls"
         },
         {
           "level": 2,
-          "title": "Priority 4 — LinkedIn (Outreach Only)",
+          "title": "Priority 4 \u2014 LinkedIn (Outreach Only)",
           "id": "priority-4-linkedin-outreach-only"
         },
         {
           "level": 2,
-          "title": "Priority 5 — Power Dialer: Clear DQ-1",
+          "title": "Priority 5 \u2014 Power Dialer: Clear DQ-1",
           "id": "priority-5-power-dialer-clear-dq-1"
         },
         {
           "level": 2,
-          "title": "Priority 6 — No-Shows",
+          "title": "Priority 6 \u2014 No-Shows",
           "id": "priority-6-no-shows"
         },
         {
           "level": 2,
-          "title": "Priority 7 — Call Center Work (B2C Leads)",
+          "title": "Priority 7 \u2014 Call Center Work (B2C Leads)",
           "id": "priority-7-call-center-work-b2c-leads"
         },
         {
@@ -2792,7 +3036,7 @@
     {
       "slug": "under-kpi-diagnosis-ladder",
       "title": "Under-KPI Diagnosis Ladder",
-      "description": "Before the team fully trusts Mr. Waiz’s red / constraint on a client, prove the **data is dispositioned and complete**, then decide whether the miss is **system/data broken** or **quality execution**,",
+      "description": "Before the team fully trusts Mr. Waiz\u2019s red / constraint on a client, prove the **data is dispositioned and complete**, then decide whether the miss is **system/data broken** or **quality execution**,",
       "domain": "operations",
       "owner": "operations",
       "status": "draft",
@@ -2834,7 +3078,7 @@
         },
         {
           "level": 2,
-          "title": "Gate A — Prove the data (do this before trusting Mr. Waiz)",
+          "title": "Gate A \u2014 Prove the data (do this before trusting Mr. Waiz)",
           "id": "gate-a-prove-the-data-do-this-before-trusting-mr-waiz"
         },
         {
@@ -2849,17 +3093,17 @@
         },
         {
           "level": 4,
-          "title": "Media Buyer — spend + lead ingest",
+          "title": "Media Buyer \u2014 spend + lead ingest",
           "id": "media-buyer-spend-lead-ingest"
         },
         {
           "level": 4,
-          "title": "Call Center Manager — appointments + booking credit",
+          "title": "Call Center Manager \u2014 appointments + booking credit",
           "id": "call-center-manager-appointments-booking-credit"
         },
         {
           "level": 4,
-          "title": "Client Success — book call + north star",
+          "title": "Client Success \u2014 book call + north star",
           "id": "client-success-book-call-north-star"
         },
         {
@@ -2869,12 +3113,12 @@
         },
         {
           "level": 2,
-          "title": "Gate B — Challenge Mr. Waiz’s constraint (only if Gate A passed)",
+          "title": "Gate B \u2014 Challenge Mr. Waiz\u2019s constraint (only if Gate A passed)",
           "id": "gate-b-challenge-mr-waizs-constraint-only-if-gate-a-passed"
         },
         {
           "level": 2,
-          "title": "Gate C — System vs quality + one plan",
+          "title": "Gate C \u2014 System vs quality + one plan",
           "id": "gate-c-system-vs-quality-one-plan"
         },
         {
@@ -2931,7 +3175,7 @@
     {
       "slug": "watchshift",
       "title": "Watchshift SOP",
-      "description": "Define how the setter handles **live watchshift** and **watchshift alerts** — speed-to-lead, Slack/GHL notifications, and consistent handoff back to the channel.",
+      "description": "Define how the setter handles **live watchshift** and **watchshift alerts** \u2014 speed-to-lead, Slack/GHL notifications, and consistent handoff back to the channel.",
       "domain": "acquisition",
       "owner": "setter",
       "status": "draft",
@@ -2988,7 +3232,7 @@
         },
         {
           "level": 3,
-          "title": "Default — setter owns it",
+          "title": "Default \u2014 setter owns it",
           "id": "default-setter-owns-it"
         },
         {
@@ -2998,7 +3242,7 @@
         },
         {
           "level": 3,
-          "title": "Disposition — quality lead pre-booking",
+          "title": "Disposition \u2014 quality lead pre-booking",
           "id": "disposition-quality-lead-pre-booking"
         },
         {
@@ -3075,6 +3319,9 @@
     "team-meetings-kpi": [
       "kpi-review-meeting-sop",
       "under-kpi-diagnosis-ladder"
+    ],
+    "custom": [
+      "diagnosing-constraints-beginner-playbook"
     ]
   }
 }
