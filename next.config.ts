@@ -60,6 +60,14 @@ const nextConfig: NextConfig = {
         source: "/offers/steven-spear/",
         destination: "/offers/steven-spear/index.html",
       },
+      {
+        source: "/offers/russ-rich",
+        destination: "/offers/russ-rich/index.html",
+      },
+      {
+        source: "/offers/russ-rich/",
+        destination: "/offers/russ-rich/index.html",
+      },
     ];
   },
 };
