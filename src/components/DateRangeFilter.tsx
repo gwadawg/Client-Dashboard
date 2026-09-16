@@ -56,11 +56,11 @@ export default function DateRangeFilter({
         <button
           type="button"
           onClick={() => setOpen(v => !v)}
-          className={`flex items-center gap-2 rounded-lg text-sm font-medium transition-colors ${isInline ? "w-full" : ""}`}
+          className={`flex items-center gap-2 min-h-11 rounded-control text-sm font-semibold transition-colors duration-med ease-ws ws-focus-ring active:scale-[0.98] ${isInline ? "w-full" : ""}`}
           style={
             isInline
-              ? { background: "#f59e0b", color: "#fff", padding: "6px 12px", minWidth: "8.5rem" }
-              : { background: "#f59e0b", color: "#fff", padding: "8px 16px", minWidth: "9rem" }
+              ? { background: "var(--color-ws-accent)", color: "var(--color-ws-base)", padding: "6px 12px", minWidth: "8.5rem" }
+              : { background: "var(--color-ws-accent)", color: "var(--color-ws-base)", padding: "8px 16px", minWidth: "9rem" }
           }
         >
           <span className="flex-1 text-left">{PRESET_LABELS[preset]}</span>

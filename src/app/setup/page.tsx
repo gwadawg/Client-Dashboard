@@ -1,8 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
+import Button from "@/components/ui/Button";
+import GlassPane from "@/components/ui/GlassPane";
+import StatusBanner from "@/components/ui/StatusBanner";
+import TextField from "@/components/ui/TextField";
 
 export default function SetupPage() {
   const [checking, setChecking] = useState(true);
@@ -24,8 +29,8 @@ export default function SetupPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (password !== confirm) { setError("Passwords don't match"); return; }
-    if (password.length < 8) { setError("Password must be at least 8 characters"); return; }
+    if (password !== confirm) { setError("Passwords do not match"); return; }
+    if (password.length < 8) { setError("Choose a password with at least 8 characters"); return; }
 
     setLoading(true);
     setError("");
@@ -39,10 +44,9 @@ export default function SetupPage() {
     const d = await res.json();
     if (!res.ok) { setError(d.error); setLoading(false); return; }
 
-    // Sign in immediately
     const supabase = createBrowserSupabaseClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    if (signInError) { setError(signInError.message); setLoading(false); return; }
+    if (signInError) { setError("Account created, but sign-in failed. Open Sign In and try again."); setLoading(false); return; }
 
     router.push("/dashboard");
     router.refresh();
@@ -50,77 +54,73 @@ export default function SetupPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#1a3d6b" }}>
-        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+      <div className="min-h-[100dvh] flex items-center justify-center bg-[var(--color-ws-base)]">
+        <div className="ws-spinner w-5 h-5 border-2 border-white/30 border-t-[var(--color-ws-accent)] rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#1a3d6b" }}>
+    <div className="min-h-[100dvh] flex items-center justify-center px-4 bg-[var(--color-ws-base)]">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-block border-4 border-white px-10 py-3 mb-4">
-            <h1 className="text-2xl font-black tracking-widest text-white uppercase">
-              Dashboard Setup
-            </h1>
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-sheet bg-white ring-1 ring-white/10">
+            <Image
+              src="/mr-waiz-logo.png"
+              alt="Mr. Waiz logo"
+              width={72}
+              height={72}
+              className="h-16 w-16 object-contain"
+            />
           </div>
-          <p className="text-white/50 text-sm">Create your admin account to get started</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-[var(--color-ws-label)]">
+            Create Account
+          </h1>
+          <p className="mt-2 text-sm text-[var(--color-ws-tertiary)]">Set up the first admin for this dashboard</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 bg-white/5 border border-white/10 rounded-xl px-8 py-8">
-          <div>
-            <label className="block text-white/70 text-sm mb-1.5 font-medium">Email</label>
-            <input
+        <GlassPane className="rounded-sheet px-8 py-8">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <TextField
+              id="setup-email"
+              label="Email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              className="w-full bg-white/10 border border-white/20 rounded px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-amber-500 transition-colors"
-              placeholder="you@company.com"
+              autoComplete="email"
             />
-          </div>
 
-          <div>
-            <label className="block text-white/70 text-sm mb-1.5 font-medium">Password</label>
-            <input
+            <TextField
+              id="setup-password"
+              label="Password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              className="w-full bg-white/10 border border-white/20 rounded px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-amber-500 transition-colors"
-              placeholder="Min 8 characters"
+              autoComplete="new-password"
+              helper="Choose a password with at least 8 characters"
             />
-          </div>
 
-          <div>
-            <label className="block text-white/70 text-sm mb-1.5 font-medium">Confirm Password</label>
-            <input
+            <TextField
+              id="setup-confirm"
+              label="Confirm Password"
               type="password"
               value={confirm}
               onChange={e => setConfirm(e.target.value)}
               required
-              className="w-full bg-white/10 border border-white/20 rounded px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-amber-500 transition-colors"
-              placeholder="••••••••"
+              autoComplete="new-password"
             />
-          </div>
 
-          {error && (
-            <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded px-3 py-2">
-              {error}
-            </p>
-          )}
+            {error && <StatusBanner tone="error">{error}</StatusBanner>}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-white font-semibold py-2.5 rounded transition-colors mt-2"
-          >
-            {loading ? "Creating account..." : "Create Admin Account"}
-          </button>
-        </form>
+            <Button type="submit" disabled={loading} block>
+              {loading ? "Creating Account…" : "Create Account"}
+            </Button>
+          </form>
+        </GlassPane>
 
-        <p className="text-center text-white/30 text-xs mt-6">
+        <p className="text-center text-[var(--color-ws-quaternary)] text-xs mt-6">
           This page is only available before the first account is created.
         </p>
       </div>

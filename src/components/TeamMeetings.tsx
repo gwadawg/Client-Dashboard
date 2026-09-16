@@ -25,6 +25,7 @@ import { weekPlanModeForTemplateSlug } from "@/lib/account-week-plans";
 import MeetingCommitmentsPanel from "@/components/MeetingCommitmentsPanel";
 import AccountWeekPlanForm from "@/components/AccountWeekPlanForm";
 import AccountWeekPlansWeekList from "@/components/AccountWeekPlansWeekList";
+import SegmentedControl from "@/components/ui/SegmentedControl";
 
 const fieldStyle = {
   background: "#0f2040",
@@ -266,34 +267,15 @@ export default function TeamMeetings({ from, to }: Props) {
               : "São Paulo time · team runbooks + client CS calls"}
           </p>
         </div>
-        <div
-          className="flex rounded-lg p-0.5 shrink-0"
-          role="tablist"
-          aria-label="Calendars view"
-          style={{ background: "rgba(8,15,30,0.85)", border: "1px solid rgba(255,255,255,0.1)" }}
-        >
-          {(
-            [
-              ["board", "Board"],
-              ["library", "Library"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={pane === key}
-              onClick={() => setPane(key)}
-              className="rounded-md px-3 py-1.5 text-xs font-medium"
-              style={{
-                background: pane === key ? "rgba(79,163,255,0.2)" : "transparent",
-                color: pane === key ? "#e2e8f0" : "#94a3b8",
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          segments={[
+            { key: "board", label: "Board" },
+            { key: "library", label: "Library" },
+          ]}
+          value={pane}
+          onChange={key => setPane(key as "board" | "library")}
+          ariaLabel="Calendars view"
+        />
       </div>
 
       {pane === "library" && <CsCalendarLibrary />}

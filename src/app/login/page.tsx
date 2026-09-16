@@ -4,6 +4,10 @@ import Image from "next/image";
 import { useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
+import Button from "@/components/ui/Button";
+import GlassPane from "@/components/ui/GlassPane";
+import StatusBanner from "@/components/ui/StatusBanner";
+import TextField from "@/components/ui/TextField";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -21,7 +25,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      setError(error.message);
+      setError("Unable to sign in. Check the email and password, then try again.");
       setLoading(false);
     } else {
       router.push("/dashboard");
@@ -30,71 +34,56 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "linear-gradient(145deg, #f8fafc 0%, #eef2f7 48%, #dbe3ef 100%)" }}>
+    <div className="min-h-[100dvh] flex items-center justify-center px-4 bg-[var(--color-ws-base)]">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-sheet bg-white ring-1 ring-white/10">
             <Image
               src="/mr-waiz-logo.png"
               alt="Mr. Waiz logo"
-              width={96}
-              height={96}
+              width={72}
+              height={72}
               priority
-              className="h-24 w-24 object-contain"
+              className="h-16 w-16 object-contain"
             />
           </div>
-          <h1 className="text-4xl font-black tracking-tight text-slate-950">
+          <h1 className="text-3xl font-semibold tracking-tight text-[var(--color-ws-label)]">
             Mr. Waiz
           </h1>
-          <p className="mt-2 text-sm text-slate-500">Sign in to your reporting dashboard</p>
+          <p className="mt-2 text-sm text-[var(--color-ws-tertiary)]">Sign in to the reporting dashboard</p>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-4 rounded-2xl border border-slate-200 bg-white px-8 py-8 shadow-xl shadow-slate-200/70"
-        >
-          <div>
-            <label className="block text-slate-600 text-sm mb-1.5 font-medium">Email</label>
-            <input
+        <GlassPane className="rounded-sheet px-8 py-8">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <TextField
+              id="login-email"
+              label="Email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-950 placeholder-slate-400 outline-none transition-colors focus:border-slate-950 focus:bg-white"
-              placeholder="you@agency.com"
             />
-          </div>
 
-          <div>
-            <label className="block text-slate-600 text-sm mb-1.5 font-medium">Password</label>
-            <input
+            <TextField
+              id="login-password"
+              label="Password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-950 placeholder-slate-400 outline-none transition-colors focus:border-slate-950 focus:bg-white"
-              placeholder="••••••••"
             />
-          </div>
 
-          {error && (
-            <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded px-3 py-2">
-              {error}
-            </p>
-          )}
+            {error && <StatusBanner tone="error">{error}</StatusBanner>}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-2 w-full rounded-lg bg-slate-950 py-2.5 font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
-          >
-            {loading ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
+            <Button type="submit" disabled={loading} block>
+              {loading ? "Signing In…" : "Sign In"}
+            </Button>
+          </form>
+        </GlassPane>
 
-        <p className="text-center text-slate-400 text-xs mt-6">
+        <p className="text-center text-[var(--color-ws-quaternary)] text-xs mt-6">
           Need access? Contact your account administrator.
         </p>
       </div>

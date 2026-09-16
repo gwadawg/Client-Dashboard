@@ -19,6 +19,7 @@ import MetricInfoTip, { type MetricHint } from "./kpi/MetricInfoTip";
 import FinanceRevenueLedger from "./FinanceRevenueLedger";
 import ExpenseManager from "./ExpenseManager";
 import ModalCloseButton from "./ModalCloseButton";
+import SegmentedControl from "./ui/SegmentedControl";
 import { reasonLabel } from "@/lib/client-feedback";
 import {
   listRecentMonths,
@@ -521,28 +522,12 @@ export default function CeoDashboard({
           </p>
         </div>
 
-        <div className="flex gap-1 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-          {LEDGER_TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setLedgerTab(t.key)}
-              className="px-4 py-2.5 text-left"
-              style={{
-                color: ledgerTab === t.key ? "#e2e8f0" : "#64748b",
-                borderBottom: `2px solid ${ledgerTab === t.key ? AMBER : "transparent"}`,
-              }}
-            >
-              <span className="block text-sm font-medium leading-none">{t.label}</span>
-              <span
-                className="block text-[10px] mt-1 leading-none"
-                style={{ color: ledgerTab === t.key ? "#94a3b8" : "#475569" }}
-              >
-                {t.hint}
-              </span>
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          segments={LEDGER_TABS.map(({ key, label }) => ({ key, label }))}
+          value={ledgerTab}
+          onChange={key => setLedgerTab(key as "revenue" | "expenses")}
+          ariaLabel="Ledger views"
+        />
 
         {ledgerTab === "revenue" ? <FinanceRevenueLedger /> : <ExpenseManager />}
       </div>
@@ -583,39 +568,12 @@ export default function CeoDashboard({
         </div>
       </div>
 
-      {/* Internal department tabs */}
-      <div
-        className="flex gap-1 overflow-x-auto border-b pb-px"
-        style={{ borderColor: "rgba(255,255,255,0.06)" }}
-        role="tablist"
-        aria-label="CEO dashboard sections"
-      >
-        {CEO_TABS.map((t) => {
-          const active = ceoTab === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setCeoTab(t.key)}
-              className="px-4 py-2.5 text-left shrink-0 transition-colors"
-              style={{
-                color: active ? "#e2e8f0" : "#64748b",
-                borderBottom: `2px solid ${active ? AMBER : "transparent"}`,
-              }}
-            >
-              <span className="block text-sm font-medium leading-none">{t.label}</span>
-              <span
-                className="block text-[10px] mt-1 leading-none"
-                style={{ color: active ? "#94a3b8" : "#475569" }}
-              >
-                {t.hint}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <SegmentedControl
+        segments={CEO_TABS.map(({ key, label }) => ({ key, label }))}
+        value={ceoTab}
+        onChange={key => setCeoTab(key as CeoTab)}
+        ariaLabel="CEO dashboard sections"
+      />
 
       {/* Period controls — hidden on live-only risk tab */}
       {showPeriodControls && (

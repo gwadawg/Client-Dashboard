@@ -2,6 +2,7 @@
 
 import ClosebotPromptLog from "@/components/ClosebotPromptLog";
 import ClosebotTicketsSection from "@/components/ClosebotTicketsSection";
+import SegmentedControl from "@/components/ui/SegmentedControl";
 import { useUrlParams } from "@/lib/use-url-params";
 
 type ClosebotTab = "tickets" | "updates";
@@ -10,9 +11,9 @@ type Props = {
   canWrite?: boolean;
 };
 
-const TABS: { key: ClosebotTab; label: string; hint: string }[] = [
-  { key: "tickets", label: "Tickets", hint: "Incidents the team filed" },
-  { key: "updates", label: "Updates", hint: "Prompt changes we shipped" },
+const TABS: { key: ClosebotTab; label: string }[] = [
+  { key: "tickets", label: "Tickets" },
+  { key: "updates", label: "Updates" },
 ];
 
 export default function ClosebotHub({ canWrite = false }: Props) {
@@ -43,47 +44,12 @@ export default function ClosebotHub({ canWrite = false }: Props) {
         </div>
       </div>
 
-      <div
-        role="tablist"
-        aria-label="Closebot sections"
-        className="flex gap-1 p-1 rounded-xl w-fit"
-        style={{
-          background: "rgba(5,12,24,0.85)",
-          border: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
-        {TABS.map((item) => {
-          const active = tab === item.key;
-          return (
-            <button
-              key={item.key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => url.set("tab", item.key === "tickets" ? null : item.key)}
-              className="px-4 py-2 rounded-lg text-left transition-colors"
-              style={{
-                background: active
-                  ? item.key === "tickets"
-                    ? "rgba(245,158,11,0.16)"
-                    : "rgba(59,130,246,0.16)"
-                  : "transparent",
-                color: active ? "#f8fafc" : "#94a3b8",
-              }}
-            >
-              <span
-                className="block text-sm font-semibold"
-                style={{ fontFamily: "var(--font-archivo)" }}
-              >
-                {item.label}
-              </span>
-              <span className="block text-[11px] mt-0.5" style={{ color: active ? "#cbd5e1" : "#64748b" }}>
-                {item.hint}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <SegmentedControl
+        segments={TABS}
+        value={tab}
+        onChange={key => url.set("tab", key === "tickets" ? null : key)}
+        ariaLabel="Closebot sections"
+      />
 
       {tab === "tickets" ? (
         <ClosebotTicketsSection canWrite={canWrite} />

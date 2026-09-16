@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import type { TeamDashboardTab } from "@/lib/nav";
 import { TEAM_DASHBOARD_TABS } from "@/lib/nav";
 import { seatLabel, seatSubtitle } from "@/lib/team-dashboards/access";
+import SegmentedControl from "@/components/ui/SegmentedControl";
 
 const CcmCommandDashboard = dynamic(
   () => import("./CcmCommandDashboard"),
@@ -87,48 +88,13 @@ export default function TeamCommandDashboard({
           </p>
         </div>
 
-        <div
-          role="tablist"
-          aria-label="Team seat view"
-          className="inline-flex shrink-0 rounded-lg p-1 self-start"
-          style={{
-            background: "rgba(15,23,42,0.85)",
-            border: "1px solid rgba(148,163,184,0.14)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
-          }}
-        >
-          {TEAM_DASHBOARD_TABS.map(tab => {
-            const active = seat === tab.key;
-            const isMine = homeSeat === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => onSeatChange(tab.key)}
-                className="relative px-3.5 py-2 text-xs font-semibold tracking-wide rounded-md transition-colors"
-                style={{
-                  color: active ? "#f8fafc" : "#64748b",
-                  background: active
-                    ? "linear-gradient(180deg, rgba(56,189,248,0.18), rgba(30,58,95,0.55))"
-                    : "transparent",
-                  boxShadow: active
-                    ? "0 0 0 1px rgba(56,189,248,0.22)"
-                    : "none",
-                }}
-              >
-                {tab.label}
-                {isMine ? (
-                  <span
-                    className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle"
-                    style={{ background: "#38bdf8" }}
-                    title="Your default seat"
-                  />
-                ) : null}
-              </button>
-            );
-          })}
+        <div className="shrink-0 self-start">
+          <SegmentedControl
+            segments={TEAM_DASHBOARD_TABS}
+            value={seat}
+            onChange={key => onSeatChange(key as TeamDashboardTab)}
+            ariaLabel="Team seat view"
+          />
         </div>
       </header>
 

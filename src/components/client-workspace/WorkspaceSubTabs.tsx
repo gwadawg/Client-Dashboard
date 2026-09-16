@@ -9,9 +9,9 @@ type Props = {
 };
 
 /**
- * Level-2 tab bar. Deliberately a different shape from `ViewHub`'s amber pill —
- * an underlined rail reads as "inside" the pill row above it, so two tab levels
- * never look like two peer navigations.
+ * Level-2 tab bar. Deliberately a different shape from `ViewHub` pills —
+ * an underlined rail reads as "inside" the segmented control above it, so two
+ * tab levels never look like two peer navigations.
  */
 export default function WorkspaceSubTabs({ tabs, activeTab, onTabChange }: Props) {
   return (

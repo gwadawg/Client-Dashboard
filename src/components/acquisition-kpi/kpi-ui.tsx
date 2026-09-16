@@ -2,6 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { rateColor, thresholdStyle } from "@/lib/acquisition-kpi-thresholds";
+import SegmentedControl from "@/components/ui/SegmentedControl";
 
 /* ── Design tokens (Ethereal Glass) ─────────────────────────────────────── */
 
@@ -319,35 +320,12 @@ export function KpiViewTabs({
   onTabChange: (key: string) => void;
 }) {
   return (
-    <div className="overflow-x-auto pb-1">
-      <div
-        className="inline-flex gap-1 rounded-full p-1.5"
-        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
-      >
-        {tabs.map(tab => {
-          const active = tab.key === activeTab;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => onTabChange(tab.key)}
-              className="rounded-full px-5 py-2.5 text-sm font-semibold whitespace-nowrap transition-all duration-300 active:scale-[0.98]"
-              style={
-                active
-                  ? {
-                      background: "rgba(251,191,36,0.16)",
-                      color: "#fbbf24",
-                      boxShadow: "inset 0 1px 1px rgba(255,255,255,0.12), 0 4px 20px rgba(251,191,36,0.12)",
-                    }
-                  : { color: KPI.textMuted }
-              }
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <SegmentedControl
+      segments={tabs}
+      value={activeTab}
+      onChange={onTabChange}
+      ariaLabel="Acquisition KPI views"
+    />
   );
 }
 

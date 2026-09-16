@@ -3,6 +3,7 @@
 import { useState } from "react";
 import FunnelSimulatorView from "./FunnelSimulatorView";
 import LeadSourceRoiCalculator from "./LeadSourceRoiCalculator";
+import SegmentedControl from "./ui/SegmentedControl";
 import type { MetricsResult } from "@/lib/metrics";
 
 export type SimTab = "funnel" | "lead_source_roi";
@@ -32,34 +33,16 @@ export default function FunnelSimulatorHub(props: Props) {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <div
-        className="flex gap-1 px-4 pt-3 pb-0 shrink-0"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
-      >
-        {(
-          [
-            ["funnel", "Funnel"],
-            ["lead_source_roi", "Lead source ROI"],
-          ] as const
-        ).map(([key, label]) => {
-          const active = tab === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => select(key)}
-              className="px-3 py-2 text-sm font-medium"
-              style={{
-                color: active ? "#f59e0b" : "#94a3b8",
-                borderBottom: active
-                  ? "2px solid #f59e0b"
-                  : "2px solid transparent",
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
+      <div className="px-4 pt-3 pb-3 shrink-0">
+        <SegmentedControl
+          segments={[
+            { key: "funnel", label: "Funnel" },
+            { key: "lead_source_roi", label: "Lead Source ROI" },
+          ]}
+          value={tab}
+          onChange={key => select(key as SimTab)}
+          ariaLabel="Simulator views"
+        />
       </div>
       {tab === "funnel" ? (
         <FunnelSimulatorView

@@ -39,6 +39,7 @@ import {
 } from "@/lib/nav";
 import { hasPermission, canViewClientRevenue, canAccessAutomations, type AllowedPermissions } from "@/lib/permissions";
 import DateRangeFilter from "./DateRangeFilter";
+import GlassPane from "./ui/GlassPane";
 import ClientWorkspaceHub from "./client-workspace/ClientWorkspaceHub";
 import {
   isSingleClientId,
@@ -55,8 +56,8 @@ import {
 
 function TabLoading({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center py-16 gap-3" style={{ color: "#334155" }}>
-      <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+    <div className="flex items-center justify-center py-16 gap-3 text-[var(--color-ws-text-ghost)]">
+      <svg className="ws-spinner w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
       </svg>
@@ -129,12 +130,7 @@ function DataChatLauncher(props: {
       <button
         type="button"
         onClick={() => setReady(true)}
-        className="fixed bottom-5 right-5 z-40 rounded-full px-4 py-3 text-sm font-semibold shadow-lg"
-        style={{
-          background: "#1e3a5f",
-          color: "#e2e8f0",
-          border: "1px solid rgba(148,163,184,0.25)",
-        }}
+        className="fixed bottom-5 right-5 z-40 min-h-11 rounded-pill px-4 text-sm font-semibold ws-glass ws-focus-ring text-[var(--color-ws-label)] active:scale-[0.98] transition-transform duration-med ease-ws"
         aria-label="Open data chat"
       >
         Data Chat
@@ -892,23 +888,26 @@ export default function DashboardView({
   }, [searchParams, pathname, router]);
 
   return (
-    <div className="h-screen flex overflow-hidden" style={{ background: "#080f1e" }}>
+    <div className="h-screen flex overflow-hidden bg-[var(--color-ws-base)]">
 
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
-      <aside className={`
-        fixed top-0 left-0 h-full w-60 z-30 flex flex-col
-        transition-transform duration-300
-        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-        md:translate-x-0 md:static md:z-auto
-      `} style={{ background: "#050c18", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
+      <GlassPane
+        as="aside"
+        className={`
+          fixed top-0 left-0 h-full w-60 z-30 flex flex-col overflow-hidden border-r
+          transition-transform duration-slow ease-ws
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+          md:translate-x-0 md:static md:z-auto
+        `}
+      >
 
         {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-6" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden bg-white">
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-[var(--color-ws-hairline)]">
+          <div className="w-8 h-8 rounded-control flex items-center justify-center flex-shrink-0 overflow-hidden bg-white">
             <Image
               src="/mr-waiz-logo.png"
               alt="Mr. Waiz logo"
@@ -918,12 +917,12 @@ export default function DashboardView({
             />
           </div>
           <div>
-            <p className="text-sm font-bold tracking-wide" style={{ color: "#f1f5f9" }}>Mr. Waiz</p>
+            <p className="text-sm font-semibold tracking-wide text-[var(--color-ws-label)]">Mr. Waiz</p>
           </div>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-5 px-3 space-y-4">
+        <nav className="ws-sidebar-scroll flex-1 overflow-y-auto py-5 px-3 space-y-4">
           {groups.map(group => {
             const items = visibleNav.filter(n => n.group === group);
             const collapsed = collapsedGroups.has(group);
@@ -932,17 +931,14 @@ export default function DashboardView({
                 <button
                   type="button"
                   onClick={() => toggleGroup(group)}
-                  className="w-full flex items-center justify-between px-3 mb-2 group"
+                  className="w-full flex items-center justify-between px-3 min-h-11 mb-1 ws-focus-ring rounded-control"
                 >
-                  <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#334155" }}>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-ws-text-ghost)]">
                     {group}
                   </p>
                   <span
-                    className="text-[10px] transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
-                    style={{
-                      color: "#334155",
-                      transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
-                    }}
+                    className="text-[10px] text-[var(--color-ws-text-ghost)] transition-transform duration-slow ease-ws"
+                    style={{ transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
                   >
                     ▾
                   </span>
@@ -952,13 +948,15 @@ export default function DashboardView({
                   return (
                     <button
                       key={item.view}
+                      type="button"
                       onClick={() => goToView(item.view)}
-                      className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-3 mb-0.5 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]"
-                      style={active
-                        ? { background: "rgba(245,158,11,0.12)", color: "#f59e0b", borderLeft: "2px solid #f59e0b" }
-                        : { color: "#475569", borderLeft: "2px solid transparent" }}
-                      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
-                      onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+                      className={[
+                        "w-full text-left px-3 min-h-11 rounded-control text-sm font-medium flex items-center gap-3 mb-0.5",
+                        "transition-[background-color,color,transform] duration-med ease-ws active:scale-[0.98] ws-focus-ring",
+                        active
+                          ? "bg-[var(--color-ws-accent-wash)] text-[var(--color-ws-accent)]"
+                          : "text-[var(--color-ws-quaternary)] hover:text-[var(--color-ws-tertiary)] hover:bg-white/[0.04]",
+                      ].join(" ")}
                     >
                       <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d={NAV_ICONS[item.view]} />
@@ -973,13 +971,11 @@ export default function DashboardView({
         </nav>
 
         {/* Sign out */}
-        <div className="px-3 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="px-3 py-4 border-t border-[var(--color-ws-hairline)]">
           <button
+            type="button"
             onClick={handleSignOut}
-            className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors"
-            style={{ color: "#334155" }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#64748b"}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#334155"}
+            className="w-full text-left px-3 min-h-11 rounded-control text-sm font-medium flex items-center gap-3 text-[var(--color-ws-text-ghost)] hover:text-[var(--color-ws-quaternary)] hover:bg-white/[0.04] transition-colors duration-med ease-ws ws-focus-ring"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -987,28 +983,30 @@ export default function DashboardView({
             Sign Out
           </button>
         </div>
-      </aside>
+      </GlassPane>
 
       {/* Main */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
 
         {/* Header */}
-        <header className="flex items-center gap-3 px-6 py-4 flex-wrap"
-          style={{ background: "#050c18", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <GlassPane as="header" className="flex items-center gap-3 px-6 min-h-14 py-2 flex-wrap border-b">
 
-          <button className="md:hidden mr-1" onClick={() => setSidebarOpen(true)}
-            style={{ color: "#475569" }}>
+          <button
+            className="md:hidden mr-1 min-h-11 min-w-11 inline-flex items-center justify-center rounded-control text-[var(--color-ws-quaternary)] hover:text-[var(--color-ws-tertiary)] ws-focus-ring"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Show sidebar"
+          >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
 
-          <h1 className="text-base font-semibold mr-auto" style={{ color: "#e2e8f0" }}>
+          <h1 className="text-base font-semibold mr-auto text-[var(--color-ws-secondary)]">
             {navItem?.group
-              ? <span style={{ color: "#334155" }}>{navItem.group} / </span>
+              ? <span className="text-[var(--color-ws-text-ghost)]">{navItem.group} / </span>
               : null}
             {navItem?.label ?? "Dashboard"}
-            {hubTabLabel ? <span style={{ color: "#334155" }}> / {hubTabLabel}</span> : null}
+            {hubTabLabel ? <span className="text-[var(--color-ws-text-ghost)]"> / {hubTabLabel}</span> : null}
           </h1>
 
           {showDateFilters && !view.startsWith("admin_") && (
@@ -1028,11 +1026,11 @@ export default function DashboardView({
               />
             </>
           )}
-        </header>
+        </GlassPane>
 
         {/* Content */}
         <main
-          className={`flex-1 min-h-0 flex flex-col ${
+          className={`flex-1 min-h-0 flex flex-col bg-[var(--color-ws-base)] ${
             view === "admin_billing"
               ? "overflow-hidden p-6 md:p-8"
               : view === "admin_clients"
@@ -1041,7 +1039,6 @@ export default function DashboardView({
                   ? "overflow-hidden p-0"
                 : "overflow-auto p-6 md:p-8"
           }`}
-          style={{ background: "#080f1e" }}
         >
 
           {!firstVisibleView && (

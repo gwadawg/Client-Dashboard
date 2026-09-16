@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #080f1e;
+  --foreground: #e2e8f0;
+
+  /* Web approximation of Liquid Glass (regular variant). Chrome only.
+     Sidebars stay more opaque so labels remain legible over dense content. */
+  --ws-glass-fill: rgba(5, 12, 24, 0.92);
+  --ws-glass-stroke: rgba(255, 255, 255, 0.08);
+  --ws-glass-highlight: rgba(255, 255, 255, 0.12);
+  --ws-glass-track: rgba(255, 255, 255, 0.06);
 }
 
 @theme inline {
@@ -24,6 +31,7 @@
   --color-ws-base: #080f1e;
   --color-ws-chrome: #050c18;
   --color-ws-panel: #0a1628;
+  --color-ws-grouped: #0c1b32;
   --color-ws-input: #0f2040;
   --color-ws-hairline: rgba(255, 255, 255, 0.07);
   --color-ws-hairline-soft: rgba(255, 255, 255, 0.045);
@@ -41,27 +49,108 @@
   --color-ws-text-faint: #475569;
   --color-ws-text-ghost: #334155;
 
+  /* HIG-style semantic labels mapped onto the existing ladder. */
+  --color-ws-label: #f1f5f9;
+  --color-ws-secondary: #e2e8f0;
+  --color-ws-tertiary: #94a3b8;
+  --color-ws-quaternary: #64748b;
+  --color-ws-placeholder: #475569;
+
   --color-ws-positive: #34d399;
   --color-ws-negative: #f87171;
 
   --font-display: var(--font-archivo);
   --font-data: var(--font-plex-mono);
 
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-sheet: 16px;
+  --radius-pill: 999px;
+
+  --duration-fast: 120ms;
+  --duration-med: 200ms;
+  --duration-slow: 300ms;
+
   /* The app's signature easing — a firm settle, used for every transition. */
   --ease-ws: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+body {
+  background: var(--color-ws-base);
+  color: var(--color-ws-text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.font-data {
+  font-family: var(--font-data), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chrome-only glass. Do not use on content cards, tables, or KPI tiles.
+   This is a web approximation of Apple Liquid Glass, not the native material. */
+.ws-glass {
+  background:
+    linear-gradient(var(--ws-glass-fill), var(--ws-glass-fill)),
+    var(--color-ws-chrome);
+  border-color: var(--ws-glass-stroke);
+  backdrop-filter: blur(24px) saturate(160%) contrast(1.04);
+  -webkit-backdrop-filter: blur(24px) saturate(160%) contrast(1.04);
+  box-shadow: inset 0 1px 0 var(--ws-glass-highlight);
+}
+
+.ws-glass-track {
+  background: var(--ws-glass-track);
+  box-shadow: inset 0 1px 0 var(--ws-glass-highlight);
+}
+
+.ws-focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ws-accent) 48%, transparent);
+}
+
+.ws-sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.ws-sidebar-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ws-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ws-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ws-glass,
+  .ws-glass-track {
+    background: var(--color-ws-chrome);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .ws-spinner,
+  .ws-spinner * {
+    animation-duration: 0.7s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 /* Client report PDF/print faces — loaded once in the root layout. */
