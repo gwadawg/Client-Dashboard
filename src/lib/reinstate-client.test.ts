@@ -4,8 +4,11 @@ import {
   buildWelcomeBackUrl,
   buildSameFileClientPatch,
   buildNewOfferIdentityPatch,
+  buildReinstateCloseRow,
+  findExistingReinstateClose,
   findRecentNewOfferTargetClientId,
   hasRecentSameFileReinstate,
+  pickReusableNewOfferSibling,
   readReinstateEngagement,
   readTargetClientId,
   reinstateSubmissionMatchesOrigin,
@@ -124,5 +127,144 @@ describe('reinstate-client helpers', () => {
     assert.equal(hasRecentSameFileReinstate([newOffer]), false);
     assert.equal(hasRecentSameFileReinstate([sameFile]), true);
     assert.equal(findRecentNewOfferTargetClientId([sameFile]), null);
+  });
+
+  it('reuses partially-applied or same-named onboarding siblings', () => {
+    const cutoff = '2026-09-16T00:00:00.000Z';
+    const expectedName = 'Acme — RM';
+    assert.equal(
+      pickReusableNewOfferSibling(
+        [
+          {
+            id: 'sib-token',
+            created_at: '2026-09-17T10:00:00.000Z',
+            lifecycle_status: 'onboarding',
+            welcome_back_token: 'tok',
+            name: expectedName,
+          },
+        ],
+        { cutoffIso: cutoff, expectedName },
+      ),
+      'sib-token',
+    );
+    assert.equal(
+      pickReusableNewOfferSibling(
+        [
+          {
+            id: 'sib-name',
+            created_at: '2026-09-17T10:00:00.000Z',
+            lifecycle_status: 'onboarding',
+            name: expectedName,
+          },
+        ],
+        { cutoffIso: cutoff, expectedName },
+      ),
+      'sib-name',
+    );
+    assert.equal(
+      pickReusableNewOfferSibling(
+        [
+          {
+            id: 'sib-old',
+            created_at: '2026-09-10T10:00:00.000Z',
+            lifecycle_status: 'onboarding',
+            welcome_back_token: 'tok',
+            name: expectedName,
+          },
+        ],
+        { cutoffIso: cutoff, expectedName },
+      ),
+      null,
+    );
+    assert.equal(
+      pickReusableNewOfferSibling(
+        [
+          {
+            id: 'sib-other',
+            created_at: '2026-09-17T10:00:00.000Z',
+            lifecycle_status: 'onboarding',
+            name: 'Other Offer',
+          },
+        ],
+        { cutoffIso: cutoff, expectedName },
+      ),
+      null,
+    );
+  });
+
+  it('matches existing reinstate closes by submission id or created-after window', () => {
+    assert.equal(
+      findExistingReinstateClose(
+        [
+          {
+            id: 'close-1',
+            close_kind: 'reinstate',
+            form_submission_id: 'sub-1',
+            created_at: '2026-09-17T12:00:00.000Z',
+          },
+        ],
+        { formSubmissionId: 'sub-1' },
+      ),
+      'close-1',
+    );
+    assert.equal(
+      findExistingReinstateClose(
+        [
+          {
+            id: 'close-2',
+            close_kind: 'reinstate',
+            form_submission_id: 'other',
+            created_at: '2026-09-17T13:00:00.000Z',
+          },
+        ],
+        { formSubmissionId: 'sub-2', submittedAt: '2026-09-17T12:30:00.000Z' },
+      ),
+      'close-2',
+    );
+    assert.equal(
+      findExistingReinstateClose(
+        [
+          {
+            id: 'close-std',
+            close_kind: 'standard',
+            form_submission_id: 'sub-1',
+            created_at: '2026-09-17T13:00:00.000Z',
+          },
+        ],
+        { formSubmissionId: 'sub-1', submittedAt: '2026-09-17T12:00:00.000Z' },
+      ),
+      null,
+    );
+  });
+
+  it('stores closer in raw only and omits setter_name on reinstate closes', () => {
+    const draft = emptyReinstateDraft();
+    draft.closer_name = 'Alex Closer';
+    draft.offer = 'RM';
+    draft.reporting_type = 'RM';
+    draft.sales_package = 'core_offer';
+    draft.closed_at = '2026-09-17';
+    draft.cash_collected = 1500;
+    draft.engagement = 'new_offer';
+    draft.ghl_reuse = 'no';
+
+    const row = buildReinstateCloseRow({
+      clientId: 'sib-1',
+      formSubmissionId: 'sub-1',
+      draft,
+      originClientId: 'origin-1',
+      targetClientId: 'sib-1',
+    });
+
+    assert.equal('setter_name' in row, false);
+    assert.equal(row.close_kind, 'reinstate');
+    assert.equal(row.form_submission_id, 'sub-1');
+    const raw = row.raw as Record<string, unknown>;
+    assert.equal(raw.closer_name, 'Alex Closer');
+    assert.equal(raw.close_kind, 'reinstate');
+    assert.equal(raw.engagement, 'new_offer');
+    assert.equal(raw.origin_client_id, 'origin-1');
+    assert.equal(raw.target_client_id, 'sib-1');
+    assert.equal(raw.reinstate, true);
   });
 });

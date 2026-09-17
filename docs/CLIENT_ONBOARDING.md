@@ -300,8 +300,9 @@ Paid rejoins use the closer form at `/forms/reinstate` (not the New Client
 GHL form). That writes `reinstated_at`, a winback `acquisition_closes` row
 (`close_kind=reinstate`), and a per-client welcome-back token.
 
-The closer name is stored on `acquisition_closes.raw.closer_name` and on
-`setter_name` (the only first-class text column on the close).
+The closer name is stored only on `acquisition_closes.raw.closer_name` (and
+`raw.close_kind=reinstate`). Do **not** put it in `setter_name` — that column
+feeds setter metrics / payroll and would wrongly credit a setter.
 Closer-stats still resolve closers via demo calls (`handled_by`) and linked
 offers, not from this text field.
 
