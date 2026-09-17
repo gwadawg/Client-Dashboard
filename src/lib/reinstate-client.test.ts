@@ -44,4 +44,13 @@ describe('reinstate-client helpers', () => {
     assert.equal(patch.churned_at, null);
     assert.equal(patch.is_live, false);
   });
+
+  it('omits mrr when draft leaves it blank', () => {
+    const draft = emptyReinstateDraft();
+    draft.offer = 'RM';
+    draft.reporting_type = 'RM';
+    draft.mrr = null;
+    const patch = buildSameFileClientPatch(draft, '2026-09-17T12:00:00.000Z');
+    assert.equal(patch.mrr, undefined);
+  });
 });

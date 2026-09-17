@@ -51,8 +51,8 @@ export function buildSameFileClientPatch(
     is_live: syncIsLiveWithLifecycle('onboarding'),
     offer: draft.offer.trim() || reportingType,
     reporting_type: reportingType,
-    mrr: draft.mrr,
   };
+  if (draft.mrr != null) patch.mrr = draft.mrr;
   if (draft.sales_package.trim()) {
     patch.sales_package = normalizeSalesPackage(draft.sales_package);
   }
