@@ -60,6 +60,9 @@ create table if not exists clients (
   launch_date            date,
   date_signed            date,
   churned_at             timestamptz,
+  reinstated_at          timestamptz,
+  welcome_back_token     text,
+  welcome_back_token_created_at timestamptz,
   last_status_changed_at timestamptz,
 
   -- Revenue / contract
@@ -123,6 +126,9 @@ alter table clients add column if not exists client_stage           text;
 alter table clients add column if not exists launch_date            date;
 alter table clients add column if not exists date_signed            date;
 alter table clients add column if not exists churned_at             timestamptz;
+alter table clients add column if not exists reinstated_at          timestamptz;
+alter table clients add column if not exists welcome_back_token     text;
+alter table clients add column if not exists welcome_back_token_created_at timestamptz;
 alter table clients add column if not exists last_status_changed_at timestamptz;
 alter table clients add column if not exists mrr                    numeric;
 alter table clients add column if not exists daily_adspend          numeric;
@@ -1473,6 +1479,33 @@ create unique index if not exists clients_loan_log_token_uidx
   on clients(loan_log_token)
   where loan_log_token is not null;
 
+-- Dedicated welcome-back OB token (not report share_token). See add_client_reinstate.sql.
+create unique index if not exists clients_welcome_back_token_key
+  on clients (welcome_back_token)
+  where welcome_back_token is not null;
+
+create unique index if not exists clients_welcome_back_token_key
+  on clients (welcome_back_token)
+  where welcome_back_token is not null;
+
+-- Client reinstate / winback closes (acquisition_closes lives in acquisition migrations).
+-- Allow multiple closes per client; mark winbacks via close_kind.
+drop index if exists acquisition_closes_client_id_key;
+
+alter table acquisition_closes
+  add column if not exists close_kind text not null default 'standard';
+
+alter table acquisition_closes
+  drop constraint if exists acquisition_closes_close_kind_check;
+
+alter table acquisition_closes
+  add constraint acquisition_closes_close_kind_check check (
+    close_kind in ('standard', 'reinstate')
+  );
+
+create index if not exists acquisition_closes_close_kind_idx
+  on acquisition_closes (close_kind);
+
 -- One row per loan transaction (file). Unique-person conversion stays on events.
 create table if not exists loan_deals (
   id                   uuid primary key default gen_random_uuid(),
@@ -1550,7 +1583,10 @@ create table if not exists client_form_submissions (
   applied_patch jsonb,
   submitted_at  timestamptz not null default now(),
   constraint client_form_submissions_form_type_check check (
-    form_type in ('new_client', 'onboarding', 'kickoff', 'launch', 'launch_kit', 'churn')
+    form_type in (
+      'new_client', 'onboarding', 'kickoff', 'launch', 'launch_kit', 'churn',
+      'reinstate', 'reinstate_onboarding'
+    )
   ),
   constraint client_form_submissions_status_check check (
     status in ('draft', 'submitted', 'unmapped', 'applied', 'dismissed')
