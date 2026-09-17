@@ -2,12 +2,6 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { CLIENT_CALL_FIELDS, isValidCallDisposition, isValidCallType } from '@/lib/client-calls';
 import { parseCheckinFormInput, validateCheckinFormForSave } from '@/lib/checkin-form';
-import {
-  notifyMrWaizActivity,
-  notifyMrWaizLogged,
-  resolveClientName,
-  summarizeChangedFields,
-} from '@/lib/mr-waiz-activity-notify';
 
 function optionalText(value: unknown): string | null | undefined {
   if (value === undefined) return undefined;
@@ -129,19 +123,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'Call not found' }, { status: 404 });
   }
 
-  const changedKeys = Object.keys(updates).filter(k => k !== 'updated_at' && k !== 'updated_by');
-  const clientName = await resolveClientName(ctx.service, clientId);
-  void notifyMrWaizActivity(ctx.service, {
-    eventKey: 'client.call_updated',
-    actor: { userId: ctx.userId },
-    fields: {
-      client_name: clientName,
-      call_type: String(data.call_type ?? ''),
-      changed_fields: summarizeChangedFields(changedKeys),
-      recording_url: data.recording_url ?? null,
-    },
-  });
-
   return NextResponse.json({ call: data });
 }
 
@@ -156,15 +137,6 @@ export async function DELETE(
   if (denied) return denied;
 
   const { id: clientId, callId } = await params;
-
-  const { data: existing } = await ctx.service
-    .from('client_calls')
-    .select('call_type')
-    .eq('id', callId)
-    .eq('client_id', clientId)
-    .is('deleted_at', null)
-    .maybeSingle();
-
   const { data, error } = await ctx.service
     .from('client_calls')
     .update({
@@ -182,12 +154,5 @@ export async function DELETE(
     const status = error.code === 'PGRST116' ? 404 : 500;
     return NextResponse.json({ error: error.message }, { status });
   }
-
-  const clientName = await resolveClientName(ctx.service, clientId);
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Client call deleted', {
-    client_name: clientName,
-    item: existing?.call_type ? String(existing.call_type) : null,
-  });
-
   return NextResponse.json({ deleted: true, id: data.id });
 }

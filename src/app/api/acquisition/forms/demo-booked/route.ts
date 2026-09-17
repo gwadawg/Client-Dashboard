@@ -15,7 +15,6 @@ import {
   recordGhlSyncOnSubmission,
   syncDemoBookingToGhl,
 } from '@/lib/ghl-acquisition-sync';
-import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 function str(v: unknown): string | null {
   if (v == null) return null;
@@ -121,17 +120,6 @@ export async function POST(req: NextRequest) {
     const applied = await applyDemoBookingCredit(service, input);
     const syncResult = await syncDemoBookingToGhl(input);
     await recordGhlSyncOnSubmission(service, applied.submission_id, syncResult);
-
-    void notifyMrWaizActivity(service, {
-      eventKey: 'acq.demo_booked_credit',
-      actor: { label: setterName },
-      fields: {
-        setter_name: setterName,
-        lead_name: str(body.lead_name) ?? contactId,
-        booking_source: bookingSource,
-        booked_at: bookedAt,
-      },
-    });
 
     return NextResponse.json({
       ok: true,

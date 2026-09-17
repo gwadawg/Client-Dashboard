@@ -145,11 +145,7 @@ export default function CreativeCommand({
         );
       }
       fetch(`/api/media-buyer?${params}`)
-        .then(async (r) => {
-          const text = await r.text();
-          if (!text) throw new Error("empty");
-          return JSON.parse(text) as AdWorkspaceDrilldown;
-        })
+        .then((r) => r.json())
         .then((json: AdWorkspaceDrilldown) => setDrill((d) => ({ ...d, [ad.row_key]: json })))
         .catch(() =>
           setDrill((d) => ({

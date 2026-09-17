@@ -4,7 +4,6 @@ import {
   CLIENT_CONTACT_FIELDS,
   validateContactInput,
 } from '@/lib/client-contacts';
-import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 // GET /api/clients/[id]/contacts — list additional contacts for a client.
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -71,20 +70,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const clientName = await resolveClientName(ctx.service, clientId);
-  void notifyMrWaizActivity(ctx.service, {
-    eventKey: 'client.contact_changed',
-    actor: { userId: ctx.userId },
-    fields: {
-      action: 'added',
-      client_name: clientName,
-      contact_name: data.name ?? null,
-      role: data.contact_type ?? null,
-      email: data.email ?? null,
-      phone: data.phone ?? null,
-    },
-  });
-
   return NextResponse.json({ contact: data });
 }

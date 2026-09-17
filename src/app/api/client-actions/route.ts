@@ -14,7 +14,6 @@ import { usesCallCenterKpiLayout } from '@/lib/reporting-types';
 import { fetchCombinedSpendForMetrics, fetchMetaClicksSum } from '@/lib/spend';
 import type { EventRow } from '@/lib/metrics';
 import { resolveUserLabels } from '@/lib/user-resolver';
-import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -113,22 +112,6 @@ export async function PUT(req: Request) {
     if (!isBetWorkType(action.work_type) || !action.change_date) continue;
     const result = await evaluateOneAction(ctx, action);
     if (result) evaluated.push(result);
-  }
-
-  if (evaluated.length) {
-    void notifyMrWaizLogged(
-      ctx.service,
-      { userId: ctx.userId },
-      'Work log outcomes evaluated',
-      {
-        details: evaluated
-          .slice(0, 5)
-          .map(e => `${e.id.slice(0, 8)}… → ${e.status}`)
-          .join('; '),
-        note: evaluated.length > 5 ? `+${evaluated.length - 5} more` : null,
-        status: String(evaluated.length),
-      },
-    );
   }
 
   return NextResponse.json({ evaluated });

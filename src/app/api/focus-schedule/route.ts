@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { validateFocusCreate } from '@/lib/focus-schedule';
-import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 const SCHEDULE_PERMS = ['agents', 'schedule'] as const;
 
@@ -57,23 +56,5 @@ export async function POST(req: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const clientName =
-    data.clients &&
-    typeof data.clients === 'object' &&
-    'name' in data.clients
-      ? String((data.clients as { name: string }).name)
-      : null;
-  const agentName =
-    data.agents &&
-    typeof data.agents === 'object' &&
-    'name' in data.agents
-      ? String((data.agents as { name: string }).name)
-      : null;
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Focus schedule entry created', {
-    client_name: clientName,
-    agent_name: agentName,
-    item: `${data.scheduled_date} ${data.time_start}–${data.time_end}`,
-    status: data.status ? String(data.status) : null,
-  });
   return NextResponse.json({ row: data });
 }

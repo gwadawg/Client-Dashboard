@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { resolveLoanLogToken } from '@/lib/loan-log-form';
 import { setLoanDealFellOut } from '@/lib/loan-deals';
-import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 import { createServiceClient } from '@/lib/supabase';
 
 const INVALID = 'This link isn’t valid. Ask your Waiz contact for a new one.';
@@ -32,11 +31,6 @@ export async function PATCH(
     if (!('ok' in result)) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
-    void notifyMrWaizLogged(service, { label: client.client_name }, 'Loan deal updated', {
-      client_name: client.client_name,
-      item: dealId,
-      status: body.fell_out ? 'fell out' : 'active',
-    });
     return NextResponse.json({ ok: true, fell_out: body.fell_out });
   } catch {
     return NextResponse.json({ error: "Couldn't update this loan." }, { status: 500 });

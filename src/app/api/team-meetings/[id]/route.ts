@@ -9,7 +9,7 @@ import {
   type TemplateDb,
 } from '@/lib/team-meetings-db';
 import { isValidTeamCallType } from '@/lib/team-calls';
-import { notifyMrWaizActivity, notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
+import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 function optionalText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -117,11 +117,6 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
     .maybeSingle();
 
   if (!template) return NextResponse.json({ error: 'Template missing' }, { status: 404 });
-
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Team meeting updated', {
-    item: (template as TemplateDb).title,
-    status: (updated as { status: string }).status,
-  });
 
   return NextResponse.json({
     row: mapInstanceView(updated as Record<string, unknown>, template as TemplateDb),

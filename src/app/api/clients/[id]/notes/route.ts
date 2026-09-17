@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { isValidNoteType, isValidReasonCode } from '@/lib/client-feedback';
-import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 const SELECT =
   'id, client_id, note_type, reason_code, body, related_call_id, created_at, created_by';
@@ -68,18 +67,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const clientName = await resolveClientName(ctx.service, clientId);
-  void notifyMrWaizActivity(ctx.service, {
-    eventKey: 'client.note_created',
-    actor: { userId: ctx.userId },
-    fields: {
-      client_name: clientName,
-      note_type: noteType,
-      reason_code: reasonCode,
-      body: noteBody,
-    },
-  });
-
   return NextResponse.json({ note: data });
 }

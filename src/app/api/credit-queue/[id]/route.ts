@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { isCreditQueueEligibleEvent } from '@/lib/credit-queue-eligibility';
-import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -27,7 +26,7 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   const { data: existing, error: existingError } = await ctx.service
     .from('events')
-    .select('id, event_type, calendar_name, agent_name, lead_name, client_id')
+    .select('id, event_type, calendar_name, agent_name')
     .eq('id', id)
     .maybeSingle();
 
@@ -45,20 +44,6 @@ export async function PATCH(req: Request, { params }: RouteContext) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: 'Creditable event not found' }, { status: 404 });
-
-  const clientName = existing.client_id
-    ? await resolveClientName(ctx.service, existing.client_id as string)
-    : null;
-  void notifyMrWaizActivity(ctx.service, {
-    eventKey: 'credit.assigned',
-    actor: { userId: ctx.userId },
-    fields: {
-      lead_name: existing.lead_name ? String(existing.lead_name) : null,
-      agent_name: nextAgentName,
-      event_type: existing.event_type ? String(existing.event_type) : null,
-      client_name: clientName,
-    },
-  });
 
   return NextResponse.json({ success: true, event: data });
 }

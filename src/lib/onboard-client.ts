@@ -21,7 +21,7 @@ import { normalizeClientLeadSource } from '@/lib/client-lead-source';
 import { ensureAccountGroupForNewClient } from '@/lib/client-account-groups';
 
 const ONBOARD_FIELDS =
-  'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, ghl_contact_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, drive_folder_url, created_at';
+  'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, ghl_contact_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, created_at';
 
 const SIGNING_BILLING_REF = 'onboard-signing';
 
@@ -113,11 +113,6 @@ export function parseOnboardPayload(body: OnboardPayload) {
     ghl_subaccount_url: trimString(body.ghl_subaccount_url),
     source: normalizeClientLeadSource(trimString(body.source)),
     slack_id: trimString(body.slack_id) ?? trimString(body.slackId),
-    drive_folder_url:
-      trimString(body.drive_folder_url) ??
-      trimString(body.drive_url) ??
-      trimString(body.google_drive_url) ??
-      trimString(body.drive_folder),
     lifecycle_status: lifecycleStatus,
     is_live: syncIsLiveWithLifecycle(lifecycleStatus),
     clickup_task_id:
@@ -219,7 +214,7 @@ function buildClientRecord(parsed: ParsedOnboard): Record<string, unknown> {
     'billing_type', 'contract_term_months', 'date_signed', 'offer', 'service_program', 'sales_package', 'nmls',
     'brokerage_name', 'ghl_location_id', 'ghl_contact_id',
     'ghl_subaccount_url', 'source',
-    'clickup_task_id', 'slack_id', 'drive_folder_url',
+    'clickup_task_id', 'slack_id',
   ];
   for (const k of optional) {
     const v = parsed[k];

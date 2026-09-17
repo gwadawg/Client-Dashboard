@@ -15,7 +15,6 @@ import type {
   LibraryStatus,
   RelatedDoc,
 } from "@/lib/library-manifest";
-import { notifyMrWaizLogged } from "@/lib/mr-waiz-activity-notify";
 
 const VALID_OWNERS: LibraryOwner[] = ["setter", "closer", "sales-leadership", "operations"];
 const VALID_STATUSES: LibraryStatus[] = ["active", "draft"];
@@ -205,12 +204,6 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Library document created", {
-    item: processed.title,
-    status: processed.status ?? "draft",
-    details: processed.slug,
-  });
 
   return NextResponse.json(data as LibraryDocumentRow, { status: 201 });
 }

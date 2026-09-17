@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { createAdTag, listAdTags } from '@/lib/ad-tags-db';
-import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 const TAG_PERMS = ['media_buyer', 'acquisition_marketing'] as const;
 
@@ -38,8 +37,5 @@ export async function POST(req: Request) {
   if (result.error || !result.data) {
     return NextResponse.json({ error: result.error ?? 'Failed to create tag' }, { status: result.status });
   }
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Ad tag created', {
-    item: result.data.label ? String(result.data.label) : null,
-  });
   return NextResponse.json(result.data, { status: 201 });
 }

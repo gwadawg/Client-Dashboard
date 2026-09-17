@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CLOSEBOT_TICKET_STATUSES,
   CLOSEBOT_TICKET_STATUS_META,
@@ -79,8 +79,7 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
   const [versionsByAgent, setVersionsByAgent] = useState<Record<string, ClosebotAgentVersion[]>>({});
   const [logsByAgent, setLogsByAgent] = useState<Record<string, ClosebotPromptLog[]>>({});
   const [bugTypes, setBugTypes] = useState<ClosebotBugTypeRow[]>([]);
-  const [libraryOpen, setLibraryOpen] = useState(false);
-  const libraryRef = useRef<HTMLDivElement>(null);
+  const [libraryOpen, setLibraryOpen] = useState(canWrite);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeDescription, setNewTypeDescription] = useState("");
   const [savingType, setSavingType] = useState(false);
@@ -144,22 +143,6 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (!libraryOpen) return;
-    function onDoc(e: MouseEvent) {
-      if (!libraryRef.current?.contains(e.target as Node)) setLibraryOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setLibraryOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [libraryOpen]);
 
   useEffect(() => {
     if (!filterAgent) return;
@@ -436,109 +419,103 @@ export default function ClosebotTicketsSection({ canWrite = false }: Props) {
             Report form
           </a>
           {canWrite && (
-            <div ref={libraryRef} className="relative">
-              <button
-                type="button"
-                aria-expanded={libraryOpen}
-                aria-haspopup="dialog"
-                onClick={() => setLibraryOpen((v) => !v)}
-                className="text-[11px] font-semibold uppercase tracking-wider px-3 py-2 rounded-lg"
-                style={{
-                  color: libraryOpen ? "#fbbf24" : "#a8a29e",
-                  border: "1px solid rgba(245,158,11,0.28)",
-                  fontFamily: "var(--font-archivo)",
-                }}
-              >
-                Type library
-              </button>
-              {libraryOpen && (
-                <div
-                  role="dialog"
-                  aria-label="Type library"
-                  className="absolute right-0 top-[calc(100%+8px)] z-30 w-[min(28rem,calc(100vw-2rem))] rounded-xl p-4 space-y-3"
-                  style={{
-                    background: "#140e08",
-                    border: "1px solid rgba(245,158,11,0.35)",
-                    boxShadow: "0 18px 40px rgba(0,0,0,0.5)",
-                  }}
-                >
-                  <p className="text-xs" style={{ color: "#a8a29e" }}>
-                    Title is the group name. Description shows when someone hovers a type on the report form.
-                  </p>
-                  <form
-                    className="space-y-2"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void addBugType();
-                    }}
-                  >
-                    <label className="block space-y-1 min-w-0">
-                      <span style={labelStyle}>Title</span>
-                      <input
-                        style={inputStyle}
-                        value={newTypeName}
-                        onChange={(e) => setNewTypeName(e.target.value)}
-                        placeholder="e.g. Booked the wrong LO"
-                      />
-                    </label>
-                    <label className="block space-y-1 min-w-0">
-                      <span style={labelStyle}>Description</span>
-                      <input
-                        style={inputStyle}
-                        value={newTypeDescription}
-                        onChange={(e) => setNewTypeDescription(e.target.value)}
-                        placeholder="When to use this type"
-                      />
-                    </label>
-                    <button
-                      type="submit"
-                      disabled={savingType || !newTypeName.trim()}
-                      className="text-[11px] font-semibold uppercase tracking-wider px-3 py-2 rounded-lg disabled:opacity-50"
-                      style={{ background: "#f59e0b", color: "#1a1206", fontFamily: "var(--font-archivo)" }}
-                    >
-                      {savingType ? "Adding…" : "Add type"}
-                    </button>
-                  </form>
-                  {bugTypes.length === 0 ? (
-                    <p className="text-xs" style={{ color: "#78716c" }}>
-                      Library is empty. Add the types you actually see on the floor.
-                    </p>
-                  ) : (
-                    <ul className="flex flex-wrap gap-2 max-h-40 overflow-auto">
-                      {bugTypes.map((t) => (
-                        <li key={t.slug}>
-                          <BugTypeHint label={t.name} description={t.description}>
-                            <span
-                              className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded"
-                              style={{
-                                background: t.is_active ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.04)",
-                                color: t.is_active ? "#fde68a" : "#78716c",
-                                fontFamily: "var(--font-plex-mono)",
-                              }}
-                            >
-                              {t.short_code} · {t.name}
-                              <button
-                                type="button"
-                                aria-label={`Delete ${t.name}`}
-                                disabled={savingType}
-                                onClick={() => void deleteBugType(t.slug)}
-                                className="text-[10px] leading-none opacity-70 hover:opacity-100"
-                                style={{ color: "#f87171" }}
-                              >
-                                ×
-                              </button>
-                            </span>
-                          </BugTypeHint>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => setLibraryOpen((v) => !v)}
+              className="text-[11px] font-semibold uppercase tracking-wider px-3 py-2 rounded-lg"
+              style={{
+                color: libraryOpen ? "#fbbf24" : "#a8a29e",
+                border: "1px solid rgba(245,158,11,0.28)",
+                fontFamily: "var(--font-archivo)",
+              }}
+            >
+              Type library
+            </button>
           )}
         </div>
       </div>
+
+      {libraryOpen && canWrite && (
+        <div
+          className="rounded-xl p-4 space-y-3"
+          style={{
+            background: "rgba(245,158,11,0.05)",
+            border: "1px solid rgba(245,158,11,0.2)",
+          }}
+        >
+          <p className="text-xs" style={{ color: "#a8a29e" }}>
+            Title is the group name. Description stays hidden until someone hovers the type.
+          </p>
+          <form
+            className="grid gap-2 sm:grid-cols-[1fr_1.4fr_auto] items-end"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void addBugType();
+            }}
+          >
+            <label className="space-y-1 min-w-0">
+              <span style={labelStyle}>Title</span>
+              <input
+                style={inputStyle}
+                value={newTypeName}
+                onChange={(e) => setNewTypeName(e.target.value)}
+                placeholder="e.g. Booked the wrong LO"
+              />
+            </label>
+            <label className="space-y-1 min-w-0">
+              <span style={labelStyle}>Description</span>
+              <input
+                style={inputStyle}
+                value={newTypeDescription}
+                onChange={(e) => setNewTypeDescription(e.target.value)}
+                placeholder="When to use this type"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={savingType || !newTypeName.trim()}
+              className="text-[11px] font-semibold uppercase tracking-wider px-3 py-2 rounded-lg disabled:opacity-50 h-[2.15rem]"
+              style={{ background: "#f59e0b", color: "#1a1206", fontFamily: "var(--font-archivo)" }}
+            >
+              {savingType ? "Adding…" : "Add type"}
+            </button>
+          </form>
+          {bugTypes.length === 0 ? (
+            <p className="text-xs" style={{ color: "#78716c" }}>
+              Library is empty. Add the types you actually see on the floor.
+            </p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {bugTypes.map((t) => (
+                <li key={t.slug}>
+                  <BugTypeHint label={t.name} description={t.description}>
+                    <span
+                      className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded"
+                      style={{
+                        background: t.is_active ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.04)",
+                        color: t.is_active ? "#fde68a" : "#78716c",
+                        fontFamily: "var(--font-plex-mono)",
+                      }}
+                    >
+                      {t.short_code} · {t.name}
+                      <button
+                        type="button"
+                        aria-label={`Delete ${t.name}`}
+                        disabled={savingType}
+                        onClick={() => void deleteBugType(t.slug)}
+                        className="text-[10px] leading-none opacity-70 hover:opacity-100"
+                        style={{ color: "#f87171" }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  </BugTypeHint>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div
         className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5 rounded-xl p-3"

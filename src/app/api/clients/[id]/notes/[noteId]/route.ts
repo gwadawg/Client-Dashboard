@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { isValidNoteType, isValidReasonCode } from '@/lib/client-feedback';
-import {
-  notifyMrWaizLogged,
-  resolveClientName,
-  summarizeChangedFields,
-} from '@/lib/mr-waiz-activity-notify';
 
 const SELECT =
   'id, client_id, note_type, reason_code, body, related_call_id, created_at, created_by, updated_at';
@@ -69,16 +64,6 @@ export async function PATCH(
     const status = error.code === 'PGRST116' ? 404 : 500;
     return NextResponse.json({ error: error.message }, { status });
   }
-
-  const changedKeys = Object.keys(updates).filter(k => k !== 'updated_at' && k !== 'updated_by');
-  const clientName = await resolveClientName(ctx.service, clientId);
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Client note updated', {
-    client_name: clientName,
-    item: data.note_type ? String(data.note_type) : null,
-    changed_fields: summarizeChangedFields(changedKeys),
-    note: data.body ? String(data.body) : null,
-  });
-
   return NextResponse.json({ note: data });
 }
 
@@ -93,14 +78,6 @@ export async function DELETE(
   if (denied) return denied;
 
   const { id: clientId, noteId } = await params;
-  const { data: existing } = await ctx.service
-    .from('client_notes')
-    .select('note_type, body')
-    .eq('id', noteId)
-    .eq('client_id', clientId)
-    .is('deleted_at', null)
-    .maybeSingle();
-
   const { data, error } = await ctx.service
     .from('client_notes')
     .update({ deleted_at: new Date().toISOString(), updated_by: ctx.userId })
@@ -114,13 +91,5 @@ export async function DELETE(
     const status = error.code === 'PGRST116' ? 404 : 500;
     return NextResponse.json({ error: error.message }, { status });
   }
-
-  const clientName = await resolveClientName(ctx.service, clientId);
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Client note deleted', {
-    client_name: clientName,
-    item: existing?.note_type ? String(existing.note_type) : null,
-    note: existing?.body ? String(existing.body) : null,
-  });
-
   return NextResponse.json({ deleted: true, id: data.id });
 }

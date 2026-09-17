@@ -5,7 +5,6 @@ import {
   upsertMbLaunchCheck,
   type MbLaunchCheckField,
 } from '@/lib/team-dashboards/media';
-import { notifyMrWaizLogged, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 const FIELDS = new Set<MbLaunchCheckField>(['funnel', 'ads_manager', 'mr_waiz']);
 
@@ -68,12 +67,6 @@ export async function PATCH(req: Request) {
       field: fieldRaw as MbLaunchCheckField,
       checked,
       userId: ctx.userId,
-    });
-    const clientName = await resolveClientName(ctx.service, clientId);
-    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Media launch check updated', {
-      client_name: clientName,
-      item: fieldRaw,
-      status: checked ? 'checked' : 'unchecked',
     });
     return NextResponse.json({
       client_id: clientId,

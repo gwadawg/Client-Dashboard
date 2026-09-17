@@ -11,7 +11,6 @@ import {
   isOverrideDisposition,
   isYearMonth,
 } from '@/lib/payment-streak';
-import { notifyMrWaizLogged, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 const PERMS = ['client_health', 'admin_clients', 'admin_billing'] as const;
 
@@ -137,14 +136,6 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const clientName = await resolveClientName(ctx.service, clientId);
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Stickiness override saved', {
-    client_name: clientName,
-    item: yearMonth,
-    status: disposition,
-    note,
-  });
-
   return NextResponse.json({ override: data });
 }
 
@@ -187,12 +178,6 @@ export async function DELETE(req: Request) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-
-  const clientName = await resolveClientName(ctx.service, clientId);
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Stickiness override cleared', {
-    client_name: clientName,
-    item: yearMonth,
-  });
 
   return NextResponse.json({ ok: true });
 }

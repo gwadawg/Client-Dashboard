@@ -18,14 +18,9 @@ import {
   serviceProgramApplies,
   type ServiceProgram,
 } from '@/lib/service-program';
-import {
-  adClaimsFromDraft,
-  adClaimsToDraft,
-  type ClientAdClaims,
-} from '@/lib/ad-claims';
 
 export const KICKOFF_CLIENT_FIELDS =
-  'id, name, lifecycle_status, primary_contact_name, phone, contact_role, states_licensed, nmls, brokerage_name, timezone, appointment_settings, daily_adspend, facebook_page_name, phone_notifications, phone_live_transfer, live_transfer_approved, ghl_location_id, reporting_type, service_program, offer, ad_claims';
+  'id, name, lifecycle_status, primary_contact_name, phone, contact_role, states_licensed, nmls, brokerage_name, timezone, appointment_settings, daily_adspend, facebook_page_name, phone_notifications, phone_live_transfer, live_transfer_approved, ghl_location_id, reporting_type, service_program, offer';
 
 export const CONTACT_ROLE_OPTIONS = [
   'Loan Officer',
@@ -131,7 +126,6 @@ export type KickoffClient = {
   reporting_type: string | null;
   service_program: string | null;
   offer: string | null;
-  ad_claims?: ClientAdClaims | null;
 };
 
 export type KickoffOnboardingCall = {
@@ -223,8 +217,6 @@ export type KickoffDraft = {
   pm_compliance_notes: string;
   pm_competitor_refs: string;
   pm_funnel_requirements: string;
-  /** Optional structured ad claims (marketing profiles) — same shape as clients.ad_claims */
-  ad_claims: ClientAdClaims;
   cc_lead_source: string;
   cc_qualification_criteria: string;
   cc_hp_tag_user: string;
@@ -264,7 +256,6 @@ export function kickoffDraftFromClient(
     pm_compliance_notes: '',
     pm_competitor_refs: '',
     pm_funnel_requirements: '',
-    ad_claims: adClaimsToDraft(c.ad_claims),
     cc_lead_source: '',
     cc_qualification_criteria: '',
     cc_hp_tag_user: '',
@@ -307,7 +298,6 @@ export function kickoffPmFieldsFromDraft(draft: KickoffDraft): Record<string, un
     pm_compliance_notes: draft.pm_compliance_notes.trim() || null,
     pm_competitor_refs: draft.pm_competitor_refs.trim() || null,
     pm_funnel_requirements: draft.pm_funnel_requirements.trim() || null,
-    ad_claims: adClaimsFromDraft(draft.ad_claims),
   };
 }
 
@@ -378,10 +368,6 @@ export function kickoffDraftToBody(
   }
 
   Object.assign(body, kickoffExtraFieldsFromDraft(profile, draft));
-
-  if (profile === 'marketing_core' || profile === 'marketing_lead_gen') {
-    body.ad_claims = adClaimsFromDraft(draft.ad_claims);
-  }
 
   return body;
 }

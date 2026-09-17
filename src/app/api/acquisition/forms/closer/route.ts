@@ -20,7 +20,6 @@ import {
   ghlContactName,
   ghlCustomFieldById,
 } from '@/lib/ghl-acquisition-api';
-import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 function str(v: unknown): string | null {
   if (v == null) return null;
@@ -177,18 +176,6 @@ export async function POST(req: NextRequest) {
       closed_on_call: closedOnCall,
     });
     await recordGhlSyncOnSubmission(service, result.submission_id, syncResult);
-
-    void notifyMrWaizActivity(service, {
-      eventKey: 'acq.closer_form_submitted',
-      actor: { label: closerName },
-      fields: {
-        closer_name: closerName,
-        lead_name: str(body.lead_name) ?? contactId,
-        offer_presented: String(offerPresented),
-        closed_on_call: closedOnCall == null ? null : String(closedOnCall),
-        recording_url: str(body.recording_url),
-      },
-    });
 
     return NextResponse.json({
       ok: true,

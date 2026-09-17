@@ -6,7 +6,6 @@ import {
   setAcquisitionAppointmentStatus,
 } from '@/lib/acquisition-appointments';
 import { linkAcquisitionAppointmentToLead } from '@/lib/acquisition-appointment-link';
-import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -114,23 +113,6 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: linkResult.error }, { status: 400 });
     }
     if (!statusRaw) {
-      const { data: appt } = await ctx.service
-        .from('acquisition_appointments')
-        .select('lead_id, acquisition_leads(lead_name)')
-        .eq('id', appointmentId)
-        .maybeSingle();
-      const leadName =
-        appt?.acquisition_leads &&
-        typeof appt.acquisition_leads === 'object' &&
-        !Array.isArray(appt.acquisition_leads) &&
-        'lead_name' in appt.acquisition_leads
-          ? String((appt.acquisition_leads as { lead_name?: string }).lead_name ?? '')
-          : null;
-      void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Appointment linked to lead', {
-        item: appointmentId,
-        lead_name: leadName || null,
-        action: 'link_lead',
-      });
       return NextResponse.json({
         ok: true,
         appointment_id: appointmentId,
@@ -162,25 +144,6 @@ export async function PATCH(req: Request) {
   if ('error' in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
-
-  const { data: appt } = await ctx.service
-    .from('acquisition_appointments')
-    .select('lead_id, acquisition_leads(lead_name)')
-    .eq('id', appointmentId)
-    .maybeSingle();
-  const leadName =
-    appt?.acquisition_leads &&
-    typeof appt.acquisition_leads === 'object' &&
-    !Array.isArray(appt.acquisition_leads) &&
-    'lead_name' in appt.acquisition_leads
-      ? String((appt.acquisition_leads as { lead_name?: string }).lead_name ?? '')
-      : null;
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Acquisition appointment dispositioned', {
-    item: appointmentId,
-    lead_name: leadName || null,
-    status,
-    action: leadId ? 'link_and_disposition' : 'disposition',
-  });
 
   return NextResponse.json({ ok: true, appointment_id: appointmentId, status });
 }

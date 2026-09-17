@@ -16,7 +16,6 @@ import {
   requirePlanAccess,
   userCanApprovePlans,
 } from '@/lib/account-week-plans-api';
-import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 const SEVERITIES: AccountWeekPlanSeverity[] = ['911', 'below', 'watch'];
 
@@ -187,22 +186,6 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
       }
 
       const tasks = await loadTasksForPlans(ctx.service, [id]);
-
-      const clientName = await resolveClientName(
-        ctx.service,
-        (updated as AccountWeekPlan).client_id,
-      );
-      void notifyMrWaizActivity(ctx.service, {
-        eventKey: 'plan.week_status',
-        actor: { userId: ctx.userId },
-        fields: {
-          client_name: clientName,
-          week_start: String((updated as AccountWeekPlan).week_start ?? ''),
-          status: String(body.status),
-          founder_note: optionalText(body.founder_note),
-        },
-      });
-
       return NextResponse.json({
         plan: nestTasks([updated as AccountWeekPlan], tasks)[0],
       });

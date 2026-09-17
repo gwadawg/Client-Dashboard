@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { validateFocusPatch } from '@/lib/focus-schedule';
-import { notifyMrWaizLogged, summarizeChangedFields } from '@/lib/mr-waiz-activity-notify';
 
 const SCHEDULE_PERMS = ['agents', 'schedule'] as const;
 
@@ -43,25 +42,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const clientName =
-    data.clients &&
-    typeof data.clients === 'object' &&
-    'name' in data.clients
-      ? String((data.clients as { name: string }).name)
-      : null;
-  const agentName =
-    data.agents &&
-    typeof data.agents === 'object' &&
-    'name' in data.agents
-      ? String((data.agents as { name: string }).name)
-      : null;
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Focus schedule entry updated', {
-    client_name: clientName,
-    agent_name: agentName,
-    item: `${data.scheduled_date} ${data.time_start}–${data.time_end}`,
-    status: data.status ? String(data.status) : null,
-    changed_fields: summarizeChangedFields(Object.keys(parsed.value)),
-  });
   return NextResponse.json({ row: data });
 }
 
@@ -72,31 +52,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (denied) return denied;
 
   const { id } = await params;
-  const { data: existing } = await ctx.service
-    .from('focus_schedule')
-    .select(SELECT)
-    .eq('id', id)
-    .maybeSingle();
   const { error } = await ctx.service.from('focus_schedule').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const clientName =
-    existing?.clients &&
-    typeof existing.clients === 'object' &&
-    'name' in existing.clients
-      ? String((existing.clients as { name: string }).name)
-      : null;
-  const agentName =
-    existing?.agents &&
-    typeof existing.agents === 'object' &&
-    'name' in existing.agents
-      ? String((existing.agents as { name: string }).name)
-      : null;
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Focus schedule entry removed', {
-    client_name: clientName,
-    agent_name: agentName,
-    item: existing
-      ? `${existing.scheduled_date} ${existing.time_start}–${existing.time_end}`
-      : null,
-  });
   return NextResponse.json({ success: true });
 }

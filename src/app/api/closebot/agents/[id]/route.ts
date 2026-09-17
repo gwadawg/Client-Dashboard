@@ -14,7 +14,6 @@ import {
   upsertPendingVersion,
 } from "@/lib/closebot-store";
 import { parseUuidList, snapshotFromAgent, type ClosebotAgent } from "@/lib/closebot";
-import { notifyMrWaizLogged, summarizeChangedFields } from "@/lib/mr-waiz-activity-notify";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -110,17 +109,6 @@ export async function PATCH(req: Request, { params }: Params) {
 
   async function respond(agent: ClosebotAgent | null, pendingVersion: unknown) {
     if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-    const changedKeys = [
-      ...Object.keys(body).filter((k) => k !== "client_ids" || wantsClients),
-      ...(wantsClients ? ["client_ids"] : []),
-    ];
-    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Closebot agent updated", {
-      item: agent.name ? String(agent.name) : null,
-      agent_name: agent.name ? String(agent.name) : null,
-      status: agent.is_active === false ? "inactive" : "active",
-      changed_fields: summarizeChangedFields(changedKeys),
-      details: pendingVersion ? "pending version saved" : null,
-    });
     const withClients = await attachAssignedClients(db, [agent]);
     return NextResponse.json({
       ...(withClients.agents?.[0] ?? agent),

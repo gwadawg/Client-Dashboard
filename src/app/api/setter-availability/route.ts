@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
-import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 export async function GET() {
   const ctx = await getAuthContext();
@@ -35,16 +34,5 @@ export async function POST(req: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const agentName =
-    data.agents &&
-    typeof data.agents === 'object' &&
-    'name' in data.agents
-      ? String((data.agents as { name: string }).name)
-      : null;
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Setter availability added', {
-    agent_name: agentName,
-    item: `${data.weekday} ${data.time_start}–${data.time_end}`,
-    status: data.is_live ? 'live' : 'off',
-  });
   return NextResponse.json({ row: data });
 }

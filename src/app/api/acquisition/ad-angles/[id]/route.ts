@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
-import { notifyMrWaizLogged, summarizeChangedFields } from '@/lib/mr-waiz-activity-notify';
 
 function cleanString(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -58,11 +57,6 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!data) return NextResponse.json({ error: 'Angle not found' }, { status: 404 });
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Acquisition ad angle updated', {
-    item: data.label ? String(data.label) : null,
-    status: data.is_active === false ? 'inactive' : 'active',
-    changed_fields: summarizeChangedFields(Object.keys(updates)),
-  });
   return NextResponse.json(data);
 }
 
@@ -76,11 +70,6 @@ export async function DELETE(
   if (denied) return denied;
 
   const { id } = await params;
-  const { data: existing } = await ctx.service
-    .from('acquisition_ad_angles')
-    .select('label')
-    .eq('id', id)
-    .maybeSingle();
   const { data, error } = await ctx.service
     .from('acquisition_ad_angles')
     .update({ is_active: false })
@@ -90,9 +79,5 @@ export async function DELETE(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: 'Angle not found' }, { status: 404 });
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Acquisition ad angle archived', {
-    item: existing?.label ? String(existing.label) : null,
-    action: 'archived',
-  });
   return NextResponse.json({ success: true });
 }

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission, requirePermission } from '@/lib/api-auth';
 import { parseTeamInsert, TEAM_ROSTER_SELECT } from '@/lib/team-roster-api';
-import { notifyMrWaizLogged, summarizeChangedFields } from '@/lib/mr-waiz-activity-notify';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
@@ -24,12 +23,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .select(TEAM_ROSTER_SELECT)
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Team agent updated', {
-    item: data.name ? String(data.name) : null,
-    agent_name: data.name ? String(data.name) : null,
-    status: data.active === false ? 'inactive' : 'active',
-    changed_fields: summarizeChangedFields(Object.keys(updates)),
-  });
   return NextResponse.json({ agent: data });
 }
 
@@ -49,10 +42,5 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     .select(TEAM_ROSTER_SELECT)
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Team agent deactivated', {
-    item: data.name ? String(data.name) : null,
-    agent_name: data.name ? String(data.name) : null,
-    status: 'inactive',
-  });
   return NextResponse.json({ success: true, agent: data });
 }

@@ -12,7 +12,6 @@ import {
 import { runChurnSideEffects } from '@/lib/churn-side-effects';
 import { insertFormSubmission } from '@/lib/form-submissions';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
-import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
@@ -208,18 +207,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     responses,
     ctx.service,
   );
-
-  void notifyMrWaizActivity(ctx.service, {
-    eventKey: 'client.churned',
-    actor: { userId: ctx.userId },
-    fields: {
-      client_name: client.name,
-      effective_churn_date: draft.effective_churn_date,
-      reason_code: draft.reason_code,
-      feedback: draft.client_feedback.trim() || null,
-      recording_url: draft.recording_url.trim() || null,
-    },
-  });
 
   return NextResponse.json({
     client_id: clientId,

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getAuthContext, isAuthError, requireManageUsers, requirePermission } from "@/lib/api-auth";
-import { notifyMrWaizLogged } from "@/lib/mr-waiz-activity-notify";
 
 function cleanString(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -100,12 +99,6 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Form registry entry created", {
-    item: title,
-    details: slug,
-    url: href,
-  });
 
   return NextResponse.json(data, { status: 201 });
 }

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { normalizeAdName } from '@/lib/ad-performance';
-import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 function cleanString(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -77,9 +76,5 @@ export async function POST(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Acquisition ad alias added', {
-    item: alias_name,
-    details: lib.ad_name ? String(lib.ad_name) : null,
-  });
   return NextResponse.json(data, { status: 201 });
 }

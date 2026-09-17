@@ -14,7 +14,6 @@ import type {
   LibraryStatus,
   RelatedDoc,
 } from "@/lib/library-manifest";
-import { notifyMrWaizLogged, summarizeChangedFields } from "@/lib/mr-waiz-activity-notify";
 
 const VALID_OWNERS: LibraryOwner[] = ["setter", "closer", "sales-leadership", "operations"];
 const VALID_STATUSES: LibraryStatus[] = ["active", "draft"];
@@ -218,14 +217,6 @@ export async function PUT(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const changedKeys = Object.keys(updates).filter((k) => k !== "updated_at" && k !== "updated_by");
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Library document updated", {
-    item: processed.title,
-    status: processed.status ?? "draft",
-    changed_fields: summarizeChangedFields(changedKeys),
-    details: currentSlug !== processed.slug ? `${currentSlug} → ${processed.slug}` : processed.slug,
-  });
-
   return NextResponse.json(data as LibraryDocumentRow);
 }
 
@@ -239,16 +230,7 @@ export async function DELETE(
   if (denied) return denied;
 
   const { slug } = await params;
-  const { data: existing } = await ctx.service
-    .from("library_documents")
-    .select("title, slug")
-    .eq("slug", slug)
-    .maybeSingle();
   const { error } = await ctx.service.from("library_documents").delete().eq("slug", slug);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Library document deleted", {
-    item: existing?.title ? String(existing.title) : slug,
-    details: slug,
-  });
   return NextResponse.json({ success: true });
 }

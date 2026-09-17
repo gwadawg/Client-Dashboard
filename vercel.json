@@ -9,7 +9,7 @@
       "schedule": "0 12 * * *"
     },
     {
-      "path": "/api/alerts/daily",
+      "path": "/api/alerts/cpl-threshold",
       "schedule": "0 14 * * *"
     }
   ]

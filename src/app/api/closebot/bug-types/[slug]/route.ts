@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getAuthContext, isAuthError } from "@/lib/api-auth";
 import { requireClosebotLogWrite } from "@/lib/closebot-auth";
 import { cleanString, isClosebotBugTypeSlug, shortCodeFromName } from "@/lib/closebot";
-import { notifyMrWaizLogged, summarizeChangedFields } from "@/lib/mr-waiz-activity-notify";
 
 const SELECT = "slug, name, short_code, description, sort_order, is_active, created_at, updated_at";
 
@@ -72,13 +71,6 @@ export async function PATCH(req: Request, { params }: Params) {
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Type not found" }, { status: 404 });
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Closebot bug type updated", {
-    item: data.name ? String(data.name) : slug,
-    status: data.is_active === false ? "inactive" : "active",
-    changed_fields: summarizeChangedFields(
-      Object.keys(patch).filter((k) => k !== "updated_at"),
-    ),
-  });
   return NextResponse.json(data);
 }
 
@@ -93,12 +85,6 @@ export async function DELETE(_req: Request, { params }: Params) {
     return NextResponse.json({ error: "slug is required" }, { status: 400 });
   }
 
-  const { data: existing } = await ctx.service
-    .from("closebot_bug_types")
-    .select("name")
-    .eq("slug", slug)
-    .maybeSingle();
-
   const { error: ticketErr } = await ctx.service
     .from("closebot_tickets")
     .update({
@@ -112,8 +98,5 @@ export async function DELETE(_req: Request, { params }: Params) {
 
   const { error } = await ctx.service.from("closebot_bug_types").delete().eq("slug", slug);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Closebot bug type deleted", {
-    item: existing?.name ? String(existing.name) : slug,
-  });
   return NextResponse.json({ ok: true });
 }

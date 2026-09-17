@@ -7,7 +7,6 @@ import {
 import { enrichClosesWithCompleteness } from '@/lib/acquisition-close-enrich';
 import { parsePatchCloseBody, patchAcquisitionClose } from '@/lib/acquisition-close-update';
 import { flattenRawCloseRow } from '@/lib/acquisition-raw-enriched';
-import { notifyMrWaizLogged, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 const CLOSE_DETAIL_SELECT = `
   *,
@@ -114,20 +113,6 @@ export async function PATCH(req: NextRequest, ctx: RouteCtx) {
       .single();
     if (error) throw new Error(error.message);
     const [enriched] = await enrichClosesWithCompleteness(auth.service, [data as Record<string, unknown>]);
-    const flat = flattenRawCloseRow(data as Record<string, unknown>);
-    const clientName = flat.client_id
-      ? await resolveClientName(auth.service, String(flat.client_id))
-      : null;
-    void notifyMrWaizLogged(auth.service, { userId: auth.userId }, 'Acquisition close updated', {
-      item: id,
-      lead_name:
-        typeof (data as { acquisition_leads?: { lead_name?: string } }).acquisition_leads?.lead_name ===
-        'string'
-          ? (data as { acquisition_leads?: { lead_name?: string } }).acquisition_leads!.lead_name!
-          : null,
-      client_name: clientName,
-      status: flat.mapping_status ? String(flat.mapping_status) : null,
-    });
     return NextResponse.json({ success: true, close: enriched });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

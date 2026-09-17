@@ -83,7 +83,6 @@ create table if not exists clients (
   -- Offer / identity
   offer               text,       -- RM | DSCR | CALL_CENTER (mirrors reporting_type)
   offer_summary       text,       -- brief ad/offer blurb for setter-facing directory
-  ad_claims           jsonb,      -- optional allowed numbers / can-say / cannot-say for ads
   service_program     text,       -- core | lead_gen (RM/DSCR only)
   nmls                text,
   brokerage_name      text,
@@ -91,7 +90,6 @@ create table if not exists clients (
   business_type       text,
   website             text,
   funnel_url          text,
-  drive_folder_url    text,  -- Google Drive folder for custom ads / creative work
   source              text,
   biography           text,
 
@@ -144,7 +142,6 @@ alter table clients add column if not exists ads_paused_at          timestamptz;
 alter table clients add column if not exists ads_paused_note        text;
 alter table clients add column if not exists offer                  text;
 alter table clients add column if not exists offer_summary          text;
-alter table clients add column if not exists ad_claims              jsonb;
 alter table clients add column if not exists service_program        text;
 alter table clients add column if not exists nmls                   text;
 alter table clients add column if not exists brokerage_name         text;
@@ -152,7 +149,6 @@ alter table clients add column if not exists legal_business_name    text;
 alter table clients add column if not exists business_type          text;
 alter table clients add column if not exists website                text;
 alter table clients add column if not exists funnel_url             text;
-alter table clients add column if not exists drive_folder_url       text;
 alter table clients add column if not exists source                 text;
 alter table clients add column if not exists biography              text;
 alter table clients add column if not exists primary_contact_name   text;
@@ -1259,10 +1255,6 @@ create index if not exists events_client_occurred  on events(client_id, occurred
 create index if not exists events_type             on events(event_type);
 create index if not exists events_external_id_idx  on events(external_id)  where external_id is not null;
 create index if not exists events_calendar_id_idx  on events(calendar_id)  where calendar_id is not null;
-create index if not exists events_ghl_contact_id_idx on events(ghl_contact_id) where ghl_contact_id is not null;
-create index if not exists events_client_type_contact_idx
-  on events (client_id, event_type, ghl_contact_id)
-  where ghl_contact_id is not null;
 create index if not exists events_agent_name_idx   on events(agent_name)   where agent_name is not null;
 create index if not exists events_lead_phone_idx   on events(lead_phone)   where lead_phone is not null;
 create index if not exists events_ad_name_idx       on events(ad_name)      where ad_name is not null;

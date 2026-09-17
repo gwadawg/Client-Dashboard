@@ -42,7 +42,6 @@ next-env.d.ts
 
 # generated historical import CSVs (regenerate with scripts/transform-leads-csv.mjs)
 /data/import/*.csv
-/data/import/scorecards/
 
 # macOS Finder duplicate copies (break Next/tsc typecheck)
 **/*[[:space:]]2.ts

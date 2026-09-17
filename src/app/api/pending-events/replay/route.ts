@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { replayPendingEventsForClient } from '@/lib/pending-events';
-import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
@@ -31,10 +30,6 @@ export async function POST(req: Request) {
 
   try {
     const result = await replayPendingEventsForClient(ctx.service, client);
-    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Pending events replayed', {
-      client_name: client.name,
-      details: `${result.replayed} replayed, ${result.skipped} skipped, ${result.failed} failed`,
-    });
     return NextResponse.json({ success: true, client, ...result });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
