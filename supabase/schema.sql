@@ -1484,10 +1484,6 @@ create unique index if not exists clients_welcome_back_token_key
   on clients (welcome_back_token)
   where welcome_back_token is not null;
 
-create unique index if not exists clients_welcome_back_token_key
-  on clients (welcome_back_token)
-  where welcome_back_token is not null;
-
 -- Client reinstate / winback closes (acquisition_closes lives in acquisition migrations).
 -- Allow multiple closes per client; mark winbacks via close_kind.
 drop index if exists acquisition_closes_client_id_key;
