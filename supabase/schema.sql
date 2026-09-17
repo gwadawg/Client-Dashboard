@@ -1485,22 +1485,28 @@ create unique index if not exists clients_welcome_back_token_key
   where welcome_back_token is not null;
 
 -- Client reinstate / winback closes (acquisition_closes lives in acquisition migrations).
--- Allow multiple closes per client; mark winbacks via close_kind.
-drop index if exists acquisition_closes_client_id_key;
+-- Guard: table is not created in this file; skip when acquisition migrations have not run.
+do $$
+begin
+  if to_regclass('public.acquisition_closes') is null then
+    return;
+  end if;
 
-alter table acquisition_closes
-  add column if not exists close_kind text not null default 'standard';
+  execute 'drop index if exists acquisition_closes_client_id_key';
 
-alter table acquisition_closes
-  drop constraint if exists acquisition_closes_close_kind_check;
+  alter table acquisition_closes
+    add column if not exists close_kind text not null default 'standard';
 
-alter table acquisition_closes
-  add constraint acquisition_closes_close_kind_check check (
-    close_kind in ('standard', 'reinstate')
-  );
+  alter table acquisition_closes
+    drop constraint if exists acquisition_closes_close_kind_check;
 
-create index if not exists acquisition_closes_close_kind_idx
-  on acquisition_closes (close_kind);
+  alter table acquisition_closes
+    add constraint acquisition_closes_close_kind_check check (
+      close_kind in ('standard', 'reinstate')
+    );
+
+  execute 'create index if not exists acquisition_closes_close_kind_idx on acquisition_closes (close_kind)';
+end $$;
 
 -- One row per loan transaction (file). Unique-person conversion stays on events.
 create table if not exists loan_deals (
