@@ -2,6 +2,7 @@
 title: Client Reinstate / Welcome-Back — Design
 status: draft
 last_updated: 2026-09-17
+compatibility_reviewed: 2026-09-17
 artifact_type: design
 related_docs:
   - docs/CLIENT_ONBOARDING.md
@@ -94,14 +95,19 @@ churn reason (from churn form / status history).
 ### Submit behavior — same file
 
 1. Reject if client is not `churned` (409).
-2. Update deal fields on the existing row (offer, MRR, `date_signed`, contract
-   fields as collected).
+2. Update deal fields on the existing row (offer, MRR, contract fields as
+   collected). Keep original `date_signed` for tenure; set `reinstated_at` (or
+   equivalent on the reinstate submission). Clear `billing_paused` /
+   `ads_paused` (and related note timestamps) unless the closer explicitly
+   leaves them paused. Set new `contract_end_date` / term from the form when
+   provided.
 3. Set `lifecycle_status` to `onboarding` (reuse existing status; no new
    `reinstating` enum in v1). Clear current `churned_at` via existing lifecycle
    sync rules when leaving `churned` / `off_boarding`.
-4. Insert `client_form_submissions` with `form_type: reinstate`.
-5. Insert `acquisition_closes` with a reinstate/winback marker (see Sales
-   credit).
+4. Insert `client_form_submissions` with `form_type: reinstate`. This starts a
+   new progress cycle (Sign).
+5. Insert a **new** `acquisition_closes` row with `close_kind` (or equivalent)
+   `reinstate` — must not overwrite the original close (see Compatibility).
 6. Issue or refresh a welcome-back share token; return copyable URL
    `/onboard/welcome-back/[token]`.
 7. Do **not** call Make, ClickUp, or Slack APIs.
@@ -229,27 +235,85 @@ present):
 
 ## Testing (manual)
 
-1. Churned client → same-file reinstate → `onboarding`, history intact, one
-   winback close, token URL works.
+1. Churned client → same-file reinstate → `onboarding`, history intact, **new**
+   winback close (original close unchanged), token URL works; pauses cleared.
 2. Welcome-back link → prefilled → submit → fields patched,
-   `reinstate_onboarding` row present.
-3. New-offer path → sibling active path, original remains `churned`.
-4. Confirm no ClickUp/Slack side effects from the app.
-5. Closer stats / acquisition close list includes the reinstate close.
-6. Non-churned client cannot be reinstated.
+   `reinstate_onboarding` row present; progress shows Sign + OB only for the
+   new cycle.
+3. Complete kickoff + launch again on same file (must not 409 on old launch).
+4. New-offer path → sibling row without copying GHL ids; original stays
+   `churned`; duplicate-check exclusions work.
+5. Confirm no ClickUp/Slack side effects from the app.
+6. Closer stats include the reinstate close; CAC new-logo rollup excludes it
+   (once filter lands).
+7. Non-churned client cannot be reinstated.
+
+## Compatibility risks (spot-check) and required mitigations
+
+These are current-system constraints that would cause **runtime errors** or
+**silent metric/mapping damage** if ignored. They are in scope for v1.
+
+### Hard blockers (must fix in implementation)
+
+| Risk | Why | Mitigation |
+|------|-----|------------|
+| `acquisition_closes` unique on `client_id` (`acquisition_closes_client_id_key`) | Same-file reinstate cannot insert a second close; ingest upsert would overwrite the original close | Relax unique constraint to allow multiple closes per client **or** soft-dismiss/archive the prior close and insert a new one. Never use `finalizeClose` upsert-by-client for winbacks. |
+| `FORM_TYPES` DB check | `reinstate` / `reinstate_onboarding` inserts fail until constraint expanded | Migration + TS `FORM_TYPES` / labels together (same pattern as `launch_kit`) |
+| Launch 409 after prior launch | `POST .../launch` rejects when an operational launch submission already exists | After reinstate, allow a new launch cycle (gate on post-reinstate submissions or clear the “already launched” block when lifecycle returned via reinstate) |
+| Progress strip stale | `getFormProgressForClients` treats any historical `onboarding`/`kickoff`/`launch` as done | After reinstate, progress must use **post-reinstate** submissions; treat `reinstate` as Sign; `reinstate_onboarding` as OB |
+| Sibling + copied GHL IDs | Unique indexes on `ghl_location_id` / `ghl_contact_id` | Same-file: keep IDs. New offer: **never copy** location/contact (null until kickoff / new sub-account). “Reuse GHL” is only valid for same-file |
+
+### Mapping / attribution
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| New GHL location on same row | Med | Webhooks follow new `ghl_location_id`; old events stay on history — OK. Document CS must update Make/client map if location changes |
+| Sibling sharing contact/location | High | Forbidden by unique indexes; use `createOfferForAccount` helpers; distinct or null GHL ids |
+| Meta spend map (Make by roster name) | Med | CS checklist: update Meta client map when sibling/rename; same-file with unchanged name usually OK |
+| Core `/onboard` email match with sibling | Med | Welcome-back is token-only (no email match). Sibling should not share primary email if they might use public `/onboard` later, or identity-aware match must be used |
+
+### Metrics / billing leftovers
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Winback close counts as new-logo CAC/payroll | High | Durable `close_kind = reinstate` (or equivalent). Document: closer credit **includes** winbacks; CAC “new logo” / new-logo cash **excludes** them unless product later opts in |
+| Rewriting `date_signed` | Med | Set `reinstated_at` (or store on reinstate submission). Keep original `date_signed` for tenure; use reinstate date for the close’s `closed_at` |
+| `billing_paused` / `ads_paused` / stale `contract_end_date` | Med | Reinstate patch clears pauses (or prompts) and sets new contract term/end from the form |
+| Lost MRR drops when status returns to `onboarding` | Med | Existing reactivate behavior — document; do not erase history rows |
+
+### Safe / largely unaffected
+
+- ClickUp / Slack / GHL New Client Make pipeline (intentionally unused)
+- Churn form + `client_status_history` rows (kept)
+- Core `/onboard` and `/onboard/dscr` if welcome-back stays token-bound
+- `is_live` (stays false until launch → `active`)
+- Billing emergency Reactivate (orthogonal)
+- `would_rejoin` on churn (display-only; optional context on closer form)
 
 ## Open implementation notes (not open product questions)
 
-- Minimal schema for winback marker on `acquisition_closes`
-- Token storage vs signed URL
-- Whether welcome-back reuses `OnboardingWizard` with a variant prop or a thin
-  dedicated wizard — prefer shared components, separate route/copy
+- Schema: relax `acquisition_closes` one-close-per-client unique; add winback
+  marker; extend form_type check; optional `reinstated_at` / welcome-back token
+  column
+- Token storage vs signed URL (must not reuse report `share_token`)
+- Welcome-back wizard: shared components, separate route/copy
+- Progress + launch gate: compute “cycle” after latest `reinstate` submission
+- New-offer path: call existing `createOfferForAccount` / add-offer duplicate
+  exclusions — do not hand-roll sibling insert
 
 ## Success criteria
 
 - Closer can reinstate a churned client in Mr. Waiz in one form without Make.
 - Client confirms info on a unique prefilled welcome-back link.
 - Churn history remains; current status and roster reflect the rejoin.
-- Sales gets close credit tagged as reinstate.
-- Same file by default; new offer creates a clean sibling when selected.
+- Sales gets close credit tagged as reinstate without breaking unique-close
+  constraints or overwriting the original close.
+- Same-file re-launch and progress strip work for the new cycle (not stuck on
+  old launch / green strip).
+- Same file by default; new offer creates a clean sibling when selected
+  without colliding on GHL unique indexes.
+- Pauses / contract end are cleared or reset so billing and ads state match
+  the rejoin.
 - ClickUp/Slack remain operator-owned.
+- Mapping: same-file keeps GHL ids; sibling never copies them; Meta map called
+  out on CS checklist when needed.
