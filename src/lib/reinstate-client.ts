@@ -191,39 +191,54 @@ function reinstateCutoffIso(): string {
 }
 
 /**
- * Find a recent reinstate tied to this origin.
- * same_file rows use client_id=origin; new_offer rows live on the sibling but
- * store origin_client_id in responses (so Client File CS checklist stays on target).
+ * Recent reinstate rows for this origin.
+ * same_file lives on origin.client_id; new_offer lives on the sibling and is
+ * found via responses.origin_client_id (Client File CS checklist stays on target).
  */
-async function loadRecentOriginReinstate(
+async function loadRecentOriginReinstates(
   service: SupabaseClient,
   originClientId: string,
-): Promise<{
-  id: string;
-  client_id: string | null;
-  responses: Record<string, unknown> | null;
-  submitted_at: string;
-} | null> {
-  const { data, error } = await service
+): Promise<RecentReinstateSubmission[]> {
+  const cutoff = reinstateCutoffIso();
+  const select = 'id, client_id, responses, submitted_at';
+
+  const onOrigin = await service
     .from('client_form_submissions')
-    .select('id, client_id, responses, submitted_at')
+    .select(select)
+    .eq('client_id', originClientId)
     .eq('form_type', 'reinstate')
     .in('status', ['applied', 'submitted'])
-    .gte('submitted_at', reinstateCutoffIso())
+    .gte('submitted_at', cutoff)
+    .order('submitted_at', { ascending: false })
+    .limit(5);
+
+  if (onOrigin.error) throw new ReinstateClientError(onOrigin.error.message, 500);
+
+  const newOffer = await service
+    .from('client_form_submissions')
+    .select(select)
+    .eq('form_type', 'reinstate')
+    .in('status', ['applied', 'submitted'])
+    .gte('submitted_at', cutoff)
+    .filter('responses->>engagement', 'eq', 'new_offer')
     .or(
       `client_id.eq.${originClientId},responses->>origin_client_id.eq.${originClientId}`,
     )
     .order('submitted_at', { ascending: false })
     .limit(5);
-  if (error) throw new ReinstateClientError(error.message, 500);
 
-  const match = (data ?? [])[0];
-  return (match as {
-    id: string;
-    client_id: string | null;
-    responses: Record<string, unknown> | null;
-    submitted_at: string;
-  } | undefined) ?? null;
+  if (newOffer.error) throw new ReinstateClientError(newOffer.error.message, 500);
+
+  const byId = new Map<string, RecentReinstateSubmission>();
+  for (const row of [...(onOrigin.data ?? []), ...(newOffer.data ?? [])]) {
+    const typed = row as RecentReinstateSubmission;
+    if (!typed.id) continue;
+    if (!reinstateSubmissionMatchesOrigin(typed, originClientId)) continue;
+    byId.set(typed.id, typed);
+  }
+  return [...byId.values()].sort((a, b) =>
+    String(b.submitted_at ?? '').localeCompare(String(a.submitted_at ?? '')),
+  );
 }
 
 async function throwIdempotentConflict(opts: {
@@ -264,49 +279,36 @@ export async function reinstateClient(
 
   const lifecycle = (origin.lifecycle_status as string | null) ?? null;
 
-  // Idempotency before create: any recent reinstate on the origin (regardless of
-  // current lifecycle) with a resolvable welcome-back target → 409.
+  // Idempotency before sibling create / same-file update — origin lifecycle
+  // does not matter (new_offer leaves the origin churned).
   {
-    const recent = await loadRecentOriginReinstate(service, origin.id as string);
-    if (recent) {
-      const engagement = readReinstateEngagement(recent.responses) ?? 'same_file';
-      if (engagement === 'new_offer') {
-        const targetId = readTargetClientId(recent.responses);
-        if (targetId) {
-          const { data: sibling, error: siblingLoadErr } = await service
-            .from('clients')
-            .select('id, welcome_back_token')
-            .eq('id', targetId)
-            .maybeSingle();
-          if (siblingLoadErr) throw new ReinstateClientError(siblingLoadErr.message, 500);
-          if (sibling?.welcome_back_token) {
-            await throwIdempotentConflict({
-              appOrigin,
-              engagement: 'new_offer',
-              clientId: sibling.id as string,
-              welcomeBackToken: sibling.welcome_back_token as string,
-            });
-          }
-        }
-      } else if (lifecycle === 'onboarding' && origin.welcome_back_token) {
+    const recent = await loadRecentOriginReinstates(service, origin.id as string);
+    if (draft.engagement === 'new_offer') {
+      const targetId = findRecentNewOfferTargetClientId(recent);
+      if (targetId) {
+        const { data: sibling, error: siblingLoadErr } = await service
+          .from('clients')
+          .select('id, welcome_back_token')
+          .eq('id', targetId)
+          .maybeSingle();
+        if (siblingLoadErr) throw new ReinstateClientError(siblingLoadErr.message, 500);
         await throwIdempotentConflict({
           appOrigin,
-          engagement: 'same_file',
-          clientId: origin.id as string,
-          welcomeBackToken: origin.welcome_back_token as string,
+          engagement: 'new_offer',
+          clientId: (sibling?.id as string | undefined) ?? targetId,
+          welcomeBackToken: (sibling?.welcome_back_token as string | null | undefined) ?? null,
         });
-      } else if (engagement === 'same_file') {
-        // Origin may still be churned if a prior attempt wrote the submission
-        // then failed mid-flight; prefer existing token when present.
-        if (origin.welcome_back_token) {
-          await throwIdempotentConflict({
-            appOrigin,
-            engagement: 'same_file',
-            clientId: origin.id as string,
-            welcomeBackToken: origin.welcome_back_token as string,
-          });
-        }
       }
+    } else if (
+      hasRecentSameFileReinstate(recent) ||
+      (lifecycle === 'onboarding' && origin.welcome_back_token && recent.length > 0)
+    ) {
+      await throwIdempotentConflict({
+        appOrigin,
+        engagement: 'same_file',
+        clientId: origin.id as string,
+        welcomeBackToken: origin.welcome_back_token as string | null,
+      });
     }
   }
 
@@ -404,9 +406,9 @@ export async function reinstateClient(
   const reportingType = normalizeReportingType(draft.reporting_type || draft.offer);
   const closerName = draft.closer_name.trim();
 
-  // Closer-stats resolve closers via demo calls / offers, not close.setter_name.
-  // Still set setter_name (first-class text on acquisition_closes) + raw.closer_name
-  // so payroll / team-stats / raw tables can attribute the winback.
+  // No closer_name column. Closer-stats resolve via demo calls (handled_by) and
+  // linked offers, not this row. Set setter_name (only first-class text) plus
+  // raw.closer_name so payroll/raw tables have a name; see CLIENT_ONBOARDING.md.
   const { data: closeRow, error: closeErr } = await service
     .from('acquisition_closes')
     .insert({

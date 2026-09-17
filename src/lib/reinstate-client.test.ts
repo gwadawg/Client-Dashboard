@@ -4,8 +4,11 @@ import {
   buildWelcomeBackUrl,
   buildSameFileClientPatch,
   buildNewOfferIdentityPatch,
+  findRecentNewOfferTargetClientId,
+  hasRecentSameFileReinstate,
   readReinstateEngagement,
   readTargetClientId,
+  reinstateSubmissionMatchesOrigin,
   REINSTATE_NEW_OFFER_IDENTITY_FIELDS,
 } from '@/lib/reinstate-client';
 import { emptyReinstateDraft } from '@/lib/reinstate-form';
@@ -99,5 +102,27 @@ describe('reinstate-client helpers', () => {
       'sib-1',
     );
     assert.equal(readTargetClientId({}), null);
+  });
+
+  it('finds new_offer target_client_id and same_file rows for idempotency', () => {
+    const origin = 'origin-1';
+    const sibling = 'sibling-1';
+    const newOffer = {
+      client_id: sibling,
+      responses: {
+        engagement: 'new_offer' as const,
+        origin_client_id: origin,
+        target_client_id: sibling,
+      },
+    };
+    const sameFile = {
+      client_id: origin,
+      responses: { engagement: 'same_file' as const, target_client_id: origin },
+    };
+    assert.equal(reinstateSubmissionMatchesOrigin(newOffer, origin), true);
+    assert.equal(findRecentNewOfferTargetClientId([newOffer]), sibling);
+    assert.equal(hasRecentSameFileReinstate([newOffer]), false);
+    assert.equal(hasRecentSameFileReinstate([sameFile]), true);
+    assert.equal(findRecentNewOfferTargetClientId([sameFile]), null);
   });
 });

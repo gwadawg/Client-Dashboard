@@ -300,6 +300,11 @@ Paid rejoins use the closer form at `/forms/reinstate` (not the New Client
 GHL form). That writes `reinstated_at`, a winback `acquisition_closes` row
 (`close_kind=reinstate`), and a per-client welcome-back token.
 
+The closer name is stored on `acquisition_closes.raw.closer_name` and on
+`setter_name` (the only first-class text column on the close).
+Closer-stats still resolve closers via demo calls (`handled_by`) and linked
+offers, not from this text field.
+
 The client then completes **Welcome-Back Onboarding** at
 `/onboard/welcome-back/[token]` (token-only; not a public universal link).
 Client File shows a Reinstate badge plus welcome-back OB pending/done from
