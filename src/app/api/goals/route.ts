@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission, requirePermission } from '@/lib/api-auth';
+import { notifyMrWaizLogged, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 type GoalInput = {
   client_id?: string;
@@ -103,6 +104,28 @@ export async function POST(req: Request) {
     .select();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const saved = data?.[0] ?? rows[0];
+  const clientName = saved?.client_id
+    ? await resolveClientName(ctx.service, String(saved.client_id))
+    : null;
+  void notifyMrWaizLogged(
+    ctx.service,
+    { userId: ctx.userId },
+    rows.length === 1 ? 'Goal saved' : 'Goals saved',
+    {
+      item: saved?.metric ? String(saved.metric) : null,
+      client_name: clientName,
+      agent_name: saved?.agent_name ? String(saved.agent_name) : null,
+      status: saved?.period ? String(saved.period) : null,
+      details:
+        rows.length > 1
+          ? `${rows.length} goals`
+          : saved?.target != null
+            ? `target ${saved.target}`
+            : null,
+    },
+  );
 
   if (rows.length === 1) {
     return NextResponse.json({ goal: data?.[0] ?? null, goals: data ?? [] });

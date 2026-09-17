@@ -7,6 +7,7 @@ import {
   shortCodeFromName,
   slugifyClosebotBugType,
 } from "@/lib/closebot";
+import { notifyMrWaizLogged } from "@/lib/mr-waiz-activity-notify";
 
 const SELECT = "slug, name, short_code, description, sort_order, is_active, created_at, updated_at";
 
@@ -78,5 +79,10 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Closebot bug type created", {
+    item: name,
+    status: body.is_active === false ? "inactive" : "active",
+    details: slug,
+  });
   return NextResponse.json(data, { status: 201 });
 }

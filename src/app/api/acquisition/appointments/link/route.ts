@@ -5,6 +5,7 @@ import {
   linkAcquisitionAppointmentToLead,
   pullGhlAndLinkAppointment,
 } from '@/lib/acquisition-appointment-link';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 type LinkAction = 'link_lead' | 'create_lead' | 'pull_ghl';
 
@@ -43,6 +44,11 @@ export async function POST(req: Request) {
     if ('error' in result) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
+    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Appointment linked to lead', {
+      item: appointmentId,
+      action: 'link_lead',
+      details: result.lead_id,
+    });
     return NextResponse.json({
       ok: true,
       appointment_id: appointmentId,
@@ -56,6 +62,11 @@ export async function POST(req: Request) {
     if ('error' in result) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
+    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Lead created from appointment', {
+      item: appointmentId,
+      action: 'create_lead',
+      details: result.lead_id,
+    });
     return NextResponse.json({
       ok: true,
       appointment_id: appointmentId,
@@ -70,6 +81,11 @@ export async function POST(req: Request) {
     if ('error' in result) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
+    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Appointment synced from GHL', {
+      item: appointmentId,
+      action: 'pull_ghl',
+      details: result.created ? `created lead ${result.lead_id}` : result.lead_id,
+    });
     return NextResponse.json({
       ok: true,
       appointment_id: appointmentId,

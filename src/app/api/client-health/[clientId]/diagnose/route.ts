@@ -9,6 +9,7 @@ import { fetchCombinedTrendSpend } from '@/lib/spend';
 import { runAiDiagnosis, type WindowMetrics } from '@/lib/ai-diagnose';
 import type { ClientKpiBenchmarks } from '@/lib/client-health';
 import type { EventRow } from '@/lib/metrics';
+import { notifyMrWaizLogged, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 type DatedEvent = { event_type: string; occurred_at: string; is_qualified?: boolean | null };
 type DailySpend = { spend_date: string; amount: number | string };
@@ -152,6 +153,13 @@ export async function POST(
     metrics: healthSnap.metrics,
     ai_diagnosis: diagnosis,
     created_by: ctx.userId,
+  });
+
+  const clientName = await resolveClientName(ctx.service, clientId);
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'AI client diagnosis ran', {
+    client_name: clientName,
+    status: diagnosis.primary_constraint ?? healthSnap.worst_tier ?? null,
+    details: healthSnap.constraint_label ?? null,
   });
 
   return NextResponse.json({ input, diagnosis, crm_context_included: !!crmContext });

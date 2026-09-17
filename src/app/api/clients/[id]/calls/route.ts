@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { CLIENT_CALL_FIELDS, isValidCallDisposition, isValidCallType } from '@/lib/client-calls';
 import { parseCheckinFormInput, validateCheckinFormForSave } from '@/lib/checkin-form';
+import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 function optionalText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -123,5 +124,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const clientName = await resolveClientName(ctx.service, clientId);
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'client.call_logged',
+    actor: { userId: ctx.userId },
+    fields: {
+      client_name: clientName,
+      call_type: callType,
+      called_at: calledAt,
+      disposition,
+      attendees: optionalText(body.attendees),
+      notes: optionalText(body.notes),
+      recording_url: recordingUrl,
+    },
+  });
+
   return NextResponse.json({ call: data });
 }

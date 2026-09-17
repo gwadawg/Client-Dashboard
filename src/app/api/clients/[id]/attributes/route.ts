@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import { notifyMrWaizLogged, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 const SELECT = 'id, client_id, attr_key, attr_value, created_at, updated_at, created_by, updated_by';
 
@@ -64,6 +65,14 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const clientName = await resolveClientName(ctx.service, clientId);
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Client attribute saved', {
+    client_name: clientName,
+    item: attrKey,
+    details: typeof attrValue === 'string' ? attrValue : JSON.stringify(attrValue),
+  });
+
   return NextResponse.json({ attribute: data });
 }
 
@@ -87,5 +96,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     .eq('attr_key', attrKey);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const clientName = await resolveClientName(ctx.service, clientId);
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Client attribute removed', {
+    client_name: clientName,
+    item: attrKey,
+  });
+
   return NextResponse.json({ success: true });
 }

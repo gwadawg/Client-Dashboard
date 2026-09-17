@@ -19,6 +19,7 @@ import {
   uniqueClosebotSlug,
   type ClosebotAgent,
 } from "@/lib/closebot";
+import { notifyMrWaizLogged } from "@/lib/mr-waiz-activity-notify";
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -182,6 +183,12 @@ export async function POST(req: Request) {
 
   const withClients = await attachAssignedClients(ctx.service, [data as ClosebotAgent]);
   const agent = withClients.agents?.[0] ?? data;
+
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Closebot agent created", {
+    item: snapshot.name,
+    agent_name: snapshot.name,
+    status: body.is_active === false ? "inactive" : "active",
+  });
 
   return NextResponse.json({ ...agent, pending_version: null }, { status: 201 });
 }

@@ -9,6 +9,12 @@ import {
   parseBetCategory,
   shouldFreezeBaseline,
 } from '@/lib/client-work-log';
+import {
+  notifyMrWaizActivity,
+  notifyMrWaizLogged,
+  resolveClientName,
+  summarizeChangedFields,
+} from '@/lib/mr-waiz-activity-notify';
 
 const MUTABLE_STATUSES = ['planned', 'in_progress', 'measuring', 'succeeded', 'failed', 'abandoned'];
 
@@ -189,6 +195,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const clientName = await resolveClientName(ctx.service, data.client_id as string);
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'client.work_log_updated',
+    actor: { userId: ctx.userId },
+    fields: {
+      client_name: clientName,
+      title: data.title ? String(data.title) : null,
+      work_type: data.work_type ? String(data.work_type) : null,
+      status: data.status ? String(data.status) : null,
+      changed_fields: summarizeChangedFields(Object.keys(update)),
+      outcome: data.change_description ? String(data.change_description) : null,
+    },
+  });
+
   return NextResponse.json({ action: data });
 }
 
@@ -199,7 +220,24 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (denied) return denied;
 
   const { id } = await params;
+
+  const { data: existing } = await ctx.service
+    .from('client_action_logs')
+    .select('client_id, title, work_type')
+    .eq('id', id)
+    .maybeSingle();
+
   const { error } = await ctx.service.from('client_action_logs').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (existing) {
+    const clientName = await resolveClientName(ctx.service, existing.client_id as string);
+    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Work log deleted', {
+      client_name: clientName,
+      item: existing.title ? String(existing.title) : null,
+      details: existing.work_type ? String(existing.work_type) : null,
+    });
+  }
+
   return NextResponse.json({ success: true });
 }

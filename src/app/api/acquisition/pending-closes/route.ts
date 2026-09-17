@@ -6,6 +6,7 @@ import {
   excludeAcquisitionClose,
   restoreAcquisitionClose,
 } from '@/lib/acquisition-close-lifecycle';
+import { notifyMrWaizLogged, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 export async function GET() {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -52,6 +53,10 @@ export async function POST(req: Request) {
   try {
     if (action === 'dismiss') {
       await excludeAcquisitionClose(ctx.service, closeId);
+      void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Pending close dismissed', {
+        item: closeId,
+        action: 'dismiss',
+      });
       return NextResponse.json({ success: true });
     }
 
@@ -68,16 +73,30 @@ export async function POST(req: Request) {
         const status = message.includes('already linked') ? 409 : 404;
         return NextResponse.json({ error: message }, { status });
       }
+      const clientName = await resolveClientName(ctx.service, clientId);
+      void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Pending close assigned to client', {
+        item: closeId,
+        action: 'assign',
+        client_name: clientName,
+      });
       return NextResponse.json({ success: true });
     }
 
     if (action === 'restore') {
       await restoreAcquisitionClose(ctx.service, closeId);
+      void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Pending close restored', {
+        item: closeId,
+        action: 'restore',
+      });
       return NextResponse.json({ success: true });
     }
 
     if (action === 'delete') {
       await deleteAcquisitionClose(ctx.service, closeId);
+      void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Pending close deleted', {
+        item: closeId,
+        action: 'delete',
+      });
       return NextResponse.json({ success: true });
     }
 

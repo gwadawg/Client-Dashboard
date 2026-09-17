@@ -24,7 +24,9 @@ import {
   type KickoffClient,
   type KickoffDraft,
 } from '@/lib/kickoff';
+import { adClaimsFromDraft, adClaimsToDraft, emptyAdClaims } from '@/lib/ad-claims';
 import { insertFormSubmission } from '@/lib/form-submissions';
+import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 import { normalizeReportingType } from '@/lib/reporting-types';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 import {
@@ -121,6 +123,7 @@ function draftFromBody(body: Record<string, unknown>): KickoffDraft {
     pm_compliance_notes: optionalText(body.pm_compliance_notes) ?? '',
     pm_competitor_refs: optionalText(body.pm_competitor_refs) ?? '',
     pm_funnel_requirements: optionalText(body.pm_funnel_requirements) ?? '',
+    ad_claims: adClaimsToDraft(body.ad_claims ?? emptyAdClaims()),
     cc_lead_source: optionalText(body.cc_lead_source) ?? '',
     cc_qualification_criteria: optionalText(body.cc_qualification_criteria) ?? '',
     cc_hp_tag_user: optionalText(body.cc_hp_tag_user) ?? '',
@@ -310,6 +313,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     updates.daily_adspend = parseDailyAdspend(body.daily_adspend);
   }
 
+  if (formProfile === 'marketing_core' || formProfile === 'marketing_lead_gen') {
+    // Optional — only overwrite when the wizard sent an ad_claims object (including null clear)
+    if ('ad_claims' in body) {
+      updates.ad_claims = body.ad_claims == null ? null : adClaimsFromDraft(adClaimsToDraft(body.ad_claims));
+    }
+  }
+
   if (ghlLocationId) updates.ghl_location_id = ghlLocationId;
   if (subAccountName) updates.name = subAccountName;
 
@@ -420,6 +430,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     offer: kickoffClient.offer,
     service_program: kickoffClient.service_program,
     vertical_confirmed: draft.vertical_confirmed,
+  });
+
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'client.kickoff_saved',
+    actor: { userId: ctx.userId },
+    fields: {
+      client_name: kickoffClient.name,
+      saved_mode: saveMode,
+      kickoff_complete: String(!isKickoffIncomplete(kickoffClient, onboardingCall)),
+      recording_url: recordingUrl,
+      ghl_location_id: ghlLocationId,
+    },
   });
 
   return NextResponse.json({

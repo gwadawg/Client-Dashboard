@@ -10,6 +10,7 @@ import {
   type BookingKey,
   type OutcomeRecord,
 } from '@/lib/appointments';
+import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 // Raw data is gated by the Data Explorer hub permission (legacy per-type keys still honored).
 
@@ -336,5 +337,30 @@ export async function PATCH(req: Request) {
   }
 
   const result = await setAppointmentOutcome(ctx.service, { appointment_event_id, status });
+
+  if (result.ok) {
+    const { data: booking } = await ctx.service
+      .from('events')
+      .select('lead_name, client_id, occurred_at, scheduled_at')
+      .eq('id', appointment_event_id)
+      .maybeSingle();
+    const clientName = booking?.client_id
+      ? await resolveClientName(ctx.service, booking.client_id as string)
+      : null;
+    void notifyMrWaizActivity(ctx.service, {
+      eventKey: 'appt.dispositioned',
+      actor: { userId: ctx.userId },
+      fields: {
+        lead_name: booking?.lead_name ? String(booking.lead_name) : null,
+        disposition: status,
+        client_name: clientName,
+        scheduled_at:
+          (booking?.scheduled_at as string | null) ??
+          (booking?.occurred_at as string | null) ??
+          null,
+      },
+    });
+  }
+
   return NextResponse.json(result.body, { status: result.status });
 }

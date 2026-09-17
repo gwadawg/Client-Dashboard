@@ -15,6 +15,7 @@ import {
   isAcquisitionLeadSource,
   normalizeAcquisitionLeadSource,
 } from '@/lib/acquisition-lead-source';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 const PAGE_SIZE = 50;
 const MAX_LEADS = 5_000;
@@ -181,7 +182,7 @@ export async function PATCH(req: Request) {
 
   const { data: existing } = await ctx.service
     .from('acquisition_leads')
-    .select('id, raw')
+    .select('id, lead_name, source, raw')
     .eq('id', leadId)
     .maybeSingle();
 
@@ -206,6 +207,13 @@ export async function PATCH(req: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Acquisition lead source updated', {
+    lead_name: existing?.lead_name ? String(existing.lead_name) : null,
+    action: 'source',
+    status: source ?? '(cleared)',
+    details: existing?.source ? `${existing.source} → ${source ?? '(cleared)'}` : null,
+  });
 
   return NextResponse.json({ ok: true, lead_id: data.id, source: data.source });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
 import { replaceLibraryTags, resolveTagSlugs, withLibraryTags } from '@/lib/ad-tags-db';
+import { notifyMrWaizLogged, summarizeChangedFields } from '@/lib/mr-waiz-activity-notify';
 
 const VALID_STATUS = ['active', 'winner', 'paused', 'archived'] as const;
 const VALID_PRODUCT = ['reverse', 'dscr', 'broad_forward'] as const;
@@ -120,7 +121,15 @@ export async function PATCH(
   }
 
   const withTags = await withLibraryTags(ctx.service, [data]);
-  return NextResponse.json(withTags.data[0] ?? { ...data, tags: [] });
+  const updated = withTags.data[0] ?? { ...data, tags: [] };
+  const changedKeys = Object.keys(updates).filter(k => k !== 'updated_at');
+  if (nextTags !== null) changedKeys.push('tags');
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Ad library entry updated', {
+    item: String(updated.ad_name),
+    status: updated.status ? String(updated.status) : null,
+    changed_fields: summarizeChangedFields(changedKeys),
+  });
+  return NextResponse.json(updated);
 }
 
 export async function DELETE(
@@ -133,7 +142,16 @@ export async function DELETE(
   if (denied) return denied;
 
   const { id } = await params;
+  const { data: existing } = await ctx.service
+    .from('ad_library')
+    .select('ad_name, status')
+    .eq('id', id)
+    .maybeSingle();
   const { error } = await ctx.service.from('ad_library').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Ad library entry deleted', {
+    item: existing?.ad_name ? String(existing.ad_name) : null,
+    status: existing?.status ? String(existing.status) : null,
+  });
   return NextResponse.json({ success: true });
 }

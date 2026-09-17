@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 function cleanString(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -103,5 +104,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Acquisition ad library entry created', {
+    item: data.ad_name ? String(data.ad_name) : null,
+    details: data.ad_format ? String(data.ad_format) : null,
+  });
   return NextResponse.json(data, { status: 201 });
 }

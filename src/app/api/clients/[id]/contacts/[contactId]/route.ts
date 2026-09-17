@@ -5,6 +5,7 @@ import {
   type ContactType,
   validateContactPatch,
 } from '@/lib/client-contacts';
+import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 // PATCH /api/clients/[id]/contacts/[contactId] — update an additional contact.
 export async function PATCH(
@@ -55,6 +56,21 @@ export async function PATCH(
     const status = error.code === 'PGRST116' ? 404 : 500;
     return NextResponse.json({ error: error.message }, { status });
   }
+
+  const clientName = await resolveClientName(ctx.service, clientId);
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'client.contact_changed',
+    actor: { userId: ctx.userId },
+    fields: {
+      action: 'updated',
+      client_name: clientName,
+      contact_name: data.name ?? null,
+      role: data.contact_type ?? null,
+      email: data.email ?? null,
+      phone: data.phone ?? null,
+    },
+  });
+
   return NextResponse.json({ contact: data });
 }
 
@@ -70,6 +86,13 @@ export async function DELETE(
 
   const { id: clientId, contactId } = await params;
 
+  const { data: prior } = await ctx.service
+    .from('client_contacts')
+    .select(CLIENT_CONTACT_FIELDS)
+    .eq('id', contactId)
+    .eq('client_id', clientId)
+    .maybeSingle();
+
   const { data, error } = await ctx.service
     .from('client_contacts')
     .delete()
@@ -82,5 +105,20 @@ export async function DELETE(
     const status = error.code === 'PGRST116' ? 404 : 500;
     return NextResponse.json({ error: error.message }, { status });
   }
+
+  const clientName = await resolveClientName(ctx.service, clientId);
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'client.contact_changed',
+    actor: { userId: ctx.userId },
+    fields: {
+      action: 'removed',
+      client_name: clientName,
+      contact_name: prior?.name ?? null,
+      role: prior?.contact_type ?? null,
+      email: prior?.email ?? null,
+      phone: prior?.phone ?? null,
+    },
+  });
+
   return NextResponse.json({ deleted: true, id: data.id });
 }

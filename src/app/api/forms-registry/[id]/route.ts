@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthContext, isAuthError, requireManageUsers } from "@/lib/api-auth";
+import { notifyMrWaizLogged, summarizeChangedFields } from "@/lib/mr-waiz-activity-notify";
 
 function cleanString(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -82,6 +83,13 @@ export async function PUT(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!data) return NextResponse.json({ error: "Form not found" }, { status: 404 });
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Form registry entry updated", {
+    item: data.title ? String(data.title) : null,
+    changed_fields: summarizeChangedFields(
+      Object.keys(updates).filter((k) => !["updated_at", "updated_by"].includes(k)),
+    ),
+    url: data.href ? String(data.href) : null,
+  });
   return NextResponse.json(data);
 }
 
@@ -95,7 +103,16 @@ export async function DELETE(
   if (denied) return denied;
 
   const { id } = await params;
+  const { data: existing } = await ctx.service
+    .from("form_registry")
+    .select("title, href")
+    .eq("id", id)
+    .maybeSingle();
   const { error } = await ctx.service.from("form_registry").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Form registry entry deleted", {
+    item: existing?.title ? String(existing.title) : id,
+    url: existing?.href ? String(existing.href) : null,
+  });
   return NextResponse.json({ success: true });
 }

@@ -9,6 +9,7 @@ import {
   type MeetingCommitmentSeverity,
   type MeetingCommitmentStatus,
 } from '@/lib/meeting-commitments';
+import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 const SELECT_FIELDS =
   'id, client_id, severity, why, constraint_type, constraint_label, plan, owner_role, due_date, needs_founder, founder_ask, status, success_signal, origin_meeting_id, approved_in_meeting_id, last_touched_meeting_id, clickup_url, founder_note, check_note, created_by, created_at, updated_at';
@@ -163,6 +164,20 @@ export async function PATCH(req: Request, routeCtx: RouteCtx) {
     .select('id, name')
     .eq('id', (data as MeetingCommitment).client_id)
     .maybeSingle();
+
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'commitment.updated',
+    actor: { userId: ctx.userId },
+    fields: {
+      client_name: (client as { name?: string } | null)?.name ?? null,
+      status: String((data as MeetingCommitment).status),
+      commitment: (data as MeetingCommitment).plan || (data as MeetingCommitment).why,
+      resolution_note:
+        (data as MeetingCommitment).check_note ||
+        (data as MeetingCommitment).founder_note ||
+        null,
+    },
+  });
 
   return NextResponse.json({
     row: {

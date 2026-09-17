@@ -58,16 +58,44 @@ Run that in each private client or ops channel you want Mr. Waiz to post to.
 | Demo booked — booking credit | `setters` | — |
 | Intro showed — setter reflection | `setters` | — |
 | Demo showed — closer form | `ceo` | — |
-| Active clients CPL > $35 (past 4 days) | `media_buyer` | Daily cron `GET /api/alerts/cpl-threshold` |
-| Internal team activity (meetings, work logs, EOD, CS/plan done, Closebot) | `mrwaiz` (`C0BRRU9C4SH`) | Immediate on each successful write |
+| Active clients CPL > $35 (past 4 days) | `media_buyer` | Daily Railway cron (`npm run cron:daily`) or `GET /api/alerts/daily` |
+| Internal team activity (all human writes except finance; webhooks stay out) | `mrwaiz` (`C0BRRU9C4SH`) | Immediate on each successful human write |
 
 ## Internal activity channel (`mrwaiz`)
 
-For the team activity feed (meetings, work logs, EOD, CS/plan tasks, Closebot):
+For the team activity feed (roster, calls, ads, schedules, agents, goals, library, acquisition ops, Closebot, CS overrides, loan forms — everything human-logged except finance):
 
 1. Admin → Automations → Team channels → add slug **`mrwaiz`**
 2. Channel ID: **`C0BRRU9C4SH`**
 3. In Slack: `/invite @Mr. Waiz` in that channel
+
+## Daily scheduled alerts (Railway cron)
+
+Production runs on **Railway**, so `vercel.json` crons do not fire automatically. Use one **cron service** in the same Railway project for all daily digests:
+
+1. **New service** → deploy from the same GitHub repo (name it e.g. `scheduled-alerts-cron`).
+2. **Settings → Config file path** → `railway.cron.toml`
+3. **Variables** — copy from the web service:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `SLACK_BOT_TOKEN`
+4. Deploy. Railway runs `npm run cron:daily` at **14:00 UTC** (11:00 AM São Paulo).
+
+### Adding a new daily alert
+
+1. Create `src/lib/scheduled-alerts/your-alert.ts` (query → evaluate → format → deliver).
+2. Register it in `src/lib/scheduled-alerts/registry.ts`.
+3. Add tests for pure evaluate/format helpers.
+
+Manual runs:
+
+```bash
+npm run cron:daily -- --dry-run              # all enabled alerts, no Slack
+npm run cron:daily -- --only=cpl-threshold   # one alert
+npm run cron:cpl-threshold -- --dry-run      # alias for CPL only
+```
+
+HTTP fallback: `GET /api/alerts/daily` with `Authorization: Bearer $CRON_SECRET`. Per-alert: `/api/alerts/cpl-threshold`.
 
 ## Test from the dashboard
 

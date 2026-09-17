@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -96,6 +97,18 @@ export async function POST(req: Request) {
     .order('slot_hour');
 
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+
+  const firstRow = rows?.[0] ?? data?.[0];
+  const agentName =
+    firstRow?.agents &&
+    typeof firstRow.agents === 'object' &&
+    'name' in firstRow.agents
+      ? String((firstRow.agents as { name: string }).name)
+      : null;
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Watch schedule slot added', {
+    agent_name: agentName,
+    item: `${scheduled_date} (${hours.join(', ')}h)`,
+  });
 
   if (hours.length === 1) {
     return NextResponse.json({ row: rows?.[0] ?? data?.[0] ?? null, rows: rows ?? data ?? [] });

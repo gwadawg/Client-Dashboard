@@ -20,6 +20,7 @@ import type { OnboardingFormProfile } from '@/lib/onboarding-form-profile';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import { hasPermission } from '@/lib/permissions';
 import { notifyLaunchComplete } from '@/lib/notifications';
+import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 const LAUNCH_PERMISSION_KEYS = ['admin_clients', 'admin_billing'];
 const LAUNCH_LIFECYCLE_STATUSES = new Set(['new_account', 'onboarding']);
@@ -383,6 +384,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     slack_id: client.slack_id,
     completed_by: draft.completed_by_label,
     responses,
+  });
+
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'client.launched',
+    actor: {
+      userId: draft.completed_by_user_id ?? ctx.userId,
+      label: draft.completed_by_label,
+    },
+    fields: {
+      client_name: client.name,
+      launch_date: draft.launch_date,
+      completed_by: draft.completed_by_label,
+      recording_url: draft.recording_url.trim() || null,
+    },
   });
 
   return NextResponse.json({

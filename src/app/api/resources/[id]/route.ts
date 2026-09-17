@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireManageUsers } from '@/lib/api-auth';
+import { notifyMrWaizLogged, summarizeChangedFields } from '@/lib/mr-waiz-activity-notify';
 
 const VALID_CATEGORY = ['form', 'sop', 'document', 'template', 'other'] as const;
 
@@ -77,6 +78,14 @@ export async function PUT(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: 'Resource not found' }, { status: 404 });
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Resource updated', {
+    item: data.title ? String(data.title) : null,
+    status: data.category ? String(data.category) : null,
+    changed_fields: summarizeChangedFields(
+      Object.keys(updates).filter((k) => k !== 'updated_at'),
+    ),
+    url: data.url ? String(data.url) : null,
+  });
   return NextResponse.json(data);
 }
 
@@ -90,7 +99,16 @@ export async function DELETE(
   if (denied) return denied;
 
   const { id } = await params;
+  const { data: existing } = await ctx.service
+    .from('resources')
+    .select('title, url')
+    .eq('id', id)
+    .maybeSingle();
   const { error } = await ctx.service.from('resources').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Resource deleted', {
+    item: existing?.title ? String(existing.title) : id,
+    url: existing?.url ? String(existing.url) : null,
+  });
   return NextResponse.json({ success: true });
 }

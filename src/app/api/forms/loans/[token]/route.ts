@@ -16,12 +16,14 @@ import {
 } from '@/lib/loan-deals';
 import {
   isLoanLogStage,
+  loanLogStageLabel,
   parseLoanLogDate,
   parseMoney,
   planLoanLogEvents,
   resolveLoanLogToken,
   type LoanLogExistingEvent,
 } from '@/lib/loan-log-form';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 const INVALID = 'This link isn’t valid. Ask your Waiz contact for a new one.';
 
@@ -279,6 +281,12 @@ async function handleDqSubmit(
       return NextResponse.json({ error: "Couldn't save. Try again." }, { status: 500 });
     }
 
+    void notifyMrWaizLogged(service, { label: client.client_name }, 'Loan DQ logged', {
+      client_name: client.client_name,
+      lead_name: input.leadName,
+      details: validated.dqReasons.join(', '),
+    });
+
     return NextResponse.json({
       ok: true,
       lead_name: input.leadName,
@@ -420,6 +428,13 @@ async function handleConversionSubmit(
         { status: 409 },
       );
     }
+
+    void notifyMrWaizLogged(service, { label: client.client_name }, 'Loan conversion logged', {
+      client_name: client.client_name,
+      lead_name: input.leadName,
+      status: loanLogStageLabel(stage),
+      details: transactionLabel ?? undefined,
+    });
 
     return NextResponse.json({
       ok: true,

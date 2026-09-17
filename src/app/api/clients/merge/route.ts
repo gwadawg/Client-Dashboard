@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { mergeClients } from '@/lib/client-merge';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
@@ -17,6 +18,11 @@ export async function POST(req: Request) {
 
   try {
     const result = await mergeClients(ctx.service, source_id, target_id);
+    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Clients merged', {
+      action: `${result.source_name} → ${result.target_name}`,
+      client_name: result.target_name,
+      details: `${result.moved_tables.length} tables moved`,
+    });
     return NextResponse.json({ success: true, ...result });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

@@ -9,6 +9,7 @@ import {
   slugifyClosebotName,
   uniqueClosebotSlug,
 } from "@/lib/closebot";
+import { notifyMrWaizLogged } from "@/lib/mr-waiz-activity-notify";
 
 const PERSONA_SELECT =
   "id, name, slug, description, how_to_respond, tone, custom_delay_enabled, typo_frequency, custom_delay_seconds, is_active, sort_order, created_at, updated_at";
@@ -72,5 +73,9 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Closebot persona created", {
+    item: data?.name ? String(data.name) : parsed.fields?.name ? String(parsed.fields.name) : null,
+    status: data?.is_active === false ? "inactive" : "active",
+  });
   return NextResponse.json(data, { status: 201 });
 }

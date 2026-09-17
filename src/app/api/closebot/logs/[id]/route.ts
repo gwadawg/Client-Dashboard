@@ -19,6 +19,7 @@ import {
   replaceLogBugTypes,
   resolveVersionForLog,
 } from "@/lib/closebot-store";
+import { notifyMrWaizLogged, summarizeChangedFields } from "@/lib/mr-waiz-activity-notify";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -194,5 +195,16 @@ export async function PATCH(req: Request, { params }: Params) {
     .maybeSingle();
   if (reloadErr) return NextResponse.json({ error: reloadErr.message }, { status: 500 });
   if (!hydrated) return NextResponse.json({ error: "Log not found" }, { status: 404 });
-  return NextResponse.json(hydratePromptLog(hydrated));
+  const hydratedLog = hydratePromptLog(hydrated);
+  const changedKeys = [
+    ...Object.keys(patch).filter((k) => !["updated_at", "updated_by"].includes(k)),
+    ...(fixesBugTypes != null ? ["fixes_bug_types"] : []),
+  ];
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Closebot prompt log updated", {
+    item: id,
+    agent_name: hydratedLog?.agent?.name ? String(hydratedLog.agent.name) : null,
+    status: hydratedLog?.status ? String(hydratedLog.status) : null,
+    changed_fields: summarizeChangedFields(changedKeys),
+  });
+  return NextResponse.json(hydratedLog);
 }

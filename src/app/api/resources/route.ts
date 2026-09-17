@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission, requireManageUsers } from '@/lib/api-auth';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 const VALID_CATEGORY = ['form', 'sop', 'document', 'template', 'other'] as const;
 
@@ -95,5 +96,10 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Resource created', {
+    item: title,
+    status: category,
+    url,
+  });
   return NextResponse.json(data, { status: 201 });
 }

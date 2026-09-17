@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireManageUsers } from '@/lib/api-auth';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 export async function GET() {
   const ctx = await getAuthContext();
@@ -36,6 +37,12 @@ export async function POST(req: NextRequest) {
       .select('id')
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Sales rep created', {
+      item: String(body.name).trim(),
+      agent_name: String(body.name).trim(),
+      status: body.is_active === false ? 'inactive' : 'active',
+      details: body.role ? String(body.role) : null,
+    });
     return NextResponse.json({ ok: true, id: data.id });
   }
 
@@ -76,6 +83,12 @@ export async function POST(req: NextRequest) {
       })
       .eq('id', body.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Sales rep updated', {
+      item: body.name ? String(body.name) : String(body.id),
+      agent_name: body.name ? String(body.name) : null,
+      status: body.is_active === false ? 'inactive' : body.is_active === true ? 'active' : null,
+      details: body.role ? String(body.role) : null,
+    });
     return NextResponse.json({ ok: true });
   }
 

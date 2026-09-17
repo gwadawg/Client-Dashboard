@@ -73,10 +73,25 @@ function testGhlContactFields() {
   assert.equal(alias.ghl_contact_id, 'explicit-id');
 }
 
+function testDriveFolderUrl() {
+  const parsed = parseOnboardPayload({
+    primary_contact_name: 'Jane Doe',
+    drive_folder_url: 'https://drive.google.com/drive/folders/abc123',
+  });
+  assert.equal(parsed.drive_folder_url, 'https://drive.google.com/drive/folders/abc123');
+
+  const alias = parseOnboardPayload({
+    primary_contact_name: 'Jane Doe',
+    drive_url: 'https://drive.google.com/drive/folders/alias',
+  });
+  assert.equal(alias.drive_folder_url, 'https://drive.google.com/drive/folders/alias');
+}
+
 testStep1CorePayload();
 testSubAccountNameOverridesPlaceholder();
 testClickUpIdAliases();
 testDoesNotUseNameFieldAsSubAccountWhenOnlyPrimaryContactSent();
 testGhlContactFields();
+testDriveFolderUrl();
 
 console.log('verify-onboard-payload: all assertions passed');

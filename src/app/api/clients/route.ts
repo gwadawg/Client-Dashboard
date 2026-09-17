@@ -11,6 +11,7 @@ import { getFormProgressForClients } from '@/lib/form-submissions';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import { normalizeClientLeadSource } from '@/lib/client-lead-source';
 import { ensureAccountGroupForNewClient } from '@/lib/client-account-groups';
+import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 const DETAIL_FIELDS =
   'id, name, is_live, reporting_type, service_program, sales_package, offer, share_token, created_at, lifecycle_status, mrr, daily_adspend, ads_paused, ads_paused_at, ads_paused_note, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, drive_folder_url, facebook_page_name, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id, account_group_id, engagement_kind';
@@ -132,7 +133,7 @@ export async function POST(req: Request) {
     'is_live', 'lifecycle_status', 'mrr', 'billing_type', 'billing_day', 'launch_date',
     'date_signed', 'contract_end_date', 'contract_term_months', 'daily_adspend',
     'performance_terms', 'email', 'billing_email', 'primary_contact', 'primary_contact_name', 'states_licensed', 'timezone', 'source',
-    'website', 'brokerage_name', 'nmls', 'phone', 'identity_client_id',
+    'website', 'drive_folder_url', 'brokerage_name', 'nmls', 'phone', 'identity_client_id',
   ] as const;
   for (const k of optional) {
     if (!(k in body)) continue;
@@ -215,6 +216,19 @@ export async function POST(req: Request) {
     console.error('[clients] pending replay after create failed', e);
   }
 
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'client.created',
+    actor: { userId: ctx.userId },
+    fields: {
+      client_name: data.name,
+      lifecycle_status: data.lifecycle_status ?? null,
+      offer: data.offer ?? null,
+      reporting_type: data.reporting_type ?? null,
+      service_program: data.service_program ?? null,
+      primary_contact: data.primary_contact_name ?? data.primary_contact ?? null,
+    },
+  });
+
   return NextResponse.json({ client: data, pending_replay });
 }
 
@@ -227,7 +241,23 @@ export async function DELETE(req: Request) {
   const { id } = await req.json();
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
+  const { data: prior, error: priorErr } = await ctx.service
+    .from('clients')
+    .select('id, name')
+    .eq('id', id)
+    .maybeSingle();
+  if (priorErr) return NextResponse.json({ error: priorErr.message }, { status: 500 });
+
   const { error } = await ctx.service.from('clients').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'client.deleted',
+    actor: { userId: ctx.userId },
+    fields: {
+      client_name: prior?.name ?? id,
+    },
+  });
+
   return NextResponse.json({ success: true });
 }

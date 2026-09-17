@@ -5,6 +5,7 @@ import {
   createClientAndApplyPendingOnboarding,
 } from '@/lib/apply-onboarding';
 import { countUnmappedOnboarding, listUnmappedOnboardingSubmissions } from '@/lib/form-submissions';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 export async function GET() {
   const ctx = await getAuthContext();
@@ -67,6 +68,10 @@ export async function POST(req: Request) {
         .select('id, name')
         .eq('id', clientId)
         .single();
+      void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Onboarding form assigned', {
+        client_name: client?.name ? String(client.name) : null,
+        item: submissionId,
+      });
       return NextResponse.json({ submission, client });
     }
 
@@ -76,6 +81,11 @@ export async function POST(req: Request) {
         submissionId,
         submittedBy,
       );
+      const clientName = result.client?.name ? String(result.client.name) : null;
+      void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Client created from onboarding form', {
+        client_name: clientName,
+        item: submissionId,
+      });
       return NextResponse.json(result);
     }
 
@@ -90,6 +100,9 @@ export async function POST(req: Request) {
         .maybeSingle();
       if (error) throw new Error(error.message);
       if (!data) throw new Error('Submission not found or already resolved');
+      void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Onboarding form dismissed', {
+        item: submissionId,
+      });
       return NextResponse.json({ submission: data });
     }
 

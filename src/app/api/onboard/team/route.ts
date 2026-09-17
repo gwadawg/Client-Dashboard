@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { CLIENT_CONTACT_FIELDS, validateContactInput } from '@/lib/client-contacts';
 import { resolveTeamInvite } from '@/lib/team-invite';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 function tokenFromRequest(req: Request, body?: Record<string, unknown>): string | null {
   const { searchParams } = new URL(req.url);
@@ -66,6 +67,18 @@ export async function POST(req: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  void notifyMrWaizLogged(
+    service,
+    { label: data.name ?? 'Team invite contact' },
+    'Team contact added via invite',
+    {
+      client_name: invite.client_name,
+      item: data.name ?? null,
+      details: data.contact_type ?? null,
+      note: data.email ?? data.phone ?? null,
+    },
+  );
 
   return NextResponse.json({
     ok: true,

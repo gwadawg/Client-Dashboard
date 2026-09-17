@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
 import { replaceLibraryTags, resolveTagSlugs, withLibraryTags } from '@/lib/ad-tags-db';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 const VALID_STATUS = ['active', 'winner', 'paused', 'archived'] as const;
 const VALID_PRODUCT = ['reverse', 'dscr', 'broad_forward'] as const;
@@ -147,5 +148,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: tagWrite.error }, { status: 500 });
   }
   const withTags = await withLibraryTags(ctx.service, [data]);
-  return NextResponse.json(withTags.data[0] ?? { ...data, tags: [] }, { status: 201 });
+  const created = withTags.data[0] ?? { ...data, tags: [] };
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Ad library entry created', {
+    item: String(created.ad_name),
+    status: created.status ? String(created.status) : null,
+    details: created.ad_format ? String(created.ad_format) : null,
+  });
+  return NextResponse.json(created, { status: 201 });
 }

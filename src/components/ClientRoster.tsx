@@ -14,7 +14,7 @@ import PendingFormSubmissionsPanel from "@/components/PendingFormSubmissionsPane
 import FormSubmissionsTab from "@/components/FormSubmissionsTab";
 import ViewHub from "@/components/nav/ViewHub";
 import Link from "next/link";
-import { churnFormHref, isChurnOffboardEligible } from "@/lib/internal-forms";
+import { churnFormHref, isChurnOffboardEligible, reinstateFormHref } from "@/lib/internal-forms";
 import { FormProgressStrip } from "@/components/ClientFormsSection";
 import LifecycleStatusSelect from "@/components/LifecycleStatusSelect";
 import AdsPausedControl from "@/components/AdsPausedControl";
@@ -895,6 +895,13 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Link
+            href={reinstateFormHref()}
+            className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
+            style={{ color: "#4ade80", background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.25)" }}
+          >
+            Client reinstate
+          </Link>
+          <Link
             href={churnFormHref()}
             className="text-xs font-semibold px-3 py-2 rounded-lg whitespace-nowrap"
             style={{ color: "#f87171", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)" }}
@@ -1521,6 +1528,7 @@ function ClientRow({
   const showLaunchKitAction = isLaunchKitLifecycle(c.lifecycle_status);
   const launchKitDone = !!c.form_progress?.launch_kit;
   const showOffboardAction = isChurnOffboardEligible(c.lifecycle_status);
+  const showReinstateAction = c.lifecycle_status === "churned";
 
   const status = c.lifecycle_status ?? "active";
   const derivedLive = syncIsLiveWithLifecycle(status);
@@ -1712,6 +1720,16 @@ function ClientRow({
             )}
             {showOffboardAction && (
               <ActionButton onClick={onOpenOffboard} color="#f87171" title="Open churn offboarding form">Offboard</ActionButton>
+            )}
+            {showReinstateAction && (
+              <Link
+                href={reinstateFormHref(c.id)}
+                className="text-xs font-semibold transition-opacity hover:opacity-80"
+                style={{ color: "#4ade80" }}
+                title="Open client reinstate form"
+              >
+                Reinstate
+              </Link>
             )}
             <ActionButton onClick={onAddOffer} color="#22c55e" title="Add another product offer / GHL subaccount">
               + Offer

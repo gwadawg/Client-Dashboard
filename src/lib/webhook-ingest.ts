@@ -86,6 +86,23 @@ export function sanitizeWebhookPayload(value: unknown): unknown {
   return value;
 }
 
+const GENERIC_UTM_MEDIUMS = new Set([
+  'facebook', 'fb', 'meta', 'instagram', 'ig', 'social', 'paid', 'paid_social',
+  'paidsocial', 'paid-social', 'cpc', 'ppc', 'display', 'banner', 'video',
+  'email', 'organic', 'referral', 'none', 'not set', '(not set)',
+]);
+
+/**
+ * Ad set name arrives in utm_medium, per the UTM template the media-buying docs
+ * mandate (utm_medium={{adset.name}}). Some funnels set a channel token there
+ * instead, so reject the known generics rather than storing them as ad sets.
+ */
+function adsetNameFromUtmMedium(v: unknown): string | null {
+  const s = jsonStringField(v);
+  if (!s) return null;
+  return GENERIC_UTM_MEDIUMS.has(s.trim().toLowerCase()) ? null : s;
+}
+
 function numberField(v: unknown): number | null {
   if (v == null || v === '') return null;
   const n = typeof v === 'number' ? v : Number(String(v).trim());
@@ -306,7 +323,9 @@ export async function ingestWebhookEvent(
   const utm_campaign = jsonStringField(payload.utm_campaign);
   const utm_content = jsonStringField(payload.utm_content);
   const ad_name = jsonStringField(payload.ad_name ?? payload.adName ?? payload.utm_content);
-  const adset_name = jsonStringField(payload.adset_name ?? payload.ad_set_name ?? payload.adSetName);
+  const adset_name =
+    jsonStringField(payload.adset_name ?? payload.ad_set_name ?? payload.adSetName) ??
+    adsetNameFromUtmMedium(payload.utm_medium);
   const campaign_name = jsonStringField(
     payload.campaign_name ?? payload.campaignName ?? payload.utm_campaign,
   );

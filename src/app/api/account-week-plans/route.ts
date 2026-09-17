@@ -24,6 +24,7 @@ import {
 } from '@/lib/account-week-plans-api';
 import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz, ymdInTimeZone } from '@/lib/time';
 import { addDaysToYmd } from '@/lib/team-meetings';
+import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 const SEVERITIES: AccountWeekPlanSeverity[] = ['911', 'below', 'watch'];
 
@@ -457,6 +458,18 @@ export async function POST(req: Request) {
     .select('id, name')
     .eq('id', clientId)
     .maybeSingle();
+
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'plan.week_created',
+    actor: { userId: ctx.userId },
+    fields: {
+      client_name: (client as { name?: string } | null)?.name ?? null,
+      week_start: String((plan as AccountWeekPlan).week_start ?? ''),
+      severity: String((plan as AccountWeekPlan).severity ?? ''),
+      task_count: String(insertedTasks.length),
+      why: (plan as AccountWeekPlan).why ?? null,
+    },
+  });
 
   return NextResponse.json({
     plan: {

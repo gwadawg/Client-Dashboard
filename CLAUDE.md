@@ -74,6 +74,7 @@ and run `/start` — Claude will build everything automatically.
 | Webhook ingestion | `src/app/api/webhooks/route.ts` |
 | Metrics calculation | `src/lib/metrics.ts` |
 | **KPI definitions & formulas** | `docs/KPIS.md` |
+| **Which ad messages work** | `.cursor/skills/ad-performance-learnings/` → Wm-os `performance-learnings.md` |
 | **Data Chat (scoped AI Q&A)** | `docs/DATA_CHAT.md` → `src/lib/ai/data-chat/` |
 | Dashboard UI | `src/components/DashboardView.tsx` |
 | Database schema | `supabase/schema.sql` |

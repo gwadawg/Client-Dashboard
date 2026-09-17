@@ -9,6 +9,11 @@ import {
   isValidTeamCallType,
   normalizeHighlights,
 } from '@/lib/team-calls';
+import {
+  notifyMrWaizActivity,
+  notifyMrWaizLogged,
+  summarizeChangedFields,
+} from '@/lib/mr-waiz-activity-notify';
 
 function optionalText(value: unknown): string | null | undefined {
   if (value === undefined) return undefined;
@@ -34,6 +39,8 @@ type TeamCallAccessRow = {
   id: string;
   is_private: boolean | null;
   created_by: string | null;
+  title?: string | null;
+  call_type?: string | null;
 };
 
 function canAccessPrivateCall(row: TeamCallAccessRow, userId: string): boolean {
@@ -169,6 +176,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: error.message }, { status });
   }
 
+  const changedKeys = Object.keys(updates).filter(k => k !== 'updated_at' && k !== 'updated_by');
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'team.meeting_updated',
+    actor: { userId: ctx.userId },
+    fields: {
+      title: data.title ? String(data.title) : null,
+      call_type: data.call_type ? String(data.call_type) : null,
+      changed_fields: summarizeChangedFields(changedKeys),
+      summary: data.summary ? String(data.summary) : null,
+    },
+  });
+
   return NextResponse.json({
     call: {
       ...data,
@@ -189,7 +208,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
   const { data: existingRaw, error: loadError } = await ctx.service
     .from('team_calls')
-    .select('id, is_private, created_by')
+    .select('id, is_private, created_by, title, call_type')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
@@ -217,6 +236,11 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const status = error.code === 'PGRST116' ? 404 : 500;
     return NextResponse.json({ error: error.message }, { status });
   }
+
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Call library entry deleted', {
+    item: existing.title ? String(existing.title) : null,
+    details: existing.call_type ? String(existing.call_type) : null,
+  });
 
   return NextResponse.json({ deleted: true, id: data.id });
 }

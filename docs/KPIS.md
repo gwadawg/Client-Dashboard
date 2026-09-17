@@ -188,12 +188,16 @@ HE accounts have **no ad-cost grading** (CPL / CPQL / CPConv are omitted). **Out
 | Hot | `hot` *(planned)* | `raw` |
 | Out of State? | `out_of_state` *(planned)* | `raw` |
 | Ad Name | `ad_name` or `utm_content` | `ad_name` |
-| Ad Set | `adset_name` / `ad_set_name` | `adset_name` |
+| Ad Set | `adset_name` / `ad_set_name` / `adSetName`, else `utm_medium` | `adset_name` |
 | Campaign | `campaign_name` or `utm_campaign` | `campaign_name` |
 | UTM source/campaign/content | `utm_source`, `utm_campaign`, `utm_content` | `utm_source`, `utm_campaign`, `utm_content` |
 | LTV, Age, State, etc. | — | `raw` |
 
 **Ad attribution (Media Buyer view):** `ad_name` is the universal join key — the same Facebook ad names are reused across every client, so the Media Buyer leaderboard groups by `ad_name` globally. On lead ingest the webhook resolves `ad_name` from `ad_name` → `adName` → `utm_content` (Facebook commonly maps `{{ad.name}}` into `utm_content`). Send the ad name on the **lead** webhook so downstream appointments/shows/closes for that contact can be attributed back to the ad. Imported leads already carry `raw.ad_name`/`raw.ad_set_name`; run `node scripts/backfill-ad-attribution.mjs` once to copy those into the new columns.
+
+**Ad set attribution:** `adset_name` resolves from `adset_name` → `ad_set_name` → `adSetName` → `utm_medium`. The `utm_medium` fallback exists because the UTM template the media-buying docs mandate puts the ad set there (`utm_medium={{adset.name}}`); generic channel tokens (`facebook`, `paid_social`, `cpc`, …) are rejected rather than stored as ad set names. Prefer sending `adset_name` explicitly from Make.com — the fallback is a safety net, not the contract.
+
+**There is no ad-set-level grouping in the analytics engine.** `src/lib/ad-performance.ts` and `/api/media-buyer` group on `adKey(ad_name)` only; neither references `adset_name`. Ad-set results are reachable only by a custom join (`meta_ad_insights` by `adset_id` for spend, `events` by `adset_name` for outcomes). This is why the creative-testing structure in Wm-os requires **exactly one ad per test ad set** — with one ad, `ad_name` uniquely identifies the ad set and the wave is readable with no schema or engine change. Put two ads in a test ad set and the per-concept read is lost.
 
 ### Appointment (`event_type: appointment_booked`)
 

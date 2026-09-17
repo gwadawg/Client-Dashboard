@@ -18,6 +18,7 @@ import {
   resolveSetterFormMode,
   type SetterFormMode,
 } from '@/lib/acquisition-intro-resolver';
+import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 function str(v: unknown): string | null {
   if (v == null) return null;
@@ -230,6 +231,17 @@ export async function POST(req: NextRequest) {
       if (syncResult.status === 'failed') ghl_sync_error = syncResult.error;
       if (syncResult.status === 'skipped') ghl_sync_error = syncResult.reason;
     }
+
+    void notifyMrWaizActivity(service, {
+      eventKey: 'acq.intro_reflection',
+      actor: { label: setterName },
+      fields: {
+        setter_name: setterName,
+        lead_name: str(body.lead_name) ?? contactId,
+        showed: str(body.status) ?? 'showed',
+        notes: str(body.notes),
+      },
+    });
 
     return NextResponse.json({
       ok: true,

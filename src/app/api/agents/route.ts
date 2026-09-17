@@ -6,6 +6,7 @@ import {
   parseTeamInsert,
   TEAM_ROSTER_SELECT,
 } from '@/lib/team-roster-api';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -52,5 +53,10 @@ export async function POST(req: Request) {
   const { data, error } = await ctx.service.from('agents').insert(insert).select(TEAM_ROSTER_SELECT).single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Team agent created', {
+    item: data.name ? String(data.name) : null,
+    agent_name: data.name ? String(data.name) : null,
+    status: data.active === false ? 'inactive' : 'active',
+  });
   return NextResponse.json({ agent: data });
 }

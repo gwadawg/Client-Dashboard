@@ -7,6 +7,7 @@ import {
   type CsCallType,
   upsertCsCalendarConfig,
 } from '@/lib/cs-appointments';
+import { notifyMrWaizLogged } from '@/lib/mr-waiz-activity-notify';
 
 function isCsCallType(v: string): v is CsCallType {
   return (CS_CALL_TYPES as readonly string[]).includes(v);
@@ -76,6 +77,11 @@ export async function POST(req: Request) {
       calendar_name: calendarName,
       call_type: callType,
     });
+    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'CS calendar registered', {
+      item: calendarName,
+      status: callType,
+      details: calendarId,
+    });
     return NextResponse.json({ ok: true, calendar });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -97,6 +103,9 @@ export async function DELETE(req: Request) {
 
   try {
     await deleteCsCalendarConfig(ctx.service, calendarId);
+    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'CS calendar removed', {
+      item: calendarId,
+    });
     return NextResponse.json({ ok: true });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

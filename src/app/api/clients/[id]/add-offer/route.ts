@@ -7,6 +7,7 @@ import {
 } from '@/lib/client-duplicate-check';
 import { createOfferForAccount } from '@/lib/client-account-groups';
 import { replayPendingForClientId } from '@/lib/pending-events';
+import { notifyMrWaizActivity, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
@@ -65,6 +66,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     } catch (e) {
       console.error('[add-offer] pending replay failed', e);
     }
+
+    const originName = await resolveClientName(ctx.service, originClientId);
+    void notifyMrWaizActivity(ctx.service, {
+      eventKey: 'client.offer_added',
+      actor: { userId: ctx.userId },
+      fields: {
+        origin_client_name: originName,
+        client_name: String(client.name ?? ''),
+        offer: client.offer != null ? String(client.offer) : null,
+        reporting_type:
+          client.reporting_type != null ? String(client.reporting_type) : null,
+      },
+    });
 
     return NextResponse.json({ client, engagement_kind, pending_replay });
   } catch (e) {

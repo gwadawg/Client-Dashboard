@@ -7,6 +7,7 @@ import {
 } from '@/lib/ad-intelligence';
 import { adFormatSlugExists, listAdFormats } from '@/lib/ad-formats-db';
 import { adTagSlugExists, listAdTags, withLibraryTags } from '@/lib/ad-tags-db';
+import { notifyMrWaizLogged, summarizeChangedFields } from '@/lib/mr-waiz-activity-notify';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -162,5 +163,10 @@ export async function PATCH(req: Request) {
   }
   if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Ad intelligence updated', {
+    item: data.ad_name ? String(data.ad_name) : null,
+    status: data.knowledge_capture_status ? String(data.knowledge_capture_status) : null,
+    changed_fields: summarizeChangedFields(Object.keys(patch).filter(k => k !== 'updated_at')),
+  });
   return NextResponse.json(data);
 }

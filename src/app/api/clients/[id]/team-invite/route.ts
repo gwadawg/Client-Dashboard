@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import { notifyMrWaizLogged, resolveClientName } from '@/lib/mr-waiz-activity-notify';
 import { ensureTeamInviteToken, rotateTeamInviteToken } from '@/lib/team-invite';
 
 // GET /api/clients/[id]/team-invite — ensure token exists, return copyable URL.
@@ -35,6 +36,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   try {
     const result = await rotateTeamInviteToken(ctx.service, clientId);
+    const clientName = await resolveClientName(ctx.service, clientId);
+    void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, 'Team invite link rotated', {
+      client_name: clientName,
+      url: result.url,
+    });
     return NextResponse.json(result);
   } catch (e) {
     const err = e as Error & { status?: number };

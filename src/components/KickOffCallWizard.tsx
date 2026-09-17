@@ -24,6 +24,11 @@ import {
   type KickoffConfig,
   type KickoffDraft,
 } from "@/lib/kickoff";
+import {
+  AD_CLAIMS_FIELD_KEYS,
+  AD_CLAIMS_FIELD_LABELS,
+  type AdClaimsFieldKey,
+} from "@/lib/ad-claims";
 import type { RelatedOfferSummary } from "@/lib/client-identity";
 import {
   getReportingTypeLabel,
@@ -138,6 +143,14 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
 
   function patch<K extends keyof KickoffDraft>(key: K, value: KickoffDraft[K]) {
     setDraft(prev => (prev ? { ...prev, [key]: value } : prev));
+    setSaveError(null);
+    setSaveNotice(null);
+  }
+
+  function patchAdClaim(key: AdClaimsFieldKey, value: string) {
+    setDraft(prev =>
+      prev ? { ...prev, ad_claims: { ...prev.ad_claims, [key]: value } } : prev,
+    );
     setSaveError(null);
     setSaveNotice(null);
   }
@@ -545,6 +558,56 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                           )}
                         </Field>
                       ))}
+                    </div>
+                  </Section>
+                )}
+
+                {!shareMode && kickoffConfig.showPmSection && (
+                  <Section title="Ad claims (optional)" shareMode={shareMode}>
+                    <p className="text-xs mb-3" style={{ color: helperColor(shareMode) }}>
+                      What rates and phrases can go on ads for this client. Skip if unknown — editable later on the Ad claims tab.
+                    </p>
+                    <div className="space-y-4">
+                      {AD_CLAIMS_FIELD_KEYS.map(key => {
+                        const isShort =
+                          key === "apr_from" ||
+                          key === "ltv_up_to" ||
+                          key === "fico_min" ||
+                          key === "loan_range" ||
+                          key === "source_sheet" ||
+                          key === "effective_date";
+                        return (
+                          <Field key={key} label={AD_CLAIMS_FIELD_LABELS[key]} shareMode={shareMode}>
+                            {key === "effective_date" ? (
+                              <input
+                                type="date"
+                                value={draft.ad_claims[key] ?? ""}
+                                disabled={saving}
+                                onChange={e => patchAdClaim(key, e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                                style={fieldStyle(shareMode, "empty")}
+                              />
+                            ) : isShort ? (
+                              <input
+                                value={draft.ad_claims[key] ?? ""}
+                                disabled={saving}
+                                onChange={e => patchAdClaim(key, e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                                style={fieldStyle(shareMode, "empty")}
+                              />
+                            ) : (
+                              <textarea
+                                value={draft.ad_claims[key] ?? ""}
+                                disabled={saving}
+                                onChange={e => patchAdClaim(key, e.target.value)}
+                                rows={2}
+                                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                                style={fieldStyle(shareMode, "empty")}
+                              />
+                            )}
+                          </Field>
+                        );
+                      })}
                     </div>
                   </Section>
                 )}

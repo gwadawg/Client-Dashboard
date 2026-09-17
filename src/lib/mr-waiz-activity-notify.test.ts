@@ -4,6 +4,7 @@ import {
   closebotStatusLabel,
   formatActorLabel,
   formatMrWaizActivityMessage,
+  summarizeChangedFields,
   summarizeEodAccomplishments,
 } from '@/lib/mr-waiz-activity-notify';
 
@@ -51,6 +52,53 @@ describe('formatMrWaizActivityMessage', () => {
     });
     assert.match(text, /EOD submitted/);
     assert.match(text, /Launched 2 ads/);
+  });
+
+  it('formats client call logged', () => {
+    const text = formatMrWaizActivityMessage('client.call_logged', 'Alex', {
+      client_name: 'Acme LO',
+      call_type: 'check_in',
+      called_at: '2026-08-21T12:00:00.000Z',
+      recording_url: 'https://example.com/rec',
+      notes: 'Good check-in',
+    });
+    assert.match(text, /Client call logged/);
+    assert.match(text, /Acme LO/);
+    assert.match(text, /check_in/);
+    assert.match(text, /https:\/\/example\.com\/rec/);
+  });
+
+  it('formats roster update with changed fields', () => {
+    const text = formatMrWaizActivityMessage('client.updated', 'Sam', {
+      client_name: 'Beta',
+      lifecycle_change: 'onboarding → active',
+      changed_fields: 'lifecycle_status, primary_contact_name',
+    });
+    assert.match(text, /Client roster updated/);
+    assert.match(text, /onboarding → active/);
+    assert.match(text, /lifecycle_status/);
+  });
+
+  it('formats generic ops.logged', () => {
+    const text = formatMrWaizActivityMessage('ops.logged', 'Alex', {
+      headline: 'Ad library entry created',
+      item: 'Hook A',
+      status: 'active',
+    });
+    assert.match(text, /Ad library entry created/);
+    assert.match(text, /Hook A/);
+    assert.match(text, /Who: \*Alex\*/);
+  });
+});
+
+describe('summarizeChangedFields', () => {
+  it('joins and truncates', () => {
+    assert.equal(summarizeChangedFields(['a', 'b']), 'a, b');
+    assert.equal(
+      summarizeChangedFields(['a', 'b', 'c', 'd'], { max: 2 }),
+      'a, b (+2 more)',
+    );
+    assert.equal(summarizeChangedFields([]), null);
   });
 });
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthContext, isAuthError } from "@/lib/api-auth";
 import { requireClosebotLogWrite } from "@/lib/closebot-auth";
 import { parsePersonaBody } from "@/lib/closebot";
+import { notifyMrWaizLogged, summarizeChangedFields } from "@/lib/mr-waiz-activity-notify";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -40,5 +41,10 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Persona not found" }, { status: 404 });
+  void notifyMrWaizLogged(ctx.service, { userId: ctx.userId }, "Closebot persona updated", {
+    item: data.name ? String(data.name) : null,
+    status: data.is_active === false ? "inactive" : "active",
+    changed_fields: summarizeChangedFields(Object.keys(fields)),
+  });
   return NextResponse.json(data);
 }

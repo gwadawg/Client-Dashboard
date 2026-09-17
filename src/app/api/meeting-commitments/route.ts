@@ -15,6 +15,7 @@ import {
 } from '@/lib/meeting-commitments';
 import { CALL_CENTER_TIMEZONE, todayYmdInCallCenterTz } from '@/lib/time';
 import { addDaysToYmd } from '@/lib/team-meetings';
+import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 const SELECT_FIELDS =
   'id, client_id, severity, why, constraint_type, constraint_label, plan, owner_role, due_date, needs_founder, founder_ask, status, success_signal, origin_meeting_id, approved_in_meeting_id, last_touched_meeting_id, clickup_url, founder_note, check_note, created_by, created_at, updated_at';
@@ -268,6 +269,18 @@ export async function POST(req: Request) {
     .select('id, name')
     .eq('id', clientId)
     .maybeSingle();
+
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'commitment.logged',
+    actor: { userId: ctx.userId },
+    fields: {
+      client_name: (client as { name?: string } | null)?.name ?? null,
+      severity: severity as string,
+      owner_role: ownerRole as string,
+      commitment: plan || why,
+      due_at: dueDate,
+    },
+  });
 
   return NextResponse.json({
     row: {

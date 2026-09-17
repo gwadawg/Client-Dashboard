@@ -53,10 +53,11 @@ export const BUILT_IN_AUTOMATIONS: BuiltInAutomation[] = [
     name: 'CPL over $35 (past 4 days)',
     event_key: 'kpi.cpl.threshold_breached',
     trigger:
-      'Daily cron: active + live paid-ads clients whose CPL (ad spend ÷ leads) over the past 4 calendar days exceeds $35',
+      'Daily Railway cron (railway.cron.toml → npm run cron:daily): active + live paid-ads clients whose CPL (ad spend ÷ leads) over the past 4 calendar days exceeds $35',
     actions: [
       'Slack — media_buyer team channel digest (add slug media_buyer in Automations → Team channels)',
-      'Endpoint — GET/POST /api/alerts/cpl-threshold (CRON_SECRET or ADMIN_WEBHOOK_SECRET)',
+      'Cron — Railway service using railway.cron.toml (14:00 UTC daily, all alerts in scheduled-alerts registry)',
+      'Endpoint — GET/POST /api/alerts/daily or /api/alerts/cpl-threshold (CRON_SECRET or ADMIN_WEBHOOK_SECRET)',
     ],
     enabled: true,
   },
@@ -65,7 +66,7 @@ export const BUILT_IN_AUTOMATIONS: BuiltInAutomation[] = [
     name: 'Internal team activity feed',
     event_key: 'team.activity_feed',
     trigger:
-      'Team work succeeds: meetings, work logs, EOD, CS/plan task done, Closebot tickets & agent logs (not client onboarding)',
+      'Any human write in Mr. Waiz except finance: roster, calls, notes, ads, schedules, agents, goals, library, acquisition ops, Closebot, loan forms, CS stickiness overrides, etc.',
     actions: [
       'Slack — mrwaiz team channel (C0BRRU9C4SH) with who + full details',
       'Add slug mrwaiz in Automations → Team channels and /invite the bot',

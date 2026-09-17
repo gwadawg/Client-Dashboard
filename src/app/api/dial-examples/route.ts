@@ -10,6 +10,7 @@ import {
   isValidDialExampleSource,
   normalizeDialHighlights,
 } from '@/lib/dial-examples';
+import { notifyMrWaizActivity } from '@/lib/mr-waiz-activity-notify';
 
 function optionalText(value: unknown): string | null {
   if (value === null || value === undefined) return null;
@@ -192,6 +193,18 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  void notifyMrWaizActivity(ctx.service, {
+    eventKey: 'dial.example_saved',
+    actor: { userId: ctx.userId },
+    fields: {
+      title,
+      domain: String(row.domain),
+      grade: String(row.grade),
+      lead_type: row.lead_type ? String(row.lead_type) : null,
+      recording_url: row.recording_url ? String(row.recording_url) : null,
+    },
+  });
 
   return NextResponse.json(
     { example: { ...data, highlights: normalizeDialHighlights(data.highlights) } },
