@@ -6,7 +6,7 @@ import {
   type AcquisitionApptStatus,
 } from './acquisition-config';
 import { offerMatchesScope as catalogOfferMatchesScope, type OfferScope } from './offer-catalog';
-import { isReportingClose } from './acquisition-close-filter';
+import { countsTowardCacDenominator, isReportingClose } from './acquisition-close-filter';
 import { normalizeAcquisitionLeadSource } from './acquisition-lead-source';
 import {
   META_ATTRIBUTED_CHANNELS,
@@ -56,6 +56,8 @@ export type AcquisitionCloseRow = {
   offer_type: string | null;
   cash_collected?: number | null;
   mapping_status?: string | null;
+  /** Winbacks are closer credit, not new-logo CAC. Missing/null = standard. */
+  close_kind?: string | null;
 };
 
 export type AcquisitionAdSpendRow = {
@@ -298,14 +300,16 @@ export function calculateAcquisitionMetrics(input: AcquisitionMetricsInput): Acq
     if (!inRange(c.closed_at, from, to)) return false;
     return offerMatchesScope(c.offer_type, offerScope);
   });
+  // Funnel `closes` includes winbacks (closer credit). CAC denominators do not.
+  const cacCloseRows = closeRows.filter(c => countsTowardCacDenominator(c.close_kind));
 
   // Lead source lookup — include leads outside the created_at window so closes
   // can still be attributed to Meta (lead may have been created earlier).
   const leadSourceById = new Map(leads.map(l => [l.id, l.source]));
-  const metaCloseRows = closeRows.filter(c =>
+  const metaCloseRows = cacCloseRows.filter(c =>
     c.lead_id != null && isMetaLeadSource(leadSourceById.get(c.lead_id) ?? null),
   );
-  const referralCloseRows = closeRows.filter(c => {
+  const referralCloseRows = cacCloseRows.filter(c => {
     if (!c.lead_id) return false;
     return normalizeAcquisitionLeadSource(leadSourceById.get(c.lead_id) ?? null) === 'Referral';
   });
@@ -348,7 +352,7 @@ export function calculateAcquisitionMetrics(input: AcquisitionMetricsInput): Acq
     cost_per_demo_booked: cost(demosBooked.length),
     cost_per_demo_showed: cost(demosShowed.length),
     cost_per_offer: cost(offerRows.length),
-    cac: costWith(all_in_spend, closeRows.length),
+    cac: costWith(all_in_spend, cacCloseRows.length),
     meta_cac: cost(metaCloseRows.length),
     meta_all_in_cac: costWith(meta_all_in_spend, metaCloseRows.length),
     referral_cac: costWith(cost_by_channel.referral_partner, referralCloseRows.length),

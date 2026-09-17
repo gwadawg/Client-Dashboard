@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  bucketSignedClosesForCac,
   computeBusinessMetrics,
   computeDeparturesForMonth,
   resolveBusinessPeriod,
@@ -214,6 +215,8 @@ describe("computeBusinessMetrics", () => {
   });
 
   it("uses signed closes for CAC, not roster date_signed count", () => {
+    // signedClosesByMonth is pre-filtered in GET /api/business via
+    // bucketSignedClosesForCac — reinstate close_kind is excluded there.
     const m = computeBusinessMetrics({
       clients: [
         client({ id: "c1", name: "A", date_signed: "2026-03-01" }),
@@ -231,6 +234,32 @@ describe("computeBusinessMetrics", () => {
     assert.equal(m.unitEconomics.cac_closes, 3);
     assert.equal(m.unitEconomics.cac, 3000);
     assert.equal(m.portfolio.new_clients_signed, 2);
+  });
+
+  it("excludes reinstate close_kind from the CAC signed-closes bucket", () => {
+    const bucket = bucketSignedClosesForCac([
+      { closed_at: "2026-03-01T12:00:00.000Z", close_kind: "standard" },
+      { closed_at: "2026-03-05T12:00:00.000Z", close_kind: "reinstate" },
+      { closed_at: "2026-03-10T12:00:00.000Z", close_kind: null },
+      { closed_at: "2026-03-15T12:00:00.000Z" },
+      { closed_at: "2026-04-01T12:00:00.000Z", close_kind: "reinstate" },
+    ]);
+    assert.equal(bucket["2026-03"], 3);
+    assert.equal(bucket["2026-04"], undefined);
+
+    const m = computeBusinessMetrics({
+      clients: [client({ id: "c1", name: "A", date_signed: "2026-03-01" })],
+      statusHistory: [],
+      billings: [],
+      businessMetrics: [
+        { metric_key: "marketing_spend", period_date: "2026-03-01", value_numeric: 6000 },
+      ],
+      signedClosesByMonth: bucket,
+      month: "2026-03",
+      now: new Date("2026-03-15T12:00:00Z"),
+    });
+    assert.equal(m.unitEconomics.cac_closes, 3);
+    assert.equal(m.unitEconomics.cac, 2000);
   });
 
   it("uses prior-month snapshot for start MRR and expansion", () => {

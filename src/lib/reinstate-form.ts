@@ -94,6 +94,40 @@ function optionalNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Normalize stored cs_checklist onto the canonical CS keys. */
+export function readCsChecklist(
+  responses: Record<string, unknown> | null | undefined,
+): Record<string, boolean> {
+  const raw = responses?.cs_checklist;
+  const current =
+    raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  return Object.fromEntries(
+    CS_REINSTATE_CHECKLIST.map((item) => [item.key, current[item.key] === true]),
+  );
+}
+
+/**
+ * Merge a partial cs_checklist PATCH onto existing responses.
+ * Returns null when `patch` is not a plain object.
+ */
+export function mergeCsChecklistPatch(
+  responses: Record<string, unknown> | null | undefined,
+  patch: unknown,
+): Record<string, boolean> | null {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return null;
+  const incoming = patch as Record<string, unknown>;
+  const out = readCsChecklist(responses);
+  let anyKnown = false;
+  for (const item of CS_REINSTATE_CHECKLIST) {
+    if (!(item.key in incoming)) continue;
+    anyKnown = true;
+    out[item.key] = incoming[item.key] === true;
+  }
+  return anyKnown ? out : null;
+}
+
 export function parseReinstateDraftFromBody(body: Record<string, unknown>): ReinstateFormDraft {
   const draft = emptyReinstateDraft();
   draft.client_id = optionalText(body.client_id);

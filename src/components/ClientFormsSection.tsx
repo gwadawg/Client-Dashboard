@@ -4,6 +4,10 @@ import { useState } from "react";
 import { FORM_TYPE_LABELS, type FormType } from "@/lib/form-submissions";
 import { ONBOARDING_FIELD_LABELS } from "@/lib/onboarding-form";
 import {
+  CS_REINSTATE_CHECKLIST,
+  readCsChecklist,
+} from "@/lib/reinstate-form";
+import {
   formatLaunchItemStatus,
   getLaunchItemsForProfile,
   getLaunchSectionsForProfile,
@@ -134,6 +138,40 @@ function humanizeLaunchKitResponses(responses: Record<string, unknown>): { label
   return rows;
 }
 
+const REINSTATE_FIELD_LABELS: Record<string, string> = {
+  engagement: "Engagement",
+  offer: "Offer",
+  reporting_type: "Vertical",
+  sales_package: "Package",
+  mrr: "MRR",
+  closed_at: "Signed",
+  closer_name: "Closer",
+  cash_collected: "Cash collected",
+  contract_term_months: "Term (months)",
+  contract_end_date: "Contract end",
+  ghl_reuse: "Reuse GHL",
+  leave_billing_paused: "Leave billing paused",
+  leave_ads_paused: "Leave ads paused",
+  internal_notes: "Internal notes",
+};
+
+function humanizeReinstateResponses(responses: Record<string, unknown>): { label: string; value: string }[] {
+  const rows: { label: string; value: string }[] = [];
+  for (const [k, label] of Object.entries(REINSTATE_FIELD_LABELS)) {
+    const v = responses[k];
+    if (v == null || v === "") continue;
+    if (k === "engagement") {
+      rows.push({
+        label,
+        value: v === "same_file" ? "Same file" : v === "new_offer" ? "New offer" : String(v),
+      });
+      continue;
+    }
+    rows.push({ label, value: formatValue(k, v) });
+  }
+  return rows;
+}
+
 function humanizeResponses(formType: FormType, responses: Record<string, unknown>): { label: string; value: string; section?: string }[] {
   if (formType === "launch") {
     return humanizeLaunchResponses(responses);
@@ -163,13 +201,18 @@ function humanizeResponses(formType: FormType, responses: Record<string, unknown
     return rows;
   }
 
-  if (formType === "onboarding") {
+  if (formType === "onboarding" || formType === "reinstate_onboarding") {
     return Object.entries(ONBOARDING_FIELD_LABELS)
       .filter(([k]) => responses[k] != null && responses[k] !== "")
       .map(([k, label]) => ({ label, value: formatValue(k, responses[k]) }));
   }
 
+  if (formType === "reinstate") {
+    return humanizeReinstateResponses(responses);
+  }
+
   return Object.entries(responses)
+    .filter(([k]) => k !== "cs_checklist")
     .slice(0, 12)
     .map(([k, v]) => ({ label: k.replace(/_/g, " "), value: formatValue(k, v) }));
 }
@@ -180,15 +223,80 @@ function launchKitDownloadHref(clientId: string | undefined, s: FormSubmissionSu
   return `/api/clients/${clientId}/launch-kit/download?submission=${s.id}`;
 }
 
+function ReinstateCsChecklist({
+  submissionId,
+  responses,
+  onUpdated,
+}: {
+  submissionId: string;
+  responses: Record<string, unknown>;
+  onUpdated?: (next: Record<string, unknown>) => void;
+}) {
+  const [checklist, setChecklist] = useState(() => readCsChecklist(responses));
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggle(key: string, value: boolean) {
+    const prev = checklist;
+    setChecklist({ ...checklist, [key]: value });
+    setSavingKey(key);
+    setError(null);
+    try {
+      const res = await fetch(`/api/form-submissions/${submissionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cs_checklist: { [key]: value } }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setChecklist(prev);
+        setError(typeof data.error === "string" ? data.error : "Failed to save checklist");
+        return;
+      }
+      const saved = data.responses as Record<string, unknown> | undefined;
+      if (saved) {
+        setChecklist(readCsChecklist(saved));
+        onUpdated?.(saved);
+      }
+    } catch (e) {
+      setChecklist(prev);
+      setError(e instanceof Error ? e.message : "Failed to save checklist");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  return (
+    <div className="pt-3 space-y-2" onClick={e => e.stopPropagation()}>
+      <p className="text-xs font-semibold" style={{ color: "#94a3b8" }}>CS checklist</p>
+      {CS_REINSTATE_CHECKLIST.map(item => (
+        <label key={item.key} className="flex items-start gap-2 text-xs cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!checklist[item.key]}
+            disabled={savingKey === item.key}
+            onChange={e => toggle(item.key, e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded accent-violet-400"
+          />
+          <span style={{ color: checklist[item.key] ? "#86efac" : "#cbd5e1" }}>{item.label}</span>
+        </label>
+      ))}
+      {error && <p className="text-xs" style={{ color: "#f87171" }}>{error}</p>}
+    </div>
+  );
+}
+
 export default function ClientFormsSection({
   submissions,
   alwaysExpanded = false,
   clientId,
+  onResponsesUpdated,
 }: {
   submissions: FormSubmissionSummary[];
   alwaysExpanded?: boolean;
   /** Enables the Download link on Launch Kit rows. */
   clientId?: string;
+  onResponsesUpdated?: (submissionId: string, responses: Record<string, unknown>) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -206,6 +314,14 @@ export default function ClientFormsSection({
         const isOpen = alwaysExpanded || expanded === s.id;
         const rows = humanizeResponses(s.form_type, s.responses ?? {});
         const kitHref = launchKitDownloadHref(clientId, s);
+        const checklist =
+          s.form_type === "reinstate" ? (
+            <ReinstateCsChecklist
+              submissionId={s.id}
+              responses={s.responses ?? {}}
+              onUpdated={next => onResponsesUpdated?.(s.id, next)}
+            />
+          ) : null;
         if (alwaysExpanded) {
           return (
             <div key={s.id} className="space-y-2">
@@ -226,6 +342,7 @@ export default function ClientFormsSection({
                   </div>
                 )
               ))}
+              {checklist}
             </div>
           );
         }
@@ -242,7 +359,7 @@ export default function ClientFormsSection({
             >
               <div>
                 <p className="text-sm font-medium" style={{ color: "#e2e8f0" }}>
-                  {FORM_TYPE_LABELS[s.form_type]}
+                  {FORM_TYPE_LABELS[s.form_type] ?? s.form_type}
                 </p>
                 <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
                   {new Date(s.submitted_at).toLocaleString()}
@@ -275,6 +392,7 @@ export default function ClientFormsSection({
                     </div>
                   )
                 ))}
+                {checklist}
               </div>
             )}
           </div>

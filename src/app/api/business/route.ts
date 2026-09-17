@@ -4,6 +4,7 @@ import { DISMISSED_CLOSE_STATUS } from '@/lib/acquisition-close-filter';
 import { VOIDED_BILLING_STATUS } from '@/lib/billing-query';
 import {
   addMonths,
+  bucketSignedClosesForCac,
   computeBusinessMetrics,
   currentMonth,
   resolveBusinessPeriod,
@@ -104,7 +105,7 @@ export async function GET(req: Request) {
         .gte('period_month', snapshotFrom),
       ctx.service
         .from('acquisition_closes')
-        .select('closed_at')
+        .select('closed_at, close_kind')
         .neq('mapping_status', DISMISSED_CLOSE_STATUS)
         .is('deleted_at', null)
         .gte('closed_at', `${paidFrom}T00:00:00.000Z`),
@@ -133,7 +134,20 @@ export async function GET(req: Request) {
   if (snapshotsRes.error) {
     return NextResponse.json({ error: snapshotsRes.error.message }, { status: 500 });
   }
-  if (closesRes.error) return NextResponse.json({ error: closesRes.error.message }, { status: 500 });
+  let closesForCac = closesRes;
+  // Pre-migration: close_kind may not exist yet. Retry without it so all rows
+  // count as standard (bucketSignedClosesForCac treats missing as includable).
+  if (closesForCac.error && /close_kind/i.test(closesForCac.error.message)) {
+    closesForCac = await ctx.service
+      .from('acquisition_closes')
+      .select('closed_at')
+      .neq('mapping_status', DISMISSED_CLOSE_STATUS)
+      .is('deleted_at', null)
+      .gte('closed_at', `${paidFrom}T00:00:00.000Z`);
+  }
+  if (closesForCac.error) {
+    return NextResponse.json({ error: closesForCac.error.message }, { status: 500 });
+  }
   if (acqSpendRes.error) {
     return NextResponse.json({ error: acqSpendRes.error.message }, { status: 500 });
   }
@@ -146,14 +160,11 @@ export async function GET(req: Request) {
     ...((openBillingsRes.data ?? []) as BusinessBilling[]),
   ];
 
-  const signedClosesByMonth: Record<string, number> = {};
-  for (const row of closesRes.data ?? []) {
-    const closedAt = (row as { closed_at: string | null }).closed_at;
-    if (!closedAt) continue;
-    const m = closedAt.slice(0, 7);
-    if (!MONTH_RE.test(m)) continue;
-    signedClosesByMonth[m] = (signedClosesByMonth[m] ?? 0) + 1;
-  }
+  // CAC new-logo denominator only. JS filter (not .neq) so null/missing
+  // close_kind still counts; closer-stats / payroll keep reinstate rows.
+  const signedClosesByMonth = bucketSignedClosesForCac(
+    (closesForCac.data ?? []) as Array<{ closed_at: string | null; close_kind?: string | null }>,
+  );
 
   // Latest applied churn form per client — effective date wins for late reporting.
   // Prefer responses.effective_churn_date; fall back to applied_patch if responses omit it.

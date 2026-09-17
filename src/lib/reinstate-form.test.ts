@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   CS_REINSTATE_CHECKLIST,
   emptyReinstateDraft,
+  mergeCsChecklistPatch,
   parseReinstateDraftFromBody,
   reinstateValidationError,
   reinstateDraftToResponses,
@@ -82,5 +83,16 @@ describe('reinstate-form', () => {
     }
     assert.equal(checklist.meta_map_checked, false);
     assert.equal(Object.keys(checklist).length, CS_REINSTATE_CHECKLIST.length);
+  });
+
+  it('merges a partial cs_checklist PATCH onto existing responses', () => {
+    const responses = reinstateDraftToResponses(emptyReinstateDraft());
+    const merged = mergeCsChecklistPatch(responses, { billing_live: true, ghl_path_confirmed: true });
+    assert.ok(merged);
+    assert.equal(merged.billing_live, true);
+    assert.equal(merged.ghl_path_confirmed, true);
+    assert.equal(merged.ready_for_kickoff, false);
+    assert.equal(mergeCsChecklistPatch(responses, null), null);
+    assert.equal(mergeCsChecklistPatch(responses, { unknown: true }), null);
   });
 });

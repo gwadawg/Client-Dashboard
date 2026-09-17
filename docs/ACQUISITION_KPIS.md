@@ -82,6 +82,9 @@ Ledger Meta/FB/“Adspend” rows use `acquisition_cost_channel = meta_media` an
 - **Referral CAC** = referral_partner spend ÷ Referral closes
 - **Company CAC** (CEO) = same Blended All-in numerator via `marketing_spend` rollup
 
+`close_kind=reinstate` counts for closer credit; excluded from CAC new-logo /
+signed_closes denominator.
+
 `acquisition_cost_channel` values: `meta_media` · `creative_production` · `paid_other` · `referral_partner` · `acquisition_labor`
 
 ## Cash collected

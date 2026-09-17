@@ -291,3 +291,18 @@ Run `supabase/migrations/add_launch_kit_form_type.sql` — adds the `launch_kit`
 5. Complete kickoff → `kickoff` submission in Client File.
 6. Open Kit → generate → PDF in `client-launch-kits`, `launch_kit` submission, ops Slack post with download link; Send to client posts to `slack_id`.
 7. Complete launch → `active`, launch date, Slack webhook fires.
+
+## Reinstate / welcome-back
+
+Paid rejoins use the closer form at `/forms/reinstate` (not the New Client
+GHL form). That writes `reinstated_at`, a winback `acquisition_closes` row
+(`close_kind=reinstate`), and a per-client welcome-back token.
+
+The client then completes **Welcome-Back Onboarding** at
+`/onboard/welcome-back/[token]` (token-only; not a public universal link).
+Client File shows a Reinstate badge plus welcome-back OB pending/done from
+form progress, and CS can tick the reinstate checklist on that submission.
+
+See the spec: [Client reinstate design][reinstate-spec].
+
+[reinstate-spec]: superpowers/specs/2026-09-17-client-reinstate-design.md

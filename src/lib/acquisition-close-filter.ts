@@ -16,3 +16,14 @@ export function isReportingClose(row: ActiveCloseRow): boolean {
 export function filterReportingCloses<T extends ActiveCloseRow>(rows: T[]): T[] {
   return rows.filter(isReportingClose);
 }
+
+/**
+ * New-logo CAC / signed_closes denominator.
+ * Missing, null, and `standard` count; only explicit `reinstate` is excluded.
+ * Closer credit and payroll keep reinstate rows — do not use this filter there.
+ */
+export function countsTowardCacDenominator(
+  closeKind: string | null | undefined,
+): boolean {
+  return closeKind !== 'reinstate';
+}

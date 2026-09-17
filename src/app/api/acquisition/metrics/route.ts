@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       .gte('offered_at', `${from}T00:00:00.000Z`)
       .lte('offered_at', `${to}T23:59:59.999Z`),
     ctx.service.from('acquisition_closes')
-      .select('id, lead_id, closed_at, offer_type, cash_collected, mapping_status')
+      .select('id, lead_id, closed_at, offer_type, cash_collected, mapping_status, close_kind')
       .neq('mapping_status', DISMISSED_CLOSE_STATUS)
       .is('deleted_at', null)
       .gte('closed_at', `${from}T00:00:00.000Z`)
@@ -62,13 +62,27 @@ export async function GET(req: NextRequest) {
   if (apptsRes.error) return NextResponse.json({ error: apptsRes.error.message }, { status: 500 });
   if (ledgerRes.error) return NextResponse.json({ error: ledgerRes.error.message }, { status: 500 });
 
+  let closesData = closesRes.data ?? [];
+  if (closesRes.error && /close_kind/i.test(closesRes.error.message)) {
+    const retry = await ctx.service.from('acquisition_closes')
+      .select('id, lead_id, closed_at, offer_type, cash_collected, mapping_status')
+      .neq('mapping_status', DISMISSED_CLOSE_STATUS)
+      .is('deleted_at', null)
+      .gte('closed_at', `${from}T00:00:00.000Z`)
+      .lte('closed_at', `${to}T23:59:59.999Z`);
+    if (retry.error) return NextResponse.json({ error: retry.error.message }, { status: 500 });
+    closesData = retry.data ?? [];
+  } else if (closesRes.error) {
+    return NextResponse.json({ error: closesRes.error.message }, { status: 500 });
+  }
+
   // Closes often attach to leads created before `from` — pull those sources so
   // Meta CAC can attribute closes correctly.
   const leadsInRange = leadsRes.data ?? [];
   const leadById = new Map(leadsInRange.map(l => [l.id, l]));
   const missingLeadIds = [
     ...new Set(
-      (closesRes.data ?? [])
+      closesData
         .map(c => c.lead_id)
         .filter((id): id is string => !!id && !leadById.has(id)),
     ),
@@ -89,7 +103,7 @@ export async function GET(req: NextRequest) {
     leads: [...leadsInRange, ...closeLeads],
     appointments: apptsRes.data ?? [],
     offers: offersRes.data ?? [],
-    closes: closesRes.data ?? [],
+    closes: closesData,
     adSpend: spendRes.data ?? [],
     ledgerCosts: ledgerRes.data ?? [],
     from,
