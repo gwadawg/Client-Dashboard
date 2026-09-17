@@ -58,6 +58,8 @@ export type AcquisitionCloseRow = {
   mapping_status?: string | null;
   /** Winbacks are closer credit, not new-logo CAC. Missing/null = standard. */
   close_kind?: string | null;
+  /** Reinstate stores closer attribution here (never in setter_name). */
+  raw?: Record<string, unknown> | null;
 };
 
 export type AcquisitionAdSpendRow = {

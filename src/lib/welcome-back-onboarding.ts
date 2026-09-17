@@ -5,9 +5,27 @@ import { latestReinstateCutoffIso } from '@/lib/reinstate-progress';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 import { isKnownUsClientTimezone } from '@/lib/us-timezones';
 
-/** Columns needed to resolve + prefill. Do not select tokens, GHL, MRR, or lifecycle. */
+/** Columns needed to resolve + prefill + TTL. Do not select GHL, MRR, or lifecycle. */
 export const WELCOME_BACK_CLIENT_SELECT =
-  'id, name, primary_contact_name, email, phone, brokerage_name, legal_business_name, nmls, city, state, zip_code, street_address, states_licensed, timezone, website, facebook_page_name, contact_role, biography';
+  'id, name, primary_contact_name, email, phone, brokerage_name, legal_business_name, nmls, city, state, zip_code, street_address, states_licensed, timezone, website, facebook_page_name, contact_role, biography, welcome_back_token_created_at';
+
+/** Welcome-back links expire after this many days (token still on row until rotated). */
+export const WELCOME_BACK_TOKEN_TTL_DAYS = 30;
+
+export function welcomeBackTokenExpired(
+  createdAt: string | null | undefined,
+  nowMs: number = Date.now(),
+): boolean {
+  if (!createdAt) return false; // legacy rows without stamp stay valid
+  const created = Date.parse(createdAt);
+  if (Number.isNaN(created)) return true;
+  const ttlMs = WELCOME_BACK_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
+  return nowMs - created > ttlMs;
+}
+
+export function welcomeBackExpiredMessage(): string {
+  return "This welcome-back link has expired. Ask your Waiz contact for a new one.";
+}
 
 export const WELCOME_BACK_PREFILL_FIELDS = WELCOME_BACK_CLIENT_SELECT;
 
@@ -90,6 +108,16 @@ export function welcomeBackInvalidMessage(): string {
   return "This welcome-back link isn’t valid. Ask your Waiz contact for a new one.";
 }
 
+export class WelcomeBackTokenError extends Error {
+  constructor(
+    message: string,
+    public code: 'invalid' | 'expired',
+  ) {
+    super(message);
+    this.name = 'WelcomeBackTokenError';
+  }
+}
+
 export function prefillFromClientRow(row: Record<string, unknown>): WelcomeBackPrefill {
   return {
     name: trim(row.name),
@@ -143,6 +171,9 @@ export async function resolveWelcomeBackToken(
   if (error) throw new Error(error.message);
   if (!data) return null;
   const row = data as Record<string, unknown>;
+  if (welcomeBackTokenExpired(row.welcome_back_token_created_at as string | null)) {
+    throw new WelcomeBackTokenError(welcomeBackExpiredMessage(), 'expired');
+  }
   return { id: String(row.id), ...prefillFromClientRow(row) };
 }
 

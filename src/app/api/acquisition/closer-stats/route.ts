@@ -38,7 +38,7 @@ export async function GET(req: Request) {
       .gte('offered_at', `${from}T00:00:00.000Z`)
       .lte('offered_at', `${to}T23:59:59.999Z`),
     ctx.service.from('acquisition_closes')
-      .select('id, lead_id, closed_at, offer_type, cash_collected, call_id, mapping_status')
+      .select('id, lead_id, closed_at, offer_type, cash_collected, call_id, mapping_status, close_kind, raw')
       .neq('mapping_status', DISMISSED_CLOSE_STATUS)
       .is('deleted_at', null)
       .gte('closed_at', `${from}T00:00:00.000Z`)
@@ -47,21 +47,50 @@ export async function GET(req: Request) {
 
   if (callsRes.error) return NextResponse.json({ error: callsRes.error.message }, { status: 500 });
 
+  let closesData = (closesRes.data ?? []) as Array<{
+    id: string;
+    lead_id: string | null;
+    closed_at: string;
+    offer_type: string | null;
+    cash_collected: number | null;
+    call_id?: string | null;
+    mapping_status: string | null;
+    close_kind?: string | null;
+    raw?: Record<string, unknown> | null;
+  }>;
+  if (closesRes.error && /close_kind|column.*raw/i.test(closesRes.error.message)) {
+    const retry = await ctx.service.from('acquisition_closes')
+      .select('id, lead_id, closed_at, offer_type, cash_collected, call_id, mapping_status')
+      .neq('mapping_status', DISMISSED_CLOSE_STATUS)
+      .is('deleted_at', null)
+      .gte('closed_at', `${from}T00:00:00.000Z`)
+      .lte('closed_at', `${to}T23:59:59.999Z`);
+    if (retry.error) return NextResponse.json({ error: retry.error.message }, { status: 500 });
+    closesData = (retry.data ?? []) as typeof closesData;
+  } else if (closesRes.error) {
+    return NextResponse.json({ error: closesRes.error.message }, { status: 500 });
+  }
+
   const closers = calculateCloserMetrics({
     calls: callsRes.data ?? [],
     offers: offersRes.data ?? [],
-    closes: closesRes.data ?? [],
+    closes: closesData,
     from,
     to,
     offerScope,
     closerFilter,
   });
 
-  const allCloserNames = [...new Set(
-    (callsRes.data ?? [])
-      .map(c => c.handled_by?.trim())
-      .filter((s): s is string => !!s),
-  )].sort();
+  const namesFromCalls = (callsRes.data ?? [])
+    .map(c => c.handled_by?.trim())
+    .filter((s): s is string => !!s);
+  const namesFromCloses = closesData
+    .map(c => {
+      const raw = (c as { raw?: { closer_name?: unknown } | null }).raw;
+      return typeof raw?.closer_name === 'string' ? raw.closer_name.trim() : '';
+    })
+    .filter(Boolean);
+  const allCloserNames = [...new Set([...namesFromCalls, ...namesFromCloses])].sort();
 
   return NextResponse.json({ closers, closer_names: allCloserNames, from, to });
 }

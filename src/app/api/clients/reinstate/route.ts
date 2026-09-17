@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { getLatestChurnReasonsByClient } from '@/lib/form-submissions';
+import { notifyReinstateComplete } from '@/lib/notifications';
 import { ReinstateClientError, reinstateClient } from '@/lib/reinstate-client';
 import { parseReinstateDraftFromBody, reinstateValidationError } from '@/lib/reinstate-form';
 
@@ -70,6 +71,22 @@ export async function POST(req: Request) {
       submittedBy: ctx.userId,
       appOrigin: process.env.NEXT_PUBLIC_APP_URL ?? new URL(req.url).origin,
     });
+
+    const { data: named } = await ctx.service
+      .from('clients')
+      .select('name')
+      .eq('id', result.client_id)
+      .maybeSingle();
+
+    void notifyReinstateComplete(ctx.service, {
+      client_id: result.client_id,
+      client_name: (named?.name as string | undefined)?.trim() || 'Client',
+      engagement: result.engagement,
+      closer_name: draft.closer_name.trim(),
+      welcome_back_url: result.welcome_back_url,
+      ghl_reuse: draft.ghl_reuse,
+    });
+
     return NextResponse.json(result);
   } catch (e) {
     if (e instanceof ReinstateClientError) {

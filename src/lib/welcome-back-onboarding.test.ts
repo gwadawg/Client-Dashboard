@@ -6,6 +6,7 @@ import {
   parseWelcomeBackFormFields,
   prefillFromClientRow,
   welcomeBackToClientPatch,
+  welcomeBackTokenExpired,
 } from '@/lib/welcome-back-onboarding';
 
 const VALID = {
@@ -111,5 +112,12 @@ describe('welcome-back-onboarding', () => {
       listableInternalForms().some((f) => f.slug === 'onboard-welcome-back'),
       false,
     );
+  });
+
+  it('expires welcome-back tokens older than TTL', () => {
+    const now = Date.parse('2026-09-17T12:00:00.000Z');
+    assert.equal(welcomeBackTokenExpired(null, now), false);
+    assert.equal(welcomeBackTokenExpired('2026-09-10T12:00:00.000Z', now), false);
+    assert.equal(welcomeBackTokenExpired('2026-08-01T12:00:00.000Z', now), true);
   });
 });

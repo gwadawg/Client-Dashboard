@@ -7,6 +7,7 @@ import {
   resolveWelcomeBackToken,
   toWelcomeBackPrefill,
   welcomeBackInvalidMessage,
+  WelcomeBackTokenError,
 } from '@/lib/welcome-back-onboarding';
 
 export const dynamic = 'force-dynamic';
@@ -52,6 +53,10 @@ export async function GET(_req: Request, { params }: RouteCtx) {
       already_submitted,
     });
   } catch (e) {
+    if (e instanceof WelcomeBackTokenError) {
+      const status = e.code === 'expired' ? 410 : 404;
+      return NextResponse.json({ error: e.message, code: e.code }, { status });
+    }
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -98,6 +103,10 @@ export async function POST(req: Request, { params }: RouteCtx) {
       message: 'Thank you — we received your updated information.',
     });
   } catch (e) {
+    if (e instanceof WelcomeBackTokenError) {
+      const status = e.code === 'expired' ? 410 : 404;
+      return NextResponse.json({ error: e.message, code: e.code }, { status });
+    }
     const message = e instanceof Error ? e.message : String(e);
     const status = /required|valid|must start|licensed/i.test(message) ? 400 : 500;
     return NextResponse.json({ error: message }, { status });

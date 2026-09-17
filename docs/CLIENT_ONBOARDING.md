@@ -303,8 +303,14 @@ GHL form). That writes `reinstated_at`, a winback `acquisition_closes` row
 The closer name is stored only on `acquisition_closes.raw.closer_name` (and
 `raw.close_kind=reinstate`). Do **not** put it in `setter_name` — that column
 feeds setter metrics / payroll and would wrongly credit a setter.
-Closer-stats still resolve closers via demo calls (`handled_by`) and linked
-offers, not from this text field.
+Closer-stats credit winbacks from `raw.closer_name` when there is no demo/offer
+appointment link (see `calculateCloserMetrics`).
+
+Ops Slack gets the welcome-back URL after reinstate (forward to the client).
+There is no client email send — copy the link from the form success screen or
+Slack. Welcome-back tokens expire after **30 days**
+(`welcome_back_token_created_at`); re-run reinstate to mint a new link.
+ClickUp / client Slack channel / Meta map stay manual.
 
 The client then completes **Welcome-Back Onboarding** at
 `/onboard/welcome-back/[token]` (token-only; not a public universal link).
