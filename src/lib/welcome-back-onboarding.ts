@@ -265,7 +265,7 @@ export async function applyWelcomeBackSubmission(
   service: SupabaseClient,
   clientId: string,
   input: WelcomeBackFormInput,
-  rawBody: Record<string, unknown>,
+  _rawBody?: Record<string, unknown>,
 ): Promise<{ client_id: string; submission_id: string }> {
   const patch = welcomeBackToClientPatch(input);
   const { error } = await service.from('clients').update(patch).eq('id', clientId);
@@ -278,9 +278,26 @@ export async function applyWelcomeBackSubmission(
     submitted_by: 'client',
     match_email: input.email,
     match_phone: input.phone,
-    responses: { ...welcomeBackResponsesFromInput(input), ...rawBody },
+    responses: welcomeBackResponsesFromInput(input),
     applied_patch: patch,
   });
 
   return { client_id: clientId, submission_id: submission.id };
+}
+
+export type WelcomeBackParseResult =
+  | { ok: true; patch: Record<string, unknown>; responses: Record<string, unknown> }
+  | { ok: false; error: string };
+
+export function parseWelcomeBackBody(body: Record<string, unknown>): WelcomeBackParseResult {
+  try {
+    const input = parseWelcomeBackFormFields(body);
+    return {
+      ok: true,
+      patch: welcomeBackToClientPatch(input),
+      responses: welcomeBackResponsesFromInput(input),
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
