@@ -118,7 +118,7 @@ export default function ReinstateFormPage({
       return {
         ...emptyReinstateDraft(),
         client_id: client.id,
-        offer: product || (client.offer ?? "").trim(),
+        offer: (client.offer ?? "").trim() || product,
         reporting_type: product,
         mrr: coerceNumber(client.mrr),
         closer_name: prev.closer_name,
@@ -350,30 +350,48 @@ export default function ReinstateFormPage({
             </div>
           </div>
 
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-slate-400">Offer / product *</span>
-            <select
-              value={draft.reporting_type}
-              disabled={submitted}
-              onChange={e => {
-                const value = e.target.value;
-                setDraft(prev => ({ ...prev, reporting_type: value, offer: value }));
-              }}
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer disabled:opacity-60"
-              style={fieldStyle}
-            >
-              <option value="">Select product…</option>
-              {REPORTING_TYPE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-              {draft.reporting_type &&
-                !REPORTING_TYPE_OPTIONS.some(o => o.value === draft.reporting_type) && (
-                  <option value={draft.reporting_type}>{draft.reporting_type}</option>
-                )}
-            </select>
-          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-slate-400">Offer *</span>
+              <input
+                type="text"
+                disabled={submitted}
+                value={draft.offer}
+                onChange={e => setDraft(prev => ({ ...prev, offer: e.target.value }))}
+                placeholder="Product or package name"
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none disabled:opacity-60"
+                style={fieldStyle}
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-slate-400">Reporting type</span>
+              <select
+                value={draft.reporting_type}
+                disabled={submitted}
+                onChange={e => {
+                  const value = e.target.value;
+                  setDraft(prev => ({
+                    ...prev,
+                    reporting_type: value,
+                    offer: prev.offer.trim() && prev.offer !== prev.reporting_type ? prev.offer : value,
+                  }));
+                }}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none cursor-pointer disabled:opacity-60"
+                style={fieldStyle}
+              >
+                <option value="">Select product…</option>
+                {REPORTING_TYPE_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+                {draft.reporting_type &&
+                  !REPORTING_TYPE_OPTIONS.some(o => o.value === draft.reporting_type) && (
+                    <option value={draft.reporting_type}>{draft.reporting_type}</option>
+                  )}
+              </select>
+            </label>
+          </div>
 
           <label className="block space-y-1.5">
             <span className="text-sm font-medium text-slate-400">Sales package</span>
