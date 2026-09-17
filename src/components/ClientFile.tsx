@@ -49,13 +49,11 @@ import StatusChangeModal from "@/components/StatusChangeModal";
 import ClientInterventionHistory from "@/components/ClientInterventionHistory";
 import AccountWeekPlansClientHistory from "@/components/AccountWeekPlansClientHistory";
 import ClientAccountOffersPanel from "@/components/ClientAccountOffersPanel";
-import ClientAdClaimsPanel from "@/components/ClientAdClaimsPanel";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
 import { isLaunchKitLifecycle } from "@/lib/launch-kit/intake";
 import type { ClientContact } from "@/lib/client-contacts";
 import { csCallTypeLabel, type CsCallType } from "@/lib/cs-appointments";
-import type { ClientAdClaims } from "@/lib/ad-claims";
 
 // The client "file": a single place to oversee everything about one client.
 // Profile, billing history, lifecycle transitions, and ongoing notes.
@@ -127,7 +125,6 @@ type FileClient = {
   phone_live_transfer: string | null;
   live_transfer_approved: boolean | null;
   offer_summary: string | null;
-  ad_claims?: ClientAdClaims | null;
   clickup_task_id?: string | null;
   created_at: string | null;
   churned_at: string | null;
@@ -188,7 +185,7 @@ type ActivityRow = {
 type LegacyTabKey = "overview" | "records" | "activity" | "cs_calls" | "touchpoints" | "billing";
 
 type AccountTabKey = "client" | "calls" | "contacts";
-type OfferTabKey = "operations" | "ad_claims" | "records" | "cs" | "billing";
+type OfferTabKey = "operations" | "records" | "cs" | "billing";
 
 const ACCOUNT_TABS: { key: AccountTabKey; label: string }[] = [
   { key: "client", label: "Client" },
@@ -198,7 +195,6 @@ const ACCOUNT_TABS: { key: AccountTabKey; label: string }[] = [
 
 const OFFER_TABS: { key: OfferTabKey; label: string }[] = [
   { key: "operations", label: "Operations" },
-  { key: "ad_claims", label: "Ad claims" },
   { key: "records", label: "Forms & history" },
   { key: "cs", label: "CS & touchpoints" },
   { key: "billing", label: "Billing" },
@@ -1297,21 +1293,6 @@ export default function ClientFile({
                 </button>
               ))}
             </div>
-
-            {offerTab === "ad_claims" && (
-            <div className="space-y-7">
-              <Section title="Ad claims register">
-                <ClientAdClaimsPanel
-                  clientId={clientId}
-                  initial={client?.ad_claims ?? null}
-                  onSaved={claims => {
-                    setClient(prev => (prev ? { ...prev, ad_claims: claims } : prev));
-                    onUpdated?.();
-                  }}
-                />
-              </Section>
-            </div>
-            )}
 
             {offerTab === "operations" && (
             <div className="space-y-7">
