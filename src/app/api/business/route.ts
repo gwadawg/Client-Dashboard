@@ -138,12 +138,13 @@ export async function GET(req: Request) {
   // Pre-migration: close_kind may not exist yet. Retry without it so all rows
   // count as standard (bucketSignedClosesForCac treats missing as includable).
   if (closesForCac.error && /close_kind/i.test(closesForCac.error.message)) {
-    closesForCac = await ctx.service
+    const retry = await ctx.service
       .from('acquisition_closes')
       .select('closed_at')
       .neq('mapping_status', DISMISSED_CLOSE_STATUS)
       .is('deleted_at', null)
       .gte('closed_at', `${paidFrom}T00:00:00.000Z`);
+    closesForCac = retry as typeof closesRes;
   }
   if (closesForCac.error) {
     return NextResponse.json({ error: closesForCac.error.message }, { status: 500 });

@@ -453,7 +453,7 @@ async function healIdempotentReinstate(opts: {
 }): Promise<never> {
   const submissionId = opts.submission.id;
   if (!submissionId) {
-    await throwIdempotentConflict({
+    return throwIdempotentConflict({
       appOrigin: opts.appOrigin,
       engagement: opts.engagement,
       clientId: opts.clientId,
@@ -470,7 +470,7 @@ async function healIdempotentReinstate(opts: {
     submissionSubmittedAt: opts.submission.submitted_at ?? null,
   });
 
-  await throwIdempotentConflict({
+  return throwIdempotentConflict({
     appOrigin: opts.appOrigin,
     engagement: opts.engagement,
     clientId: opts.clientId,
@@ -486,15 +486,17 @@ export async function reinstateClient(
   const { draft, submittedBy, appOrigin } = opts;
   const clientId = draft.client_id.trim();
 
-  const { data: origin, error: loadErr } = await service
+  const { data: originRaw, error: loadErr } = await service
     .from('clients')
     .select(ORIGIN_SELECT)
     .eq('id', clientId)
     .maybeSingle();
 
   if (loadErr) throw new ReinstateClientError(loadErr.message, 500);
-  if (!origin) throw new ReinstateClientError('Client not found', 404);
+  if (!originRaw) throw new ReinstateClientError('Client not found', 404);
 
+  // Dynamic select string → Supabase infers GenericStringError; narrow explicitly.
+  const origin = originRaw as unknown as Record<string, unknown>;
   const lifecycle = (origin.lifecycle_status as string | null) ?? null;
 
   // Idempotency before sibling create / same-file update — origin lifecycle
@@ -516,7 +518,7 @@ export async function reinstateClient(
         const clientIdForConflict =
           (sibling?.id as string | undefined) ?? targetId;
         if (matched?.id) {
-          await healIdempotentReinstate({
+          return healIdempotentReinstate({
             service,
             appOrigin,
             draft,
@@ -528,7 +530,7 @@ export async function reinstateClient(
             originClientId: origin.id as string,
           });
         }
-        await throwIdempotentConflict({
+        return throwIdempotentConflict({
           appOrigin,
           engagement: 'new_offer',
           clientId: clientIdForConflict,
@@ -544,7 +546,7 @@ export async function reinstateClient(
         recent.find((row) => readReinstateEngagement(row.responses) === 'same_file') ??
         recent[0];
       if (matched?.id) {
-        await healIdempotentReinstate({
+        return healIdempotentReinstate({
           service,
           appOrigin,
           draft,
@@ -555,7 +557,7 @@ export async function reinstateClient(
           originClientId: origin.id as string,
         });
       }
-      await throwIdempotentConflict({
+      return throwIdempotentConflict({
         appOrigin,
         engagement: 'same_file',
         clientId: origin.id as string,
@@ -613,7 +615,7 @@ export async function reinstateClient(
 
     targetClientId = siblingId;
     appliedPatch = {
-      ...buildNewOfferIdentityPatch(origin as Record<string, unknown>),
+      ...buildNewOfferIdentityPatch(origin),
       ...buildSameFileClientPatch(draft, reinstatedAtIso),
       welcome_back_token: token,
       welcome_back_token_created_at: tokenCreatedAt,

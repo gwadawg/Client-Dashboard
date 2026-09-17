@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
       .gte('closed_at', `${from}T00:00:00.000Z`)
       .lte('closed_at', `${to}T23:59:59.999Z`);
     if (retry.error) return NextResponse.json({ error: retry.error.message }, { status: 500 });
-    closesData = retry.data ?? [];
+    closesData = (retry.data ?? []) as typeof closesData;
   } else if (closesRes.error) {
     return NextResponse.json({ error: closesRes.error.message }, { status: 500 });
   }
