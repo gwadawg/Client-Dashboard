@@ -35,6 +35,7 @@ function passesFilters(
       client.account_display_name,
       client.company_name,
       client.brokerage_name,
+      client.nmls,
       client.city,
       client.state,
       client.offer_blurb,
@@ -247,6 +248,7 @@ function ClientDirectoryTable({
   const headers = [
     { key: "client", label: "Client" },
     { key: "company", label: "Company" },
+    { key: "nmls", label: "NMLS #" },
     { key: "lt", label: "Live transfers" },
     { key: "offer", label: "Offer" },
     { key: "website", label: "Website" },
@@ -293,6 +295,9 @@ function ClientDirectoryTable({
         </td>
         <td className="px-3 py-1.5 align-middle">
           <CompanyCell client={client} />
+        </td>
+        <td className="px-3 py-1.5 align-middle whitespace-nowrap text-xs font-mono" style={{ color: client.nmls ? "#e2e8f0" : "#334155" }}>
+          {client.nmls || "—"}
         </td>
         <td className="px-3 py-1.5 align-middle whitespace-nowrap">
           <LiveTransferBadge approved={client.live_transfer_approved} />
@@ -379,15 +384,16 @@ function ClientDirectoryTable({
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse table-fixed min-w-[1040px]">
+        <table className="w-full text-sm border-collapse table-fixed min-w-[1120px]">
           <colgroup>
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "7%" }} />
             <col style={{ width: "16%" }} />
-            <col style={{ width: "13%" }} />
+            <col style={{ width: "10%" }} />
             <col style={{ width: "8%" }} />
-            <col style={{ width: "18%" }} />
-            <col style={{ width: "11%" }} />
             <col style={{ width: "8%" }} />
-            <col style={{ width: "9%" }} />
             <col style={{ width: "9%" }} />
             <col style={{ width: "8%" }} />
           </colgroup>

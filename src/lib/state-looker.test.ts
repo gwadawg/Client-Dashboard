@@ -49,6 +49,7 @@ describe('state-looker directory fields', () => {
           account_group_id: 'g1',
           legal_business_name: 'Acme Lending LLC',
           brokerage_name: 'Acme Brokerage',
+          nmls: '123456',
           live_transfer_approved: true,
           phone_live_transfer: '555-0100',
           offer_summary: 'Reverse mortgage for seniors',
@@ -68,6 +69,7 @@ describe('state-looker directory fields', () => {
           account_group_id: 'g1',
           legal_business_name: 'Same Name',
           brokerage_name: 'Same Name',
+          nmls: null,
           live_transfer_approved: false,
           phone_live_transfer: null,
           offer_summary: null,
@@ -88,6 +90,7 @@ describe('state-looker directory fields', () => {
     const c1 = result.clients.find(c => c.id === 'c1')!;
     assert.equal(c1.company_name, 'Acme Lending LLC');
     assert.equal(c1.brokerage_name, 'Acme Brokerage');
+    assert.equal(c1.nmls, '123456');
     assert.equal(c1.live_transfer_approved, true);
     assert.equal(c1.phone_live_transfer, '555-0100');
     assert.equal(c1.offer_blurb, 'Reverse mortgage for seniors');
@@ -99,6 +102,7 @@ describe('state-looker directory fields', () => {
     const c2 = result.clients.find(c => c.id === 'c2')!;
     assert.equal(c2.company_name, 'Same Name');
     assert.equal(c2.brokerage_name, null, 'duplicate company/brokerage should collapse');
+    assert.equal(c2.nmls, null);
     assert.match(c2.offer_blurb, /DSCR/i);
     assert.equal(c2.ghl_subaccount_url, 'https://app.gohighlevel.com/v2/location/stored');
   });

@@ -14,6 +14,7 @@ export type StateLookerClient = {
   /** Company / brand (legal business name). Shown separately from brokerage. */
   company_name: string | null;
   brokerage_name: string | null;
+  nmls: string | null;
   live_transfer_approved: boolean;
   phone_live_transfer: string | null;
   offer_summary: string | null;
@@ -46,6 +47,7 @@ export type RawStateLookerClientRow = {
   account_group_id: string | null;
   legal_business_name?: string | null;
   brokerage_name?: string | null;
+  nmls?: string | null;
   live_transfer_approved?: boolean | null;
   phone_live_transfer?: string | null;
   offer_summary?: string | null;
@@ -122,6 +124,7 @@ export function buildStateLookerResult(
       account_display_name,
       company_name,
       brokerage_name: brokerageDistinct,
+      nmls: trimOrNull(row.nmls),
       live_transfer_approved: row.live_transfer_approved === true,
       phone_live_transfer: trimOrNull(row.phone_live_transfer),
       offer_summary: trimOrNull(row.offer_summary),
