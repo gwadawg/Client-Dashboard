@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { INTERNAL_FORMS } from "@/lib/internal-forms";
+import { listableInternalForms } from "@/lib/internal-forms";
 
 export default function FormsHubPage() {
   return (
@@ -14,7 +14,7 @@ export default function FormsHubPage() {
       </div>
 
       <div className="space-y-3">
-        {INTERNAL_FORMS.map(form => (
+        {listableInternalForms().map(form => (
           <Link
             key={form.slug}
             href={form.href}

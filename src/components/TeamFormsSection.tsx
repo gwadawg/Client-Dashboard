@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { INTERNAL_FORMS } from "@/lib/internal-forms";
+import { listableInternalForms } from "@/lib/internal-forms";
 
 const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 
@@ -26,7 +26,7 @@ export default function TeamFormsSection() {
         </Link>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        {INTERNAL_FORMS.map((form, index) => (
+        {listableInternalForms().map((form, index) => (
           <Link
             key={form.slug}
             href={form.href}

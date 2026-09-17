@@ -1,4 +1,4 @@
-import { INTERNAL_FORMS, type InternalFormDef } from "@/lib/internal-forms";
+import { listableInternalForms, type InternalFormDef } from "@/lib/internal-forms";
 import {
   LIBRARY_DOCS,
   artifactMeta,
@@ -161,7 +161,7 @@ export function getAllFormItems(
 ): FormItem[] {
   const bySlug = new Map<string, FormItem>();
 
-  for (const form of INTERNAL_FORMS) {
+  for (const form of listableInternalForms()) {
     bySlug.set(form.slug, formToItem(form));
   }
 
