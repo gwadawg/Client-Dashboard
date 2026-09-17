@@ -65,6 +65,15 @@ export const INTERNAL_FORMS: InternalFormDef[] = [
     tags: ["churn", "offboarding", "cs"],
   },
   {
+    slug: "reinstate",
+    title: "Client Reinstate",
+    description:
+      "Closer form for paid rejoins: pick a churned client, log the winback close, and issue a welcome-back OB link.",
+    href: "/forms/reinstate",
+    audience: "Closers / Client Success",
+    tags: ["reinstate", "winback", "cs", "sales"],
+  },
+  {
     slug: "onboard",
     title: "Client Onboarding",
     description: "Public form for new clients to submit onboarding details after sign-up.",
@@ -93,6 +102,10 @@ export function internalFormHref(slug: string, params?: Record<string, string>):
 
 export function churnFormHref(clientId?: string | null): string {
   return internalFormHref("churn", clientId ? { clientId } : undefined);
+}
+
+export function reinstateFormHref(clientId?: string | null): string {
+  return internalFormHref("reinstate", clientId ? { clientId } : undefined);
 }
 
 export function isChurnOffboardEligible(lifecycleStatus: string | null | undefined): boolean {
