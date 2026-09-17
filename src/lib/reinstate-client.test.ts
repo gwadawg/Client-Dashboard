@@ -25,6 +25,8 @@ describe('reinstate-client helpers', () => {
     assert.equal(patch.date_signed, undefined);
     assert.equal(patch.reinstated_at, '2026-09-17T12:00:00.000Z');
     assert.equal(patch.lifecycle_status, 'onboarding');
+    assert.equal(patch.churned_at, null);
+    assert.equal(patch.is_live, false);
     assert.equal(patch.billing_paused, false);
     assert.equal(patch.ads_paused, false);
     assert.equal(patch.mrr, 6000);
@@ -39,5 +41,7 @@ describe('reinstate-client helpers', () => {
     const patch = buildSameFileClientPatch(draft, '2026-09-17T12:00:00.000Z');
     assert.equal(patch.billing_paused, undefined);
     assert.equal(patch.ads_paused, undefined);
+    assert.equal(patch.churned_at, null);
+    assert.equal(patch.is_live, false);
   });
 });

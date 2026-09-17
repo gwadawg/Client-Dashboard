@@ -3,6 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createOfferForAccount } from '@/lib/client-account-groups';
 import { insertFormSubmission } from '@/lib/form-submissions';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
+import { normalizeSalesPackage } from '@/lib/offer-catalog';
+import { normalizeReportingType } from '@/lib/reporting-types';
 import {
   reinstateDraftToResponses,
   type ReinstateFormDraft,
@@ -41,16 +43,19 @@ export function buildSameFileClientPatch(
   draft: ReinstateFormDraft,
   reinstatedAtIso: string,
 ): Record<string, unknown> {
+  const reportingType = normalizeReportingType(draft.reporting_type || draft.offer);
   const patch: Record<string, unknown> = {
     lifecycle_status: 'onboarding',
     reinstated_at: reinstatedAtIso,
     churned_at: null,
     is_live: syncIsLiveWithLifecycle('onboarding'),
-    offer: draft.offer || draft.reporting_type,
-    reporting_type: draft.reporting_type || draft.offer,
+    offer: draft.offer.trim() || reportingType,
+    reporting_type: reportingType,
     mrr: draft.mrr,
   };
-  if (draft.sales_package) patch.sales_package = draft.sales_package;
+  if (draft.sales_package.trim()) {
+    patch.sales_package = normalizeSalesPackage(draft.sales_package);
+  }
   if (draft.contract_term_months != null) {
     patch.contract_term_months = draft.contract_term_months;
   }
@@ -104,6 +109,7 @@ export async function reinstateClient(
       .select('id, responses, submitted_at')
       .eq('client_id', origin.id)
       .eq('form_type', 'reinstate')
+      .in('status', ['applied', 'submitted'])
       .gte('submitted_at', cutoff)
       .order('submitted_at', { ascending: false })
       .limit(1)
@@ -139,17 +145,26 @@ export async function reinstateClient(
   let appliedPatch: Record<string, unknown>;
 
   if (draft.engagement === 'new_offer') {
-    const { client: sibling } = await createOfferForAccount(service, {
-      origin_client_id: origin.id as string,
-      name: String(origin.name),
-      reporting_type: draft.reporting_type || draft.offer,
-      sales_package: draft.sales_package || null,
-      mrr: draft.mrr,
-      lifecycle_status: 'onboarding',
-      date_signed: draft.closed_at || null,
-      logged_by: submittedBy,
-      // intentionally omit ghl_location_id — new offer must not reuse old GHL
-    });
+    const reportingType = normalizeReportingType(draft.reporting_type || draft.offer);
+    const originName = String(origin.name ?? '').trim() || 'Client';
+    let sibling: Record<string, unknown>;
+    try {
+      const created = await createOfferForAccount(service, {
+        origin_client_id: origin.id as string,
+        name: `${originName} — ${reportingType}`,
+        reporting_type: reportingType,
+        sales_package: draft.sales_package || null,
+        mrr: draft.mrr,
+        lifecycle_status: 'onboarding',
+        date_signed: draft.closed_at || null,
+        logged_by: submittedBy,
+        // intentionally omit ghl_location_id — new offer must not reuse old GHL
+      });
+      sibling = created.client;
+    } catch (e) {
+      if (e instanceof ReinstateClientError) throw e;
+      throw new ReinstateClientError(e instanceof Error ? e.message : String(e), 500);
+    }
 
     targetClientId = sibling.id as string;
     appliedPatch = {
@@ -178,21 +193,29 @@ export async function reinstateClient(
   }
 
   const responses = reinstateDraftToResponses(draft);
-  const submission = await insertFormSubmission(service, {
-    client_id: targetClientId,
-    form_type: 'reinstate',
-    status: 'applied',
-    submitted_by: submittedBy,
-    responses,
-    applied_patch: {
-      ...appliedPatch,
-      engagement: draft.engagement,
-      origin_client_id: origin.id,
-    },
-  });
+  let submission;
+  try {
+    submission = await insertFormSubmission(service, {
+      client_id: targetClientId,
+      form_type: 'reinstate',
+      status: 'applied',
+      submitted_by: submittedBy,
+      responses,
+      applied_patch: {
+        ...appliedPatch,
+        engagement: draft.engagement,
+        origin_client_id: origin.id,
+      },
+    });
+  } catch (e) {
+    if (e instanceof ReinstateClientError) throw e;
+    throw new ReinstateClientError(e instanceof Error ? e.message : String(e), 500);
+  }
 
-  const offerType = draft.sales_package || draft.offer || draft.reporting_type || null;
-  const reportingType = draft.reporting_type || draft.offer || null;
+  const offerType = draft.sales_package.trim()
+    ? normalizeSalesPackage(draft.sales_package)
+    : null;
+  const reportingType = normalizeReportingType(draft.reporting_type || draft.offer);
 
   const { data: closeRow, error: closeErr } = await service
     .from('acquisition_closes')
