@@ -7,6 +7,7 @@ import { normalizeSalesPackage } from '@/lib/offer-catalog';
 import { normalizeReportingType } from '@/lib/reporting-types';
 import {
   reinstateDraftToResponses,
+  type ReinstateEngagement,
   type ReinstateFormDraft,
 } from '@/lib/reinstate-form';
 
@@ -34,6 +35,45 @@ export type ReinstateClientOpts = {
   submittedBy: string | null;
   appOrigin: string;
 };
+
+/** Contact / business fields copied onto a new-offer sibling for welcome-back prefill. */
+export const REINSTATE_NEW_OFFER_IDENTITY_FIELDS = [
+  'email',
+  'billing_email',
+  'phone',
+  'primary_contact',
+  'primary_contact_name',
+  'brokerage_name',
+  'legal_business_name',
+  'nmls',
+  'city',
+  'state',
+  'zip_code',
+  'street_address',
+  'states_licensed',
+  'timezone',
+  'website',
+  'facebook_page_name',
+  'contact_role',
+  'biography',
+  'headshot_url',
+] as const;
+
+/** Integrations stay on the churned origin — never copy onto a new-offer sibling. */
+export const REINSTATE_NEW_OFFER_NEVER_COPY_FIELDS = [
+  'ghl_location_id',
+  'ghl_contact_id',
+  'clickup_task_id',
+  'slack_id',
+] as const;
+
+const ORIGIN_SELECT = [
+  'id',
+  'name',
+  'lifecycle_status',
+  'welcome_back_token',
+  ...REINSTATE_NEW_OFFER_IDENTITY_FIELDS,
+].join(', ');
 
 export function buildWelcomeBackUrl(origin: string, token: string): string {
   return `${origin.replace(/\/$/, '')}/onboard/welcome-back/${encodeURIComponent(token)}`;
@@ -74,6 +114,68 @@ export function buildSameFileClientPatch(
   return patch;
 }
 
+/** Copy identity onto sibling; never include GHL / ClickUp / Slack ids. */
+export function buildNewOfferIdentityPatch(
+  origin: Record<string, unknown>,
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  for (const key of REINSTATE_NEW_OFFER_IDENTITY_FIELDS) {
+    if (!(key in origin)) continue;
+    const value = origin[key];
+    if (value === undefined) continue;
+    patch[key] = value;
+  }
+  for (const key of REINSTATE_NEW_OFFER_NEVER_COPY_FIELDS) {
+    delete patch[key];
+  }
+  return patch;
+}
+
+export type RecentReinstateSubmission = {
+  id?: string;
+  client_id?: string | null;
+  responses?: Record<string, unknown> | null;
+  submitted_at?: string;
+};
+
+export function reinstateSubmissionMatchesOrigin(
+  row: RecentReinstateSubmission,
+  originClientId: string,
+): boolean {
+  if (row.client_id === originClientId) return true;
+  const linked = row.responses?.origin_client_id;
+  return typeof linked === 'string' && linked === originClientId;
+}
+
+export function findRecentNewOfferTargetClientId(
+  rows: RecentReinstateSubmission[],
+): string | null {
+  for (const row of rows) {
+    if (readReinstateEngagement(row.responses) !== 'new_offer') continue;
+    const targetId = readTargetClientId(row.responses);
+    if (targetId) return targetId;
+  }
+  return null;
+}
+
+export function hasRecentSameFileReinstate(rows: RecentReinstateSubmission[]): boolean {
+  return rows.some((row) => readReinstateEngagement(row.responses) === 'same_file');
+}
+
+export function readReinstateEngagement(
+  responses: Record<string, unknown> | null | undefined,
+): ReinstateEngagement | null {
+  const engagement = responses?.engagement;
+  return engagement === 'same_file' || engagement === 'new_offer' ? engagement : null;
+}
+
+export function readTargetClientId(
+  responses: Record<string, unknown> | null | undefined,
+): string | null {
+  const id = responses?.target_client_id;
+  return typeof id === 'string' && id.trim() ? id.trim() : null;
+}
+
 function mintWelcomeBackToken(): string {
   return randomBytes(24).toString('hex');
 }
@@ -82,6 +184,66 @@ function closedAtIso(closedAt: string): string {
   const trimmed = closedAt.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return `${trimmed}T12:00:00.000Z`;
   return trimmed;
+}
+
+function reinstateCutoffIso(): string {
+  return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * Find a recent reinstate tied to this origin.
+ * same_file rows use client_id=origin; new_offer rows live on the sibling but
+ * store origin_client_id in responses (so Client File CS checklist stays on target).
+ */
+async function loadRecentOriginReinstate(
+  service: SupabaseClient,
+  originClientId: string,
+): Promise<{
+  id: string;
+  client_id: string | null;
+  responses: Record<string, unknown> | null;
+  submitted_at: string;
+} | null> {
+  const { data, error } = await service
+    .from('client_form_submissions')
+    .select('id, client_id, responses, submitted_at')
+    .eq('form_type', 'reinstate')
+    .in('status', ['applied', 'submitted'])
+    .gte('submitted_at', reinstateCutoffIso())
+    .or(
+      `client_id.eq.${originClientId},responses->>origin_client_id.eq.${originClientId}`,
+    )
+    .order('submitted_at', { ascending: false })
+    .limit(5);
+  if (error) throw new ReinstateClientError(error.message, 500);
+
+  const match = (data ?? [])[0];
+  return (match as {
+    id: string;
+    client_id: string | null;
+    responses: Record<string, unknown> | null;
+    submitted_at: string;
+  } | undefined) ?? null;
+}
+
+async function throwIdempotentConflict(opts: {
+  appOrigin: string;
+  engagement: ReinstateEngagement;
+  clientId: string;
+  welcomeBackToken: string | null | undefined;
+}): Promise<never> {
+  const token = opts.welcomeBackToken ? String(opts.welcomeBackToken) : '';
+  if (!token) {
+    throw new ReinstateClientError('Client was already reinstated recently', 409, {
+      client_id: opts.clientId,
+      engagement: opts.engagement,
+    });
+  }
+  throw new ReinstateClientError('Client was already reinstated recently', 409, {
+    client_id: opts.clientId,
+    welcome_back_url: buildWelcomeBackUrl(opts.appOrigin, token),
+    engagement: opts.engagement,
+  });
 }
 
 export async function reinstateClient(
@@ -93,7 +255,7 @@ export async function reinstateClient(
 
   const { data: origin, error: loadErr } = await service
     .from('clients')
-    .select('id, name, lifecycle_status, welcome_back_token')
+    .select(ORIGIN_SELECT)
     .eq('id', clientId)
     .maybeSingle();
 
@@ -102,34 +264,49 @@ export async function reinstateClient(
 
   const lifecycle = (origin.lifecycle_status as string | null) ?? null;
 
-  if (lifecycle === 'onboarding' && origin.welcome_back_token) {
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: recent, error: recentErr } = await service
-      .from('client_form_submissions')
-      .select('id, responses, submitted_at')
-      .eq('client_id', origin.id)
-      .eq('form_type', 'reinstate')
-      .in('status', ['applied', 'submitted'])
-      .gte('submitted_at', cutoff)
-      .order('submitted_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (recentErr) throw new ReinstateClientError(recentErr.message, 500);
+  // Idempotency before create: any recent reinstate on the origin (regardless of
+  // current lifecycle) with a resolvable welcome-back target → 409.
+  {
+    const recent = await loadRecentOriginReinstate(service, origin.id as string);
     if (recent) {
-      const engagement =
-        (recent.responses as { engagement?: ReinstateFormDraft['engagement'] } | null)
-          ?.engagement === 'new_offer'
-          ? 'new_offer'
-          : 'same_file';
-      const welcome_back_url = buildWelcomeBackUrl(
-        appOrigin,
-        String(origin.welcome_back_token),
-      );
-      throw new ReinstateClientError('Client was already reinstated recently', 409, {
-        client_id: origin.id,
-        welcome_back_url,
-        engagement,
-      });
+      const engagement = readReinstateEngagement(recent.responses) ?? 'same_file';
+      if (engagement === 'new_offer') {
+        const targetId = readTargetClientId(recent.responses);
+        if (targetId) {
+          const { data: sibling, error: siblingLoadErr } = await service
+            .from('clients')
+            .select('id, welcome_back_token')
+            .eq('id', targetId)
+            .maybeSingle();
+          if (siblingLoadErr) throw new ReinstateClientError(siblingLoadErr.message, 500);
+          if (sibling?.welcome_back_token) {
+            await throwIdempotentConflict({
+              appOrigin,
+              engagement: 'new_offer',
+              clientId: sibling.id as string,
+              welcomeBackToken: sibling.welcome_back_token as string,
+            });
+          }
+        }
+      } else if (lifecycle === 'onboarding' && origin.welcome_back_token) {
+        await throwIdempotentConflict({
+          appOrigin,
+          engagement: 'same_file',
+          clientId: origin.id as string,
+          welcomeBackToken: origin.welcome_back_token as string,
+        });
+      } else if (engagement === 'same_file') {
+        // Origin may still be churned if a prior attempt wrote the submission
+        // then failed mid-flight; prefer existing token when present.
+        if (origin.welcome_back_token) {
+          await throwIdempotentConflict({
+            appOrigin,
+            engagement: 'same_file',
+            clientId: origin.id as string,
+            welcomeBackToken: origin.welcome_back_token as string,
+          });
+        }
+      }
     }
   }
 
@@ -168,6 +345,7 @@ export async function reinstateClient(
 
     targetClientId = sibling.id as string;
     appliedPatch = {
+      ...buildNewOfferIdentityPatch(origin as Record<string, unknown>),
       ...buildSameFileClientPatch(draft, reinstatedAtIso),
       welcome_back_token: token,
       welcome_back_token_created_at: tokenCreatedAt,
@@ -192,7 +370,14 @@ export async function reinstateClient(
     if (updateErr) throw new ReinstateClientError(updateErr.message, 500);
   }
 
-  const responses = reinstateDraftToResponses(draft);
+  // Always attach the reinstate submission to the welcome-back target (sibling for
+  // new_offer). Idempotency finds new_offer rows via responses.origin_client_id.
+  const responses = {
+    ...reinstateDraftToResponses(draft),
+    target_client_id: targetClientId,
+    origin_client_id: origin.id,
+  };
+
   let submission;
   try {
     submission = await insertFormSubmission(service, {
@@ -205,6 +390,7 @@ export async function reinstateClient(
         ...appliedPatch,
         engagement: draft.engagement,
         origin_client_id: origin.id,
+        target_client_id: targetClientId,
       },
     });
   } catch (e) {
@@ -216,7 +402,11 @@ export async function reinstateClient(
     ? normalizeSalesPackage(draft.sales_package)
     : null;
   const reportingType = normalizeReportingType(draft.reporting_type || draft.offer);
+  const closerName = draft.closer_name.trim();
 
+  // Closer-stats resolve closers via demo calls / offers, not close.setter_name.
+  // Still set setter_name (first-class text on acquisition_closes) + raw.closer_name
+  // so payroll / team-stats / raw tables can attribute the winback.
   const { data: closeRow, error: closeErr } = await service
     .from('acquisition_closes')
     .insert({
@@ -229,11 +419,13 @@ export async function reinstateClient(
       offer_type: offerType,
       reporting_type: reportingType,
       mapping_status: 'mapped',
+      setter_name: closerName || null,
       raw: {
-        closer_name: draft.closer_name,
+        closer_name: closerName,
         engagement: draft.engagement,
         ghl_reuse: draft.ghl_reuse,
         origin_client_id: origin.id,
+        target_client_id: targetClientId,
         reinstate: true,
       },
     })

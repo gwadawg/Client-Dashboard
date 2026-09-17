@@ -294,6 +294,8 @@ Run `supabase/migrations/add_launch_kit_form_type.sql` — adds the `launch_kit`
 
 ## Reinstate / welcome-back
 
+Run `supabase/migrations/add_client_reinstate.sql` before deploying.
+
 Paid rejoins use the closer form at `/forms/reinstate` (not the New Client
 GHL form). That writes `reinstated_at`, a winback `acquisition_closes` row
 (`close_kind=reinstate`), and a per-client welcome-back token.

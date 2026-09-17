@@ -3,6 +3,10 @@ import { describe, it } from 'node:test';
 import {
   buildWelcomeBackUrl,
   buildSameFileClientPatch,
+  buildNewOfferIdentityPatch,
+  readReinstateEngagement,
+  readTargetClientId,
+  REINSTATE_NEW_OFFER_IDENTITY_FIELDS,
 } from '@/lib/reinstate-client';
 import { emptyReinstateDraft } from '@/lib/reinstate-form';
 
@@ -52,5 +56,48 @@ describe('reinstate-client helpers', () => {
     draft.mrr = null;
     const patch = buildSameFileClientPatch(draft, '2026-09-17T12:00:00.000Z');
     assert.equal(patch.mrr, undefined);
+  });
+
+  it('copies allowlisted identity fields and never GHL/ClickUp/Slack ids', () => {
+    const origin = {
+      email: 'a@example.com',
+      phone: '555',
+      primary_contact_name: 'Alex',
+      brokerage_name: 'Broker',
+      legal_business_name: 'LLC',
+      nmls: '1',
+      city: 'Austin',
+      state: 'TX',
+      states_licensed: ['TX'],
+      timezone: 'America/Chicago',
+      website: 'https://example.com',
+      facebook_page_name: 'Page',
+      contact_role: 'MLO',
+      headshot_url: 'https://cdn.example/h.jpg',
+      ghl_location_id: 'loc_should_not_copy',
+      ghl_contact_id: 'contact_should_not_copy',
+      clickup_task_id: 'cu_should_not_copy',
+      slack_id: 'C_should_not_copy',
+    };
+    const patch = buildNewOfferIdentityPatch(origin);
+    assert.equal(patch.email, 'a@example.com');
+    assert.equal(patch.headshot_url, 'https://cdn.example/h.jpg');
+    assert.equal(patch.ghl_location_id, undefined);
+    assert.equal(patch.ghl_contact_id, undefined);
+    assert.equal(patch.clickup_task_id, undefined);
+    assert.equal(patch.slack_id, undefined);
+    for (const key of REINSTATE_NEW_OFFER_IDENTITY_FIELDS) {
+      if (key in origin) assert.ok(key in patch, key);
+    }
+  });
+
+  it('reads engagement and target_client_id from reinstate responses', () => {
+    assert.equal(readReinstateEngagement({ engagement: 'new_offer' }), 'new_offer');
+    assert.equal(readReinstateEngagement({ engagement: 'nope' }), null);
+    assert.equal(
+      readTargetClientId({ target_client_id: ' sib-1 ' }),
+      'sib-1',
+    );
+    assert.equal(readTargetClientId({}), null);
   });
 });
