@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import { getLatestChurnReasonsByClient } from '@/lib/form-submissions';
 import { ReinstateClientError, reinstateClient } from '@/lib/reinstate-client';
 import { parseReinstateDraftFromBody, reinstateValidationError } from '@/lib/reinstate-form';
 
@@ -27,7 +28,25 @@ export async function GET(req: Request) {
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ clients: data ?? [] });
+
+  const clients = data ?? [];
+  const clientIds = clients.map(c => c.id as string);
+  let latestChurnReasons: Record<string, string> = {};
+  if (clientIds.length > 0) {
+    try {
+      latestChurnReasons = await getLatestChurnReasonsByClient(ctx.service, clientIds);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({
+    clients: clients.map(c => ({
+      ...c,
+      latest_churn_reason: latestChurnReasons[c.id as string] ?? null,
+    })),
+  });
 }
 
 export async function POST(req: Request) {

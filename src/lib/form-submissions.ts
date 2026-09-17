@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { reasonLabel } from '@/lib/client-feedback';
 import { latestReinstateCutoffIso, mapCycleProgress } from '@/lib/reinstate-progress';
 
 export const FORM_TYPES = [
@@ -180,6 +181,32 @@ export async function getFormProgressForClients(
   for (const [cid, rows] of byClient) {
     const cutoff = latestReinstateCutoffIso(rows);
     out[cid] = mapCycleProgress(rows, cutoff);
+  }
+  return out;
+}
+
+/** Latest applied churn form reason label per client (batch). */
+export async function getLatestChurnReasonsByClient(
+  service: SupabaseClient,
+  clientIds: string[],
+): Promise<Record<string, string>> {
+  if (clientIds.length === 0) return {};
+  const { data, error } = await service
+    .from('client_form_submissions')
+    .select('client_id, responses, submitted_at')
+    .in('client_id', clientIds)
+    .eq('form_type', 'churn')
+    .eq('status', 'applied')
+    .order('submitted_at', { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const out: Record<string, string> = {};
+  for (const row of data ?? []) {
+    const clientId = row.client_id as string | null;
+    if (!clientId || out[clientId]) continue;
+    const responses = row.responses as Record<string, unknown> | null;
+    const code = typeof responses?.reason_code === 'string' ? responses.reason_code : null;
+    if (code) out[clientId] = reasonLabel(code);
   }
   return out;
 }

@@ -25,6 +25,7 @@ type ReinstatePickerClient = {
   offer: string | null;
   churned_at: string | null;
   mrr: number | string | null;
+  latest_churn_reason: string | null;
 };
 
 const fieldStyle = {
@@ -289,7 +290,7 @@ export default function ReinstateFormPage({
                     Change
                   </button>
                 </div>
-                <dl className="grid grid-cols-3 gap-2 text-xs">
+                <dl className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                   <div>
                     <dt className="text-slate-500">Prior offer</dt>
                     <dd className="text-slate-300 mt-0.5">{selectedClient.offer?.trim() || "—"}</dd>
@@ -302,6 +303,12 @@ export default function ReinstateFormPage({
                     <dt className="text-slate-500">MRR</dt>
                     <dd className="text-slate-300 mt-0.5">{formatMrr(selectedClient.mrr)}</dd>
                   </div>
+                  {selectedClient.latest_churn_reason && (
+                    <div className="col-span-2 sm:col-span-3">
+                      <dt className="text-slate-500">Churn reason</dt>
+                      <dd className="text-slate-300 mt-0.5">{selectedClient.latest_churn_reason}</dd>
+                    </div>
+                  )}
                 </dl>
               </div>
             )}
