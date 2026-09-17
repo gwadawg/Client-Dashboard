@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  CS_REINSTATE_CHECKLIST,
   emptyReinstateDraft,
   reinstateValidationError,
   reinstateDraftToResponses,
@@ -43,5 +44,16 @@ describe('reinstate-form', () => {
     const err = reinstateValidationError(draft);
     assert.ok(err);
     assert.match(err, /cannot reuse/i);
+  });
+
+  it('initializes cs_checklist with all keys false', () => {
+    const responses = reinstateDraftToResponses(emptyReinstateDraft());
+    const checklist = responses.cs_checklist as Record<string, boolean>;
+    assert.ok(checklist);
+    for (const item of CS_REINSTATE_CHECKLIST) {
+      assert.equal(checklist[item.key], false, `${item.key} should be false`);
+    }
+    assert.equal(checklist.meta_map_checked, false);
+    assert.equal(Object.keys(checklist).length, CS_REINSTATE_CHECKLIST.length);
   });
 });

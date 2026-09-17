@@ -56,9 +56,6 @@ export function reinstateValidationError(draft: ReinstateFormDraft): string | nu
   if (!draft.offer.trim() && !draft.reporting_type.trim()) return 'Enter the offer / product.';
   if (!draft.closed_at.trim()) return 'Enter the reinstate (signed) date.';
   if (!draft.closer_name.trim()) return 'Enter the closer name.';
-  if (draft.engagement === 'same_file' && draft.ghl_reuse === 'yes') {
-    /* ok — reuse only valid for same_file; enforced in UI copy too */
-  }
   if (draft.engagement === 'new_offer' && draft.ghl_reuse === 'yes') {
     return 'New offer cannot reuse the old GHL sub-account on the sibling row.';
   }
