@@ -1,6 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { latestReinstateCutoffIso, mapCycleProgress } from '@/lib/reinstate-progress';
 
-export const FORM_TYPES = ['new_client', 'onboarding', 'kickoff', 'launch', 'launch_kit', 'churn'] as const;
+export const FORM_TYPES = [
+  'new_client',
+  'onboarding',
+  'kickoff',
+  'launch',
+  'launch_kit',
+  'churn',
+  'reinstate',
+  'reinstate_onboarding',
+] as const;
 export type FormType = (typeof FORM_TYPES)[number];
 
 export const FORM_STATUSES = ['draft', 'submitted', 'unmapped', 'applied', 'dismissed'] as const;
@@ -13,6 +23,8 @@ export const FORM_TYPE_LABELS: Record<FormType, string> = {
   launch: 'Launch',
   launch_kit: 'Launch Kit',
   churn: 'Churn / Offboarding',
+  reinstate: 'Reinstate',
+  reinstate_onboarding: 'Welcome-Back OB',
 };
 
 export const FORM_STATUS_LABELS: Record<FormStatus, string> = {
@@ -141,19 +153,33 @@ export async function getFormProgressForClients(
   if (clientIds.length === 0) return {};
   const { data, error } = await service
     .from('client_form_submissions')
-    .select('client_id, form_type, status')
+    .select('client_id, form_type, status, submitted_at')
     .in('client_id', clientIds)
+    .in('form_type', [...FORM_TYPES])
     .in('status', ['applied', 'submitted'])
     .order('submitted_at', { ascending: false });
   if (error) throw new Error(error.message);
 
-  const out: Record<string, Partial<Record<FormType, boolean>>> = {};
+  const byClient = new Map<
+    string,
+    Array<{ form_type: string; submitted_at: string; status?: string }>
+  >();
   for (const row of data ?? []) {
     if (!row.client_id) continue;
     const cid = row.client_id as string;
-    const ft = row.form_type as FormType;
-    if (!out[cid]) out[cid] = {};
-    if (out[cid][ft] === undefined) out[cid][ft] = true;
+    const list = byClient.get(cid) ?? [];
+    list.push({
+      form_type: row.form_type as string,
+      submitted_at: row.submitted_at as string,
+      status: row.status as string | undefined,
+    });
+    byClient.set(cid, list);
+  }
+
+  const out: Record<string, Partial<Record<FormType, boolean>>> = {};
+  for (const [cid, rows] of byClient) {
+    const cutoff = latestReinstateCutoffIso(rows);
+    out[cid] = mapCycleProgress(rows, cutoff);
   }
   return out;
 }
