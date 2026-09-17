@@ -104,24 +104,25 @@ export function calculateCloserMetrics(input: CloserMetricsInput): CloserRow[] {
     if (!isReportingClose(c)) continue;
     if (!inRange(c.closed_at, from, to)) continue;
     if (!offerMatchesScope(c.offer_type, offerScope)) continue;
-    const callId = (c as { call_id?: string | null }).call_id;
-    // Try to resolve closer via call_id if available, fallback to offer link
-    const closer = callId
-      ? [...byCloser.keys()].find(k => k) // already bucketed via calls
+
+    // Prefer demo/offer appointment linkage; fall back to reinstate raw.closer_name.
+    const offerLink = c.lead_id
+      ? [...offers].find(o => {
+          if (!inRange(o.offered_at, from, to)) return false;
+          return o.lead_id === c.lead_id && offerMatchesScope(o.offer_type, offerScope);
+        })
       : undefined;
-    // When we have appointment linkage, use that
-    const offerLink = [...offers].find(o => {
-      if (!inRange(o.offered_at, from, to)) return false;
-      return o.lead_id === c.lead_id && offerMatchesScope(o.offer_type, offerScope);
-    });
-    const resolvedCloser = offerLink?.appointment_id
+    const fromAppt = offerLink?.appointment_id
       ? apptToCloser.get(offerLink.appointment_id)
       : undefined;
+    const fromRaw =
+      typeof c.raw?.closer_name === 'string' ? c.raw.closer_name.trim() : '';
+    const resolvedCloser = fromAppt || fromRaw || undefined;
     if (!resolvedCloser) continue;
     if (closerFilter && resolvedCloser.toLowerCase() !== closerFilter.toLowerCase()) continue;
     const b = getBucket(resolvedCloser);
     b.closes++;
-    b.cash += Number((c as { cash_collected?: number | null }).cash_collected ?? 0);
+    b.cash += Number(c.cash_collected ?? 0);
   }
 
   const rate = (n: number, d: number) => (d > 0 ? (n / d) * 100 : null);

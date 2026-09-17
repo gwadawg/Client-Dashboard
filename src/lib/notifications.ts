@@ -8,6 +8,7 @@ import {
   formatLaunchClientSlackMessage,
   formatLaunchOpsSlackMessage,
   formatOnboardingCompleteSlackMessage,
+  formatReinstateSlackMessage,
   getSlackOpsChannelSlug,
   isSlackConfigured,
   postSlackMessage,
@@ -67,6 +68,34 @@ export async function notifyOnboardingComplete(
       event: 'onboarding_complete',
       ...payload,
     });
+  }
+}
+
+/** Ops alert with welcome-back URL after a closer reinstate. Never throws. */
+export async function notifyReinstateComplete(
+  service: SupabaseClient,
+  payload: {
+    client_id: string;
+    client_name: string;
+    engagement: string;
+    closer_name: string;
+    welcome_back_url: string;
+    ghl_reuse?: string | null;
+  },
+): Promise<void> {
+  try {
+    const text = formatReinstateSlackMessage(payload);
+    if (!isSlackConfigured()) {
+      console.info('[notifications] reinstate Slack skipped — bot not configured');
+      return;
+    }
+    const opsSlug = getSlackOpsChannelSlug();
+    const result = await postToTeamChannel(service, opsSlug, text);
+    if (result && !result.ok) {
+      console.error('[notifications] reinstate Slack failed', result.error);
+    }
+  } catch (e) {
+    console.error('[notifications] reinstate Slack unexpected error', e);
   }
 }
 

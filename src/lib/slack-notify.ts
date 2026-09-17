@@ -276,6 +276,30 @@ export function formatOnboardingUnmappedSlackMessage(payload: {
     .join('\n');
 }
 
+export function formatReinstateSlackMessage(payload: {
+  client_name: string;
+  engagement: string;
+  closer_name: string;
+  welcome_back_url: string;
+  ghl_reuse?: string | null;
+}): string {
+  return [
+    `🔄 *Client reinstated* — send welcome-back form`,
+    '',
+    `Client: *${payload.client_name}*`,
+    `Engagement: ${payload.engagement === 'new_offer' ? 'New offer (sibling)' : 'Same file'}`,
+    payload.closer_name ? `Closer: ${payload.closer_name}` : null,
+    payload.ghl_reuse ? `GHL reuse intent: ${payload.ghl_reuse}` : null,
+    '',
+    `Welcome-back link (forward to client):`,
+    `<${payload.welcome_back_url}|Open welcome-back form>`,
+    '',
+    '_ClickUp / Slack channel / Meta map remain manual. Posted by Mr. Waiz_',
+  ]
+    .filter((line): line is string => line != null)
+    .join('\n');
+}
+
 /** Post to a team channel by slug, or skip if not configured. */
 export async function postToTeamChannel(
   service: SupabaseClient,

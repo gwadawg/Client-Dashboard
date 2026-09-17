@@ -9,7 +9,34 @@
 // Money is treated as plain numbers; dates as YYYY-MM-DD strings compared by
 // their leading YYYY-MM so month bucketing never drifts across timezones.
 
+import { countsTowardCacDenominator } from "./acquisition-close-filter";
 import { balanceOf, recordedState, type BillingAmounts } from "./billing";
+
+const MONTH_RE = /^\d{4}-\d{2}$/;
+
+/** Close stamp used to build the CAC signed-closes bucket. */
+export type CacCloseStamp = {
+  closed_at: string | null;
+  close_kind?: string | null;
+};
+
+/**
+ * Count standard closes per YYYY-MM for CAC.
+ * Excludes `close_kind=reinstate`; treats missing/null/`standard` as includable
+ * so pre-migration rows still count.
+ */
+export function bucketSignedClosesForCac(rows: CacCloseStamp[]): Record<string, number> {
+  const signedClosesByMonth: Record<string, number> = {};
+  for (const row of rows) {
+    if (!countsTowardCacDenominator(row.close_kind)) continue;
+    const closedAt = row.closed_at;
+    if (!closedAt) continue;
+    const m = closedAt.slice(0, 7);
+    if (!MONTH_RE.test(m)) continue;
+    signedClosesByMonth[m] = (signedClosesByMonth[m] ?? 0) + 1;
+  }
+  return signedClosesByMonth;
+}
 
 // ── Input row shapes (subset of the DB columns the engine needs) ──────────────
 
@@ -77,6 +104,7 @@ export type BusinessInput = {
   snapshots?: ClientMonthlySnapshot[];
   /**
    * Acquisition signed closes per YYYY-MM (non-dismissed). CAC denominator.
+   * Callers must exclude `close_kind=reinstate` (see bucketSignedClosesForCac).
    * When omitted, CAC falls back to roster `date_signed` count.
    */
   signedClosesByMonth?: Record<string, number>;

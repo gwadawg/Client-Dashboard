@@ -7,6 +7,11 @@ export type InternalFormDef = {
   href: string;
   audience: string;
   tags: string[];
+  /**
+   * When true, docs/registry only — not a universal public link.
+   * Hidden from /forms hub and Team Forms cards (tokenized URLs only).
+   */
+  tokenOnly?: boolean;
 };
 
 export const INTERNAL_FORMS: InternalFormDef[] = [
@@ -65,6 +70,15 @@ export const INTERNAL_FORMS: InternalFormDef[] = [
     tags: ["churn", "offboarding", "cs"],
   },
   {
+    slug: "reinstate",
+    title: "Client Reinstate",
+    description:
+      "Closer form for paid rejoins: pick a churned client, log the winback close, and issue a welcome-back OB link.",
+    href: "/forms/reinstate",
+    audience: "Closers / Client Success",
+    tags: ["reinstate", "winback", "cs", "sales"],
+  },
+  {
     slug: "onboard",
     title: "Client Onboarding",
     description: "Public form for new clients to submit onboarding details after sign-up.",
@@ -81,7 +95,22 @@ export const INTERNAL_FORMS: InternalFormDef[] = [
     audience: "Clients (DSCR performance)",
     tags: ["onboarding", "client-facing", "dscr", "performance"],
   },
+  {
+    slug: "onboard-welcome-back",
+    title: "Welcome-Back Onboarding",
+    description:
+      "Token-only confirm/update form for reinstated clients. Not a universal public link — issued per client from the closer reinstate form at /onboard/welcome-back/[token].",
+    href: "/onboard/welcome-back/[token]",
+    audience: "Reinstated clients",
+    tags: ["onboarding", "client-facing", "reinstate", "token-only"],
+    tokenOnly: true,
+  },
 ];
+
+/** Forms safe to list in hubs / Resources (excludes token-only entries). */
+export function listableInternalForms(): InternalFormDef[] {
+  return INTERNAL_FORMS.filter((f) => !f.tokenOnly);
+}
 
 export function internalFormHref(slug: string, params?: Record<string, string>): string {
   const form = INTERNAL_FORMS.find(f => f.slug === slug);
@@ -93,6 +122,10 @@ export function internalFormHref(slug: string, params?: Record<string, string>):
 
 export function churnFormHref(clientId?: string | null): string {
   return internalFormHref("churn", clientId ? { clientId } : undefined);
+}
+
+export function reinstateFormHref(clientId?: string | null): string {
+  return internalFormHref("reinstate", clientId ? { clientId } : undefined);
 }
 
 export function isChurnOffboardEligible(lifecycleStatus: string | null | undefined): boolean {

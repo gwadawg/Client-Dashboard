@@ -13,6 +13,7 @@ import {
   linkOrphanDialsToLead,
   mergeIncomingLeadFields,
 } from './acquisition-lead-resolve';
+import { resolveFinalizeClosePlan } from './acquisition-close-finalize';
 import { normalizeProduct } from './offer-catalog';
 
 type JsonObject = Record<string, unknown>;
@@ -528,7 +529,7 @@ async function finalizeClose(
   leadId: string,
   clientId: string,
   opts?: { formSubmissionId?: string; closedAt?: string },
-): Promise<void> {
+): Promise<string | null> {
   const closedAt = opts?.closedAt ?? new Date().toISOString();
   await service
     .from('acquisition_leads')
@@ -539,6 +540,8 @@ async function finalizeClose(
     })
     .eq('id', leadId);
 
+  // Pending closes are 1:1 per lead in normal flow; keep maybeSingle but
+  // order+limit so duplicates never blow up.
   const { data: pending } = await service
     .from('acquisition_closes')
     .select('id')
@@ -546,6 +549,8 @@ async function finalizeClose(
     .eq('mapping_status', 'pending_client')
     .is('client_id', null)
     .is('deleted_at', null)
+    .order('closed_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   const row = {
@@ -559,20 +564,38 @@ async function finalizeClose(
 
   if (pending?.id) {
     await service.from('acquisition_closes').update(row).eq('id', pending.id);
-    return;
+    return pending.id as string;
   }
 
+  // Unique(client_id) was dropped for winbacks — never bare maybeSingle here.
   const { data: existing } = await service
     .from('acquisition_closes')
-    .select('id')
+    .select('id, close_kind')
     .eq('client_id', clientId)
     .is('deleted_at', null)
     .neq('mapping_status', 'dismissed')
+    .order('closed_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
-  if (existing) {
-    await service.from('acquisition_closes').update(row).eq('id', existing.id);
-  } else {
-    await service.from('acquisition_closes').insert(row);
+  const plan = resolveFinalizeClosePlan(
+    (existing as { id: string; close_kind?: string | null } | null) ?? null,
+  );
+
+  if (plan.action === 'skip_reinstate') {
+    // Map-to-existing-client must not mutate winback cash/kind/source.
+    return plan.id;
   }
+
+  if (plan.action === 'update') {
+    await service.from('acquisition_closes').update(row).eq('id', plan.id);
+    return plan.id;
+  }
+
+  const { data: inserted } = await service
+    .from('acquisition_closes')
+    .insert(row)
+    .select('id')
+    .single();
+  return (inserted?.id as string | undefined) ?? null;
 }

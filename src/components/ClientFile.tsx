@@ -126,6 +126,7 @@ type FileClient = {
   clickup_task_id?: string | null;
   created_at: string | null;
   churned_at: string | null;
+  reinstated_at: string | null;
 };
 
 type StatusHistoryEntry = {
@@ -270,6 +271,23 @@ function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+const REINSTATE_BADGE_ACTIVE_MS = 90 * 24 * 60 * 60 * 1000;
+
+function shouldShowReinstateBadge(
+  reinstatedAt: string | null | undefined,
+  lifecycle: string | null | undefined,
+  now = Date.now(),
+): boolean {
+  if (!reinstatedAt) return false;
+  if (lifecycle === "onboarding" || lifecycle === "new_account") return true;
+  if (lifecycle === "active") {
+    const t = Date.parse(reinstatedAt);
+    if (Number.isNaN(t)) return true;
+    return now - t <= REINSTATE_BADGE_ACTIVE_MS;
+  }
+  return false;
 }
 
 function toDatetimeLocal(iso: string): string {
@@ -721,6 +739,14 @@ export default function ClientFile({
   const missingCount = countMissingFields(client);
   const onboardingCall = calls.find(c => c.call_type === "onboarding") ?? null;
   const kickoffPending = client ? isKickoffIncomplete(client, onboardingCall) : false;
+  const latestReinstate = formSubmissions.find(s => s.form_type === "reinstate") ?? null;
+  const welcomeBackObDone = !!(
+    latestReinstate &&
+    formSubmissions.some(
+      s => s.form_type === "reinstate_onboarding" && s.submitted_at >= latestReinstate.submitted_at,
+    )
+  );
+  const showReinstateBadge = shouldShowReinstateBadge(client?.reinstated_at, client?.lifecycle_status);
 
   return (
     <>
@@ -800,6 +826,27 @@ export default function ClientFile({
               {client && (
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={client.lifecycle_status === "active" ? { color: "#22c55e", background: "rgba(34,197,94,0.12)" } : { color: "#ef4444", background: "rgba(239,68,68,0.12)" }}>
                   {client.lifecycle_status === "active" ? "Live" : "Offline"}
+                </span>
+              )}
+              {showReinstateBadge && (
+                <span
+                  className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                  title={client?.reinstated_at ? `Reinstated ${formatDateTime(client.reinstated_at)}` : "Reinstated"}
+                  style={{ color: "#c4b5fd", background: "rgba(167,139,250,0.14)" }}
+                >
+                  Reinstate
+                </span>
+              )}
+              {showReinstateBadge && latestReinstate && (
+                <span
+                  className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                  style={
+                    welcomeBackObDone
+                      ? { color: "#86efac", background: "rgba(34,197,94,0.12)" }
+                      : { color: "#fbbf24", background: "rgba(251,191,36,0.12)" }
+                  }
+                >
+                  {welcomeBackObDone ? "Welcome-back OB done" : "Welcome-back OB pending"}
                 </span>
               )}
               {client && !editing && (
@@ -1435,7 +1482,13 @@ export default function ClientFile({
               <LoanLogLinkSection clientId={clientId} />
             </Section>
             <Section title={`Onboarding forms (${formSubmissions.length})`}>
-              <ClientFormsSection submissions={formSubmissions} clientId={clientId} />
+              <ClientFormsSection
+                submissions={formSubmissions}
+                clientId={clientId}
+                onResponsesUpdated={(id, responses) => {
+                  setFormSubmissions(prev => prev.map(s => (s.id === id ? { ...s, responses } : s)));
+                }}
+              />
             </Section>
 
             <Section title={`Success interventions`}>
@@ -1639,6 +1692,7 @@ export default function ClientFile({
                 <Detail label="Billing day" value={client?.billing_day ? `Day ${client.billing_day}` : "launch day"} />
                 <Detail label="Launch date" value={client?.launch_date} missing={!client?.launch_date} />
                 <Detail label="Date signed" value={client?.date_signed} missing={!client?.date_signed} />
+                <Detail label="Reinstated" value={client?.reinstated_at ? toDateInputValue(client.reinstated_at) || client.reinstated_at : null} />
                 <Detail label="Contract term" value={client?.contract_term_months ? `${client.contract_term_months} mo` : null} missing={client?.contract_term_months == null} />
                 <Detail label="Contract end" value={client?.contract_end_date} />
                 {canViewRevenue && <Detail label="Daily ad spend" value={money(client?.daily_adspend)} />}

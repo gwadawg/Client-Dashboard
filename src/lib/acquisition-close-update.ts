@@ -45,15 +45,22 @@ export async function assignClientToClose(
 
   if (close.client_id === clientId && close.mapping_status === 'mapped') return;
 
-  const { data: conflict } = await service
+  // Multiple closes per client are allowed (winbacks). Avoid bare maybeSingle()
+  // on client_id — it errors when 2+ rows exist. Only block when another
+  // non-reinstate close is already mapped to this client.
+  const { data: conflictRows } = await service
     .from('acquisition_closes')
-    .select('id')
+    .select('id, close_kind')
     .eq('client_id', clientId)
     .neq('id', closeId)
     .is('deleted_at', null)
-    .neq('mapping_status', 'dismissed')
-    .maybeSingle();
-  if (conflict) throw new Error('That client is already linked to another close');
+    .neq('mapping_status', 'dismissed');
+  const standardConflict = (conflictRows ?? []).find(
+    (row) => row.close_kind !== 'reinstate',
+  );
+  if (standardConflict) {
+    throw new Error('That client is already linked to another close');
+  }
 
   const { data: targetClient, error: targetErr } = await service
     .from('clients')

@@ -4,6 +4,7 @@ import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-aut
 import { CLIENT_CALL_FIELDS } from '@/lib/client-calls';
 import { insertFormSubmission, isBackfillFormSubmission } from '@/lib/form-submissions';
 import { isKickoffIncomplete } from '@/lib/kickoff';
+import { isLaunchBlockingForCycle, latestReinstateCutoffIso } from '@/lib/reinstate-progress';
 import {
   getLaunchChecklistConfig,
   getFirstIncompleteItemKey,
@@ -22,6 +23,57 @@ import { notifyLaunchComplete } from '@/lib/notifications';
 
 const LAUNCH_PERMISSION_KEYS = ['admin_clients', 'admin_billing'];
 const LAUNCH_LIFECYCLE_STATUSES = new Set(['new_account', 'onboarding']);
+const LAUNCH_SUBMISSION_FIELDS = 'id, form_type, submitted_at, submitted_by, responses, applied_patch, status';
+const REINSTATE_CUTOFF_FIELDS = 'form_type, submitted_at';
+
+type LaunchGateRow = {
+  form_type?: string;
+  submitted_at: string;
+  submitted_by?: string | null;
+  responses?: Record<string, unknown> | null;
+  applied_patch?: Record<string, unknown> | null;
+  status?: string | null;
+};
+
+function alreadyLaunchedForCycle(
+  launchRows: LaunchGateRow[],
+  reinstateRows: Array<{ form_type: string; submitted_at: string }>,
+): boolean {
+  const cutoff = latestReinstateCutoffIso(reinstateRows);
+  const operationalLaunchRowsWithSubmittedAt = launchRows.filter(
+    row => !isBackfillFormSubmission(row),
+  );
+  return isLaunchBlockingForCycle(
+    operationalLaunchRowsWithSubmittedAt.map(row => ({
+      form_type: 'launch',
+      submitted_at: row.submitted_at,
+      status: row.status ?? 'applied',
+    })),
+    cutoff,
+  );
+}
+
+async function fetchLaunchCycleSubmissions(service: SupabaseClient, clientId: string) {
+  const [launchSubRes, reinstateSubRes] = await Promise.all([
+    service
+      .from('client_form_submissions')
+      .select(LAUNCH_SUBMISSION_FIELDS)
+      .eq('client_id', clientId)
+      .eq('form_type', 'launch')
+      .eq('status', 'applied')
+      .order('submitted_at', { ascending: false })
+      .limit(5),
+    service
+      .from('client_form_submissions')
+      .select(REINSTATE_CUTOFF_FIELDS)
+      .eq('client_id', clientId)
+      .eq('form_type', 'reinstate')
+      .in('status', ['applied', 'submitted'])
+      .order('submitted_at', { ascending: false })
+      .limit(5),
+  ]);
+  return { launchSubRes, reinstateSubRes };
+}
 
 function optionalText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -152,20 +204,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { id: clientId } = await params;
 
-  const [clientRes, launchSubRes, onboardingCallRes, assignableUsers, launchKitRes] = await Promise.all([
+  const [clientRes, cycleSubs, onboardingCallRes, assignableUsers, launchKitRes] = await Promise.all([
     ctx.service
       .from('clients')
       .select('id, name, lifecycle_status, ghl_location_id, primary_contact_name, launch_date, slack_id, reporting_type, service_program')
       .eq('id', clientId)
       .single(),
-    ctx.service
-      .from('client_form_submissions')
-      .select('id, submitted_at, submitted_by, responses, applied_patch')
-      .eq('client_id', clientId)
-      .eq('form_type', 'launch')
-      .eq('status', 'applied')
-      .order('submitted_at', { ascending: false })
-      .limit(5),
+    fetchLaunchCycleSubmissions(ctx.service, clientId),
     ctx.service
       .from('client_calls')
       .select('id, recording_url')
@@ -192,14 +237,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const formProfile = profileFromClient(clientRes.data);
   const kickoffIncomplete = isKickoffIncomplete(clientRes.data, onboardingCallRes.data);
   const defaultUser = assignableUsers.find(u => u.id === ctx.userId);
-  const operationalLaunch = (launchSubRes.data ?? []).find(
-    row => !isBackfillFormSubmission(row),
+  const alreadyLaunched = alreadyLaunchedForCycle(
+    (cycleSubs.launchSubRes.data ?? []) as LaunchGateRow[],
+    (cycleSubs.reinstateSubRes.data ?? []) as Array<{ form_type: string; submitted_at: string }>,
   );
 
   return NextResponse.json({
     client: clientRes.data,
     kickoff_complete: !kickoffIncomplete,
-    already_launched: !!operationalLaunch,
+    already_launched: alreadyLaunched,
     has_launch_kit: (launchKitRes.count ?? 0) > 0,
     default_launch_date: clientRes.data.launch_date ?? new Date().toISOString().slice(0, 10),
     form_profile: formProfile,
@@ -218,19 +264,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { id: clientId } = await params;
 
-  const [clientRes, launchSubRes, onboardingCallRes] = await Promise.all([
+  const [clientRes, cycleSubs, onboardingCallRes] = await Promise.all([
     ctx.service
       .from('clients')
       .select('id, name, lifecycle_status, slack_id, launch_date, ghl_location_id, primary_contact_name, reporting_type, service_program')
       .eq('id', clientId)
       .single(),
-    ctx.service
-      .from('client_form_submissions')
-      .select('id, submitted_by, responses, applied_patch')
-      .eq('client_id', clientId)
-      .eq('form_type', 'launch')
-      .eq('status', 'applied')
-      .limit(5),
+    fetchLaunchCycleSubmissions(ctx.service, clientId),
     ctx.service
       .from('client_calls')
       .select('id, recording_url')
@@ -255,10 +295,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const validationError = validateLaunchDraft(draft, formProfile, assignableUsers);
   if (validationError) return validationError;
 
-  const operationalLaunch = (launchSubRes.data ?? []).find(
-    row => !isBackfillFormSubmission(row),
-  );
-  if (operationalLaunch) {
+  if (
+    alreadyLaunchedForCycle(
+      (cycleSubs.launchSubRes.data ?? []) as LaunchGateRow[],
+      (cycleSubs.reinstateSubRes.data ?? []) as Array<{ form_type: string; submitted_at: string }>,
+    )
+  ) {
     return NextResponse.json({ error: 'This client already has a completed launch checklist' }, { status: 409 });
   }
 
