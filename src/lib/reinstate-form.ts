@@ -83,3 +83,39 @@ export function reinstateDraftToResponses(draft: ReinstateFormDraft): Record<str
     ),
   };
 }
+
+function optionalText(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function optionalNumber(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function parseReinstateDraftFromBody(body: Record<string, unknown>): ReinstateFormDraft {
+  const draft = emptyReinstateDraft();
+  draft.client_id = optionalText(body.client_id);
+  draft.engagement =
+    body.engagement === 'same_file' || body.engagement === 'new_offer'
+      ? body.engagement
+      : draft.engagement;
+  draft.offer = optionalText(body.offer);
+  draft.reporting_type = optionalText(body.reporting_type);
+  draft.sales_package = optionalText(body.sales_package);
+  draft.mrr = optionalNumber(body.mrr);
+  if (typeof body.closed_at === 'string') draft.closed_at = body.closed_at;
+  draft.closer_name = optionalText(body.closer_name);
+  draft.cash_collected = optionalNumber(body.cash_collected);
+  draft.contract_term_months = optionalNumber(body.contract_term_months);
+  draft.contract_end_date = optionalText(body.contract_end_date);
+  draft.ghl_reuse =
+    body.ghl_reuse === 'yes' || body.ghl_reuse === 'no' || body.ghl_reuse === 'unsure'
+      ? body.ghl_reuse
+      : draft.ghl_reuse;
+  draft.leave_billing_paused = body.leave_billing_paused === true;
+  draft.leave_ads_paused = body.leave_ads_paused === true;
+  draft.internal_notes = optionalText(body.internal_notes);
+  return draft;
+}

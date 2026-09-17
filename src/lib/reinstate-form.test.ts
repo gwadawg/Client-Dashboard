@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   CS_REINSTATE_CHECKLIST,
   emptyReinstateDraft,
+  parseReinstateDraftFromBody,
   reinstateValidationError,
   reinstateDraftToResponses,
 } from '@/lib/reinstate-form';
@@ -44,6 +45,32 @@ describe('reinstate-form', () => {
     const err = reinstateValidationError(draft);
     assert.ok(err);
     assert.match(err, /cannot reuse/i);
+  });
+
+  it('parses POST body field names into a draft', () => {
+    const draft = parseReinstateDraftFromBody({
+      client_id: '11111111-1111-1111-1111-111111111111',
+      engagement: 'new_offer',
+      offer: 'RM',
+      reporting_type: 'RM',
+      sales_package: 'full',
+      mrr: '5000',
+      closed_at: '2026-09-17',
+      closer_name: 'Alex Closer',
+      cash_collected: 5000,
+      contract_term_months: '12',
+      contract_end_date: '2027-09-17',
+      ghl_reuse: 'no',
+      leave_billing_paused: true,
+      leave_ads_paused: false,
+      internal_notes: 'Winback',
+    });
+    assert.equal(draft.engagement, 'new_offer');
+    assert.equal(draft.mrr, 5000);
+    assert.equal(draft.contract_term_months, 12);
+    assert.equal(draft.leave_billing_paused, true);
+    assert.equal(draft.ghl_reuse, 'no');
+    assert.equal(reinstateValidationError(draft), null);
   });
 
   it('initializes cs_checklist with all keys false', () => {
