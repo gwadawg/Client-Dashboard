@@ -201,7 +201,9 @@ export default function LensResults({ lens, rows, formatLabels, onOpen }: Props)
                         <Chip>{adFormatLabel(ad.library.ad_format, formatLabels)}</Chip>
                       ) : null}
                       {(ad.library?.tags ?? []).slice(0, 3).map((t) => (
-                        <Chip key={t.slug}>{t.label}</Chip>
+                        <Chip key={`${t.category ?? "tag"}:${t.slug}`}>
+                          {t.category ? `${t.category}: ${t.label}` : t.label}
+                        </Chip>
                       ))}
                       {!ad.is_sourced ? <Chip color="#64748b">Unsourced</Chip> : null}
                       <DiagnosisBadge diagnosis={ad.diagnosis} />
