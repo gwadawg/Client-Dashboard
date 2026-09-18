@@ -8,8 +8,9 @@ export type AdTagCategoryDef = {
   key: string;
   label: string;
   sort_order: number;
-  /** Exactly one tag required when saving (UI + API). */
+  /** At least one tag required when saving a non-empty tag set (UI + API). */
   required: boolean;
+  /** Always multi-select in the picker / API. */
   selection_mode: AdTagSelectionMode;
   /** Shown last / labeled legacy; not required; excluded from primary rollups. */
   deprecated?: boolean;
@@ -24,39 +25,39 @@ export type AdTagSeed = {
 };
 
 const DSCR_CATEGORIES: AdTagCategoryDef[] = [
-  { key: 'bucket', label: 'Bucket', sort_order: 10, required: true, selection_mode: 'single' },
+  { key: 'bucket', label: 'Bucket', sort_order: 10, required: true, selection_mode: 'multi' },
   {
     key: 'creative_job',
     label: 'Creative job',
     sort_order: 20,
     required: true,
-    selection_mode: 'single',
+    selection_mode: 'multi',
   },
-  { key: 'concept', label: 'Concept', sort_order: 30, required: true, selection_mode: 'single' },
+  { key: 'concept', label: 'Concept', sort_order: 30, required: true, selection_mode: 'multi' },
   { key: 'topic', label: 'Topic', sort_order: 40, required: false, selection_mode: 'multi' },
   {
     key: 'angle',
     label: 'Angle (legacy)',
     sort_order: 90,
     required: false,
-    selection_mode: 'single',
+    selection_mode: 'multi',
     deprecated: true,
   },
 ];
 
 const REVERSE_CATEGORIES: AdTagCategoryDef[] = [
-  { key: 'track', label: 'Track', sort_order: 10, required: true, selection_mode: 'single' },
-  { key: 'strategy', label: 'Strategy', sort_order: 20, required: true, selection_mode: 'single' },
-  { key: 'outcome', label: 'Outcome', sort_order: 30, required: true, selection_mode: 'single' },
-  { key: 'stage', label: 'Stage', sort_order: 40, required: true, selection_mode: 'single' },
+  { key: 'track', label: 'Track', sort_order: 10, required: true, selection_mode: 'multi' },
+  { key: 'strategy', label: 'Strategy', sort_order: 20, required: true, selection_mode: 'multi' },
+  { key: 'outcome', label: 'Outcome', sort_order: 30, required: true, selection_mode: 'multi' },
+  { key: 'stage', label: 'Stage', sort_order: 40, required: true, selection_mode: 'multi' },
   {
     key: 'equity_callout',
     label: 'Equity callout',
     sort_order: 50,
     required: true,
-    selection_mode: 'single',
+    selection_mode: 'multi',
   },
-  { key: 'concept', label: 'Concept', sort_order: 60, required: true, selection_mode: 'single' },
+  { key: 'concept', label: 'Concept', sort_order: 60, required: true, selection_mode: 'multi' },
   { key: 'trigger', label: 'Trigger', sort_order: 70, required: false, selection_mode: 'multi' },
 ];
 

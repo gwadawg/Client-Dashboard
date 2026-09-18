@@ -16,17 +16,21 @@ describe('ad-tag-categories', () => {
     const angle = categoriesForProduct('dscr').find((c) => c.key === 'angle')!;
     assert.equal(angle.deprecated, true);
     assert.equal(angle.required, false);
-    assert.equal(angle.selection_mode, 'single');
+    assert.equal(angle.selection_mode, 'multi');
   });
 
-  it('requires single-select on DSCR bucket/job/concept; topic is multi', () => {
+  it('makes every DSCR and RM category multi-select', () => {
+    for (const product of AD_TAG_PRODUCTS) {
+      for (const cat of categoriesForProduct(product)) {
+        assert.equal(cat.selection_mode, 'multi', `${product}/${cat.key}`);
+      }
+    }
     const byKey = Object.fromEntries(
       categoriesForProduct('dscr').map((c) => [c.key, c]),
     );
-    assert.equal(byKey.bucket.selection_mode, 'single');
+    assert.equal(byKey.bucket.required, true);
     assert.equal(byKey.creative_job.required, true);
     assert.equal(byKey.concept.required, true);
-    assert.equal(byKey.topic.selection_mode, 'multi');
     assert.equal(byKey.topic.required, false);
   });
 
@@ -82,14 +86,14 @@ describe('ad-tag-categories', () => {
 });
 
 describe('enforceCategorySelectionRules', () => {
-  it('rejects two buckets', () => {
+  it('allows multiple buckets', () => {
     const r = enforceCategorySelectionRules('dscr', [
       { id: '1', category: 'bucket', slug: 'denied' },
       { id: '2', category: 'bucket', slug: 'idle' },
       { id: '3', category: 'creative_job', slug: 'reveal' },
       { id: '4', category: 'concept', slug: 'nodocs-speed' },
     ]);
-    assert.match(r.error ?? '', /Bucket allows only one/);
+    assert.equal(r.error, undefined);
   });
 
   it('requires bucket + creative_job + concept', () => {

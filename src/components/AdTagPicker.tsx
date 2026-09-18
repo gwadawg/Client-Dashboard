@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   categoriesForProduct,
-  categoryDef,
   dscrTagPairingWarnings,
   isAdTagProduct,
   type AdTagProduct,
@@ -117,19 +116,8 @@ export function AdTagPicker({
   const pairingWarnings =
     productKey === "dscr" ? dscrTagPairingWarnings(selectedRefs) : [];
 
-  function toggle(id: string, category: string) {
-    if (!productKey) return;
-    const def = categoryDef(productKey, category);
-    const isOn = selected.has(id);
-    if (def?.selection_mode === "single") {
-      const othersInCat = active
-        .filter((t) => t.category === category && t.id !== id)
-        .map((t) => t.id);
-      const withoutCat = value.filter((x) => !othersInCat.includes(x) && x !== id);
-      onChange(isOn ? withoutCat : [...withoutCat, id]);
-      return;
-    }
-    onChange(isOn ? value.filter((x) => x !== id) : [...value, id]);
+  function toggle(id: string) {
+    onChange(selected.has(id) ? value.filter((x) => x !== id) : [...value, id]);
   }
 
   async function stampNew(category: string) {
@@ -139,15 +127,7 @@ export function AdTagPicker({
     setLocalError(null);
     try {
       const created = await onCreate({ label, category });
-      const def = categoryDef(productKey, category);
-      if (def?.selection_mode === "single") {
-        const othersInCat = active
-          .filter((t) => t.category === category)
-          .map((t) => t.id);
-        onChange([...value.filter((x) => !othersInCat.includes(x)), created.id]);
-      } else if (!selected.has(created.id)) {
-        onChange([...value, created.id]);
-      }
+      if (!selected.has(created.id)) onChange([...value, created.id]);
       setDraft("");
       setComposingCategory(null);
     } catch (e) {
@@ -183,8 +163,6 @@ export function AdTagPicker({
         const isOpen = openCategory === cat.key;
         const summary =
           selectedLabels.length > 0 ? selectedLabels.join(", ") : cat.required ? "Required" : "None";
-        const modeHint =
-          cat.selection_mode === "single" ? "pick one" : "multi-select";
 
         return (
           <div
@@ -211,7 +189,7 @@ export function AdTagPicker({
                 {cat.required ? " *" : ""}
                 <span className="font-normal normal-case tracking-normal opacity-70">
                   {" "}
-                  · {modeHint}
+                  · multi-select
                 </span>
               </span>
               <span
@@ -247,7 +225,7 @@ export function AdTagPicker({
                       <button
                         key={t.id}
                         type="button"
-                        onClick={() => toggle(t.id, cat.key)}
+                        onClick={() => toggle(t.id)}
                         className="px-2.5 py-1 rounded-md text-[11px] tracking-wide transition-colors"
                         style={{
                           fontFamily: "var(--font-plex-mono)",

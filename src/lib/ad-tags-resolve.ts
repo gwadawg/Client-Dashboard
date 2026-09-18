@@ -33,8 +33,8 @@ export function tagsAfterProductChange(
 }
 
 /**
- * Enforce selection_mode + required categories for a product.
- * `tags` must already be product-scoped catalog rows for the selected ids.
+ * Enforce known categories + required categories for a product.
+ * All categories are multi-select. `tags` must already be product-scoped.
  */
 export function enforceCategorySelectionRules(
   product: AdTagProduct,
@@ -47,15 +47,10 @@ export function enforceCategorySelectionRules(
     byCategory.set(t.category, list);
   }
 
-  for (const [category, list] of byCategory) {
+  for (const category of byCategory.keys()) {
     const def = categoryDef(product, category);
     if (!def) {
       return { error: `Unknown category "${category}" for ${product}` };
-    }
-    if (def.selection_mode === 'single' && list.length > 1) {
-      return {
-        error: `${def.label} allows only one tag (got ${list.map((t) => t.slug).join(', ')})`,
-      };
     }
   }
 
