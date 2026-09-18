@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import { getAppBaseUrlFromRequest } from '@/lib/app-url';
 import { getLatestChurnReasonsByClient } from '@/lib/form-submissions';
 import { notifyReinstateComplete } from '@/lib/notifications';
 import { ReinstateClientError, reinstateClient } from '@/lib/reinstate-client';
@@ -69,7 +70,7 @@ export async function POST(req: Request) {
     const result = await reinstateClient(ctx.service, {
       draft,
       submittedBy: ctx.userId,
-      appOrigin: process.env.NEXT_PUBLIC_APP_URL ?? new URL(req.url).origin,
+      appOrigin: getAppBaseUrlFromRequest(req),
     });
 
     const { data: named } = await ctx.service
