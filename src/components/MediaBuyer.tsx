@@ -1161,7 +1161,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                 type="button"
                 onClick={() => {
                   setProductFilter("all");
-                  setTagFilter("all");
+                  setCategoryFilters({});
                   setFormatFilter("all");
                   setStatusFilter("all");
                   setSearch("");
@@ -2237,10 +2237,13 @@ function AdLibrary({
                 ) : null}
                 {shownTags.map((t) => (
                   <button
-                    key={t.slug}
+                    key={`${t.category}:${t.slug}`}
                     type="button"
-                    onClick={() => setTagFilter(t.slug)}
-                    title={`Filter by ${t.label}`}
+                    onClick={() => {
+                      if (!t.category) return;
+                      setLibCategoryFilters({ [t.category]: [t.id] });
+                    }}
+                    title={`Filter by ${t.category}: ${t.label}`}
                   >
                     <Chip>{t.label}</Chip>
                   </button>
@@ -2307,7 +2310,7 @@ function AdLibrary({
           path={folderPath}
           onSelect={(next) => {
             selectFolder(next);
-            setTagFilter("all");
+            setLibCategoryFilters({});
           }}
           counts={folderCounts}
           formatLabels={formatLabels}

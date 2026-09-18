@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
 import { isAdTagProduct } from '@/lib/ad-tag-categories';
+import type { AdTagRef } from '@/lib/ad-tags';
 import { replaceLibraryTags, resolveTagIds, withLibraryTags } from '@/lib/ad-tags-db';
 
 const VALID_STATUS = ['active', 'winner', 'paused', 'archived'] as const;
@@ -138,7 +139,7 @@ export async function PATCH(
     const row = withCurrent.data[0];
     const nextProduct =
       data.product && isAdTagProduct(data.product as string) ? data.product : null;
-    const kept = (row?.tags ?? [])
+    const kept = ((row?.tags ?? []) as AdTagRef[])
       .filter((t) => nextProduct && t.product === nextProduct)
       .map((t) => t.id);
     const tagWrite = await replaceLibraryTags(ctx.service, id, kept);

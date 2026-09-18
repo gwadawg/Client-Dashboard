@@ -82,6 +82,8 @@ export type AdPerformanceRow = {
   has_meta: boolean;
 };
 
+import type { AdTagRef } from './ad-tags';
+
 export type AdLibraryMeta = {
   id: string;
   ad_name: string;
@@ -93,7 +95,7 @@ export type AdLibraryMeta = {
   visual_notes: string | null;
   drive_url: string | null;
   thumbnail_url: string | null;
-  tags?: { id: string; slug: string; label: string; product?: string; category?: string }[];
+  tags?: AdTagRef[];
 };
 
 export type RolledUpAdPerformanceRow = AdPerformanceRow & {
