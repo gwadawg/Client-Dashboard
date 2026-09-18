@@ -83,6 +83,13 @@ type Client = {
   timezone?: string | null;
   drive_folder_url?: string | null;
   facebook_page_name?: string | null;
+  funnel_url?: string | null;
+  page_optimized?: boolean | null;
+  instagram_handle?: string | null;
+  ad_account_name?: string | null;
+  ad_account_url?: string | null;
+  thank_you_page_url?: string | null;
+  second_landing_page_url?: string | null;
   kpi_benchmarks?: ClientKpiBenchmarks | null;
   kpi_benchmarks_updated_at?: string | null;
   kpi_benchmarks_updated_by?: string | null;
@@ -160,7 +167,11 @@ type ColumnKey =
   | "states"
   | "page"
   | "tz"
-  | "product";
+  | "product"
+  | "ad_account"
+  | "landing"
+  | "page_opt"
+  | "instagram";
 
 type RosterView = "full" | "cs" | "media";
 
@@ -173,7 +184,7 @@ const ROSTER_VIEWS: { key: RosterView; label: string }[] = [
 const VIEW_COLUMNS: Record<RosterView, ColumnKey[]> = {
   full: ["stage", "tenure", "cs_call", "adspend"],
   cs: ["stage", "tenure", "cs_call"],
-  media: ["drive", "states", "page", "tz", "product", "adspend", "ads"],
+  media: ["drive", "states", "page", "page_opt", "instagram", "ad_account", "landing", "tz", "product", "adspend", "ads"],
 };
 
 function moneyShort(n: number | null | undefined): string {
@@ -291,6 +302,38 @@ const COLUMN_DEFS: Record<ColumnKey, { header: string; revenueOnly?: boolean; re
         <SalesPackageBadge value={c.sales_package} />
       </span>
     ),
+  },
+  ad_account: {
+    header: "Ad account",
+    render: () => null, // ClientRow renders the link
+  },
+  landing: {
+    header: "Landing",
+    render: () => null, // ClientRow renders the link
+  },
+  page_opt: {
+    header: "Optimized",
+    render: c => {
+      if (c.page_optimized === true) {
+        return <span className="text-xs font-semibold" style={{ color: "#22c55e" }}>Yes</span>;
+      }
+      if (c.page_optimized === false) {
+        return <span className="text-xs" style={{ color: "#64748b" }}>No</span>;
+      }
+      return <span className="text-xs" style={{ color: "#334155" }}>—</span>;
+    },
+  },
+  instagram: {
+    header: "IG",
+    render: c => {
+      const handle = c.instagram_handle?.trim();
+      if (!handle) return <span className="text-xs" style={{ color: "#334155" }}>—</span>;
+      return (
+        <span className="text-xs truncate max-w-[8rem] inline-block align-bottom" style={{ color: "#cbd5e1" }} title={handle}>
+          {handle}
+        </span>
+      );
+    },
   },
 };
 
@@ -1558,7 +1601,7 @@ function ClientRow({
               <span
                 className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded shrink-0"
                 style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)" }}
-                title="Sub-account name still matches the person name — open Kick-off and set the exact GHL location name"
+                title="GHL not linked yet — open Kick-off and set the exact location name + Location ID"
               >
                 Map GHL
               </span>
@@ -1616,6 +1659,42 @@ function ClientRow({
                 title="Open Drive folder"
               >
                 Drive ↗
+              </a>
+            ) : (
+              <span className="text-xs" style={{ color: "#334155" }}>—</span>
+            )
+          ) : key === "ad_account" ? (
+            c.ad_account_url ? (
+              <a
+                href={c.ad_account_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="text-xs font-medium truncate max-w-[9rem] inline-block align-bottom"
+                style={{ color: "#38bdf8" }}
+                title={c.ad_account_name?.trim() || c.ad_account_url}
+              >
+                {c.ad_account_name?.trim() || "Ads Manager"} ↗
+              </a>
+            ) : c.ad_account_name?.trim() ? (
+              <span className="text-xs truncate max-w-[9rem] inline-block" style={{ color: "#cbd5e1" }} title={c.ad_account_name}>
+                {c.ad_account_name}
+              </span>
+            ) : (
+              <span className="text-xs" style={{ color: "#334155" }}>—</span>
+            )
+          ) : key === "landing" ? (
+            c.funnel_url?.trim() ? (
+              <a
+                href={/^https?:\/\//i.test(c.funnel_url) ? c.funnel_url : `https://${c.funnel_url}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="text-xs font-medium truncate max-w-[9rem] inline-block align-bottom"
+                style={{ color: "#38bdf8" }}
+                title={c.funnel_url}
+              >
+                Lander ↗
               </a>
             ) : (
               <span className="text-xs" style={{ color: "#334155" }}>—</span>

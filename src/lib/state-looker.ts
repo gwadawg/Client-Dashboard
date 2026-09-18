@@ -25,6 +25,17 @@ export type StateLookerClient = {
   state: string | null;
   /** Openable GHL subaccount URL (stored URL or built from location id). */
   ghl_subaccount_url: string | null;
+  /** Media buying ops fields */
+  facebook_page_name: string | null;
+  page_optimized: boolean | null;
+  instagram_handle: string | null;
+  ad_account_name: string | null;
+  ad_account_url: string | null;
+  funnel_url: string | null;
+  thank_you_page_url: string | null;
+  second_landing_page_url: string | null;
+  /** Present only when the viewer can see revenue. */
+  daily_adspend: number | null;
 };
 
 export type StateLookerResult = {
@@ -34,6 +45,7 @@ export type StateLookerResult = {
     total_clients: number;
     states_covered: number;
   };
+  can_view_revenue?: boolean;
 };
 
 export type RawStateLookerClientRow = {
@@ -56,6 +68,15 @@ export type RawStateLookerClientRow = {
   state?: string | null;
   ghl_subaccount_url?: string | null;
   ghl_location_id?: string | null;
+  facebook_page_name?: string | null;
+  page_optimized?: boolean | null;
+  instagram_handle?: string | null;
+  ad_account_name?: string | null;
+  ad_account_url?: string | null;
+  funnel_url?: string | null;
+  thank_you_page_url?: string | null;
+  second_landing_page_url?: string | null;
+  daily_adspend?: number | null;
 };
 
 function trimOrNull(value: string | null | undefined): string | null {
@@ -98,7 +119,9 @@ export function resolveOfferBlurb(
 export function buildStateLookerResult(
   rows: RawStateLookerClientRow[],
   accountGroups: Record<string, { display_name: string }>,
+  opts: { includeRevenue?: boolean } = {},
 ): StateLookerResult {
+  const includeRevenue = opts.includeRevenue === true;
   const clients: StateLookerClient[] = rows.map(row => {
     const account_display_name = row.account_group_id
       ? accountGroups[row.account_group_id]?.display_name ?? null
@@ -133,6 +156,15 @@ export function buildStateLookerResult(
       city: trimOrNull(row.city),
       state: trimOrNull(row.state),
       ghl_subaccount_url: resolveGhlSubaccountUrl(row.ghl_subaccount_url, row.ghl_location_id),
+      facebook_page_name: trimOrNull(row.facebook_page_name),
+      page_optimized: typeof row.page_optimized === 'boolean' ? row.page_optimized : null,
+      instagram_handle: trimOrNull(row.instagram_handle),
+      ad_account_name: trimOrNull(row.ad_account_name),
+      ad_account_url: trimOrNull(row.ad_account_url),
+      funnel_url: trimOrNull(row.funnel_url),
+      thank_you_page_url: trimOrNull(row.thank_you_page_url),
+      second_landing_page_url: trimOrNull(row.second_landing_page_url),
+      daily_adspend: includeRevenue && row.daily_adspend != null ? Number(row.daily_adspend) : null,
     };
   });
 

@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
+import { canViewClientRevenue } from '@/lib/client-revenue-access';
 import { buildStateLookerResult, type RawStateLookerClientRow } from '@/lib/state-looker';
 
 /** Team-safe fields only — no billing, emails, or internal IDs. */
 const CLIENT_FIELDS =
-  'id, name, reporting_type, sales_package, states_licensed, lifecycle_status, is_live, account_group_id, legal_business_name, brokerage_name, nmls, live_transfer_approved, phone_live_transfer, offer_summary, website, city, state, ghl_subaccount_url, ghl_location_id';
+  'id, name, reporting_type, sales_package, states_licensed, lifecycle_status, is_live, account_group_id, legal_business_name, brokerage_name, nmls, live_transfer_approved, phone_live_transfer, offer_summary, website, city, state, ghl_subaccount_url, ghl_location_id, facebook_page_name, page_optimized, instagram_handle, ad_account_name, ad_account_url, funnel_url, thank_you_page_url, second_landing_page_url, daily_adspend';
 
 export async function GET() {
   const ctx = await getAuthContext();
@@ -12,6 +13,9 @@ export async function GET() {
 
   const denied = requirePermission(ctx, 'state_looker');
   if (denied) return denied;
+
+  const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
+  const includeRevenue = canViewClientRevenue(subject);
 
   const clientsRes = await ctx.service
     .from('clients')
@@ -41,5 +45,6 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json(buildStateLookerResult(rows, accountGroups));
+  const result = buildStateLookerResult(rows, accountGroups, { includeRevenue });
+  return NextResponse.json({ ...result, can_view_revenue: includeRevenue });
 }

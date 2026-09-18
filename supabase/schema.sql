@@ -103,6 +103,12 @@ create table if not exists clients (
   contact_role           text,
   appointment_settings   text,
   facebook_page_name     text,
+  page_optimized         boolean,
+  instagram_handle       text,
+  ad_account_name        text,
+  ad_account_url         text,
+  thank_you_page_url     text,
+  second_landing_page_url text,
   slack_id               text,
   ghl_subaccount_url     text,
 
@@ -160,6 +166,12 @@ alter table clients add column if not exists live_transfer_approved boolean defa
 alter table clients add column if not exists contact_role           text;
 alter table clients add column if not exists appointment_settings   text;
 alter table clients add column if not exists facebook_page_name     text;
+alter table clients add column if not exists page_optimized         boolean;
+alter table clients add column if not exists instagram_handle       text;
+alter table clients add column if not exists ad_account_name        text;
+alter table clients add column if not exists ad_account_url         text;
+alter table clients add column if not exists thank_you_page_url     text;
+alter table clients add column if not exists second_landing_page_url text;
 alter table clients add column if not exists slack_id               text;
 alter table clients add column if not exists ghl_subaccount_url     text;
 alter table clients add column if not exists street_address         text;

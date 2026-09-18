@@ -9,10 +9,11 @@ import type { StateLookerClient, StateLookerResult } from "@/lib/state-looker";
 import { US_STATES } from "@/lib/us-states";
 
 type LifecycleFilter = "active" | "all";
-type TabKey = "directory" | "state_lookup";
+type TabKey = "directory" | "media_buying" | "state_lookup";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "directory", label: "All clients" },
+  { key: "media_buying", label: "Media Buying" },
   { key: "state_lookup", label: "State lookup" },
 ];
 
@@ -41,6 +42,10 @@ function passesFilters(
       client.offer_blurb,
       client.website,
       client.phone_live_transfer,
+      client.facebook_page_name,
+      client.instagram_handle,
+      client.ad_account_name,
+      client.funnel_url,
       ...client.states_licensed,
     ]
       .filter(Boolean)
@@ -451,6 +456,239 @@ function ClientDirectoryTable({
   );
 }
 
+function MediaLinkCell({
+  href,
+  label,
+  title,
+}: {
+  href: string | null;
+  label: string;
+  title?: string | null;
+}) {
+  if (!href) {
+    return <span style={{ color: "#334155" }}>—</span>;
+  }
+  const url = /^https?:\/\//i.test(href) ? href : `https://${href}`;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block text-xs truncate underline-offset-2 hover:underline"
+      style={{ color: "#38bdf8" }}
+      title={title || href}
+    >
+      {label}
+    </a>
+  );
+}
+
+function MediaBuyingTable({
+  clients,
+  emptyMessage,
+  showAdSpend,
+  selectedState,
+}: {
+  clients: StateLookerClient[];
+  emptyMessage: string;
+  showAdSpend: boolean;
+  selectedState?: string | null;
+}) {
+  const [openStatesId, setOpenStatesId] = useState<string | null>(null);
+
+  // Sheet order + states / offer type for media ops.
+  const headers = [
+    { key: "client", label: "Client" },
+    { key: "offer", label: "Offer" },
+    { key: "page", label: "Facebook page" },
+    { key: "opt", label: "Page optimized" },
+    { key: "ig", label: "Instagram" },
+    { key: "ad_name", label: "Ad account name" },
+    { key: "ad_link", label: "Ad account link" },
+    ...(showAdSpend ? [{ key: "spend", label: "Daily adspend" }] : []),
+    { key: "company", label: "Company" },
+    { key: "broker", label: "Company / broker" },
+    { key: "nmls", label: "Company NMLS" },
+    { key: "states", label: "States" },
+    { key: "landing", label: "Landing page" },
+    { key: "thanks", label: "Thank you page" },
+    { key: "second", label: "Second landing" },
+  ];
+
+  if (clients.length === 0) {
+    return (
+      <div
+        className="rounded-xl px-6 py-10 text-sm text-center"
+        style={{ border: "1px solid rgba(255,255,255,0.08)", color: "#64748b" }}
+      >
+        {emptyMessage}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse min-w-[1600px]">
+          <thead>
+            <tr style={{ background: "rgba(255,255,255,0.03)" }}>
+              {headers.map(h => (
+                <th
+                  key={h.key}
+                  className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap text-left"
+                  style={{ color: "#64748b", borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+                >
+                  {h.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {clients.map((client, idx) => (
+              <tr
+                key={client.id}
+                className="transition-colors hover:bg-white/[0.02]"
+                style={{
+                  borderBottom: idx === clients.length - 1 ? undefined : "1px solid rgba(255,255,255,0.05)",
+                }}
+              >
+                <td className="px-3 py-1.5 align-middle">
+                  <span
+                    className="font-medium text-sm truncate block max-w-[12rem]"
+                    style={{ color: "#f1f5f9" }}
+                    title={client.name}
+                  >
+                    {client.name}
+                  </span>
+                </td>
+                <td className="px-3 py-1.5 align-middle whitespace-nowrap">
+                  <ReportingTypeBadge value={client.reporting_type} />
+                </td>
+                <td className="px-3 py-1.5 align-middle">
+                  <span
+                    className="block text-xs truncate max-w-[12rem]"
+                    style={{ color: client.facebook_page_name ? "#cbd5e1" : "#334155" }}
+                    title={client.facebook_page_name ?? undefined}
+                  >
+                    {client.facebook_page_name || "—"}
+                  </span>
+                </td>
+                <td className="px-3 py-1.5 align-middle whitespace-nowrap text-xs">
+                  {client.page_optimized === true ? (
+                    <span style={{ color: "#22c55e" }}>Yes</span>
+                  ) : client.page_optimized === false ? (
+                    <span style={{ color: "#64748b" }}>No</span>
+                  ) : (
+                    <span style={{ color: "#334155" }}>—</span>
+                  )}
+                </td>
+                <td className="px-3 py-1.5 align-middle">
+                  <span
+                    className="block text-xs truncate max-w-[8rem]"
+                    style={{ color: client.instagram_handle ? "#cbd5e1" : "#334155" }}
+                    title={client.instagram_handle ?? undefined}
+                  >
+                    {client.instagram_handle || "—"}
+                  </span>
+                </td>
+                <td className="px-3 py-1.5 align-middle">
+                  <span
+                    className="block text-xs truncate max-w-[10rem]"
+                    style={{ color: client.ad_account_name ? "#cbd5e1" : "#334155" }}
+                    title={client.ad_account_name ?? undefined}
+                  >
+                    {client.ad_account_name || "—"}
+                  </span>
+                </td>
+                <td className="px-3 py-1.5 align-middle">
+                  <MediaLinkCell
+                    href={client.ad_account_url}
+                    label={client.ad_account_url ? "Open ↗" : "—"}
+                    title={client.ad_account_url}
+                  />
+                </td>
+                {showAdSpend && (
+                  <td
+                    className="px-3 py-1.5 align-middle whitespace-nowrap text-xs"
+                    style={{ color: client.daily_adspend != null ? "#cbd5e1" : "#334155" }}
+                  >
+                    {client.daily_adspend != null
+                      ? `$${Math.round(client.daily_adspend).toLocaleString()}/day`
+                      : "—"}
+                  </td>
+                )}
+                <td className="px-3 py-1.5 align-middle">
+                  <span
+                    className="block text-xs truncate max-w-[10rem]"
+                    style={{ color: client.company_name ? "#e2e8f0" : "#334155" }}
+                    title={client.company_name ?? undefined}
+                  >
+                    {client.company_name || "—"}
+                  </span>
+                </td>
+                <td className="px-3 py-1.5 align-middle">
+                  <span
+                    className="block text-xs truncate max-w-[10rem]"
+                    style={{ color: client.brokerage_name ? "#cbd5e1" : "#334155" }}
+                    title={client.brokerage_name ?? undefined}
+                  >
+                    {client.brokerage_name || "—"}
+                  </span>
+                </td>
+                <td
+                  className="px-3 py-1.5 align-middle whitespace-nowrap text-xs font-mono"
+                  style={{ color: client.nmls ? "#e2e8f0" : "#334155" }}
+                >
+                  {client.nmls || "—"}
+                </td>
+                <td className="px-3 py-1.5 align-middle">
+                  <StatesDropdown
+                    codes={client.states_licensed}
+                    highlight={selectedState ?? undefined}
+                    open={openStatesId === client.id}
+                    onToggle={() =>
+                      setOpenStatesId(prev => (prev === client.id ? null : client.id))
+                    }
+                  />
+                </td>
+                <td className="px-3 py-1.5 align-middle">
+                  <MediaLinkCell href={client.funnel_url} label="Lander ↗" title={client.funnel_url} />
+                </td>
+                <td className="px-3 py-1.5 align-middle">
+                  {client.thank_you_page_url ? (
+                    <span
+                      className="block text-xs truncate max-w-[10rem]"
+                      style={{ color: "#94a3b8" }}
+                      title={client.thank_you_page_url}
+                    >
+                      {client.thank_you_page_url}
+                    </span>
+                  ) : (
+                    <span style={{ color: "#334155" }}>—</span>
+                  )}
+                </td>
+                <td className="px-3 py-1.5 align-middle">
+                  {client.second_landing_page_url ? (
+                    <span
+                      className="block text-xs truncate max-w-[10rem]"
+                      style={{ color: "#94a3b8" }}
+                      title={client.second_landing_page_url}
+                    >
+                      {client.second_landing_page_url}
+                    </span>
+                  ) : (
+                    <span style={{ color: "#334155" }}>—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function FilterChip({
   active,
   onClick,
@@ -600,6 +838,7 @@ export default function StateLooker() {
   const [offerFilter, setOfferFilter] = useState<ReportingType | "all">("all");
   const [liveOnly, setLiveOnly] = useState(false);
   const [liveTransferOnly, setLiveTransferOnly] = useState(false);
+  const [canViewRevenue, setCanViewRevenue] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -615,7 +854,12 @@ export default function StateLooker() {
         return res.json() as Promise<StateLookerResult>;
       })
       .then(result => {
-        if (!cancelled) setData(result);
+        if (!cancelled) {
+          setData(result);
+          if (typeof result.can_view_revenue === "boolean") {
+            setCanViewRevenue(result.can_view_revenue);
+          }
+        }
       })
       .catch(err => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load client directory");
@@ -699,14 +943,21 @@ export default function StateLooker() {
           Client directory
         </h1>
         <p className="text-sm mt-0.5" style={{ color: "#64748b" }}>
-          Company, offer, website, location, and live-transfer details for the team — no billing or confidential CRM fields.
+          {tab === "media_buying"
+            ? "Meta pages, ad accounts, landers, and licensed states for media buying — no billing emails or confidential CRM fields."
+            : tab === "state_lookup"
+              ? "Find which clients are licensed in each state."
+              : "Company, offer, website, location, and live-transfer details for the team — no billing or confidential CRM fields."}
         </p>
       </div>
 
       <div className="flex items-center gap-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
         {TABS.map(t => {
           const active = tab === t.key;
-          const count = t.key === "directory" ? directoryClients.length : data?.summary.states_covered ?? 0;
+          const count =
+            t.key === "state_lookup"
+              ? data?.summary.states_covered ?? 0
+              : directoryClients.length;
           return (
             <button
               key={t.key}
@@ -757,6 +1008,19 @@ export default function StateLooker() {
             clients={directoryClients}
             emptyMessage="No clients match the current filters."
             groupByOffer
+          />
+        </div>
+      ) : tab === "media_buying" ? (
+        <div className="flex flex-col gap-3">
+          <p className="text-xs" style={{ color: "#64748b" }}>
+            {directoryClients.length} client{directoryClients.length === 1 ? "" : "s"}
+            {lifecycleFilter === "active" ? " · active only" : ""}
+            {" · media buying"}
+          </p>
+          <MediaBuyingTable
+            clients={directoryClients}
+            emptyMessage="No clients match the current filters."
+            showAdSpend={canViewRevenue}
           />
         </div>
       ) : (

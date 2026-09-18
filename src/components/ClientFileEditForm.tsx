@@ -30,6 +30,7 @@ export type EditableClient = {
   source: string | null;
   website: string | null;
   drive_folder_url: string | null;
+  funnel_url: string | null;
   brokerage_name: string | null;
   legal_business_name: string | null;
   nmls: string | null;
@@ -53,6 +54,13 @@ export type EditableClient = {
   phone_live_transfer: string | null;
   live_transfer_approved: boolean | null;
   offer_summary: string | null;
+  facebook_page_name: string | null;
+  page_optimized: boolean | null;
+  instagram_handle: string | null;
+  ad_account_name: string | null;
+  ad_account_url: string | null;
+  thank_you_page_url: string | null;
+  second_landing_page_url: string | null;
 };
 
 type Draft = {
@@ -68,6 +76,7 @@ type Draft = {
   source: string;
   website: string;
   drive_folder_url: string;
+  funnel_url: string;
   brokerage_name: string;
   legal_business_name: string;
   nmls: string;
@@ -90,6 +99,13 @@ type Draft = {
   phone_live_transfer: string;
   live_transfer_approved: boolean;
   offer_summary: string;
+  facebook_page_name: string;
+  page_optimized: "" | "yes" | "no";
+  instagram_handle: string;
+  ad_account_name: string;
+  ad_account_url: string;
+  thank_you_page_url: string;
+  second_landing_page_url: string;
 };
 
 const LIFECYCLE_OPTIONS = ["new_account", "onboarding", "active", "paused", "off_boarding", "churned"];
@@ -114,6 +130,7 @@ export function clientToDraft(c: EditableClient): Draft {
     source: normalizeClientLeadSource(c.source) ?? "",
     website: c.website ?? "",
     drive_folder_url: c.drive_folder_url ?? "",
+    funnel_url: c.funnel_url ?? "",
     brokerage_name: c.brokerage_name ?? "",
     legal_business_name: c.legal_business_name ?? "",
     nmls: c.nmls ?? "",
@@ -136,6 +153,13 @@ export function clientToDraft(c: EditableClient): Draft {
     phone_live_transfer: c.phone_live_transfer ?? "",
     live_transfer_approved: c.live_transfer_approved === true,
     offer_summary: c.offer_summary ?? "",
+    facebook_page_name: c.facebook_page_name ?? "",
+    page_optimized: c.page_optimized === true ? "yes" : c.page_optimized === false ? "no" : "",
+    instagram_handle: c.instagram_handle ?? "",
+    ad_account_name: c.ad_account_name ?? "",
+    ad_account_url: c.ad_account_url ?? "",
+    thank_you_page_url: c.thank_you_page_url ?? "",
+    second_landing_page_url: c.second_landing_page_url ?? "",
   };
 }
 
@@ -155,6 +179,7 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     source: normalizeClientLeadSource(draft.source),
     website: draft.website.trim() || null,
     drive_folder_url: draft.drive_folder_url.trim() || null,
+    funnel_url: draft.funnel_url.trim() || null,
     brokerage_name: draft.brokerage_name.trim() || null,
     legal_business_name: draft.legal_business_name.trim() || null,
     nmls: draft.nmls.trim() || null,
@@ -173,6 +198,13 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     phone_live_transfer: draft.phone_live_transfer.trim() || null,
     live_transfer_approved: draft.live_transfer_approved,
     offer_summary: draft.offer_summary.trim() || null,
+    facebook_page_name: draft.facebook_page_name.trim() || null,
+    page_optimized: draft.page_optimized === "yes" ? true : draft.page_optimized === "no" ? false : null,
+    instagram_handle: draft.instagram_handle.trim() || null,
+    ad_account_name: draft.ad_account_name.trim() || null,
+    ad_account_url: draft.ad_account_url.trim() || null,
+    thank_you_page_url: draft.thank_you_page_url.trim() || null,
+    second_landing_page_url: draft.second_landing_page_url.trim() || null,
   };
   if (draft.lifecycle_status === "churned") {
     body.churned_at = draft.churned_at || null;
@@ -425,6 +457,51 @@ export default function ClientFileEditForm({
         {draft.lifecycle_status === "churned" && !draft.churned_at && (
           <p className="text-xs mt-3" style={{ color: "#f59e0b" }}>No churn date on file — set one above to backfill reporting.</p>
         )}
+      </Section>
+
+      <Section title="Media buying">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-3">
+          <Field label="Facebook page" value={draft.facebook_page_name} onChange={v => patch("facebook_page_name", v)} />
+          <SelectField
+            label="Page optimized"
+            value={draft.page_optimized}
+            onChange={v => patch("page_optimized", v as Draft["page_optimized"])}
+          >
+            <option value="">Unset</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </SelectField>
+          <Field label="Instagram" value={draft.instagram_handle} onChange={v => patch("instagram_handle", v)} placeholder="@handle" />
+          <Field label="Ad account name" value={draft.ad_account_name} onChange={v => patch("ad_account_name", v)} />
+          <Field
+            label="Ad account link"
+            value={draft.ad_account_url}
+            onChange={v => patch("ad_account_url", v)}
+            placeholder="https://adsmanager.facebook.com/…"
+            wide
+          />
+          <Field
+            label="Landing page"
+            value={draft.funnel_url}
+            onChange={v => patch("funnel_url", v)}
+            placeholder="https://…"
+            wide
+          />
+          <Field
+            label="Thank you page"
+            value={draft.thank_you_page_url}
+            onChange={v => patch("thank_you_page_url", v)}
+            placeholder="https://…"
+            wide
+          />
+          <Field
+            label="Second landing page"
+            value={draft.second_landing_page_url}
+            onChange={v => patch("second_landing_page_url", v)}
+            placeholder="https://…"
+            wide
+          />
+        </div>
       </Section>
 
       <div className="flex justify-end">
