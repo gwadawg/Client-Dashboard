@@ -93,7 +93,7 @@ export type AdLibraryMeta = {
   visual_notes: string | null;
   drive_url: string | null;
   thumbnail_url: string | null;
-  tags?: { slug: string; label: string }[];
+  tags?: { id: string; slug: string; label: string; product?: string; category?: string }[];
 };
 
 export type RolledUpAdPerformanceRow = AdPerformanceRow & {

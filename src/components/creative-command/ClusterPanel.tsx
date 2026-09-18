@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { adFormatLabel } from "@/lib/ad-formats";
 import { PRODUCT_COLORS, PRODUCT_LABELS, type ClusterRow } from "@/lib/ad-creative-lenses";
 import { Delta, Empty, Panel, money, money2, pct } from "./ui";
@@ -10,39 +10,100 @@ type Props = {
   formatLabels: Record<string, string>;
 };
 
+type ClusterView = "format" | string; // format or a tag category key
+
+const CATEGORY_LABELS: Record<string, string> = {
+  concept: "Concept",
+  topic: "Topic",
+  trigger: "Trigger",
+  bucket: "Bucket",
+  track: "Track",
+  strategy: "Strategy",
+  creative_job: "Creative job",
+  angle: "Angle",
+  outcome: "Outcome",
+  stage: "Stage",
+  equity_callout: "Equity callout",
+};
+
 /**
  * Concept clusters. Fatigue is usually the message rather than the format, so
  * spend soak sits next to the cluster's own CPCONV drift — a format only looks
  * tired when one message inside it ate the budget.
  */
 export default function ClusterPanel({ clusters, formatLabels }: Props) {
-  const [kind, setKind] = useState<"tag" | "format">("tag");
-  const rows = clusters.filter((c) => c.kind === kind);
+  const categoryKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const c of clusters) {
+      if (c.kind === "tag" && c.category) keys.add(c.category);
+    }
+    const preferred = [
+      "concept",
+      "topic",
+      "trigger",
+      "bucket",
+      "track",
+      "strategy",
+      "creative_job",
+      "angle",
+      "outcome",
+      "stage",
+      "equity_callout",
+    ];
+    return [
+      ...preferred.filter((k) => keys.has(k)),
+      ...[...keys].filter((k) => !preferred.includes(k)).sort(),
+    ];
+  }, [clusters]);
+
+  const [view, setView] = useState<ClusterView>("format");
+  const effectiveView =
+    view === "format" || categoryKeys.includes(view)
+      ? view
+      : categoryKeys[0] ?? "format";
+
+  const rows =
+    effectiveView === "format"
+      ? clusters.filter((c) => c.kind === "format")
+      : clusters.filter((c) => c.kind === "tag" && c.category === effectiveView);
   const maxSpend = Math.max(...rows.map((r) => r.spend), 1);
+
+  const tabs: { key: ClusterView; label: string }[] = [
+    { key: "format", label: "Format" },
+    ...categoryKeys.map((k) => ({
+      key: k,
+      label: CATEGORY_LABELS[k] ?? k,
+    })),
+  ];
 
   return (
     <Panel
       title="Concept clusters"
-      hint="Spend soak and CPCONV drift by message and by format, within each product."
+      hint="Spend soak and CPCONV drift by category and by format, within each product."
       actions={
-        <div className="flex gap-1 flex-shrink-0">
-          {(
-            [
-              ["tag", "Topic"],
-              ["format", "Format"],
-            ] as const
-          ).map(([key, label]) => (
+        <div className="flex gap-1 flex-shrink-0 flex-wrap justify-end">
+          {tabs.map(({ key, label }) => (
             <button
               key={key}
               type="button"
-              onClick={() => setKind(key)}
-              aria-pressed={kind === key}
+              onClick={() => setView(key)}
+              aria-pressed={effectiveView === key}
               className="px-2.5 py-1 rounded-md text-[11px] transition-colors"
               style={{
                 transitionTimingFunction: "var(--ease-ws)",
-                background: kind === key ? "var(--color-ws-accent-wash)" : "rgba(255,255,255,0.03)",
-                color: kind === key ? "var(--color-ws-accent-bright)" : "var(--color-ws-text-faint)",
-                border: `1px solid ${kind === key ? "color-mix(in srgb, var(--color-ws-accent) 45%, transparent)" : "var(--color-ws-hairline)"}`,
+                background:
+                  effectiveView === key
+                    ? "var(--color-ws-accent-wash)"
+                    : "rgba(255,255,255,0.03)",
+                color:
+                  effectiveView === key
+                    ? "var(--color-ws-accent-bright)"
+                    : "var(--color-ws-text-faint)",
+                border: `1px solid ${
+                  effectiveView === key
+                    ? "color-mix(in srgb, var(--color-ws-accent) 45%, transparent)"
+                    : "var(--color-ws-hairline)"
+                }`,
                 fontFamily: "var(--font-data), monospace",
               }}
             >
@@ -54,34 +115,43 @@ export default function ClusterPanel({ clusters, formatLabels }: Props) {
     >
       {rows.length === 0 ? (
         <Empty>
-          No {kind === "tag" ? "topic" : "format"} clusters in range. Tag creatives in Ad Library to
-          build them.
+          {effectiveView === "format"
+            ? "No format clusters in range."
+            : "No tag clusters in range. Re-label creatives in Ad Library (Needs tags)."}
         </Empty>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr>
-                {["Cluster", "Product", "Ads", "Spend", "Soak", "CPCONV", "Drift", "Med CTR", "Med opt-in"].map(
-                  (h, i) => (
-                    <th
-                      key={h}
-                      className={`px-2 py-2 text-[9px] uppercase tracking-[0.14em] font-normal ${i < 2 ? "text-left" : "text-right"}`}
-                      style={{
-                        color: "var(--color-ws-text-faint)",
-                        fontFamily: "var(--font-display), sans-serif",
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ),
-                )}
+                {[
+                  "Cluster",
+                  "Product",
+                  "Ads",
+                  "Spend",
+                  "Soak",
+                  "CPCONV",
+                  "Drift",
+                  "Med CTR",
+                  "Med opt-in",
+                ].map((h, i) => (
+                  <th
+                    key={h}
+                    className={`px-2 py-2 text-[9px] uppercase tracking-[0.14em] font-normal ${i < 2 ? "text-left" : "text-right"}`}
+                    style={{
+                      color: "var(--color-ws-text-faint)",
+                      fontFamily: "var(--font-display), sans-serif",
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {rows.map((c) => (
                 <tr
-                  key={`${c.kind}-${c.product}-${c.key}`}
+                  key={`${c.kind}-${c.category ?? "fmt"}-${c.product}-${c.key}`}
                   style={{ borderTop: "1px solid var(--color-ws-hairline-soft)" }}
                 >
                   <td className="px-2 py-2" style={{ color: "var(--color-ws-text-loud)" }}>

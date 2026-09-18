@@ -11,13 +11,14 @@ import {
   type SmartFolderId,
 } from "@/lib/ad-library-folders";
 
-const SMART_IDS: SmartFolderId[] = ["all", "ready", "winners", "needs"];
+const SMART_IDS: SmartFolderId[] = ["all", "ready", "winners", "needs", "untagged"];
 
 /** A dot means the folder is defined by a state, coloured as that state. */
 const SMART_DOT: Partial<Record<SmartFolderId, string>> = {
   ready: "#a78bfa",
   winners: "var(--color-ws-positive)",
   needs: "var(--color-ws-text-dim)",
+  untagged: "#fbbf24",
 };
 
 const FOCUS_RING =

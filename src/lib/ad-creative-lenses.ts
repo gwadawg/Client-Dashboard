@@ -154,6 +154,8 @@ export type CreativeIntelRow = Omit<RolledUpAdPerformanceRow, 'client_ids'> & {
 
 export type ClusterRow = {
   kind: 'tag' | 'format';
+  /** For tag clusters: category key (bucket, concept, …). Null for format. */
+  category: string | null;
   key: string;
   label: string;
   product: AdProductKey;

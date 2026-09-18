@@ -259,6 +259,66 @@ describe('buildCreativeIntel clusters', () => {
     // Promise is under the signal floor, so it cannot skew the cluster baseline.
     assert.equal(ugc!.signal_ad_count, 3);
   });
+
+  it('clusters tags by product category', () => {
+    const library = [
+      lib({
+        id: 'lib-denied',
+        ad_name: 'Denied',
+        product: 'dscr',
+        tags: [
+          {
+            id: 'tag-denied',
+            slug: 'denied',
+            label: 'Denied',
+            product: 'dscr',
+            category: 'bucket',
+          },
+        ],
+      }),
+      lib({
+        id: 'lib-other',
+        ad_name: 'Other',
+        product: 'dscr',
+        tags: [
+          {
+            id: 'tag-reveal',
+            slug: 'reveal',
+            label: 'Reveal',
+            product: 'dscr',
+            category: 'creative_job',
+          },
+        ],
+      }),
+    ];
+    const metaRows: AdMetaRow[] = [
+      meta({ ad_name: 'Denied', insight_date: RECENT_DAY, spend: 500, impressions: 10000, clicks: 200 }),
+      meta({ ad_name: 'Other', insight_date: RECENT_DAY, spend: 300, impressions: 8000, clicks: 160 }),
+    ];
+    const events: AdEventRow[] = [
+      ...conversations('Denied', 'denied', RECENT_DAY, 4),
+      ...conversations('Other', 'other', RECENT_DAY, 3),
+    ];
+    const report = buildCreativeIntel({
+      metaRows,
+      events,
+      resolver: new AdLibraryResolver(library, []),
+      start: START,
+      end: END,
+    });
+    const bucket = report.clusters.find(
+      (c) => c.kind === 'tag' && c.category === 'bucket' && c.key === 'bucket:denied',
+    );
+    assert.ok(bucket);
+    assert.equal(bucket!.product, 'dscr');
+    assert.equal(bucket!.spend, 500);
+    assert.equal(bucket!.ad_count, 1);
+    assert.ok(
+      report.clusters.some(
+        (c) => c.kind === 'tag' && c.category === 'creative_job' && c.key === 'creative_job:reveal',
+      ),
+    );
+  });
 });
 
 /**

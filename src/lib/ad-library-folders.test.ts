@@ -25,6 +25,28 @@ const sample = [
 ];
 
 describe("ad-library-folders", () => {
+  it("matches Needs tags when product set and no tags", () => {
+    assert.equal(
+      entryMatchesFolder(
+        { product: "dscr", ad_format: "static", status: "active", tags: [] },
+        { kind: "smart", id: "untagged" },
+      ),
+      true,
+    );
+    assert.equal(
+      entryMatchesFolder(
+        {
+          product: "dscr",
+          ad_format: "static",
+          status: "active",
+          tags: [{ id: "t1" }],
+        },
+        { kind: "smart", id: "untagged" },
+      ),
+      false,
+    );
+  });
+
   it("matches smart and product/format folders", () => {
     assert.equal(entryMatchesFolder(sample[0], { kind: "smart", id: "ready" }), true);
     assert.equal(entryMatchesFolder(sample[1], { kind: "smart", id: "winners" }), true);
@@ -45,6 +67,7 @@ describe("ad-library-folders", () => {
     assert.equal(tree.smart.ready, 1);
     assert.equal(tree.smart.winners, 1);
     assert.equal(tree.smart.needs, 1);
+    assert.equal(tree.smart.untagged, 3);
     const rm = tree.products.find((p) => p.product === "reverse");
     assert.equal(rm?.count, 2);
     assert.equal(rm?.formats.find((f) => f.format === "ugc")?.count, 1);

@@ -6,7 +6,7 @@ export type ProductFolderKey = AdProductKey | "unassigned";
 
 export type FormatFolderKey = string | "unassigned";
 
-export type SmartFolderId = "all" | "ready" | "winners" | "needs";
+export type SmartFolderId = "all" | "ready" | "winners" | "needs" | "untagged";
 
 export type FolderPath =
   | { kind: "smart"; id: SmartFolderId }
@@ -17,6 +17,7 @@ export type LibraryFolderEntry = {
   ad_format: string | null;
   status: string;
   ready_to_test?: boolean | null;
+  tags?: { id: string }[] | null;
 };
 
 export const FOLDER_STORAGE_KEY = "ad-library-folder-path-v1";
@@ -40,6 +41,7 @@ export const SMART_FOLDER_LABELS: Record<SmartFolderId, string> = {
   ready: "Ready to test",
   winners: "Winners",
   needs: "Needs classification",
+  untagged: "Needs tags",
 };
 
 export function productFolderKey(product: string | null | undefined): ProductFolderKey {
@@ -55,6 +57,10 @@ export function needsClassification(e: LibraryFolderEntry): boolean {
   return !e.product?.trim() || !e.ad_format?.trim();
 }
 
+export function needsTags(e: LibraryFolderEntry): boolean {
+  return !!e.product?.trim() && (e.tags?.length ?? 0) === 0;
+}
+
 export function entryMatchesFolder(e: LibraryFolderEntry, path: FolderPath): boolean {
   if (path.kind === "smart") {
     switch (path.id) {
@@ -66,6 +72,8 @@ export function entryMatchesFolder(e: LibraryFolderEntry, path: FolderPath): boo
         return e.status === "winner";
       case "needs":
         return needsClassification(e);
+      case "untagged":
+        return needsTags(e);
       default:
         return true;
     }
@@ -86,7 +94,7 @@ export function parseFolderPathKey(raw: string | null | undefined): FolderPath |
   if (!raw) return null;
   if (raw.startsWith("smart:")) {
     const id = raw.slice(6) as SmartFolderId;
-    if (id === "all" || id === "ready" || id === "winners" || id === "needs") {
+    if (id === "all" || id === "ready" || id === "winners" || id === "needs" || id === "untagged") {
       return { kind: "smart", id };
     }
     return null;
@@ -157,6 +165,7 @@ export function buildFolderTreeCounts(
     ready: 0,
     winners: 0,
     needs: 0,
+    untagged: 0,
   };
 
   const byProduct = new Map<ProductFolderKey, Map<FormatFolderKey, number>>();
@@ -168,6 +177,7 @@ export function buildFolderTreeCounts(
     if (e.ready_to_test) smart.ready += 1;
     if (e.status === "winner") smart.winners += 1;
     if (needsClassification(e)) smart.needs += 1;
+    if (needsTags(e)) smart.untagged += 1;
 
     const product = productFolderKey(e.product);
     const format = formatFolderKey(e.ad_format);

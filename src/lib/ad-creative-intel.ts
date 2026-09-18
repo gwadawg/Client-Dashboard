@@ -549,6 +549,7 @@ export function buildCreativeIntel(input: BuildCreativeIntelInput): CreativeInte
 
 type ClusterAcc = {
   kind: 'tag' | 'format';
+  category: string | null;
   key: string;
   label: string;
   product: AdProductKey;
@@ -582,12 +583,14 @@ function buildClusters(
     key: string,
     label: string,
     ad: CreativeIntelRow,
+    category: string | null,
   ): void => {
-    const id = `${kind}|${ad.product}|${key}`;
+    const id = `${kind}|${ad.product}|${category ?? ''}|${key}`;
     let acc = accs.get(id);
     if (!acc) {
       acc = {
         kind,
+        category,
         key,
         label,
         product: ad.product,
@@ -625,9 +628,18 @@ function buildClusters(
   };
 
   for (const ad of ads) {
-    for (const tag of ad.library?.tags ?? []) add('tag', tag.slug, tag.label, ad);
+    for (const tag of ad.library?.tags ?? []) {
+      const category = tag.category ?? 'topic';
+      add(
+        'tag',
+        `${category}:${tag.slug}`,
+        `${category}: ${tag.label}`,
+        ad,
+        category,
+      );
+    }
     const fmt = ad.library?.ad_format;
-    if (fmt) add('format', fmt, fmt, ad);
+    if (fmt) add('format', fmt, fmt, ad, null);
   }
 
   return [...accs.values()]
@@ -637,6 +649,7 @@ function buildClusters(
       const priorCpconv = ratio(acc.priorSpend, acc.priorConversations);
       return {
         kind: acc.kind,
+        category: acc.category,
         key: acc.key,
         label: acc.label,
         product: acc.product,

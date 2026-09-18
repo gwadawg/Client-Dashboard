@@ -5,6 +5,10 @@ import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AdFormatPicker, useAdFormats } from "./AdFormatPicker";
 import { AdTagPicker, useAdTags } from "./AdTagPicker";
+import CategoryTagFilters, {
+  adMatchesCategoryFilters,
+  type CategoryFilterMap,
+} from "./ad-library/CategoryTagFilters";
 import AdWorkspaceOverlay, { type AdWorkspaceDrilldown } from "./AdWorkspaceOverlay";
 import ModalCloseButton from "./ModalCloseButton";
 import CardActionsMenu from "./ad-library/CardActionsMenu";
@@ -36,6 +40,8 @@ import {
   type LibrarySort,
 } from "@/lib/ad-library-folders";
 import type { AdTagRef } from "@/lib/ad-tags";
+import { tagsAfterProductChange } from "@/lib/ad-tags-resolve";
+import { isAdTagProduct } from "@/lib/ad-tag-categories";
 import AdsPausedControl from "@/components/AdsPausedControl";
 
 type Props = {
@@ -202,7 +208,7 @@ function productMatches(product: string | null | undefined, filter: ProductFilte
 
 type AdSlice = {
   product: ProductFilter;
-  tag: string;
+  categoryFilters: CategoryFilterMap;
   format: string;
   status: string;
   search: string;
@@ -210,7 +216,12 @@ type AdSlice = {
 
 function adPassesSlice(a: AdRow, slice: AdSlice, skip?: keyof AdSlice): boolean {
   if (skip !== "product" && !productMatches(a.library?.product, slice.product)) return false;
-  if (skip !== "tag" && slice.tag !== "all" && !(a.library?.tags ?? []).some((t) => t.slug === slice.tag)) return false;
+  if (
+    skip !== "categoryFilters" &&
+    !adMatchesCategoryFilters(a.library?.tags, slice.categoryFilters)
+  ) {
+    return false;
+  }
   if (skip !== "format" && slice.format !== "all" && a.library?.ad_format !== slice.format) return false;
   if (skip !== "status" && slice.status !== "all" && a.library?.status !== slice.status) return false;
   if (
@@ -220,7 +231,7 @@ function adPassesSlice(a: AdRow, slice: AdSlice, skip?: keyof AdSlice): boolean 
         a.ad_name,
         ...(a.variant_names ?? []),
         a.library?.summary,
-        ...(a.library?.tags ?? []).flatMap((t) => [t.label, t.slug]),
+        ...(a.library?.tags ?? []).flatMap((t) => [t.label, t.slug, t.category ?? ""]),
       ],
       slice.search,
     )
@@ -369,7 +380,7 @@ function adSearchHaystack(e: LibEntry): Array<string | null | undefined> {
     e.ad_name,
     e.summary,
     ...(e.aliases ?? []).map((a) => a.alias_name),
-    ...(e.tags ?? []).flatMap((t) => [t.label, t.slug]),
+    ...(e.tags ?? []).flatMap((t) => [t.label, t.slug, t.category ?? ""]),
   ];
 }
 
@@ -695,7 +706,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   const [linkSaving, setLinkSaving] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
-  const [tagFilter, setTagFilter] = useState("all");
+  const [categoryFilters, setCategoryFilters] = useState<CategoryFilterMap>({});
   const [formatFilter, setFormatFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [minSpendOn, setMinSpendOn] = useState(true);
@@ -703,6 +714,9 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   const [search, setSearch] = useState("");
   const [linkSearch, setLinkSearch] = useState("");
   const { labels: formatLabels } = useAdFormats();
+  const { tags: perfTagCatalog } = useAdTags(
+    productFilter === "all" ? null : productFilter,
+  );
 
   const MIN_SPEND = 250;
 
@@ -759,12 +773,12 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   const slice: AdSlice = useMemo(
     () => ({
       product: productFilter,
-      tag: tagFilter,
+      categoryFilters,
       format: formatFilter,
       status: statusFilter,
       search,
     }),
-    [productFilter, tagFilter, formatFilter, statusFilter, search],
+    [productFilter, categoryFilters, formatFilter, statusFilter, search],
   );
 
   const scopedAds = useMemo(() => ads.filter((a) => adPassesSlice(a, slice)), [ads, slice]);
@@ -795,20 +809,6 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
       dscr: pool.filter((a) => a.library?.product === "dscr").length,
     };
   }, [ads, slice]);
-
-  const tagFilterOptions = useMemo(() => {
-    const counts = new Map<string, { slug: string; label: string; count: number }>();
-    for (const a of ads.filter((row) => adPassesSlice(row, slice, "tag"))) {
-      for (const t of a.library?.tags ?? []) {
-        const prev = counts.get(t.slug);
-        counts.set(t.slug, { slug: t.slug, label: t.label, count: (prev?.count ?? 0) + 1 });
-      }
-    }
-    if (tagFilter !== "all" && !counts.has(tagFilter)) {
-      counts.set(tagFilter, { slug: tagFilter, label: tagFilter, count: 0 });
-    }
-    return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-  }, [ads, slice, tagFilter]);
 
   const formatFilterOptions = useMemo(() => {
     const counts = new Map<string, number>();
@@ -844,14 +844,21 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   }, [ads, slice, statusFilter]);
 
   const conceptStrip = useMemo(() => {
-    const tags = new Map<string, { label: string; spend: number; conversations: number }>();
+    const tags = new Map<string, { id: string; category: string; label: string; spend: number; conversations: number }>();
     const formats = new Map<string, { label: string; spend: number; conversations: number }>();
     for (const a of filteredAds) {
       for (const t of a.library?.tags ?? []) {
-        const prev = tags.get(t.slug) ?? { label: t.label, spend: 0, conversations: 0 };
+        const key = t.id || `${t.category ?? "tag"}:${t.slug}`;
+        const prev = tags.get(key) ?? {
+          id: t.id,
+          category: t.category ?? "",
+          label: t.category ? `${t.category}: ${t.label}` : t.label,
+          spend: 0,
+          conversations: 0,
+        };
         prev.spend += a.spend;
         prev.conversations += a.unique_conversations ?? 0;
-        tags.set(t.slug, prev);
+        tags.set(key, prev);
       }
       if (a.library?.ad_format) {
         const slug = a.library.ad_format;
@@ -865,6 +872,22 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
         formats.set(slug, prev);
       }
     }
+    const tagChips = [...tags.entries()]
+      .map(([slug, v]) => ({
+        slug,
+        id: v.id,
+        category: v.category,
+        label: v.label,
+        cpconv: v.conversations > 0 ? v.spend / v.conversations : null,
+        spend: v.spend,
+      }))
+      .filter((c) => c.spend > 0)
+      .sort((a, b) => {
+        const ac = a.cpconv ?? Number.POSITIVE_INFINITY;
+        const bc = b.cpconv ?? Number.POSITIVE_INFINITY;
+        return ac - bc || b.spend - a.spend;
+      })
+      .slice(0, 12);
     const toChips = (map: Map<string, { label: string; spend: number; conversations: number }>) =>
       [...map.entries()]
         .map(([slug, v]) => ({
@@ -873,9 +896,14 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
           cpconv: v.conversations > 0 ? v.spend / v.conversations : null,
           spend: v.spend,
         }))
-        .filter((c) => c.cpconv != null)
-        .sort((a, b) => (a.cpconv ?? Infinity) - (b.cpconv ?? Infinity));
-    return { tags: toChips(tags), formats: toChips(formats) };
+        .filter((c) => c.spend > 0)
+        .sort((a, b) => {
+          const ac = a.cpconv ?? Number.POSITIVE_INFINITY;
+          const bc = b.cpconv ?? Number.POSITIVE_INFINITY;
+          return ac - bc || b.spend - a.spend;
+        })
+        .slice(0, 12);
+    return { tags: tagChips, formats: toChips(formats) };
   }, [filteredAds, formatLabels]);
 
   const rmRollup = useMemo(
@@ -987,7 +1015,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
 
   const sliceActive =
     productFilter !== "all" ||
-    tagFilter !== "all" ||
+    Object.values(categoryFilters).some((ids) => ids.length > 0) ||
     formatFilter !== "all" ||
     statusFilter !== "all" ||
     !!search.trim();
@@ -1032,15 +1060,25 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-x-3 gap-y-3 px-4 py-3">
-          <ProductFilterBar value={productFilter} onChange={setProductFilter} counts={filterCounts} />
-          <FilterSelect
-            label="Topic"
-            value={tagFilter}
-            onChange={setTagFilter}
-            options={tagFilterOptions}
-            anyLabel="Any topic"
-            accent="#6ee7b7"
+          <ProductFilterBar
+            value={productFilter}
+            onChange={(v) => {
+              setProductFilter(v);
+              setCategoryFilters({});
+            }}
+            counts={filterCounts}
           />
+          <div className="col-span-2 lg:col-span-2 min-w-0 space-y-1">
+            <p className="text-[9px] uppercase tracking-[0.18em]" style={{ color: "#64748b", fontFamily: "var(--font-archivo), sans-serif" }}>
+              Tags
+            </p>
+            <CategoryTagFilters
+              product={productFilter === "all" ? "all" : productFilter}
+              catalog={perfTagCatalog}
+              value={categoryFilters}
+              onChange={setCategoryFilters}
+            />
+          </div>
           <FilterSelect
             label="Format"
             value={formatFilter}
@@ -1155,11 +1193,17 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                 <button
                   key={`tag-${c.slug}`}
                   type="button"
-                  onClick={() => setTagFilter(c.slug)}
+                  onClick={() => {
+                    if (!c.category || !c.id) return;
+                    setCategoryFilters((prev) => ({
+                      ...prev,
+                      [c.category!]: [c.id!],
+                    }));
+                  }}
                   className="px-2 py-1 rounded-md text-[11px]"
                   style={{
                     fontFamily: "var(--font-plex-mono)",
-                    background: tagFilter === c.slug ? "rgba(52,211,153,0.16)" : "rgba(255,255,255,0.04)",
+                    background: "rgba(255,255,255,0.04)",
                     color: "#6ee7b7",
                     border: "1px solid rgba(52,211,153,0.25)",
                   }}
@@ -1703,10 +1747,9 @@ function AdLibrary({
   const [expandedVariants, setExpandedVariants] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [tagFilter, setTagFilter] = useState("all");
+  const [libCategoryFilters, setLibCategoryFilters] = useState<CategoryFilterMap>({});
   const [search, setSearch] = useState("");
   const { formats, labels: formatLabels, createFormat, loading: formatsLoading } = useAdFormats();
-  const { tags: tagCatalog, createTag, loading: tagsLoading } = useAdTags();
 
   const { searchParams, setParams } = useTabParams();
   const folderParam = searchParams.get(FOLDER_PARAM);
@@ -1725,6 +1768,13 @@ function AdLibrary({
     () => parseFolderPathKey(folderParam) ?? defaultFolderPath(),
     [folderParam],
   );
+
+  const libraryTagProduct =
+    form?.product ||
+    (folderPath.kind === "product" && folderPath.product !== "unassigned"
+      ? folderPath.product
+      : null);
+  const { tags: tagCatalog, createTag, loading: tagsLoading } = useAdTags(libraryTagProduct);
 
   const selectFolder = useCallback(
     (next: FolderPath) => {
@@ -1769,7 +1819,7 @@ function AdLibrary({
       status: e.status,
       ad_format: e.ad_format ?? "",
       product: e.product ?? "",
-      tags: (e.tags ?? []).map((t) => t.slug),
+      tags: (e.tags ?? []).map((t) => t.id),
       drive_url: e.drive_url ?? "",
       thumbnail_url: e.thumbnail_url ?? "",
       summary: e.summary ?? "",
@@ -1976,9 +2026,9 @@ function AdLibrary({
 
   const passesFilters = useCallback(
     (e: LibEntry) =>
-      (tagFilter === "all" || (e.tags ?? []).some((t) => t.slug === tagFilter)) &&
+      adMatchesCategoryFilters(e.tags, libCategoryFilters) &&
       matchesAdQuery(adSearchHaystack(e), search),
-    [tagFilter, search],
+    [libCategoryFilters, search],
   );
 
   const visibleEntries = useMemo(() => {
@@ -2013,25 +2063,6 @@ function AdLibrary({
       })),
     [],
   );
-
-  const tagFilterOptions = useMemo(() => {
-    const counts = new Map<string, { slug: string; label: string; count: number }>();
-    for (const e of folderEntries) {
-      for (const t of e.tags ?? []) {
-        const prev = counts.get(t.slug);
-        counts.set(t.slug, { slug: t.slug, label: t.label, count: (prev?.count ?? 0) + 1 });
-      }
-    }
-    if (tagFilter !== "all" && !counts.has(tagFilter)) {
-      const fromCatalog = tagCatalog.find((t) => t.slug === tagFilter);
-      counts.set(tagFilter, {
-        slug: tagFilter,
-        label: fromCatalog?.label ?? tagFilter,
-        count: 0,
-      });
-    }
-    return [...counts.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }, [folderEntries, tagFilter, tagCatalog]);
 
   if (loading) return <Empty>Loading library…</Empty>;
   if (error) {
@@ -2299,22 +2330,27 @@ function AdLibrary({
                   path={folderPath}
                   onSelect={(next) => {
                     selectFolder(next);
-                    setTagFilter("all");
+                    setLibCategoryFilters({});
                   }}
                   formatLabels={formatLabels}
                   count={visibleEntries.length}
                 />
               </div>
-              <FilterSelect
-                label="Topic"
-                value={tagFilter}
-                onChange={setTagFilter}
-                options={tagFilterOptions}
-                anyLabel="Any topic"
-                // Topic is classification, so it takes the same neutral as the
-                // card chips rather than a colour that competes with selection.
-                accent="#cbd5e1"
-              />
+              <div className="min-w-[16rem]">
+                <p className="text-[9px] uppercase tracking-[0.18em] mb-1" style={{ color: "#64748b" }}>
+                  Tags
+                </p>
+                <CategoryTagFilters
+                  product={
+                    folderPath.kind === "product" && folderPath.product !== "unassigned"
+                      ? folderPath.product
+                      : "all"
+                  }
+                  catalog={tagCatalog}
+                  value={libCategoryFilters}
+                  onChange={setLibCategoryFilters}
+                />
+              </div>
               <FilterSelect
                 label="Sort"
                 // FilterSelect's "all" is its neutral value; here that is the
@@ -2574,7 +2610,18 @@ function AdLibrary({
               <Field label="Product">
                 <select
                   value={form.product}
-                  onChange={(e) => setForm({ ...form, product: e.target.value })}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setForm({
+                      ...form,
+                      product: next,
+                      tags: tagsAfterProductChange(
+                        form.tags,
+                        tagCatalog,
+                        isAdTagProduct(next) ? next : null,
+                      ),
+                    });
+                  }}
                   className="w-full px-3 py-2 rounded-lg text-sm"
                   style={{ background: "var(--color-ws-chrome)", border: "1px solid var(--color-ws-hairline)", color: "var(--color-ws-text)" }}
                 >
@@ -2620,8 +2667,9 @@ function AdLibrary({
               <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-ws-text-faint)" }}>Topics</span>
               <div className="mt-1">
                 <AdTagPicker
+                  product={form.product}
                   value={form.tags}
-                  onChange={(slugs) => setForm({ ...form, tags: slugs })}
+                  onChange={(ids) => setForm({ ...form, tags: ids })}
                   tags={tagCatalog}
                   onCreate={createTag}
                   loading={tagsLoading}
