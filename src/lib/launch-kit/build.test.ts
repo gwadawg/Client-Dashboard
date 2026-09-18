@@ -149,7 +149,7 @@ describe('validateForGenerate', () => {
 
   it('funnel and CRM can never be N/A', () => {
     const errs = validateForGenerate(completeDraft({ property_na: { funnel_url: true, crm_url: true } }));
-    assert.ok(errs.some(e => e.includes('Funnel / lander cannot be marked N/A')));
+    assert.ok(errs.some(e => e.includes('Perspective funnel cannot be marked N/A')));
     assert.ok(errs.some(e => e.includes('CRM cannot be marked N/A')));
   });
 

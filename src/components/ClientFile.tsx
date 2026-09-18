@@ -115,6 +115,7 @@ type FileClient = {
   website: string | null;
   drive_folder_url: string | null;
   funnel_url: string | null;
+  landing_page_url: string | null;
   brokerage_name: string | null;
   legal_business_name: string | null;
   nmls: string | null;
@@ -1083,7 +1084,6 @@ export default function ClientFile({
                 <Detail label="Billing email" value={client?.billing_email} missing={!client?.billing_email} />
                 <Detail label="Phone" value={client?.phone} missing={!client?.phone} />
                 <Detail label="Lead source" value={clientLeadSourceLabel(client?.source)} missing={!client?.source} />
-                <Detail label="Website" value={client?.website} missing={!client?.website} />
                 <Detail label="Company / brand" value={client?.legal_business_name} missing={!client?.legal_business_name} />
                 <Detail label="Brokerage" value={client?.brokerage_name} missing={!client?.brokerage_name} />
                 <Detail label="NMLS" value={client?.nmls} missing={!client?.nmls} />
@@ -1520,7 +1520,7 @@ export default function ClientFile({
 
             <Section title="Media buying">
               <p className="text-xs mb-3" style={{ color: "#64748b" }}>
-                Meta page, ad account, and lander links for this offer / subaccount.
+                Meta page and ad account for this offer / subaccount.
               </p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
                 <Detail label="Facebook page" value={client?.facebook_page_name} missing={!client?.facebook_page_name} />
@@ -1547,11 +1547,51 @@ export default function ClientFile({
                   missing={!client?.ad_account_url}
                 />
                 {canViewRevenue && <Detail label="Daily ad spend" value={money(client?.daily_adspend)} />}
+              </div>
+            </Section>
+
+            <Section title="Websites & funnels">
+              <p className="text-xs mb-3" style={{ color: "#64748b" }}>
+                Personal site, agency-built lander, Perspective entry, and thank-you page.
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
                 <Detail
-                  label="Landing page"
+                  label="Personal website"
+                  value={client?.website ? (
+                    <a
+                      href={/^https?:\/\//i.test(client.website) ? client.website : `https://${client.website}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:opacity-80 break-all"
+                      style={{ color: "#38bdf8" }}
+                    >
+                      {client.website}
+                    </a>
+                  ) : null}
+                  missing={!client?.website}
+                  wide
+                />
+                <Detail
+                  label="Built landing page"
+                  value={client?.landing_page_url ? (
+                    <a
+                      href={/^https?:\/\//i.test(client.landing_page_url) ? client.landing_page_url : `https://${client.landing_page_url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:opacity-80 break-all"
+                      style={{ color: "#38bdf8" }}
+                    >
+                      {client.landing_page_url}
+                    </a>
+                  ) : null}
+                  missing={!client?.landing_page_url}
+                  wide
+                />
+                <Detail
+                  label="Perspective funnel"
                   value={client?.funnel_url ? (
                     <a
-                      href={client.funnel_url.startsWith("http") ? client.funnel_url : `https://${client.funnel_url}`}
+                      href={/^https?:\/\//i.test(client.funnel_url) ? client.funnel_url : `https://${client.funnel_url}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="underline underline-offset-2 hover:opacity-80 break-all"
@@ -1564,19 +1604,19 @@ export default function ClientFile({
                   wide
                 />
                 <Detail
-                  label="Thank you page"
+                  label="Thank-you page"
                   value={client?.thank_you_page_url ? (
-                    <span className="break-all" style={{ color: "#cbd5e1" }}>{client.thank_you_page_url}</span>
+                    <a
+                      href={/^https?:\/\//i.test(client.thank_you_page_url) ? client.thank_you_page_url : `https://${client.thank_you_page_url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:opacity-80 break-all"
+                      style={{ color: "#38bdf8" }}
+                    >
+                      {client.thank_you_page_url}
+                    </a>
                   ) : null}
                   missing={!client?.thank_you_page_url}
-                  wide
-                />
-                <Detail
-                  label="Second landing page"
-                  value={client?.second_landing_page_url ? (
-                    <span className="break-all" style={{ color: "#cbd5e1" }}>{client.second_landing_page_url}</span>
-                  ) : null}
-                  missing={!client?.second_landing_page_url}
                   wide
                 />
               </div>

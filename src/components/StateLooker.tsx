@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReportingTypeBadge from "@/components/ReportingTypeBadge";
+import ClientSitesCell from "@/components/ClientSitesCell";
 import { lifecycleStatusLabel } from "@/lib/client-feedback";
 import { normalizeReportingType, type ReportingType } from "@/lib/kpi-layouts";
 import { REPORTING_TYPE_META, REPORTING_TYPES } from "@/lib/reporting-types";
@@ -45,6 +46,8 @@ function passesFilters(
       client.facebook_page_name,
       client.instagram_handle,
       client.ad_account_name,
+      client.website,
+      client.landing_page_url,
       client.funnel_url,
       ...client.states_licensed,
     ]
@@ -256,7 +259,7 @@ function ClientDirectoryTable({
     { key: "nmls", label: "NMLS #" },
     { key: "lt", label: "Live transfers" },
     { key: "offer", label: "Offer" },
-    { key: "website", label: "Website" },
+    { key: "website", label: "Personal website" },
     { key: "location", label: "Location" },
     { key: "phone", label: "LT phone" },
     { key: "states", label: "Licensed states" },
@@ -496,7 +499,7 @@ function MediaBuyingTable({
 }) {
   const [openStatesId, setOpenStatesId] = useState<string | null>(null);
 
-  // Sheet order + states / offer type for media ops.
+  // Sheet-aligned media ops + compact Sites group for the four web URLs.
   const headers = [
     { key: "client", label: "Client" },
     { key: "offer", label: "Offer" },
@@ -510,9 +513,7 @@ function MediaBuyingTable({
     { key: "broker", label: "Company / broker" },
     { key: "nmls", label: "Company NMLS" },
     { key: "states", label: "States" },
-    { key: "landing", label: "Landing page" },
-    { key: "thanks", label: "Thank you page" },
-    { key: "second", label: "Second landing" },
+    { key: "sites", label: "Sites" },
   ];
 
   if (clients.length === 0) {
@@ -529,7 +530,7 @@ function MediaBuyingTable({
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse min-w-[1600px]">
+        <table className="w-full text-sm border-collapse min-w-[1400px]">
           <thead>
             <tr style={{ background: "rgba(255,255,255,0.03)" }}>
               {headers.map(h => (
@@ -652,33 +653,14 @@ function MediaBuyingTable({
                   />
                 </td>
                 <td className="px-3 py-1.5 align-middle">
-                  <MediaLinkCell href={client.funnel_url} label="Lander ↗" title={client.funnel_url} />
-                </td>
-                <td className="px-3 py-1.5 align-middle">
-                  {client.thank_you_page_url ? (
-                    <span
-                      className="block text-xs truncate max-w-[10rem]"
-                      style={{ color: "#94a3b8" }}
-                      title={client.thank_you_page_url}
-                    >
-                      {client.thank_you_page_url}
-                    </span>
-                  ) : (
-                    <span style={{ color: "#334155" }}>—</span>
-                  )}
-                </td>
-                <td className="px-3 py-1.5 align-middle">
-                  {client.second_landing_page_url ? (
-                    <span
-                      className="block text-xs truncate max-w-[10rem]"
-                      style={{ color: "#94a3b8" }}
-                      title={client.second_landing_page_url}
-                    >
-                      {client.second_landing_page_url}
-                    </span>
-                  ) : (
-                    <span style={{ color: "#334155" }}>—</span>
-                  )}
+                  <ClientSitesCell
+                    urls={{
+                      website: client.website,
+                      landing_page_url: client.landing_page_url,
+                      funnel_url: client.funnel_url,
+                      thank_you_page_url: client.thank_you_page_url,
+                    }}
+                  />
                 </td>
               </tr>
             ))}

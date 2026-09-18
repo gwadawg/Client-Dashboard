@@ -18,6 +18,7 @@ import { churnFormHref, isChurnOffboardEligible, reinstateFormHref } from "@/lib
 import { FormProgressStrip } from "@/components/ClientFormsSection";
 import LifecycleStatusSelect from "@/components/LifecycleStatusSelect";
 import AdsPausedControl from "@/components/AdsPausedControl";
+import ClientSitesCell from "@/components/ClientSitesCell";
 import StatusChangeModal from "@/components/StatusChangeModal";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
@@ -83,7 +84,9 @@ type Client = {
   timezone?: string | null;
   drive_folder_url?: string | null;
   facebook_page_name?: string | null;
+  website?: string | null;
   funnel_url?: string | null;
+  landing_page_url?: string | null;
   page_optimized?: boolean | null;
   instagram_handle?: string | null;
   ad_account_name?: string | null;
@@ -169,7 +172,7 @@ type ColumnKey =
   | "tz"
   | "product"
   | "ad_account"
-  | "landing"
+  | "sites"
   | "page_opt"
   | "instagram";
 
@@ -184,7 +187,7 @@ const ROSTER_VIEWS: { key: RosterView; label: string }[] = [
 const VIEW_COLUMNS: Record<RosterView, ColumnKey[]> = {
   full: ["stage", "tenure", "cs_call", "adspend"],
   cs: ["stage", "tenure", "cs_call"],
-  media: ["drive", "states", "page", "page_opt", "instagram", "ad_account", "landing", "tz", "product", "adspend", "ads"],
+  media: ["drive", "states", "page", "page_opt", "instagram", "ad_account", "sites", "tz", "product", "adspend", "ads"],
 };
 
 function moneyShort(n: number | null | undefined): string {
@@ -307,9 +310,9 @@ const COLUMN_DEFS: Record<ColumnKey, { header: string; revenueOnly?: boolean; re
     header: "Ad account",
     render: () => null, // ClientRow renders the link
   },
-  landing: {
-    header: "Landing",
-    render: () => null, // ClientRow renders the link
+  sites: {
+    header: "Sites",
+    render: () => null, // ClientRow renders ClientSitesCell
   },
   page_opt: {
     header: "Optimized",
@@ -1683,22 +1686,16 @@ function ClientRow({
             ) : (
               <span className="text-xs" style={{ color: "#334155" }}>—</span>
             )
-          ) : key === "landing" ? (
-            c.funnel_url?.trim() ? (
-              <a
-                href={/^https?:\/\//i.test(c.funnel_url) ? c.funnel_url : `https://${c.funnel_url}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-                className="text-xs font-medium truncate max-w-[9rem] inline-block align-bottom"
-                style={{ color: "#38bdf8" }}
-                title={c.funnel_url}
-              >
-                Lander ↗
-              </a>
-            ) : (
-              <span className="text-xs" style={{ color: "#334155" }}>—</span>
-            )
+          ) : key === "sites" ? (
+            <ClientSitesCell
+              stopRowClick
+              urls={{
+                website: c.website,
+                landing_page_url: c.landing_page_url,
+                funnel_url: c.funnel_url,
+                thank_you_page_url: c.thank_you_page_url,
+              }}
+            />
           ) : (
             COLUMN_DEFS[key].render(c)
           )}

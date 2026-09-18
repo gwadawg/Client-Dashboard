@@ -80,7 +80,7 @@ function whatsLiveRows(draft: LaunchKitDraft): string[][] {
     if (isPropertyNa(draft, key)) return;
     rows.push([label, orFill(draft[key])]);
   };
-  add('funnel_url', 'Funnel / landing page');
+  add('funnel_url', 'Perspective funnel');
   add('crm_url', 'CRM');
   add('calendar_url', 'Booking calendar');
   add('ads_url', 'Meta ads account');

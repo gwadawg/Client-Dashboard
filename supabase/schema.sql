@@ -109,6 +109,7 @@ create table if not exists clients (
   ad_account_url         text,
   thank_you_page_url     text,
   second_landing_page_url text,
+  landing_page_url       text,
   slack_id               text,
   ghl_subaccount_url     text,
 
@@ -172,6 +173,7 @@ alter table clients add column if not exists ad_account_name        text;
 alter table clients add column if not exists ad_account_url         text;
 alter table clients add column if not exists thank_you_page_url     text;
 alter table clients add column if not exists second_landing_page_url text;
+alter table clients add column if not exists landing_page_url       text;
 alter table clients add column if not exists slack_id               text;
 alter table clients add column if not exists ghl_subaccount_url     text;
 alter table clients add column if not exists street_address         text;

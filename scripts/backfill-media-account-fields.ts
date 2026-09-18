@@ -38,6 +38,7 @@ const MEDIA_FIELDS = [
   'daily_adspend',
   'nmls',
   'brokerage_name',
+  'landing_page_url',
   'funnel_url',
   'thank_you_page_url',
   'second_landing_page_url',
@@ -60,6 +61,7 @@ type ClientRow = {
   daily_adspend: number | null;
   nmls: string | null;
   funnel_url: string | null;
+  landing_page_url: string | null;
   thank_you_page_url: string | null;
   second_landing_page_url: string | null;
 };
@@ -242,7 +244,7 @@ function csvToDesired(row: CsvRow): Partial<Record<MediaField, unknown>> {
   if (spend !== null) out.daily_adspend = spend;
   if (row.company_nmls) out.nmls = row.company_nmls;
   if (row.company_broker) out.brokerage_name = row.company_broker;
-  if (row.landing_page) out.funnel_url = row.landing_page;
+  if (row.landing_page) out.landing_page_url = row.landing_page;
   if (row.thank_you_page) out.thank_you_page_url = row.thank_you_page;
   if (row.second_landing_page) out.second_landing_page_url = row.second_landing_page;
   return out;
@@ -352,7 +354,7 @@ async function loadClients(sb: SupabaseClient): Promise<ClientRow[]> {
   const select =
     'id, name, primary_contact_name, legal_business_name, brokerage_name, lifecycle_status, ' +
     'facebook_page_name, page_optimized, instagram_handle, ad_account_name, ad_account_url, ' +
-    'daily_adspend, nmls, funnel_url, thank_you_page_url, second_landing_page_url';
+    'daily_adspend, nmls, brokerage_name, funnel_url, landing_page_url, thank_you_page_url, second_landing_page_url';
   const { data, error } = await sb.from('clients').select(select).order('name');
   if (error) throw new Error(error.message);
   return (data ?? []) as ClientRow[];

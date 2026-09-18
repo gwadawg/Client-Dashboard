@@ -14,7 +14,7 @@ export const TO_FILL = '[TO FILL]';
 
 /** "What's live" properties, in PDF order. */
 export const LAUNCH_KIT_PROPERTIES = [
-  { key: 'funnel_url', label: 'Funnel / lander', kind: 'url', clientColumn: 'funnel_url', naAllowed: false },
+  { key: 'funnel_url', label: 'Perspective funnel', kind: 'url', clientColumn: 'funnel_url', naAllowed: false },
   { key: 'crm_url', label: 'CRM', kind: 'url', clientColumn: 'ghl_subaccount_url', naAllowed: false },
   { key: 'calendar_url', label: 'Calendar', kind: 'url', clientColumn: null, naAllowed: true },
   { key: 'ads_url', label: 'Meta ads', kind: 'url', clientColumn: null, naAllowed: true },

@@ -110,7 +110,7 @@ const LAUNCH_KIT_LABELS: Record<string, string> = {
   speed_standard: "Speed standard",
   market: "Market",
   slack_channel_name: "Slack channel",
-  funnel_url: "Funnel / lander",
+  funnel_url: "Perspective funnel",
   crm_url: "CRM",
   calendar_url: "Calendar",
   ads_url: "Meta ads",

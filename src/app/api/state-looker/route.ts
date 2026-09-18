@@ -5,7 +5,7 @@ import { buildStateLookerResult, type RawStateLookerClientRow } from '@/lib/stat
 
 /** Team-safe fields only — no billing, emails, or internal IDs. */
 const CLIENT_FIELDS =
-  'id, name, reporting_type, sales_package, states_licensed, lifecycle_status, is_live, account_group_id, legal_business_name, brokerage_name, nmls, live_transfer_approved, phone_live_transfer, offer_summary, website, city, state, ghl_subaccount_url, ghl_location_id, facebook_page_name, page_optimized, instagram_handle, ad_account_name, ad_account_url, funnel_url, thank_you_page_url, second_landing_page_url, daily_adspend';
+  'id, name, reporting_type, sales_package, states_licensed, lifecycle_status, is_live, account_group_id, legal_business_name, brokerage_name, nmls, live_transfer_approved, phone_live_transfer, offer_summary, website, city, state, ghl_subaccount_url, ghl_location_id, facebook_page_name, page_optimized, instagram_handle, ad_account_name, ad_account_url, funnel_url, landing_page_url, thank_you_page_url, second_landing_page_url, daily_adspend';
 
 export async function GET() {
   const ctx = await getAuthContext();

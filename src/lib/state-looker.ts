@@ -31,7 +31,9 @@ export type StateLookerClient = {
   instagram_handle: string | null;
   ad_account_name: string | null;
   ad_account_url: string | null;
+  /** Personal website is `website`; built lander / Perspective / TY below. */
   funnel_url: string | null;
+  landing_page_url: string | null;
   thank_you_page_url: string | null;
   second_landing_page_url: string | null;
   /** Present only when the viewer can see revenue. */
@@ -74,6 +76,7 @@ export type RawStateLookerClientRow = {
   ad_account_name?: string | null;
   ad_account_url?: string | null;
   funnel_url?: string | null;
+  landing_page_url?: string | null;
   thank_you_page_url?: string | null;
   second_landing_page_url?: string | null;
   daily_adspend?: number | null;
@@ -162,6 +165,7 @@ export function buildStateLookerResult(
       ad_account_name: trimOrNull(row.ad_account_name),
       ad_account_url: trimOrNull(row.ad_account_url),
       funnel_url: trimOrNull(row.funnel_url),
+      landing_page_url: trimOrNull(row.landing_page_url),
       thank_you_page_url: trimOrNull(row.thank_you_page_url),
       second_landing_page_url: trimOrNull(row.second_landing_page_url),
       daily_adspend: includeRevenue && row.daily_adspend != null ? Number(row.daily_adspend) : null,

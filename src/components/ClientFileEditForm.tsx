@@ -31,6 +31,7 @@ export type EditableClient = {
   website: string | null;
   drive_folder_url: string | null;
   funnel_url: string | null;
+  landing_page_url: string | null;
   brokerage_name: string | null;
   legal_business_name: string | null;
   nmls: string | null;
@@ -77,6 +78,7 @@ type Draft = {
   website: string;
   drive_folder_url: string;
   funnel_url: string;
+  landing_page_url: string;
   brokerage_name: string;
   legal_business_name: string;
   nmls: string;
@@ -131,6 +133,7 @@ export function clientToDraft(c: EditableClient): Draft {
     website: c.website ?? "",
     drive_folder_url: c.drive_folder_url ?? "",
     funnel_url: c.funnel_url ?? "",
+    landing_page_url: c.landing_page_url ?? "",
     brokerage_name: c.brokerage_name ?? "",
     legal_business_name: c.legal_business_name ?? "",
     nmls: c.nmls ?? "",
@@ -180,6 +183,7 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     website: draft.website.trim() || null,
     drive_folder_url: draft.drive_folder_url.trim() || null,
     funnel_url: draft.funnel_url.trim() || null,
+    landing_page_url: draft.landing_page_url.trim() || null,
     brokerage_name: draft.brokerage_name.trim() || null,
     legal_business_name: draft.legal_business_name.trim() || null,
     nmls: draft.nmls.trim() || null,
@@ -328,7 +332,6 @@ export default function ClientFileEditForm({
               onChange={v => patch("source", v)}
             />
           </label>
-          <Field label="Website" value={draft.website} onChange={v => patch("website", v)} highlightEmpty />
           <Field
             label="Drive folder URL"
             value={draft.drive_folder_url}
@@ -480,24 +483,37 @@ export default function ClientFileEditForm({
             placeholder="https://adsmanager.facebook.com/…"
             wide
           />
+        </div>
+      </Section>
+
+      <Section title="Websites & funnels">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-3">
           <Field
-            label="Landing page"
+            label="Personal website"
+            value={draft.website}
+            onChange={v => patch("website", v)}
+            placeholder="https://…"
+            highlightEmpty
+            wide
+          />
+          <Field
+            label="Built landing page"
+            value={draft.landing_page_url}
+            onChange={v => patch("landing_page_url", v)}
+            placeholder="Agency-built lander (e.g. homequityhacks)…"
+            wide
+          />
+          <Field
+            label="Perspective funnel"
             value={draft.funnel_url}
             onChange={v => patch("funnel_url", v)}
-            placeholder="https://…"
+            placeholder="Ads → Perspective entry URL…"
             wide
           />
           <Field
-            label="Thank you page"
+            label="Thank-you page"
             value={draft.thank_you_page_url}
             onChange={v => patch("thank_you_page_url", v)}
-            placeholder="https://…"
-            wide
-          />
-          <Field
-            label="Second landing page"
-            value={draft.second_landing_page_url}
-            onChange={v => patch("second_landing_page_url", v)}
             placeholder="https://…"
             wide
           />
