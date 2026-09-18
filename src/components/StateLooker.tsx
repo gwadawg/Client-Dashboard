@@ -504,12 +504,10 @@ function MediaBuyingTable({
     { key: "client", label: "Client" },
     { key: "offer", label: "Offer" },
     { key: "page", label: "Facebook page" },
-    { key: "opt", label: "Page optimized" },
     { key: "ig", label: "Instagram" },
     { key: "ad_name", label: "Ad account name" },
     { key: "ad_link", label: "Ad account link" },
     ...(showAdSpend ? [{ key: "spend", label: "Daily adspend" }] : []),
-    { key: "company", label: "Company" },
     { key: "broker", label: "Company / broker" },
     { key: "nmls", label: "Company NMLS" },
     { key: "states", label: "States" },
@@ -574,15 +572,6 @@ function MediaBuyingTable({
                     {client.facebook_page_name || "—"}
                   </span>
                 </td>
-                <td className="px-3 py-1.5 align-middle whitespace-nowrap text-xs">
-                  {client.page_optimized === true ? (
-                    <span style={{ color: "#22c55e" }}>Yes</span>
-                  ) : client.page_optimized === false ? (
-                    <span style={{ color: "#64748b" }}>No</span>
-                  ) : (
-                    <span style={{ color: "#334155" }}>—</span>
-                  )}
-                </td>
                 <td className="px-3 py-1.5 align-middle">
                   <span
                     className="block text-xs truncate max-w-[8rem]"
@@ -618,15 +607,6 @@ function MediaBuyingTable({
                       : "—"}
                   </td>
                 )}
-                <td className="px-3 py-1.5 align-middle">
-                  <span
-                    className="block text-xs truncate max-w-[10rem]"
-                    style={{ color: client.company_name ? "#e2e8f0" : "#334155" }}
-                    title={client.company_name ?? undefined}
-                  >
-                    {client.company_name || "—"}
-                  </span>
-                </td>
                 <td className="px-3 py-1.5 align-middle">
                   <span
                     className="block text-xs truncate max-w-[10rem]"

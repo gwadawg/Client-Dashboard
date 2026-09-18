@@ -87,7 +87,6 @@ type Client = {
   website?: string | null;
   funnel_url?: string | null;
   landing_page_url?: string | null;
-  page_optimized?: boolean | null;
   instagram_handle?: string | null;
   ad_account_name?: string | null;
   ad_account_url?: string | null;
@@ -173,7 +172,6 @@ type ColumnKey =
   | "product"
   | "ad_account"
   | "sites"
-  | "page_opt"
   | "instagram";
 
 type RosterView = "full" | "cs" | "media";
@@ -187,7 +185,7 @@ const ROSTER_VIEWS: { key: RosterView; label: string }[] = [
 const VIEW_COLUMNS: Record<RosterView, ColumnKey[]> = {
   full: ["stage", "tenure", "cs_call", "adspend"],
   cs: ["stage", "tenure", "cs_call"],
-  media: ["drive", "states", "page", "page_opt", "instagram", "ad_account", "sites", "tz", "product", "adspend", "ads"],
+  media: ["drive", "states", "page", "instagram", "ad_account", "sites", "tz", "product", "adspend", "ads"],
 };
 
 function moneyShort(n: number | null | undefined): string {
@@ -313,18 +311,6 @@ const COLUMN_DEFS: Record<ColumnKey, { header: string; revenueOnly?: boolean; re
   sites: {
     header: "Sites",
     render: () => null, // ClientRow renders ClientSitesCell
-  },
-  page_opt: {
-    header: "Optimized",
-    render: c => {
-      if (c.page_optimized === true) {
-        return <span className="text-xs font-semibold" style={{ color: "#22c55e" }}>Yes</span>;
-      }
-      if (c.page_optimized === false) {
-        return <span className="text-xs" style={{ color: "#64748b" }}>No</span>;
-      }
-      return <span className="text-xs" style={{ color: "#334155" }}>—</span>;
-    },
   },
   instagram: {
     header: "IG",

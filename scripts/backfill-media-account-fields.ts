@@ -31,7 +31,6 @@ const csvPath = resolve(argValue('--csv') ?? DEFAULT_CSV);
 
 const MEDIA_FIELDS = [
   'facebook_page_name',
-  'page_optimized',
   'instagram_handle',
   'ad_account_name',
   'ad_account_url',
@@ -54,7 +53,6 @@ type ClientRow = {
   brokerage_name: string | null;
   lifecycle_status: string | null;
   facebook_page_name: string | null;
-  page_optimized: boolean | null;
   instagram_handle: string | null;
   ad_account_name: string | null;
   ad_account_url: string | null;
@@ -69,7 +67,6 @@ type ClientRow = {
 type CsvRow = {
   client: string;
   facebook_page: string;
-  page_optimized: string;
   instagram: string;
   ad_account_name: string;
   ad_account_link: string;
@@ -178,14 +175,6 @@ function cellText(raw: string | undefined): string {
   return t;
 }
 
-function parsePageOptimized(raw: string): boolean | null {
-  const t = cellText(raw).toLowerCase();
-  if (!t) return null;
-  if (t === 'yes' || t === 'y' || t === 'true' || t === '1') return true;
-  if (t === 'no' || t === 'n' || t === 'false' || t === '0') return false;
-  return null;
-}
-
 function parseDailyAdspend(raw: string): number | null {
   const t = cellText(raw).replace(/[$,\s]/g, '');
   if (!t) return null;
@@ -205,7 +194,6 @@ function loadCsvRows(path: string): CsvRow[] {
   };
   const iClient = idx('Client');
   const iFb = idx('Facebook Page');
-  const iOpt = idx('Page Optimized');
   const iIg = idx('Instagram page');
   const iAdName = idx('Ad Account Name');
   const iAdLink = idx('Ad account link');
@@ -219,7 +207,6 @@ function loadCsvRows(path: string): CsvRow[] {
   return rows.slice(1).map(r => ({
     client: cellText(r[iClient]),
     facebook_page: cellText(r[iFb]),
-    page_optimized: cellText(r[iOpt]),
     instagram: cellText(r[iIg]),
     ad_account_name: cellText(r[iAdName]),
     ad_account_link: cellText(r[iAdLink]),
@@ -235,8 +222,6 @@ function loadCsvRows(path: string): CsvRow[] {
 function csvToDesired(row: CsvRow): Partial<Record<MediaField, unknown>> {
   const out: Partial<Record<MediaField, unknown>> = {};
   if (row.facebook_page) out.facebook_page_name = row.facebook_page;
-  const opt = parsePageOptimized(row.page_optimized);
-  if (opt !== null) out.page_optimized = opt;
   if (row.instagram) out.instagram_handle = row.instagram;
   if (row.ad_account_name) out.ad_account_name = row.ad_account_name;
   if (row.ad_account_link) out.ad_account_url = row.ad_account_link;
@@ -353,7 +338,7 @@ function matchClient(
 async function loadClients(sb: SupabaseClient): Promise<ClientRow[]> {
   const select =
     'id, name, primary_contact_name, legal_business_name, brokerage_name, lifecycle_status, ' +
-    'facebook_page_name, page_optimized, instagram_handle, ad_account_name, ad_account_url, ' +
+    'facebook_page_name, instagram_handle, ad_account_name, ad_account_url, ' +
     'daily_adspend, nmls, brokerage_name, funnel_url, landing_page_url, thank_you_page_url, second_landing_page_url';
   const { data, error } = await sb.from('clients').select(select).order('name');
   if (error) throw new Error(error.message);
@@ -371,7 +356,7 @@ async function main() {
     clients = await loadClients(sb);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/page_optimized|instagram_handle|ad_account|thank_you|second_landing/i.test(msg)) {
+    if (/instagram_handle|ad_account|thank_you|second_landing|landing_page_url/i.test(msg)) {
       console.error('\nMigration not applied yet. Run supabase/migrations/add_client_media_account_fields.sql in the Supabase SQL editor, then re-run this script.\n');
     }
     throw err;

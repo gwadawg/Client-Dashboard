@@ -42,7 +42,7 @@ const CLIENT_NOTES_FIELDS =
   'id, note_type, reason_code, body, created_at, created_by, updated_at, related_call_id';
 
 const FILE_CLIENT_FIELDS =
-  'id, name, identity_client_id, is_live, reporting_type, service_program, sales_package, offer, offer_summary, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, ads_paused, ads_paused_at, ads_paused_note, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, drive_folder_url, funnel_url, landing_page_url, brokerage_name, legal_business_name, nmls, city, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, page_optimized, instagram_handle, ad_account_name, ad_account_url, thank_you_page_url, second_landing_page_url, clickup_task_id, created_at, churned_at, reinstated_at, welcome_back_token';
+  'id, name, identity_client_id, is_live, reporting_type, service_program, sales_package, offer, offer_summary, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, ads_paused, ads_paused_at, ads_paused_note, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, drive_folder_url, funnel_url, landing_page_url, brokerage_name, legal_business_name, nmls, city, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, instagram_handle, ad_account_name, ad_account_url, thank_you_page_url, second_landing_page_url, clickup_task_id, created_at, churned_at, reinstated_at, welcome_back_token';
 
 const FILE_BILLING_FIELDS =
   'id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, passthrough_amount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, stripe_invoice_id, stripe_payment_intent_id, is_first_payment, is_extension, created_at';
@@ -219,13 +219,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     'phone_live_transfer', 'phone_notifications', 'live_transfer_approved',
     'contact_role', 'appointment_settings', 'facebook_page_name', 'offer_summary',
     // Media buying account ops
-    'page_optimized', 'instagram_handle', 'ad_account_name', 'ad_account_url',
+    'instagram_handle', 'ad_account_name', 'ad_account_url',
     'thank_you_page_url', 'second_landing_page_url',
     // Per-client KPI band overrides (Client Success benchmark editor)
     'kpi_benchmarks',
   ];
   const numericFields = new Set(['mrr', 'contract_term_months', 'daily_adspend', 'billing_day', 'pay_per_show', 'pay_per_bailed']);
-  const booleanFields = new Set(['live_transfer_approved', 'billing_paused', 'ads_paused', 'page_optimized']);
+  const booleanFields = new Set(['live_transfer_approved', 'billing_paused', 'ads_paused']);
   const updates: Record<string, unknown> = {};
   if ('states_licensed' in body) {
     updates.states_licensed = normalizeStatesLicensed(body.states_licensed);
@@ -268,10 +268,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     }
     else if (k === 'kpi_benchmarks') updates[k] = body[k] ?? null; // object or null, stored as-is
-    else if (k === 'page_optimized') {
-      if (body[k] === null || body[k] === '' || body[k] === undefined) updates[k] = null;
-      else updates[k] = body[k] === true || body[k] === 'yes';
-    }
     else if (booleanFields.has(k)) updates[k] = body[k] === true || body[k] === 'yes';
     else if (numericFields.has(k)) updates[k] = body[k] === '' || body[k] === null ? null : Number(body[k]);
     else updates[k] = body[k] === '' ? null : body[k];

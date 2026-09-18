@@ -128,7 +128,6 @@ type FileClient = {
   live_transfer_approved: boolean | null;
   offer_summary: string | null;
   facebook_page_name: string | null;
-  page_optimized: boolean | null;
   instagram_handle: string | null;
   ad_account_name: string | null;
   ad_account_url: string | null;
@@ -1524,11 +1523,6 @@ export default function ClientFile({
               </p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
                 <Detail label="Facebook page" value={client?.facebook_page_name} missing={!client?.facebook_page_name} />
-                <Detail
-                  label="Page optimized"
-                  value={client?.page_optimized === true ? "Yes" : client?.page_optimized === false ? "No" : null}
-                  missing={client?.page_optimized == null}
-                />
                 <Detail label="Instagram" value={client?.instagram_handle} missing={!client?.instagram_handle} />
                 <Detail label="Ad account name" value={client?.ad_account_name} missing={!client?.ad_account_name} />
                 <Detail

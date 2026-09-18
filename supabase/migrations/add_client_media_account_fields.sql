@@ -1,14 +1,11 @@
 -- Media buying account ops fields (Meta page, ad account, landers).
 -- Landing page continues to use clients.funnel_url.
-alter table clients add column if not exists page_optimized boolean;
 alter table clients add column if not exists instagram_handle text;
 alter table clients add column if not exists ad_account_name text;
 alter table clients add column if not exists ad_account_url text;
 alter table clients add column if not exists thank_you_page_url text;
 alter table clients add column if not exists second_landing_page_url text;
 
-comment on column clients.page_optimized is
-  'Whether the Facebook page is optimized for ads delivery.';
 comment on column clients.instagram_handle is
   'Instagram handle or page label for this client account.';
 comment on column clients.ad_account_name is

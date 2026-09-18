@@ -56,7 +56,6 @@ export type EditableClient = {
   live_transfer_approved: boolean | null;
   offer_summary: string | null;
   facebook_page_name: string | null;
-  page_optimized: boolean | null;
   instagram_handle: string | null;
   ad_account_name: string | null;
   ad_account_url: string | null;
@@ -102,7 +101,6 @@ type Draft = {
   live_transfer_approved: boolean;
   offer_summary: string;
   facebook_page_name: string;
-  page_optimized: "" | "yes" | "no";
   instagram_handle: string;
   ad_account_name: string;
   ad_account_url: string;
@@ -157,7 +155,6 @@ export function clientToDraft(c: EditableClient): Draft {
     live_transfer_approved: c.live_transfer_approved === true,
     offer_summary: c.offer_summary ?? "",
     facebook_page_name: c.facebook_page_name ?? "",
-    page_optimized: c.page_optimized === true ? "yes" : c.page_optimized === false ? "no" : "",
     instagram_handle: c.instagram_handle ?? "",
     ad_account_name: c.ad_account_name ?? "",
     ad_account_url: c.ad_account_url ?? "",
@@ -203,7 +200,6 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     live_transfer_approved: draft.live_transfer_approved,
     offer_summary: draft.offer_summary.trim() || null,
     facebook_page_name: draft.facebook_page_name.trim() || null,
-    page_optimized: draft.page_optimized === "yes" ? true : draft.page_optimized === "no" ? false : null,
     instagram_handle: draft.instagram_handle.trim() || null,
     ad_account_name: draft.ad_account_name.trim() || null,
     ad_account_url: draft.ad_account_url.trim() || null,
@@ -465,15 +461,6 @@ export default function ClientFileEditForm({
       <Section title="Media buying">
         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-3">
           <Field label="Facebook page" value={draft.facebook_page_name} onChange={v => patch("facebook_page_name", v)} />
-          <SelectField
-            label="Page optimized"
-            value={draft.page_optimized}
-            onChange={v => patch("page_optimized", v as Draft["page_optimized"])}
-          >
-            <option value="">Unset</option>
-            <option value="yes">Yes</option>
-            <option value="no">No</option>
-          </SelectField>
           <Field label="Instagram" value={draft.instagram_handle} onChange={v => patch("instagram_handle", v)} placeholder="@handle" />
           <Field label="Ad account name" value={draft.ad_account_name} onChange={v => patch("ad_account_name", v)} />
           <Field

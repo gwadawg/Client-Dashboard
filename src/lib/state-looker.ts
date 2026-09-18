@@ -27,7 +27,6 @@ export type StateLookerClient = {
   ghl_subaccount_url: string | null;
   /** Media buying ops fields */
   facebook_page_name: string | null;
-  page_optimized: boolean | null;
   instagram_handle: string | null;
   ad_account_name: string | null;
   ad_account_url: string | null;
@@ -71,7 +70,6 @@ export type RawStateLookerClientRow = {
   ghl_subaccount_url?: string | null;
   ghl_location_id?: string | null;
   facebook_page_name?: string | null;
-  page_optimized?: boolean | null;
   instagram_handle?: string | null;
   ad_account_name?: string | null;
   ad_account_url?: string | null;
@@ -160,7 +158,6 @@ export function buildStateLookerResult(
       state: trimOrNull(row.state),
       ghl_subaccount_url: resolveGhlSubaccountUrl(row.ghl_subaccount_url, row.ghl_location_id),
       facebook_page_name: trimOrNull(row.facebook_page_name),
-      page_optimized: typeof row.page_optimized === 'boolean' ? row.page_optimized : null,
       instagram_handle: trimOrNull(row.instagram_handle),
       ad_account_name: trimOrNull(row.ad_account_name),
       ad_account_url: trimOrNull(row.ad_account_url),
