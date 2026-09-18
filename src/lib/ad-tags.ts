@@ -1,15 +1,22 @@
+import type { AdTagProduct } from './ad-tag-categories';
+
 export type AdTag = {
   id: string;
   slug: string;
   label: string;
+  product: AdTagProduct;
+  category: string;
   sort_order: number;
   is_active: boolean;
   created_at: string;
 };
 
 export type AdTagRef = {
+  id: string;
   slug: string;
   label: string;
+  product: AdTagProduct;
+  category: string;
 };
 
 export function slugifyAdTag(label: string): string {
@@ -26,6 +33,7 @@ export function adTagLabelMap(tags: Pick<AdTag, 'slug' | 'label'>[]): Record<str
   return Object.fromEntries(tags.map((t) => [t.slug, t.label]));
 }
 
+/** @deprecated Prefer normalizeTagIds — library writes use tag ids. */
 export function normalizeTagSlugs(value: unknown): { slugs: string[]; error?: string } {
   if (value == null) return { slugs: [] };
   if (!Array.isArray(value)) return { slugs: [], error: 'tags must be an array of slugs' };
