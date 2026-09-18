@@ -208,7 +208,8 @@ export function pickReusableNewOfferSibling(
 export type ReinstateCloseCandidate = {
   id: string;
   form_submission_id?: string | null;
-  created_at?: string | null;
+  /** acquisition_closes insert timestamp (no created_at column). */
+  inserted_at?: string | null;
   close_kind?: string | null;
 };
 
@@ -222,8 +223,8 @@ export function findExistingReinstateClose(
     if (row.form_submission_id === opts.formSubmissionId) return row.id;
     if (
       opts.submittedAt &&
-      row.created_at &&
-      row.created_at >= opts.submittedAt
+      row.inserted_at &&
+      row.inserted_at >= opts.submittedAt
     ) {
       return row.id;
     }
@@ -370,11 +371,11 @@ export async function ensureReinstateClose(
 ): Promise<string> {
   const { data: existingRows, error: loadErr } = await service
     .from('acquisition_closes')
-    .select('id, form_submission_id, created_at, close_kind')
+    .select('id, form_submission_id, inserted_at, close_kind')
     .eq('client_id', opts.clientId)
     .eq('close_kind', 'reinstate')
     .is('deleted_at', null)
-    .order('created_at', { ascending: false })
+    .order('inserted_at', { ascending: false })
     .limit(5);
 
   if (loadErr) throw new ReinstateClientError(loadErr.message, 500);

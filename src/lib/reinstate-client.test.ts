@@ -192,7 +192,7 @@ describe('reinstate-client helpers', () => {
     );
   });
 
-  it('matches existing reinstate closes by submission id or created-after window', () => {
+  it('matches existing reinstate closes by submission id or inserted-after window', () => {
     assert.equal(
       findExistingReinstateClose(
         [
@@ -200,7 +200,7 @@ describe('reinstate-client helpers', () => {
             id: 'close-1',
             close_kind: 'reinstate',
             form_submission_id: 'sub-1',
-            created_at: '2026-09-17T12:00:00.000Z',
+            inserted_at: '2026-09-17T12:00:00.000Z',
           },
         ],
         { formSubmissionId: 'sub-1' },
@@ -214,7 +214,7 @@ describe('reinstate-client helpers', () => {
             id: 'close-2',
             close_kind: 'reinstate',
             form_submission_id: 'other',
-            created_at: '2026-09-17T13:00:00.000Z',
+            inserted_at: '2026-09-17T13:00:00.000Z',
           },
         ],
         { formSubmissionId: 'sub-2', submittedAt: '2026-09-17T12:30:00.000Z' },
@@ -228,7 +228,7 @@ describe('reinstate-client helpers', () => {
             id: 'close-std',
             close_kind: 'standard',
             form_submission_id: 'sub-1',
-            created_at: '2026-09-17T13:00:00.000Z',
+            inserted_at: '2026-09-17T13:00:00.000Z',
           },
         ],
         { formSubmissionId: 'sub-1', submittedAt: '2026-09-17T12:00:00.000Z' },
