@@ -1,4 +1,8 @@
-import type { AdTagProduct } from './ad-tag-categories';
+import {
+  categoriesForProduct,
+  categoryDef,
+  type AdTagProduct,
+} from './ad-tag-categories';
 import type { AdTagRef } from './ad-tags';
 
 export function normalizeTagIds(value: unknown): { ids: string[]; error?: string } {
@@ -26,4 +30,41 @@ export function tagsAfterProductChange(
   if (!nextProduct) return [];
   const allowed = new Set(catalog.filter((t) => t.product === nextProduct).map((t) => t.id));
   return selectedIds.filter((id) => allowed.has(id));
+}
+
+/**
+ * Enforce selection_mode + required categories for a product.
+ * `tags` must already be product-scoped catalog rows for the selected ids.
+ */
+export function enforceCategorySelectionRules(
+  product: AdTagProduct,
+  tags: Pick<AdTagRef, 'id' | 'category' | 'slug'>[],
+): { error?: string } {
+  const byCategory = new Map<string, typeof tags>();
+  for (const t of tags) {
+    const list = byCategory.get(t.category) ?? [];
+    list.push(t);
+    byCategory.set(t.category, list);
+  }
+
+  for (const [category, list] of byCategory) {
+    const def = categoryDef(product, category);
+    if (!def) {
+      return { error: `Unknown category "${category}" for ${product}` };
+    }
+    if (def.selection_mode === 'single' && list.length > 1) {
+      return {
+        error: `${def.label} allows only one tag (got ${list.map((t) => t.slug).join(', ')})`,
+      };
+    }
+  }
+
+  for (const def of categoriesForProduct(product)) {
+    if (!def.required || def.deprecated) continue;
+    if (!byCategory.get(def.key)?.length) {
+      return { error: `${def.label} is required` };
+    }
+  }
+
+  return {};
 }

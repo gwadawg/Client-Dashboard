@@ -1,4 +1,4 @@
-import { normalizeTagIds } from './ad-tags-resolve';
+import { normalizeTagIds, enforceCategorySelectionRules } from './ad-tags-resolve';
 import { isAdTagProduct, type AdTagProduct } from './ad-tag-categories';
 import { slugifyAdTag, type AdTag, type AdTagRef } from './ad-tags';
 import type { createServiceClient } from './supabase';
@@ -45,18 +45,36 @@ export async function resolveTagIds(
 
   const { data, error } = await service
     .from('ad_tags')
-    .select('id, product')
+    .select('id, product, category, slug')
     .in('id', parsed.ids)
     .eq('is_active', true);
   if (error) return { ids: [], error: error.message };
 
-  const found = new Map((data ?? []).map((r) => [r.id as string, r.product as string]));
+  const found = new Map(
+    (data ?? []).map((r) => [
+      r.id as string,
+      {
+        product: r.product as string,
+        category: r.category as string,
+        slug: r.slug as string,
+      },
+    ]),
+  );
   for (const id of parsed.ids) {
-    if (!found.has(id)) return { ids: [], error: `Unknown tag id: ${id}` };
-    if (found.get(id) !== product) {
+    const row = found.get(id);
+    if (!row) return { ids: [], error: `Unknown tag id: ${id}` };
+    if (row.product !== product) {
       return { ids: [], error: `Tag ${id} does not belong to product ${product}` };
     }
   }
+
+  const refs = parsed.ids.map((id) => {
+    const row = found.get(id)!;
+    return { id, category: row.category, slug: row.slug };
+  });
+  const rules = enforceCategorySelectionRules(product, refs);
+  if (rules.error) return { ids: [], error: rules.error };
+
   return { ids: parsed.ids };
 }
 

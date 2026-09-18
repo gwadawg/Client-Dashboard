@@ -38,17 +38,18 @@ export default function ClusterPanel({ clusters, formatLabels }: Props) {
       if (c.kind === "tag" && c.category) keys.add(c.category);
     }
     const preferred = [
+      "bucket",
+      "track",
+      "creative_job",
+      "strategy",
       "concept",
       "topic",
       "trigger",
-      "bucket",
-      "track",
-      "strategy",
-      "creative_job",
-      "angle",
       "outcome",
       "stage",
       "equity_callout",
+      // Angle is deprecated — only surface if historical clusters exist.
+      "angle",
     ];
     return [
       ...preferred.filter((k) => keys.has(k)),

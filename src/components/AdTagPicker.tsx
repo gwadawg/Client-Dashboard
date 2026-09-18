@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   categoriesForProduct,
+  categoryDef,
+  dscrTagPairingWarnings,
   isAdTagProduct,
   type AdTagProduct,
 } from "@/lib/ad-tag-categories";
@@ -104,18 +106,48 @@ export function AdTagPicker({
   const selected = new Set(value);
   const active = tags.filter((t) => t.is_active);
 
-  function toggle(id: string) {
-    onChange(selected.has(id) ? value.filter((x) => x !== id) : [...value, id]);
+  const selectedRefs = useMemo(
+    () =>
+      active
+        .filter((t) => selected.has(t.id))
+        .map((t) => ({ category: t.category, slug: t.slug })),
+    [active, selected],
+  );
+
+  const pairingWarnings =
+    productKey === "dscr" ? dscrTagPairingWarnings(selectedRefs) : [];
+
+  function toggle(id: string, category: string) {
+    if (!productKey) return;
+    const def = categoryDef(productKey, category);
+    const isOn = selected.has(id);
+    if (def?.selection_mode === "single") {
+      const othersInCat = active
+        .filter((t) => t.category === category && t.id !== id)
+        .map((t) => t.id);
+      const withoutCat = value.filter((x) => !othersInCat.includes(x) && x !== id);
+      onChange(isOn ? withoutCat : [...withoutCat, id]);
+      return;
+    }
+    onChange(isOn ? value.filter((x) => x !== id) : [...value, id]);
   }
 
   async function stampNew(category: string) {
     const label = draft.trim();
-    if (!label || saving || !onCreate) return;
+    if (!label || saving || !onCreate || !productKey) return;
     setSaving(true);
     setLocalError(null);
     try {
       const created = await onCreate({ label, category });
-      if (!selected.has(created.id)) onChange([...value, created.id]);
+      const def = categoryDef(productKey, category);
+      if (def?.selection_mode === "single") {
+        const othersInCat = active
+          .filter((t) => t.category === category)
+          .map((t) => t.id);
+        onChange([...value.filter((x) => !othersInCat.includes(x)), created.id]);
+      } else if (!selected.has(created.id)) {
+        onChange([...value, created.id]);
+      }
       setDraft("");
       setComposingCategory(null);
     } catch (e) {
@@ -150,13 +182,20 @@ export function AdTagPicker({
           .map((t) => t.label);
         const isOpen = openCategory === cat.key;
         const summary =
-          selectedLabels.length > 0 ? selectedLabels.join(", ") : "None";
+          selectedLabels.length > 0 ? selectedLabels.join(", ") : cat.required ? "Required" : "None";
+        const modeHint =
+          cat.selection_mode === "single" ? "pick one" : "multi-select";
 
         return (
           <div
             key={cat.key}
             className="rounded-md overflow-hidden"
-            style={{ border: "1px solid rgba(255,255,255,0.08)" }}
+            style={{
+              border: cat.deprecated
+                ? "1px dashed rgba(148,163,184,0.35)"
+                : "1px solid rgba(255,255,255,0.08)",
+              opacity: cat.deprecated ? 0.85 : 1,
+            }}
           >
             <button
               type="button"
@@ -169,10 +208,21 @@ export function AdTagPicker({
                 style={{ color: "#94a3b8", fontFamily: "var(--font-plex-mono)" }}
               >
                 {cat.label}
+                {cat.required ? " *" : ""}
+                <span className="font-normal normal-case tracking-normal opacity-70">
+                  {" "}
+                  · {modeHint}
+                </span>
               </span>
               <span
-                className="text-[11px] truncate max-w-[60%]"
-                style={{ color: selectedLabels.length ? "#e2e8f0" : "#64748b" }}
+                className="text-[11px] truncate max-w-[55%]"
+                style={{
+                  color: selectedLabels.length
+                    ? "#e2e8f0"
+                    : cat.required
+                      ? "#fbbf24"
+                      : "#64748b",
+                }}
                 title={summary}
               >
                 {summary}
@@ -180,6 +230,11 @@ export function AdTagPicker({
             </button>
             {isOpen ? (
               <div className="px-3 py-2 space-y-2" style={{ background: "rgba(0,0,0,0.2)" }}>
+                {cat.deprecated ? (
+                  <p className="text-[10px]" style={{ color: "#94a3b8" }}>
+                    Legacy only — rollups use Bucket + Creative job + Concept.
+                  </p>
+                ) : null}
                 {loading && catTags.length === 0 ? (
                   <span className="text-[11px]" style={{ color: "#64748b" }}>
                     Loading…
@@ -192,7 +247,7 @@ export function AdTagPicker({
                       <button
                         key={t.id}
                         type="button"
-                        onClick={() => toggle(t.id)}
+                        onClick={() => toggle(t.id, cat.key)}
                         className="px-2.5 py-1 rounded-md text-[11px] tracking-wide transition-colors"
                         style={{
                           fontFamily: "var(--font-plex-mono)",
@@ -215,7 +270,7 @@ export function AdTagPicker({
                     </span>
                   ) : null}
                 </div>
-                {onCreate ? (
+                {onCreate && !cat.deprecated ? (
                   composingCategory === cat.key ? (
                     <div className="flex items-center gap-1">
                       <input
@@ -280,15 +335,24 @@ export function AdTagPicker({
           </div>
         );
       })}
+      {pairingWarnings.length > 0 ? (
+        <ul className="space-y-0.5 pt-1">
+          {pairingWarnings.map((w) => (
+            <li
+              key={w}
+              className="text-[10px]"
+              style={{ color: "#fbbf24", fontFamily: "var(--font-plex-mono)" }}
+            >
+              ⚠ {w}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {localError ? (
         <p className="text-[11px]" style={{ color: "#f87171" }}>
           {localError}
         </p>
-      ) : (
-        <p className="text-[10px]" style={{ color: "#475569" }}>
-          Multi-select within each category. Tags are scoped to this product.
-        </p>
-      )}
+      ) : null}
     </div>
   );
 }
