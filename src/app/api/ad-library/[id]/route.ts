@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
-import { replaceLibraryTags, resolveTagSlugs, withLibraryTags } from '@/lib/ad-tags-db';
+import { isAdTagProduct } from '@/lib/ad-tag-categories';
+import { replaceLibraryTags, resolveTagIds, withLibraryTags } from '@/lib/ad-tags-db';
 
 const VALID_STATUS = ['active', 'winner', 'paused', 'archived'] as const;
 const VALID_PRODUCT = ['reverse', 'dscr', 'broad_forward'] as const;
@@ -90,11 +91,25 @@ export async function PATCH(
 
   let nextTags: string[] | null = null;
   if ('tags' in body) {
-    const tagResult = await resolveTagSlugs(ctx.service, body.tags);
+    // Resolve against the product that will be on the row after this PATCH.
+    let productForTags: string | null = null;
+    if ('product' in updates) {
+      productForTags = (updates.product as string | null) ?? null;
+    } else {
+      const { data: existing } = await ctx.service
+        .from('ad_library')
+        .select('product')
+        .eq('id', id)
+        .maybeSingle();
+      productForTags = (existing?.product as string | null) ?? null;
+    }
+    const tagProduct =
+      productForTags && isAdTagProduct(productForTags) ? productForTags : null;
+    const tagResult = await resolveTagIds(ctx.service, body.tags, tagProduct);
     if (tagResult.error) {
       return NextResponse.json({ error: tagResult.error }, { status: 400 });
     }
-    nextTags = tagResult.slugs;
+    nextTags = tagResult.ids;
   }
 
   const { data, error } = await ctx.service
@@ -114,6 +129,19 @@ export async function PATCH(
 
   if (nextTags !== null) {
     const tagWrite = await replaceLibraryTags(ctx.service, id, nextTags);
+    if (tagWrite.error) {
+      return NextResponse.json({ error: tagWrite.error }, { status: 500 });
+    }
+  } else if ('product' in updates) {
+    // Product changed without an explicit tags payload — strip mismatched tags.
+    const withCurrent = await withLibraryTags(ctx.service, [data]);
+    const row = withCurrent.data[0];
+    const nextProduct =
+      data.product && isAdTagProduct(data.product as string) ? data.product : null;
+    const kept = (row?.tags ?? [])
+      .filter((t) => nextProduct && t.product === nextProduct)
+      .map((t) => t.id);
+    const tagWrite = await replaceLibraryTags(ctx.service, id, kept);
     if (tagWrite.error) {
       return NextResponse.json({ error: tagWrite.error }, { status: 500 });
     }

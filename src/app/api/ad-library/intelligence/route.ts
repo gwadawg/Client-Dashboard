@@ -6,7 +6,8 @@ import {
   isValidAdProduct,
 } from '@/lib/ad-intelligence';
 import { adFormatSlugExists, listAdFormats } from '@/lib/ad-formats-db';
-import { adTagSlugExists, listAdTags, withLibraryTags } from '@/lib/ad-tags-db';
+import { adTagIdExists, listAdTags, withLibraryTags } from '@/lib/ad-tags-db';
+import { isAdTagProduct } from '@/lib/ad-tag-categories';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
   const status = searchParams.get('status')?.trim();
   const product = searchParams.get('product')?.trim();
   const adFormat = searchParams.get('ad_format')?.trim();
-  const tag = searchParams.get('tag')?.trim();
+  const tagId = searchParams.get('tag_id')?.trim();
   const libraryStatus = searchParams.get('library_status')?.trim();
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)));
 
@@ -32,8 +33,8 @@ export async function GET(req: Request) {
   if (adFormat && !(await adFormatSlugExists(ctx.service, adFormat))) {
     return NextResponse.json({ error: 'Invalid ad_format' }, { status: 400 });
   }
-  if (tag && !(await adTagSlugExists(ctx.service, tag))) {
-    return NextResponse.json({ error: 'Invalid tag' }, { status: 400 });
+  if (tagId && !(await adTagIdExists(ctx.service, tagId))) {
+    return NextResponse.json({ error: 'Invalid tag_id' }, { status: 400 });
   }
 
   let query = ctx.service
@@ -47,19 +48,20 @@ export async function GET(req: Request) {
   if (product) query = query.eq('product', product);
   if (adFormat) query = query.eq('ad_format', adFormat);
   if (libraryStatus) query = query.eq('status', libraryStatus);
-  if (tag) {
+  if (tagId) {
     const { data: taggedRows, error: tagFilterError } = await ctx.service
       .from('ad_library_tags')
       .select('library_id')
-      .eq('tag_slug', tag);
+      .eq('tag_id', tagId);
     if (tagFilterError) {
       return NextResponse.json({ error: tagFilterError.message }, { status: 500 });
     }
     const taggedIds = (taggedRows ?? []).map((r) => r.library_id);
     if (taggedIds.length === 0) {
+      const productFilter = product && isAdTagProduct(product) ? product : null;
       const [{ data: formats }, { data: tagCatalog }] = await Promise.all([
         listAdFormats(ctx.service),
-        listAdTags(ctx.service),
+        listAdTags(ctx.service, productFilter),
       ]);
       return NextResponse.json({ rows: [], total: 0, formats: formats ?? [], tags: tagCatalog ?? [] });
     }
@@ -76,9 +78,10 @@ export async function GET(req: Request) {
   }
 
   const ids = (library ?? []).map((r) => r.id);
+  const productFilter = product && isAdTagProduct(product) ? product : null;
   const [{ data: catalog }, { data: tagCatalog }, tagged, aliasesResult] = await Promise.all([
     listAdFormats(ctx.service),
-    listAdTags(ctx.service),
+    listAdTags(ctx.service, productFilter),
     withLibraryTags(ctx.service, library ?? []),
     ids.length > 0
       ? ctx.service
@@ -94,7 +97,7 @@ export async function GET(req: Request) {
   }
   if (tagged.error) {
     const hint = tagged.error.includes('does not exist')
-      ? ' Run migration add_ad_tags_catalog.sql on Supabase.'
+      ? ' Run migration rebuild_ad_tags_product_categories.sql on Supabase.'
       : '';
     return NextResponse.json({ error: tagged.error + hint }, { status: 500 });
   }

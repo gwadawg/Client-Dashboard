@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { resolveAdFormatSlug } from '@/lib/ad-formats-db';
-import { replaceLibraryTags, resolveTagSlugs, withLibraryTags } from '@/lib/ad-tags-db';
+import { isAdTagProduct } from '@/lib/ad-tag-categories';
+import { replaceLibraryTags, resolveTagIds, withLibraryTags } from '@/lib/ad-tags-db';
 
 const VALID_STATUS = ['active', 'winner', 'paused', 'archived'] as const;
 const VALID_PRODUCT = ['reverse', 'dscr', 'broad_forward'] as const;
@@ -51,7 +52,7 @@ export async function GET() {
   const tagged = await withLibraryTags(ctx.service, library ?? []);
   if (tagged.error) {
     const hint = tagged.error.includes('does not exist')
-      ? ' Run migration add_ad_tags_catalog.sql on Supabase.'
+      ? ' Run migration rebuild_ad_tags_product_categories.sql on Supabase.'
       : '';
     return NextResponse.json({ error: tagged.error + hint }, { status: 500 });
   }
@@ -105,7 +106,13 @@ export async function POST(req: Request) {
     }
   }
 
-  const tagResult = await resolveTagSlugs(ctx.service, 'tags' in body ? body.tags : []);
+  const product = cleanEnum(body.product, VALID_PRODUCT);
+  const tagProduct = product && isAdTagProduct(product) ? product : null;
+  const tagResult = await resolveTagIds(
+    ctx.service,
+    'tags' in body ? body.tags : [],
+    tagProduct,
+  );
   if (tagResult.error) {
     return NextResponse.json({ error: tagResult.error }, { status: 400 });
   }
@@ -115,7 +122,7 @@ export async function POST(req: Request) {
     platform: cleanString(body.platform) ?? 'facebook',
     status,
     ad_format: formatResult.slug,
-    product: cleanEnum(body.product, VALID_PRODUCT),
+    product,
     summary: cleanString(body.summary),
     visual_notes: cleanString(body.visual_notes),
     drive_url: cleanString(body.drive_url),
@@ -142,7 +149,7 @@ export async function POST(req: Request) {
   }
   if (!data) return NextResponse.json({ error: 'Failed to create ad' }, { status: 500 });
 
-  const tagWrite = await replaceLibraryTags(ctx.service, data.id, tagResult.slugs);
+  const tagWrite = await replaceLibraryTags(ctx.service, data.id, tagResult.ids);
   if (tagWrite.error) {
     return NextResponse.json({ error: tagWrite.error }, { status: 500 });
   }
