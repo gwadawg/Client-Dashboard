@@ -129,6 +129,7 @@ type FileClient = {
   created_at: string | null;
   churned_at: string | null;
   reinstated_at: string | null;
+  welcome_back_token?: string | null;
 };
 
 type StatusHistoryEntry = {
@@ -327,6 +328,8 @@ export default function ClientFile({
   initialTab?: LegacyTabKey;
 }) {
   const [client, setClient] = useState<FileClient | null>(null);
+  const [welcomeBackUrl, setWelcomeBackUrl] = useState<string | null>(null);
+  const [welcomeBackCopied, setWelcomeBackCopied] = useState(false);
   const [billings, setBillings] = useState<FileBilling[]>([]);
   const [statusHistory, setStatusHistory] = useState<StatusHistoryEntry[]>([]);
   const [formSubmissions, setFormSubmissions] = useState<FormSubmissionSummary[]>([]);
@@ -411,11 +414,17 @@ export default function ClientFile({
       .then(async ([d, activityRes, relationshipRes]) => {
         if (d.error) {
           setError(d.error);
+          setWelcomeBackUrl(null);
           setCsAppointments([]);
           setTouchpointsOpen([]);
           setTouchpointsHistory([]);
         } else {
           setClient(d.client ?? null);
+          setWelcomeBackUrl(
+            typeof d.welcome_back_url === "string" && d.welcome_back_url.trim()
+              ? d.welcome_back_url.trim()
+              : null,
+          );
           setOfferRow(d.offer ? { name: d.offer.name, reporting_type: d.offer.reporting_type ?? null } : null);
           setBillings(d.billings ?? []);
           setStatusHistory(d.status_history ?? []);
@@ -749,6 +758,19 @@ export default function ClientFile({
     )
   );
   const showReinstateBadge = shouldShowReinstateBadge(client?.reinstated_at, client?.lifecycle_status);
+  const showWelcomeBackLink =
+    !!welcomeBackUrl && showReinstateBadge && !!latestReinstate && !welcomeBackObDone;
+
+  async function copyWelcomeBackUrl() {
+    if (!welcomeBackUrl) return;
+    try {
+      await navigator.clipboard.writeText(welcomeBackUrl);
+      setWelcomeBackCopied(true);
+      window.setTimeout(() => setWelcomeBackCopied(false), 2000);
+    } catch {
+      setSaveError("Could not copy welcome-back link — select it and copy manually.");
+    }
+  }
 
   return (
     <>
@@ -884,6 +906,53 @@ export default function ClientFile({
                   </>
                 )}
             </p>
+            {showWelcomeBackLink && (
+              <div
+                className="mt-3 rounded-lg px-3 py-3 space-y-2"
+                style={{
+                  background: "rgba(251,191,36,0.08)",
+                  border: "1px solid rgba(251,191,36,0.3)",
+                }}
+              >
+                <p className="text-xs font-semibold" style={{ color: "#fbbf24" }}>
+                  Welcome-back OB link — send to client
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    readOnly
+                    value={welcomeBackUrl}
+                    onFocus={e => e.currentTarget.select()}
+                    className="flex-1 min-w-0 px-2.5 py-1.5 rounded-md text-[11px] font-mono outline-none"
+                    style={{
+                      background: "rgba(15,23,42,0.65)",
+                      color: "#e2e8f0",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void copyWelcomeBackUrl()}
+                    className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-md"
+                    style={{ background: "#1e3a5f", color: "#e2e8f0" }}
+                  >
+                    {welcomeBackCopied ? "Copied" : "Copy"}
+                  </button>
+                  <a
+                    href={welcomeBackUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-md"
+                    style={{
+                      color: "#fbbf24",
+                      background: "rgba(251,191,36,0.12)",
+                      border: "1px solid rgba(251,191,36,0.3)",
+                    }}
+                  >
+                    Open
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {!loading && !error && client && !editing && (

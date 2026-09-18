@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import { getAppBaseUrlFromRequest } from '@/lib/app-url';
 import { VOIDED_BILLING_STATUS } from '@/lib/billing-query';
 import { CLIENT_CALL_FIELDS } from '@/lib/client-calls';
 import {
@@ -32,6 +33,7 @@ import {
   propagateIdentityFields,
   withIdentityProfile,
 } from '@/lib/client-identity';
+import { buildWelcomeBackUrl } from '@/lib/reinstate-client';
 
 const STATUS_HISTORY_FIELDS =
   'id, previous_status, new_status, reason_code, note, mrr_at_change, changed_at, changed_by, source, related_call_id';
@@ -40,7 +42,7 @@ const CLIENT_NOTES_FIELDS =
   'id, note_type, reason_code, body, created_at, created_by, updated_at, related_call_id';
 
 const FILE_CLIENT_FIELDS =
-  'id, name, identity_client_id, is_live, reporting_type, service_program, sales_package, offer, offer_summary, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, ads_paused, ads_paused_at, ads_paused_note, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, drive_folder_url, brokerage_name, legal_business_name, nmls, city, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, clickup_task_id, created_at, churned_at, reinstated_at';
+  'id, name, identity_client_id, is_live, reporting_type, service_program, sales_package, offer, offer_summary, lifecycle_status, client_stage, mrr, billing_type, billing_day, launch_date, date_signed, contract_end_date, contract_term_months, daily_adspend, ads_paused, ads_paused_at, ads_paused_note, performance_terms, billing_email, primary_contact, primary_contact_name, email, phone, source, website, drive_folder_url, brokerage_name, legal_business_name, nmls, city, state, states_licensed, timezone, ghl_location_id, phone_live_transfer, phone_notifications, live_transfer_approved, contact_role, appointment_settings, facebook_page_name, clickup_task_id, created_at, churned_at, reinstated_at, welcome_back_token';
 
 const FILE_BILLING_FIELDS =
   'id, billed_on, due_date, period_start, period_end, amount, base_amount, performance_amount, late_fee, discount, passthrough_amount, amount_paid, status, paid_on, method, invoice_ref, note, revenue_type, revenue_segment, lead_source, term_months, processing_fee, stripe_invoice_id, stripe_payment_intent_id, is_first_payment, is_extension, created_at';
@@ -48,7 +50,7 @@ const FILE_BILLING_FIELDS =
 // GET /api/clients/[id] — the client "file": the full client record plus its
 // complete billing/revenue history. Structured so more sections (success
 // reports, KPI history, notes) can be added over time.
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
   const denied = requireAnyPermission(ctx, ['admin_clients', 'admin_billing']);
@@ -125,6 +127,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const form_submissions = formSubmissionsRes.data ?? [];
   const contacts = contactsRes.data ?? [];
 
+  const welcomeToken =
+    typeof (rawClient as { welcome_back_token?: string | null }).welcome_back_token === 'string'
+      ? (rawClient as { welcome_back_token: string }).welcome_back_token.trim()
+      : '';
+  const welcome_back_url = welcomeToken
+    ? buildWelcomeBackUrl(getAppBaseUrlFromRequest(req), welcomeToken)
+    : null;
+
   const authorIds = [
     ...notes.map((n: { created_by?: string | null }) => n.created_by),
     ...calls.map((c: { created_by?: string | null }) => c.created_by),
@@ -133,6 +143,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   return NextResponse.json({
     client,
+    welcome_back_url,
     offer: rawClient,
     related_offers: identityGroup?.offers ?? [],
     identity_client_id: identityGroup?.identity_client_id ?? id,
