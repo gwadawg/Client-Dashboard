@@ -57,6 +57,7 @@ type LeadProfile = {
   b1_age: string | null;
   b2_age: string | null;
   lead_source: string | null;
+  ad_name: string | null;
   has_proposal_made: boolean;
   has_submission_made: boolean;
   has_loan_funded: boolean;
@@ -223,6 +224,7 @@ function downloadLeadsPageCsv(rows: LeadProfile[], page: number) {
     "B1 age",
     "B2 age",
     "Lead source",
+    "Ad",
     "Lead created",
     "Qualified",
     "Hot",
@@ -257,6 +259,7 @@ function downloadLeadsPageCsv(rows: LeadProfile[], page: number) {
         row.b1_age ?? "",
         row.b2_age ?? "",
         row.lead_source ?? "",
+        row.ad_name ?? "",
         new Date(row.created_at).toISOString().slice(0, 10),
         row.is_qualified ? "Y" : "",
         row.is_hot ? "Y" : "",
@@ -598,10 +601,10 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
       </p>
 
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
-        <table className="w-full text-sm min-w-[1100px] tabular-nums">
+        <table className="w-full text-sm min-w-[1200px] tabular-nums">
           <thead>
             <tr style={{ background: "#050c18" }}>
-              {["", "Client", "Name", "Flags", "Source", "Activity", "Loan amt", "Prop. value", "LTV", "B1 age", "B2 age", "Phone", "Email", isUnmappedView ? "Last activity" : "Created", "Contact"].map((h) => (
+              {["", "Client", "Name", "Flags", "Source", "Ad", "Activity", "Loan amt", "Prop. value", "LTV", "B1 age", "B2 age", "Phone", "Email", isUnmappedView ? "Last activity" : "Created", "Contact"].map((h) => (
                 <th
                   key={h || "expand"}
                   className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
@@ -615,13 +618,13 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={15} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
+                <td colSpan={16} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
+                <td colSpan={16} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
                   {isUnmappedView
                     ? "No unmapped activity in this range"
                     : conversionFilter
@@ -680,6 +683,13 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
                         title={row.lead_source ?? undefined}
                       >
                         {row.lead_source ?? "—"}
+                      </td>
+                      <td
+                        className="px-4 py-2.5 text-xs max-w-[14rem] truncate"
+                        style={{ color: "#cbd5e1" }}
+                        title={row.ad_name ?? undefined}
+                      >
+                        {row.ad_name ?? "—"}
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-x-3 gap-y-1">
@@ -747,7 +757,7 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={14} className="px-0 py-0" style={{ background: "#070f1a" }}>
+                        <td colSpan={16} className="px-0 py-0" style={{ background: "#070f1a" }}>
                           <table className="w-full">
                             <thead>
                               <tr>

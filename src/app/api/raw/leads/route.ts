@@ -44,6 +44,7 @@ type EventRow = {
   is_hot: boolean | null;
   is_out_of_state: boolean | null;
   lead_source: string | null;
+  ad_name: string | null;
   dq_reason: string | null;
   raw: unknown;
   clients:
@@ -119,6 +120,7 @@ type LeadProfile = {
   b1_age: string | null;
   b2_age: string | null;
   lead_source: string | null;
+  ad_name: string | null;
   has_proposal_made: boolean;
   has_submission_made: boolean;
   has_loan_funded: boolean;
@@ -380,6 +382,15 @@ function extractLeadSource(row: EventRow): string | null {
   return s || null;
 }
 
+/** Meta creative name (GHL UTM Ad Name / utm_content). */
+function extractAdName(row: EventRow): string | null {
+  if (row.ad_name?.trim()) return row.ad_name.trim();
+  const v = pickRaw(row.raw, ['ad_name', 'adName', 'utm_content', 'utmContent']);
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s || null;
+}
+
 function emptyCounts(): LeadCounts {
   return {
     dials: 0,
@@ -497,7 +508,7 @@ function clampUnscopedStart(
 }
 
 const EVENT_SELECT =
-  'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, lead_source, dq_reason, raw, clients(name, ghl_location_id)';
+  'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, lead_source, ad_name, dq_reason, raw, clients(name, ghl_location_id)';
 
 function applyClientScope<T extends { eq: Function; in: Function }>(
   q: T,
@@ -546,6 +557,7 @@ function ingestEventRows(
         b1_age: null,
         b2_age: null,
         lead_source: null,
+        ad_name: null,
         has_proposal_made: false,
         has_submission_made: false,
         has_loan_funded: false,
@@ -585,12 +597,14 @@ function ingestEventRows(
       const b1 = extractB1Age(row.raw);
       const b2 = extractB2Age(row.raw);
       const ls = extractLeadSource(row);
+      const ad = extractAdName(row);
       if (la != null) profile.loan_amount = la;
       if (pv != null) profile.property_value = pv;
       if (ltv != null) profile.ltv = ltv;
       if (b1 != null) profile.b1_age = b1;
       if (b2 != null) profile.b2_age = b2;
       if (ls != null) profile.lead_source = ls;
+      if (ad != null) profile.ad_name = ad;
       if (new Date(row.occurred_at).getTime() < new Date(profile.created_at).getTime()) {
         profile.created_at = row.occurred_at;
         if (row.lead_name) profile.lead_name = row.lead_name;
