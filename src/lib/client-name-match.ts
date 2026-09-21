@@ -9,6 +9,31 @@ export function normalizeClientNameForMatch(name: string): string {
     .trim();
 }
 
+/**
+ * GHL / Make sometimes send an LO office name while the roster uses the
+ * business / brand sub-account name. Map those webhook strings → roster name
+ * before resolve / pending match.
+ */
+export const CLIENT_NAME_ALIASES: Record<string, string> = {
+  // GHL sub-account still labeled with LO office; roster + brand = Green Monarch.
+  "Dave Bancroft's Office": 'Green Monarch Inc',
+};
+
+export function canonicalClientName(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  const direct = CLIENT_NAME_ALIASES[trimmed];
+  if (direct) return direct;
+  const norm = normalizeClientNameForMatch(trimmed);
+  for (const [from, to] of Object.entries(CLIENT_NAME_ALIASES)) {
+    if (normalizeClientNameForMatch(from) === norm) return to;
+  }
+  return trimmed;
+}
+
 export function clientNamesMatch(a: string, b: string): boolean {
-  return normalizeClientNameForMatch(a) === normalizeClientNameForMatch(b);
+  return (
+    normalizeClientNameForMatch(canonicalClientName(a)) ===
+    normalizeClientNameForMatch(canonicalClientName(b))
+  );
 }

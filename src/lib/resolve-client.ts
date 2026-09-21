@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { clientNamesMatch } from '@/lib/client-name-match';
+import { canonicalClientName, clientNamesMatch } from '@/lib/client-name-match';
 
 function trimId(v: unknown): string | undefined {
   if (v == null) return undefined;
@@ -90,11 +90,19 @@ export async function resolveClientId(
 
   const client_name = jsonStringField(payload.client_name) ?? undefined;
   if (client_name) {
-    const exact = await findUniqueClientId(service, 'name', client_name);
+    const lookupName = canonicalClientName(client_name);
+    const exact = await findUniqueClientId(service, 'name', lookupName);
     if (exact && 'error' in exact) return exact;
     if (exact && 'client_id' in exact) return exact;
 
-    const normalized = await findClientByNormalizedName(service, client_name);
+    // Also try the raw webhook string in case roster still uses the alias form.
+    if (lookupName !== client_name) {
+      const exactRaw = await findUniqueClientId(service, 'name', client_name);
+      if (exactRaw && 'error' in exactRaw) return exactRaw;
+      if (exactRaw && 'client_id' in exactRaw) return exactRaw;
+    }
+
+    const normalized = await findClientByNormalizedName(service, lookupName);
     if (normalized) return { client_id: normalized.id };
   }
 

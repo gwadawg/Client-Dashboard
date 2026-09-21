@@ -40,4 +40,16 @@ describe('client name normalization', () => {
       true,
     );
   });
+
+  it('aliases Dave Bancroft office name to Green Monarch Inc', () => {
+    assert.equal(clientNamesMatch("Dave Bancroft's Office", 'Green Monarch Inc'), true);
+    assert.equal(clientNamesMatch("dave bancroft's office", 'green monarch inc'), true);
+    assert.equal(
+      pendingEventMatchesClient(
+        { client_name: "Dave Bancroft's Office", ghl_location_id: null },
+        { name: 'Green Monarch Inc', ghl_location_id: 'TqH2sR3WGN14dD4sacTf' },
+      ),
+      true,
+    );
+  });
 });
