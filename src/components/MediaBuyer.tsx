@@ -1447,7 +1447,6 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                     key={ad.row_key}
                     ad={ad}
                     showPlatform={showPlatform}
-                    formatLabels={formatLabels}
                     onOpen={() => openAd(ad)}
                     onAddToLibrary={onAddToLibrary}
                     onViewInLibrary={onViewInLibrary}
@@ -1534,7 +1533,6 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
 function FragmentRow({
   ad,
   showPlatform,
-  formatLabels,
   onOpen,
   onAddToLibrary,
   onViewInLibrary,
@@ -1542,7 +1540,6 @@ function FragmentRow({
 }: {
   ad: AdRow;
   showPlatform: boolean;
-  formatLabels: Record<string, string>;
   onOpen: () => void;
   onAddToLibrary: (adName: string) => void;
   onViewInLibrary: (libraryId: string) => void;
@@ -1563,90 +1560,74 @@ function FragmentRow({
       role="button"
     >
       <td className="px-3 py-3 text-left" style={{ color: "#e2e8f0" }}>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium">{ad.ad_name}</span>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpen();
-            }}
-            className="text-[11px] underline"
-            style={{ color: "#e2e8f0" }}
-          >
-            Open
-          </button>
-          {ad.library ? <StatusBadge status={ad.library.status} /> : (
-            <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase" style={{ background: "rgba(100,116,139,0.15)", color: "#64748b" }}>
-              Not in library
-            </span>
-          )}
-          {ad.library?.ad_format ? (
-            <ClassBadge label={adFormatLabel(ad.library.ad_format, formatLabels)} color="#60a5fa" />
-          ) : null}
-          {ad.library?.product ? (
-            <ClassBadge
-              label={PRODUCT_LABELS[ad.library.product] ?? ad.library.product}
-              color={ad.library.product === "dscr" ? "#fbbf24" : "#38bdf8"}
-            />
-          ) : null}
-          {(ad.library?.tags ?? []).slice(0, 3).map((t) => (
-            <ClassBadge key={t.slug} label={t.label} color="#34d399" />
-          ))}
-          {ad.variant_names.length > 1 ? (
-            <ClassBadge label={`${ad.variant_names.length} variants`} color="#f59e0b" />
-          ) : null}
-          {ad.library ? (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium">{ad.ad_name}</span>
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onViewInLibrary(ad.library!.id);
+                onOpen();
               }}
               className="text-[11px] underline"
-              style={{ color: "#f59e0b" }}
+              style={{ color: "#e2e8f0" }}
             >
-              View in library
+              Open
             </button>
-          ) : null}
-          {ad.library?.drive_url ? (
-            <a
-              href={ad.library.drive_url}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="text-[11px] underline"
-              style={{ color: "#60a5fa" }}
-            >
-              creative
-            </a>
-          ) : null}
-          {!ad.is_sourced ? (
-            <>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {ad.library ? (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onAddToLibrary(ad.ad_name);
+                  onViewInLibrary(ad.library!.id);
                 }}
                 className="text-[11px] underline"
                 style={{ color: "#f59e0b" }}
               >
-                Add
+                View in library
               </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onLinkToExisting(ad.ad_name);
-                }}
+            ) : null}
+            {ad.library?.drive_url ? (
+              <a
+                href={ad.library.drive_url}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
                 className="text-[11px] underline"
                 style={{ color: "#60a5fa" }}
               >
-                Link
-              </button>
-            </>
-          ) : null}
+                creative
+              </a>
+            ) : null}
+            {!ad.is_sourced ? (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddToLibrary(ad.ad_name);
+                  }}
+                  className="text-[11px] underline"
+                  style={{ color: "#f59e0b" }}
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onLinkToExisting(ad.ad_name);
+                  }}
+                  className="text-[11px] underline"
+                  style={{ color: "#60a5fa" }}
+                >
+                  Link
+                </button>
+              </>
+            ) : null}
+          </div>
         </div>
       </td>
       <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money(ad.spend)}</td>
