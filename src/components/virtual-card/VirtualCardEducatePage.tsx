@@ -32,6 +32,7 @@ export default function VirtualCardEducatePage({ card }: Props) {
         className={styles.page}
         data-mode={pack.light_or_dark}
         data-product={card.product}
+        data-pack={pack.pack_id}
         style={vars as React.CSSProperties}
       >
         <div className={styles.inner}>
@@ -162,6 +163,65 @@ function RmEducateBody({
   );
 }
 
+/** Frozen DSCR demo hero — inline SVG skyline (not a photo). */
+function DscrHeroArt() {
+  return (
+    <div className={styles.heroArt} aria-hidden="true">
+      <svg viewBox="0 0 360 270" xmlns="http://www.w3.org/2000/svg">
+        <rect className={styles.heroSky} width="360" height="270" />
+        <circle className={styles.heroMoon} cx="292" cy="48" r="14" />
+        <ellipse className={styles.heroTree} cx="42" cy="178" rx="18" ry="28" />
+        <ellipse className={styles.heroTree} cx="328" cy="172" rx="16" ry="24" />
+        <rect className={styles.heroGround} y="198" width="360" height="72" />
+        <path className={styles.heroGroundLine} d="M0 198h360" strokeWidth="1.25" />
+        <g>
+          <rect className={styles.heroBldg} x="48" y="92" width="78" height="106" rx="2" strokeWidth="1.4" />
+          <rect className={styles.heroRoof} x="44" y="84" width="86" height="10" rx="1" />
+          <rect className={styles.heroWin} x="58" y="108" width="14" height="16" rx="1" />
+          <rect className={styles.heroWin} x="80" y="108" width="14" height="16" rx="1" />
+          <rect className={styles.heroWinLit} x="102" y="108" width="14" height="16" rx="1" />
+          <rect className={styles.heroWin} x="58" y="134" width="14" height="16" rx="1" />
+          <rect className={styles.heroWinLit} x="80" y="134" width="14" height="16" rx="1" />
+          <rect className={styles.heroWin} x="102" y="134" width="14" height="16" rx="1" />
+          <rect className={styles.heroWin} x="58" y="160" width="14" height="16" rx="1" />
+          <rect className={styles.heroWin} x="80" y="160" width="14" height="16" rx="1" />
+          <rect className={styles.heroWin} x="102" y="160" width="14" height="16" rx="1" />
+          <rect className={styles.heroDoor} x="78" y="182" width="18" height="16" rx="1" />
+        </g>
+        <g>
+          <rect className={styles.heroBldgMid} x="136" y="58" width="96" height="140" rx="2" strokeWidth="1.4" />
+          <rect className={styles.heroRoof} x="130" y="48" width="108" height="12" rx="1" />
+          <rect className={styles.heroAccentBar} x="136" y="58" width="96" height="3" />
+          <rect className={styles.heroWin} x="150" y="78" width="16" height="18" rx="1" />
+          <rect className={styles.heroWinLit} x="176" y="78" width="16" height="18" rx="1" />
+          <rect className={styles.heroWin} x="202" y="78" width="16" height="18" rx="1" />
+          <rect className={styles.heroWinLit} x="150" y="108" width="16" height="18" rx="1" />
+          <rect className={styles.heroWin} x="176" y="108" width="16" height="18" rx="1" />
+          <rect className={styles.heroWin} x="202" y="108" width="16" height="18" rx="1" />
+          <rect className={styles.heroWin} x="150" y="138" width="16" height="18" rx="1" />
+          <rect className={styles.heroWin} x="176" y="138" width="16" height="18" rx="1" />
+          <rect className={styles.heroWinLit} x="202" y="138" width="16" height="18" rx="1" />
+          <rect className={styles.heroWin} x="150" y="168" width="16" height="18" rx="1" />
+          <rect className={styles.heroWin} x="176" y="168" width="16" height="18" rx="1" />
+          <rect className={styles.heroWin} x="202" y="168" width="16" height="18" rx="1" />
+          <rect className={styles.heroDoor} x="170" y="190" width="28" height="8" rx="1" />
+        </g>
+        <g>
+          <rect className={styles.heroBldg} x="242" y="104" width="72" height="94" rx="2" strokeWidth="1.4" />
+          <rect className={styles.heroRoof} x="238" y="96" width="80" height="10" rx="1" />
+          <rect className={styles.heroWin} x="254" y="118" width="14" height="16" rx="1" />
+          <rect className={styles.heroWinLit} x="276" y="118" width="14" height="16" rx="1" />
+          <rect className={styles.heroWin} x="254" y="144" width="14" height="16" rx="1" />
+          <rect className={styles.heroWin} x="276" y="144" width="14" height="16" rx="1" />
+          <rect className={styles.heroWinLit} x="254" y="170" width="14" height="16" rx="1" />
+          <rect className={styles.heroWin} x="276" y="170" width="14" height="16" rx="1" />
+          <rect className={styles.heroDoor} x="268" y="186" width="18" height="12" rx="1" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
 function DscrEducateBody({
   stock,
   card,
@@ -176,6 +236,7 @@ function DscrEducateBody({
   return (
     <>
       <p className={styles.eyebrow}>{stock.eyebrow}</p>
+      <DscrHeroArt />
       <h1 className={styles.h1}>
         {stock.h1Lead} <span className={styles.accent}>{stock.h1Accent}</span>
       </h1>

@@ -88,6 +88,89 @@
   object-fit: cover;
 }
 
+/* DSCR educate — frozen demo skyline SVG (sits under eyebrow, above H1) */
+.heroArt {
+  position: relative;
+  margin: 0 0 1.25rem;
+  border-radius: var(--vc-radius);
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  background: var(--vc-paper-deep);
+  box-shadow: 0 24px 40px -30px rgba(0, 0, 0, 0.55);
+}
+
+.heroArt svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.heroSky {
+  fill: color-mix(in srgb, var(--vc-paper-deep) 70%, var(--vc-accent-wash));
+}
+
+.heroGround {
+  fill: color-mix(in srgb, var(--vc-ink) 6%, var(--vc-paper-deep));
+}
+
+.heroGroundLine {
+  stroke: color-mix(in srgb, var(--vc-ink) 14%, transparent);
+  fill: none;
+}
+
+.heroBldg {
+  fill: color-mix(in srgb, var(--vc-ink) 7%, var(--vc-paper));
+  stroke: color-mix(in srgb, var(--vc-ink) 18%, transparent);
+}
+
+.heroBldgMid {
+  fill: color-mix(in srgb, var(--vc-accent) 10%, var(--vc-paper));
+  stroke: color-mix(in srgb, var(--vc-ink) 16%, transparent);
+}
+
+.heroRoof {
+  fill: color-mix(in srgb, var(--vc-accent) 38%, var(--vc-paper-deep));
+}
+
+.heroWin {
+  fill: color-mix(in srgb, var(--vc-accent) 22%, var(--vc-paper));
+}
+
+.heroWinLit {
+  fill: color-mix(in srgb, var(--vc-accent) 55%, transparent);
+}
+
+.heroDoor {
+  fill: color-mix(in srgb, var(--vc-accent) 28%, var(--vc-paper-deep));
+}
+
+.heroAccentBar {
+  fill: var(--vc-accent);
+}
+
+.heroTree {
+  fill: color-mix(in srgb, var(--vc-accent) 18%, var(--vc-paper-deep));
+}
+
+.heroMoon {
+  fill: color-mix(in srgb, var(--vc-accent) 35%, transparent);
+}
+
+.page[data-pack="capital"] .heroArt {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--vc-accent) 45%, transparent),
+    0 0 0 5px var(--vc-paper),
+    0 0 0 6px color-mix(in srgb, var(--vc-accent) 22%, transparent);
+}
+
+.page[data-pack="ledger"] .heroArt {
+  overflow: visible;
+}
+
+.page[data-pack="ink"] .heroArt {
+  box-shadow: 0 18px 36px -22px rgba(0, 0, 0, 0.28);
+}
+
 .h2 {
   font-family: var(--vc-display);
   font-size: 1.15rem;

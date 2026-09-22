@@ -97,11 +97,15 @@ export default function VirtualCardPage({ card }: Props) {
               ) : null}
             </dl>
 
-            <ul className={styles.secondary}>
-              <li>
-                <a href={learnHref}>{learnLabel}</a>
-              </li>
-            </ul>
+            <a className={styles.learnLink} href={learnHref}>
+              <span className={styles.learnText}>
+                <span className={styles.learnLabel}>{learnLabel}</span>
+                <span className={styles.learnSub}>Opens a short guide →</span>
+              </span>
+              <span className={styles.learnArrow} aria-hidden="true">
+                →
+              </span>
+            </a>
           </section>
 
           <p className={styles.disclaimer}>

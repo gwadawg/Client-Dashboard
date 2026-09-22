@@ -275,6 +275,67 @@
   text-decoration: underline;
 }
 
+.learnLink {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+  padding: 0.95rem 1.05rem;
+  min-height: 3.1rem;
+  border-radius: var(--vc-radius);
+  text-decoration: none;
+  color: var(--vc-on-accent);
+  background: var(--vc-accent);
+  border: 1px solid var(--vc-accent);
+  box-shadow: 0 12px 24px -16px color-mix(in srgb, var(--vc-accent) 75%, transparent);
+  transition: transform 0.2s var(--vc-ease), background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.learnLink:hover {
+  background: var(--vc-accent-deep);
+  border-color: var(--vc-accent-deep);
+  box-shadow: 0 16px 28px -16px color-mix(in srgb, var(--vc-accent) 90%, transparent);
+}
+
+.learnLink:active {
+  transform: translateY(1px);
+}
+
+.learnText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  text-align: left;
+}
+
+.learnLabel {
+  font-family: var(--vc-display);
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.learnSub {
+  font-size: 0.72rem;
+  font-weight: 500;
+  opacity: 0.8;
+  letter-spacing: 0;
+}
+
+.learnArrow {
+  flex: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: transform 0.25s var(--vc-ease);
+}
+
+.learnLink:hover .learnArrow {
+  transform: translateX(4px);
+}
+
 .disclaimer {
   margin: 1.5rem 0 0;
   font-size: 0.72rem;

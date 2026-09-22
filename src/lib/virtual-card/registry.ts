@@ -1,4 +1,4 @@
-import { createServiceClient } from "@/lib/supabase";
+import { createAnonClient, createServiceClient } from "@/lib/supabase";
 import { draftToVirtualCard, parseVirtualCardDraft } from "./intake";
 import { getPublishedCardBySlug } from "./storage";
 import type { VirtualCard } from "./types";
@@ -34,19 +34,28 @@ export const VIRTUAL_CARDS_FALLBACK: Record<string, VirtualCard> = {
   },
 };
 
+async function loadPublishedCard(slug: string): Promise<VirtualCard | null> {
+  // Prefer service role; fall back to anon if env is incomplete (public read path).
+  let client;
+  try {
+    client = createServiceClient();
+  } catch {
+    client = createAnonClient();
+  }
+  const published = await getPublishedCardBySlug(client, slug);
+  if (!published?.responses) return null;
+  const draft = parseVirtualCardDraft(published.responses);
+  if (!draft.slug || !draft.fullName) return null;
+  return draftToVirtualCard(draft, published.clientId ?? undefined);
+}
+
 export async function getVirtualCardAsync(slug: string): Promise<VirtualCard | null> {
   const key = slug.trim().toLowerCase();
   if (!key) return null;
 
   try {
-    const service = createServiceClient();
-    const published = await getPublishedCardBySlug(service, key);
-    if (published?.responses) {
-      const draft = parseVirtualCardDraft(published.responses);
-      if (draft.slug && draft.fullName) {
-        return draftToVirtualCard(draft, published.clientId ?? undefined);
-      }
-    }
+    const fromDb = await loadPublishedCard(key);
+    if (fromDb) return fromDb;
   } catch (e) {
     console.error("[virtual-card] DB lookup failed", e);
   }
