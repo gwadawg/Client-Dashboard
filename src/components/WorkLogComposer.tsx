@@ -115,6 +115,11 @@ export type WorkLogComposerProps = {
   periodEnd?: string;
   reportingType?: string;
   defaultReviewDays?: number;
+  /** Prefill composer mode (Finding / Cadence / Bet / Ads). Initial state only. */
+  defaultWorkType?: ComposerMode | null;
+  defaultSuccessMetric?: SuccessMetricKey | null;
+  defaultTitle?: string | null;
+  defaultBetCategory?: BetCategoryId | "" | null;
   onSaved?: () => void;
   onCancel?: () => void;
 };
@@ -128,17 +133,23 @@ export default function WorkLogComposer({
   periodEnd,
   reportingType = "RM",
   defaultReviewDays = 7,
+  defaultWorkType = null,
+  defaultSuccessMetric = null,
+  defaultTitle = null,
+  defaultBetCategory = null,
   onSaved,
   onCancel,
 }: WorkLogComposerProps) {
   const today = todayYmdInCallCenterTz();
-  const [mode, setMode] = useState<ComposerMode>("cadence");
-  const [title, setTitle] = useState("");
+  const [mode, setMode] = useState<ComposerMode>(defaultWorkType ?? "cadence");
+  const [title, setTitle] = useState(defaultTitle ?? "");
   const [changeDescription, setChangeDescription] = useState("");
   const [hypothesis, setHypothesis] = useState("");
-  const [betCategory, setBetCategory] = useState<BetCategoryId | "">("");
+  const [betCategory, setBetCategory] = useState<BetCategoryId | "">(defaultBetCategory ?? "");
   const [loomUrl, setLoomUrl] = useState("");
-  const [successMetric, setSuccessMetric] = useState<SuccessMetricKey>("cpconv");
+  const [successMetric, setSuccessMetric] = useState<SuccessMetricKey>(
+    defaultSuccessMetric ?? "cpconv",
+  );
   const [targetValue, setTargetValue] = useState("");
   const [changeDate, setChangeDate] = useState(today);
   const [plannedDate, setPlannedDate] = useState("");

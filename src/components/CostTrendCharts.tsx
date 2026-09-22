@@ -4,12 +4,20 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import type { CostTrendPoint } from "@/lib/metrics";
+import { weekStartKey } from "@/lib/metrics";
+
+export type CostTrendMarker = {
+  date: string;
+  label: string;
+  tone?: "accent" | "positive" | "negative" | "muted";
+};
 
 type Props = {
   series: CostTrendPoint[];
@@ -17,6 +25,7 @@ type Props = {
   loading?: boolean;
   error?: string;
   hasDateRange: boolean;
+  markers?: CostTrendMarker[];
 };
 
 type ChartKey = "cpl" | "cp_qualified" | "cp_conversation";
@@ -47,6 +56,13 @@ const CHARTS: {
   },
 ];
 
+const TONE_STROKE: Record<NonNullable<CostTrendMarker["tone"]>, string> = {
+  accent: "#f59e0b",
+  positive: "#34d399",
+  negative: "#f87171",
+  muted: "#64748b",
+};
+
 function formatDateLabel(date: string, granularity: "day" | "week"): string {
   const d = new Date(`${date}T00:00:00.000Z`);
   return (
@@ -59,6 +75,32 @@ function formatMoney(n: number): string {
   return `$${Math.round(n).toLocaleString("en-US")}`;
 }
 
+/** Snap a marker ISO date onto the chart's x-axis label. */
+function markerXLabel(
+  markerDate: string,
+  series: CostTrendPoint[],
+  granularity: "day" | "week",
+): string | null {
+  if (series.length === 0) return null;
+  const target =
+    granularity === "week" ? weekStartKey(markerDate.slice(0, 10)) : markerDate.slice(0, 10);
+  let best = series[0]!;
+  let bestDist = Math.abs(
+    Date.parse(`${best.date}T00:00:00.000Z`) - Date.parse(`${target}T00:00:00.000Z`),
+  );
+  for (const p of series) {
+    const dist = Math.abs(
+      Date.parse(`${p.date}T00:00:00.000Z`) - Date.parse(`${target}T00:00:00.000Z`),
+    );
+    if (dist < bestDist) {
+      best = p;
+      bestDist = dist;
+    }
+  }
+  if (bestDist > 10 * 86400000) return null;
+  return formatDateLabel(best.date, granularity);
+}
+
 function ChartPanel({
   title,
   subtitle,
@@ -66,6 +108,7 @@ function ChartPanel({
   data,
   granularity,
   denominatorLabel,
+  markers,
 }: {
   title: string;
   subtitle: string;
@@ -73,6 +116,7 @@ function ChartPanel({
   data: CostTrendPoint[];
   granularity: "day" | "week";
   denominatorLabel: string;
+  markers?: CostTrendMarker[];
 }) {
   const chartData = data.map(p => ({
     ...p,
@@ -81,6 +125,12 @@ function ChartPanel({
   }));
 
   const hasAnyValue = chartData.some(d => d.value != null);
+  const resolvedMarkers = (markers ?? [])
+    .map(m => {
+      const x = markerXLabel(m.date, data, granularity);
+      return x ? { ...m, x } : null;
+    })
+    .filter((m): m is CostTrendMarker & { x: string } => m != null);
 
   return (
     <div
@@ -120,38 +170,33 @@ function ChartPanel({
                 width={48}
               />
               <Tooltip
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
-                  const point = payload[0].payload as CostTrendPoint & {
-                    label: string;
-                    value: number | null;
-                  };
-                  return (
-                    <div
-                      className="rounded-lg px-3 py-2 text-xs"
-                      style={{
-                        background: "#0f2040",
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        color: "#e2e8f0",
-                      }}
-                    >
-                      <p className="font-semibold mb-1" style={{ color: "#f59e0b" }}>
-                        {point.label}
-                      </p>
-                      <p>{point.value != null ? formatMoney(point.value) : "—"}</p>
-                      <p style={{ color: "#64748b" }}>Spend: {formatMoney(point.spend)}</p>
-                      <p style={{ color: "#64748b" }}>
-                        {denominatorLabel}:{" "}
-                        {denominatorLabel === "Leads"
-                          ? point.leads
-                          : denominatorLabel === "Qualified"
-                            ? point.qualified_leads
-                            : point.client_conversations}
-                      </p>
-                    </div>
-                  );
+                contentStyle={{
+                  background: "#0a1628",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 8,
+                  fontSize: 11,
                 }}
+                labelStyle={{ color: "#94a3b8" }}
+                formatter={(value) => [
+                  typeof value === "number" ? formatMoney(value) : String(value ?? ""),
+                  title,
+                ]}
               />
+              {resolvedMarkers.map((m, i) => (
+                <ReferenceLine
+                  key={`${m.x}-${i}`}
+                  x={m.x}
+                  stroke={TONE_STROKE[m.tone ?? "accent"]}
+                  strokeDasharray="4 3"
+                  strokeOpacity={0.85}
+                  label={{
+                    value: m.label.length > 18 ? `${m.label.slice(0, 16)}…` : m.label,
+                    fill: TONE_STROKE[m.tone ?? "accent"],
+                    fontSize: 9,
+                    position: "insideTopRight",
+                  }}
+                />
+              ))}
               <Line
                 type="monotone"
                 dataKey="value"
@@ -174,6 +219,7 @@ export default function CostTrendCharts({
   loading = false,
   error = "",
   hasDateRange,
+  markers,
 }: Props) {
   if (!hasDateRange) {
     return (
@@ -216,6 +262,11 @@ export default function CostTrendCharts({
           Weekly buckets (range over 90 days). All platforms included in spend.
         </p>
       )}
+      {markers && markers.length > 0 && (
+        <p className="text-[10px]" style={{ color: "#64748b" }}>
+          Vertical lines mark account changes (bets) in this range.
+        </p>
+      )}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {CHARTS.map(chart => (
           <ChartPanel
@@ -226,6 +277,7 @@ export default function CostTrendCharts({
             data={series}
             granularity={granularity}
             denominatorLabel={chart.denominatorLabel}
+            markers={markers}
           />
         ))}
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 import ShowQualityBar from "../ShowQualityBar";
 import ConversionFunnel from "../ConversionFunnel";
 import KpiSections, { type SparkMap } from "../kpi/KpiSections";
@@ -14,10 +15,18 @@ import {
 } from "@/lib/conversion-explorer";
 import type { CostTrendPoint, KpiTimelineBucket, MetricsResult } from "@/lib/metrics";
 import type { DashboardClient, DashboardFilters } from "@/lib/use-dashboard-filters";
+import type { CostTrendMarker } from "../CostTrendCharts";
 
 const CostTrendCharts = dynamic(() => import("../CostTrendCharts"));
 const RateTrendCharts = dynamic(() => import("../RateTrendCharts"));
 const ClientConversionsView = dynamic(() => import("../ClientConversionsView"));
+
+function toneForStatus(status: string | null | undefined): CostTrendMarker["tone"] {
+  if (status === "succeeded") return "positive";
+  if (status === "failed" || status === "abandoned") return "negative";
+  if (status === "measuring" || status === "in_progress") return "accent";
+  return "muted";
+}
 
 export type TrendsPayload = {
   granularity: "day" | "week";
@@ -85,6 +94,63 @@ export default function ClientKpiPanel({
   const openStage = canOpenExplorer
     ? (stage: ConversionStage) => onOpenConversionLeads(stage)
     : undefined;
+
+  const [betMarkerCache, setBetMarkerCache] = useState<{
+    key: string;
+    markers: CostTrendMarker[];
+  } | null>(null);
+
+  const markerRangeKey =
+    selectedClient?.id && filters.dateStart && filters.dateEnd
+      ? `${selectedClient.id}|${filters.dateStart}|${filters.dateEnd}`
+      : null;
+
+  useEffect(() => {
+    if (!markerRangeKey || !selectedClient?.id || !filters.dateStart || !filters.dateEnd) {
+      return;
+    }
+    let cancelled = false;
+    const start = filters.dateStart;
+    const end = filters.dateEnd;
+    const key = markerRangeKey;
+    fetch(`/api/client-actions?client_id=${encodeURIComponent(selectedClient.id)}`)
+      .then(async r => (r.ok ? r.json() : null))
+      .then(json => {
+        if (cancelled || !json?.actions) return;
+        const markers: CostTrendMarker[] = (
+          json.actions as Array<{
+            work_type?: string | null;
+            change_date?: string | null;
+            title?: string | null;
+            status?: string | null;
+          }>
+        )
+          .filter(a => a.work_type === "bet" && a.change_date)
+          .map(a => ({
+            date: (a.change_date as string).slice(0, 10),
+            title: a.title ?? "Bet",
+            status: a.status ?? null,
+          }))
+          .filter(a => a.date >= start && a.date <= end)
+          .map(a => ({
+            date: a.date,
+            label: a.title,
+            tone: toneForStatus(a.status),
+          }));
+        setBetMarkerCache({ key, markers });
+      })
+      .catch(() => {
+        if (!cancelled) setBetMarkerCache({ key, markers: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [markerRangeKey, selectedClient?.id, filters.dateStart, filters.dateEnd]);
+
+  const betMarkers =
+    markerRangeKey && betMarkerCache?.key === markerRangeKey
+      ? betMarkerCache.markers
+      : [];
 
   return (
     <div className="space-y-8">
@@ -278,6 +344,7 @@ export default function ClientKpiPanel({
                   loading={trendsLoading}
                   error={trendsError}
                   hasDateRange={hasDateRange}
+                  markers={betMarkers}
                 />
               </KpiSection>
             )}

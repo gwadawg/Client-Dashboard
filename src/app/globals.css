@@ -223,3 +223,33 @@ body {
     animation: none;
   }
 }
+
+/* Media Buyer Command — scoped stagger on section mount */
+@keyframes mbc-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mbc .mbc-col > .mbc-panel {
+  animation: mbc-in var(--duration-med) var(--ease-ws) both;
+}
+
+.mbc .mbc-col > .mbc-panel:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.mbc .mbc-col > .mbc-panel:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mbc .mbc-col > .mbc-panel {
+    animation: none;
+  }
+}

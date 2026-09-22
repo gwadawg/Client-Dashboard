@@ -208,7 +208,29 @@ const COLUMN_DEFS: Record<ColumnKey, { header: string; revenueOnly?: boolean; re
   adspend: {
     header: "Ad spend",
     revenueOnly: true,
-    render: c => <span className="text-xs whitespace-nowrap" style={{ color: c.daily_adspend != null ? "#cbd5e1" : "#334155" }}>{c.daily_adspend != null ? `${moneyShort(c.daily_adspend)}/day` : "—"}</span>,
+    render: c => {
+      const empty = c.daily_adspend == null;
+      const active = (c.lifecycle_status ?? "") === "active";
+      if (empty && active) {
+        return (
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded whitespace-nowrap"
+            style={{ color: "#fbbf24", background: "rgba(251,191,36,0.14)" }}
+            title="Set a daily adspend budget so pacing works on Media Buyer Command"
+          >
+            Set budget
+          </span>
+        );
+      }
+      return (
+        <span
+          className="text-xs whitespace-nowrap"
+          style={{ color: c.daily_adspend != null ? "#cbd5e1" : "#334155" }}
+        >
+          {c.daily_adspend != null ? `${moneyShort(c.daily_adspend)}/day` : "—"}
+        </span>
+      );
+    },
   },
   ads: {
     header: "Ads",

@@ -93,7 +93,7 @@ export function seatSubtitle(seat: TeamDashboardTab): string {
     case 'ccm':
       return 'Floor pace · under-KPI dial focus · day playbook';
     case 'media':
-      return 'Launch checks · reflections · ad KPI reds';
+      return 'Account pulse · changes in flight · launch checks · ad KPI reds';
   }
 }
 

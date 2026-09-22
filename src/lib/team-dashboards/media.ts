@@ -24,7 +24,23 @@ import {
   buildMbDayContext,
   type MbDayContext,
 } from '@/lib/team-dashboards/media-playbook';
+import {
+  buildAccountPulse,
+  buildChangesInFlight,
+  type InFlightActionInput,
+  type MbAccountPulse,
+  type MbChangeInFlight,
+} from '@/lib/team-dashboards/media-pulse';
 import type { createServiceClient } from '@/lib/supabase';
+
+export type {
+  MbAccountPulse,
+  MbChangeInFlight,
+  MbInFlightVerdict,
+  MbPulseFlag,
+  MbPulseRow,
+} from '@/lib/team-dashboards/media-pulse';
+export { PULSE_FLAG_META, needsPulseAttention } from '@/lib/team-dashboards/media-pulse';
 
 /** Post-launch verification window for MB Command (distinct from FRESH_LAUNCH_DAYS=14 health). */
 export const MB_LAUNCH_CHECK_DAYS = 7;
@@ -114,8 +130,17 @@ export type MediaBuyerCommandPayload = {
     fresh_launches: number;
     fresh_incomplete: number;
     onboarding: number;
+    in_flight: number;
+    in_flight_off_track: number;
+    in_flight_planned: number;
+    pulse_flagged: number;
+    pulse_no_delivery: number;
   };
   reflectionsDue: MbReflectionDue[];
+  /** Open ads/landing bets that are live but not yet due — evaluated today. */
+  changesInFlight: MbChangeInFlight[];
+  /** Per-client spend delivery / pacing / CPL momentum + Meta sync freshness. */
+  pulse: MbAccountPulse | null;
   underperforming: MbUnderperformingClient[];
   freshLaunches: MbFreshLaunchClient[];
   onboarding: MbOnboardingClient[];
@@ -125,6 +150,9 @@ export type MediaBuyerCommandPayload = {
     fresh?: string;
     onboarding?: string;
     reflections?: string;
+    in_flight?: string;
+    pulse?: string;
+    pulse_fatigue?: string;
   };
 };
 
@@ -189,16 +217,18 @@ export async function buildMediaBuyerCommandPayload(
   const errors: MediaBuyerCommandPayload['errors'] = {};
 
   let underperforming: MbUnderperformingClient[] = [];
-  let freshLaunches: MbFreshLaunchClient[] = [];
+  const freshLaunches: MbFreshLaunchClient[] = [];
   let onboarding: MbOnboardingClient[] = [];
   let reflectionsDue: MbReflectionDue[] = [];
+  let changesInFlight: MbChangeInFlight[] = [];
+  let pulse: MbAccountPulse | null = null;
 
   const [clientsRes, onboardingCallsRes, checksRes, actionsRes, healthResult] =
     await Promise.all([
       service
         .from('clients')
         .select(
-          'id, name, lifecycle_status, launch_date, date_signed, last_status_changed_at, created_at, ghl_location_id, primary_contact_name, reporting_type, is_live',
+          'id, name, lifecycle_status, launch_date, date_signed, last_status_changed_at, created_at, ghl_location_id, primary_contact_name, reporting_type, is_live, kpi_benchmarks, daily_adspend, ads_paused, ads_paused_at, ads_paused_note',
         )
         .order('name'),
       service
@@ -209,15 +239,14 @@ export async function buildMediaBuyerCommandPayload(
       service.from('mb_launch_checks').select(
         'client_id, funnel_checked_at, ads_manager_checked_at, mr_waiz_checked_at',
       ),
+      // All open bets — partitioned below into reflections due vs in flight.
       service
         .from('client_action_logs')
         .select(
-          'id, client_id, title, layer, status, success_metric, change_date, review_date, baseline_value, target_value, change_description, hypothesis, created_at, baseline_snapshot_id, outcome_value, outcome_recorded_at, work_type',
+          'id, client_id, title, layer, status, success_metric, change_date, review_date, planned_date, baseline_value, target_value, change_description, hypothesis, bet_category, loom_url, created_at, baseline_snapshot_id, outcome_value, outcome_recorded_at, work_type',
         )
         .eq('work_type', 'bet')
-        .in('status', [...OPEN_ACTION_STATUSES])
-        .not('review_date', 'is', null)
-        .lte('review_date', today),
+        .in('status', [...OPEN_ACTION_STATUSES]),
       loadClientHealthBundle(service, {
         start_date: healthRange.start,
         end_date: healthRange.end,
@@ -260,14 +289,21 @@ export async function buildMediaBuyerCommandPayload(
     }
   }
 
+  // ── Partition open MB bets: due for review vs still in flight ─────────────
+  const mbOpenBets = (actionsRes.data ?? []).filter(a =>
+    isMbOwnedAction({
+      layer: (a.layer as string | null) ?? null,
+      success_metric: (a.success_metric as string | null) ?? null,
+    }),
+  );
+  const isReviewDue = (a: { review_date: string | null }) => {
+    const r = a.review_date?.slice(0, 10) ?? null;
+    return r != null && r <= today;
+  };
+
   // ── Reflections due (L1/L2 account changes — review today or overdue) ─────
-  reflectionsDue = (actionsRes.data ?? [])
-    .filter(a =>
-      isMbOwnedAction({
-        layer: (a.layer as string | null) ?? null,
-        success_metric: (a.success_metric as string | null) ?? null,
-      }),
-    )
+  reflectionsDue = mbOpenBets
+    .filter(isReviewDue)
     .map(a => {
       const summary = summarizeOpenAction(
         {
@@ -313,6 +349,80 @@ export async function buildMediaBuyerCommandPayload(
         (a.review_date ?? '').localeCompare(b.review_date ?? '') ||
         a.client_name.localeCompare(b.client_name),
     );
+
+  // ── Changes in flight + Account pulse (independent; run together) ────────
+  const inFlightInputs: InFlightActionInput[] = mbOpenBets
+    .filter(a => !isReviewDue(a))
+    .map(a => ({
+      id: a.id as string,
+      client_id: a.client_id as string,
+      created_at: a.created_at as string,
+      change_date: (a.change_date as string | null) ?? null,
+      planned_date: (a.planned_date as string | null) ?? null,
+      work_type: (a.work_type as string | null) ?? null,
+      title: a.title as string,
+      layer: (a.layer as string | null) ?? null,
+      bet_category: (a.bet_category as string | null) ?? null,
+      change_description: (a.change_description as string | null) ?? null,
+      hypothesis: (a.hypothesis as string | null) ?? null,
+      loom_url: (a.loom_url as string | null) ?? null,
+      success_metric: (a.success_metric as string | null) ?? null,
+      baseline_value: a.baseline_value != null ? Number(a.baseline_value) : null,
+      target_value: a.target_value != null ? Number(a.target_value) : null,
+      baseline_snapshot_id: (a.baseline_snapshot_id as string | null) ?? null,
+      review_date: (a.review_date as string | null) ?? null,
+      status: a.status as string,
+      outcome_value: a.outcome_value != null ? Number(a.outcome_value) : null,
+      outcome_recorded_at: (a.outcome_recorded_at as string | null) ?? null,
+    }));
+
+  const [inFlightResult, pulseResult] = await Promise.all([
+    buildChangesInFlight(service, {
+      today,
+      actions: inFlightInputs,
+      clients: allClients.map(c => ({
+        id: c.id as string,
+        name: c.name as string,
+        reporting_type: (c.reporting_type as string | null) ?? null,
+        kpi_benchmarks: c.kpi_benchmarks,
+      })),
+    }).catch((e: unknown) => {
+      errors.in_flight = e instanceof Error ? e.message : String(e);
+      return null;
+    }),
+    buildAccountPulse(service, {
+      today,
+      clients: allClients.map(c => ({
+        id: c.id as string,
+        name: c.name as string,
+        reporting_type: (c.reporting_type as string | null) ?? null,
+        lifecycle_status: (c.lifecycle_status as string | null) ?? null,
+        is_live: (c.is_live as boolean | null) ?? null,
+        daily_adspend: (c.daily_adspend as number | string | null) ?? null,
+        ads_paused: (c.ads_paused as boolean | null) ?? null,
+        ads_paused_at: (c.ads_paused_at as string | null) ?? null,
+        ads_paused_note: (c.ads_paused_note as string | null) ?? null,
+      })),
+      health: healthResult?.clients ?? null,
+    }).catch((e: unknown) => {
+      errors.pulse = e instanceof Error ? e.message : String(e);
+      return null;
+    }),
+  ]);
+
+  if (inFlightResult) {
+    changesInFlight = inFlightResult.rows;
+    if (inFlightResult.errors.length > 0 && !errors.in_flight) {
+      errors.in_flight = inFlightResult.errors.slice(0, 3).join(' · ');
+    }
+  }
+  if (pulseResult) {
+    const { fatigue_error, ...pulseData } = pulseResult as typeof pulseResult & {
+      fatigue_error?: string;
+    };
+    pulse = pulseData;
+    if (fatigue_error) errors.pulse_fatigue = fatigue_error;
+  }
 
   // ── Onboarding queue ──────────────────────────────────────────────────────
   onboarding = allClients
@@ -441,8 +551,15 @@ export async function buildMediaBuyerCommandPayload(
       fresh_launches: freshLaunches.length,
       fresh_incomplete,
       onboarding: onboarding.length,
+      in_flight: changesInFlight.filter(c => c.phase === 'live').length,
+      in_flight_off_track: changesInFlight.filter(c => c.verdict === 'off_track').length,
+      in_flight_planned: changesInFlight.filter(c => c.phase === 'planned').length,
+      pulse_flagged: pulse?.totals.flagged ?? 0,
+      pulse_no_delivery: pulse?.totals.no_delivery ?? 0,
     },
     reflectionsDue,
+    changesInFlight,
+    pulse,
     underperforming,
     freshLaunches,
     onboarding,

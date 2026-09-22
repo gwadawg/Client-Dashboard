@@ -17,6 +17,7 @@
     "ads:scorecard": "npx tsx scripts/ad-performance-scorecard.ts",
     "cron:daily": "npx --yes tsx scripts/run-scheduled-alerts.ts",
     "cron:cpl-threshold": "npm run cron:daily -- --only=cpl-threshold",
+    "cron:mb-digest": "npm run cron:daily -- --only=mb-morning-digest",
     "setup:railway-cron": "node scripts/setup-railway-cron-vars.mjs"
   },
   "dependencies": {
