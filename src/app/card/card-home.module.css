@@ -1,0 +1,48 @@
+.page {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(61, 107, 90, 0.12), transparent 55%),
+    linear-gradient(180deg, #f7f9f6, #e8ede9);
+  color: #0c1612;
+  font-family: var(--ob-body, "DM Sans", system-ui, sans-serif);
+}
+
+.inner {
+  max-width: 22rem;
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0 0 1rem;
+  font-family: var(--ob-display, "Sora", system-ui, sans-serif);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #3d6b5a;
+}
+
+.title {
+  margin: 0 0 0.75rem;
+  font-family: var(--ob-display, "Sora", system-ui, sans-serif);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.body {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: #5c6f66;
+}
+
+.mono {
+  font-family: var(--font-plex-mono, ui-monospace, monospace);
+  font-size: 0.88em;
+  color: #1a2e26;
+}

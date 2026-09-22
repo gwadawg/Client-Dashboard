@@ -1,0 +1,308 @@
+/* Virtual LO business card — mobile trust page. No Waiz chrome. */
+
+.page {
+  --vc-ink: #0c1612;
+  --vc-ink-soft: #1a2e26;
+  --vc-muted: #5c6f66;
+  --vc-faint: #8a9a92;
+  --vc-paper: #f3f5f2;
+  --vc-paper-deep: #e6ebe7;
+  --vc-line: rgba(12, 22, 18, 0.1);
+  --vc-accent: #3d6b5a;
+  --vc-accent-deep: #284f41;
+  --vc-on-accent: #f2f7f4;
+  --vc-display: var(--ob-display, "Sora", system-ui, sans-serif);
+  --vc-body: var(--ob-body, "DM Sans", system-ui, sans-serif);
+  --vc-radius: 14px;
+  --vc-ease: cubic-bezier(0.32, 0.72, 0, 1);
+
+  min-height: 100dvh;
+  background: var(--vc-paper);
+  color: var(--vc-ink);
+  font-family: var(--vc-body);
+  position: relative;
+  overflow-x: hidden;
+}
+
+.page[data-mode="dark"]::before {
+  background:
+    radial-gradient(ellipse 95% 50% at 50% -8%, color-mix(in srgb, var(--vc-accent) 18%, transparent), transparent 55%),
+    linear-gradient(180deg, var(--vc-paper) 0%, var(--vc-paper-deep) 100%);
+}
+
+.page[data-mode="dark"]::after {
+  opacity: 0.35;
+}
+
+.page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 95% 50% at 50% -8%, color-mix(in srgb, var(--vc-accent) 22%, transparent), transparent 55%),
+    radial-gradient(ellipse 45% 35% at 100% 20%, rgba(12, 22, 18, 0.05), transparent 50%),
+    linear-gradient(180deg, #f7f9f6 0%, var(--vc-paper) 40%, var(--vc-paper-deep) 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.page::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--vc-accent) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--vc-accent) 6%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.4) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.inner {
+  position: relative;
+  z-index: 1;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: clamp(1.75rem, 6vw, 2.75rem) 1.25rem 2.5rem;
+}
+
+.brand {
+  font-family: var(--vc-display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--vc-accent);
+  margin: 0 0 1.75rem;
+  text-align: center;
+  opacity: 0;
+  animation: vcRise 0.65s var(--vc-ease) 0.04s forwards;
+}
+
+.hero {
+  text-align: center;
+  opacity: 0;
+  animation: vcRise 0.8s var(--vc-ease) 0.1s forwards;
+}
+
+.photoWrap {
+  width: 132px;
+  height: 132px;
+  margin: 0 auto 1.25rem;
+  border-radius: 50%;
+  padding: 3px;
+  background: linear-gradient(145deg, var(--vc-accent), color-mix(in srgb, var(--vc-accent) 40%, #0c1612));
+  box-shadow: 0 18px 40px -20px rgba(12, 22, 18, 0.45);
+}
+
+.photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+  background: var(--vc-paper-deep);
+}
+
+.name {
+  font-family: var(--vc-display);
+  font-size: clamp(1.85rem, 6.5vw, 2.15rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin: 0 0 0.35rem;
+  color: var(--vc-ink);
+}
+
+.role {
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--vc-ink-soft);
+  letter-spacing: 0.02em;
+}
+
+.value {
+  margin: 0 auto 1.75rem;
+  max-width: 22rem;
+  font-size: 0.98rem;
+  line-height: 1.45;
+  color: var(--vc-muted);
+}
+
+.ctaRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  margin-bottom: 2rem;
+  opacity: 0;
+  animation: vcRise 0.75s var(--vc-ease) 0.22s forwards;
+}
+
+.ctaRow > :first-child {
+  grid-column: 1 / -1;
+}
+
+.ctaPrimary,
+.ctaSecondary,
+.ctaBook {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--vc-radius);
+  font-family: var(--vc-display);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+  letter-spacing: -0.01em;
+  transition: transform 0.15s var(--vc-ease), box-shadow 0.15s var(--vc-ease), background 0.15s ease;
+}
+
+.ctaPrimary {
+  background: linear-gradient(135deg, var(--vc-accent-deep), var(--vc-accent));
+  color: var(--vc-on-accent);
+  box-shadow: 0 12px 28px -14px color-mix(in srgb, var(--vc-accent) 70%, transparent);
+}
+
+.ctaBook {
+  grid-column: 1 / -1;
+  background: transparent;
+  color: var(--vc-accent);
+  border: 1.5px solid color-mix(in srgb, var(--vc-accent) 55%, var(--vc-line));
+}
+
+.ctaBook:hover {
+  background: color-mix(in srgb, var(--vc-accent) 10%, transparent);
+  transform: translateY(-1px);
+}
+
+.ctaPrimary:hover {
+  transform: translateY(-1px);
+}
+
+.ctaPrimary:active {
+  transform: translateY(0);
+}
+
+.ctaSecondary {
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--vc-ink);
+  border: 1px solid var(--vc-line);
+  backdrop-filter: blur(8px);
+}
+
+.ctaSecondary:hover {
+  background: #fff;
+  border-color: color-mix(in srgb, var(--vc-accent) 35%, var(--vc-line));
+}
+
+.details {
+  opacity: 0;
+  animation: vcRise 0.7s var(--vc-ease) 0.32s forwards;
+  padding: 1.15rem 1.1rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--vc-line);
+  backdrop-filter: blur(10px);
+}
+
+.dl {
+  margin: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.5rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--vc-line);
+  font-size: 0.9rem;
+}
+
+.row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.row:first-child {
+  padding-top: 0;
+}
+
+.row dt {
+  margin: 0;
+  color: var(--vc-faint);
+  font-weight: 500;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-top: 0.15rem;
+}
+
+.row dd {
+  margin: 0;
+  color: var(--vc-ink-soft);
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.row a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.row a:hover {
+  color: var(--vc-accent);
+}
+
+.secondary {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0.85rem 0 0;
+  border-top: 1px solid var(--vc-line);
+}
+
+.secondary a {
+  color: var(--vc-accent);
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.secondary a:hover {
+  text-decoration: underline;
+}
+
+.disclaimer {
+  margin: 1.5rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--vc-faint);
+  text-align: center;
+  opacity: 0;
+  animation: vcRise 0.6s var(--vc-ease) 0.4s forwards;
+}
+
+@keyframes vcRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand,
+  .hero,
+  .ctaRow,
+  .details,
+  .disclaimer {
+    animation: none;
+    opacity: 1;
+  }
+}

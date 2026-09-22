@@ -26,7 +26,9 @@ const BYPASS_ROUTES = [
   '/api/forms/loans',
   '/api/closebot/tickets/public',
   '/tools/lead-source-roi',
+  '/thank-you',
   '/offers/',
+  '/card',
   '/api/acquisition/forms',
   '/api/eod',
   '/api/acquisition/webhooks',
@@ -34,8 +36,69 @@ const BYPASS_ROUTES = [
   // /api/onboard/* already covered by '/api/onboard' above
 ];
 
+const CARD_HOSTS = new Set(['loanofficer.me', 'www.loanofficer.me']);
+
+/** App surfaces that must not be reachable on the card domain. */
+const CARD_HOST_BLOCKED = [
+  '/api',
+  '/login',
+  '/auth',
+  '/setup',
+  '/dashboard',
+  '/onboard',
+  '/forms',
+  '/report',
+  '/tools',
+  '/library',
+  '/offers',
+];
+
+function isCardHost(hostHeader: string | null): boolean {
+  if (!hostHeader) return false;
+  const host = hostHeader.split(':')[0]?.toLowerCase() ?? '';
+  return CARD_HOSTS.has(host);
+}
+
+function isBlockedOnCardHost(pathname: string): boolean {
+  return CARD_HOST_BLOCKED.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
+/**
+ * loanofficer.me/{slug} → /card/{slug} (public, no auth).
+ * Root → /card stub. Internal Mr. Waiz routes are not exposed on this host.
+ */
+function handleCardHost(request: NextRequest): NextResponse {
+  const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith('/_next') || pathname === '/favicon.ico') {
+    return NextResponse.next();
+  }
+
+  if (pathname === '/' || pathname === '') {
+    return NextResponse.rewrite(new URL('/card', request.url));
+  }
+
+  if (pathname.startsWith('/card')) {
+    return NextResponse.next();
+  }
+
+  if (isBlockedOnCardHost(pathname)) {
+    return NextResponse.rewrite(new URL('/card', request.url));
+  }
+
+  const rewriteUrl = request.nextUrl.clone();
+  rewriteUrl.pathname = `/card${pathname}`;
+  return NextResponse.rewrite(rewriteUrl);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (isCardHost(request.headers.get('host'))) {
+    return handleCardHost(request);
+  }
 
   if (BYPASS_ROUTES.some(r => pathname.startsWith(r))) {
     return NextResponse.next();

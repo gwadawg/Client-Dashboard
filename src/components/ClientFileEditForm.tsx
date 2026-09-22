@@ -31,6 +31,7 @@ export type EditableClient = {
   website: string | null;
   drive_folder_url: string | null;
   funnel_url: string | null;
+  virtual_business_card_url?: string | null;
   landing_page_url: string | null;
   brokerage_name: string | null;
   legal_business_name: string | null;
@@ -77,6 +78,7 @@ type Draft = {
   website: string;
   drive_folder_url: string;
   funnel_url: string;
+  virtual_business_card_url: string;
   landing_page_url: string;
   brokerage_name: string;
   legal_business_name: string;
@@ -131,6 +133,7 @@ export function clientToDraft(c: EditableClient): Draft {
     website: c.website ?? "",
     drive_folder_url: c.drive_folder_url ?? "",
     funnel_url: c.funnel_url ?? "",
+    virtual_business_card_url: c.virtual_business_card_url ?? "",
     landing_page_url: c.landing_page_url ?? "",
     brokerage_name: c.brokerage_name ?? "",
     legal_business_name: c.legal_business_name ?? "",
@@ -180,6 +183,7 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     website: draft.website.trim() || null,
     drive_folder_url: draft.drive_folder_url.trim() || null,
     funnel_url: draft.funnel_url.trim() || null,
+    virtual_business_card_url: draft.virtual_business_card_url.trim() || null,
     landing_page_url: draft.landing_page_url.trim() || null,
     brokerage_name: draft.brokerage_name.trim() || null,
     legal_business_name: draft.legal_business_name.trim() || null,
@@ -290,7 +294,7 @@ export default function ClientFileEditForm({
             label="GHL location ID"
             value={draft.ghl_location_id}
             onChange={v => patch("ghl_location_id", v)}
-            placeholder="GHL subaccount location id"
+            placeholder="Location id or GHL dashboard URL"
             highlightEmpty
             mono
           />
@@ -495,6 +499,13 @@ export default function ClientFileEditForm({
             value={draft.funnel_url}
             onChange={v => patch("funnel_url", v)}
             placeholder="Ads → Perspective entry URL…"
+            wide
+          />
+          <Field
+            label="Virtual Business Card"
+            value={draft.virtual_business_card_url}
+            onChange={v => patch("virtual_business_card_url", v)}
+            placeholder="https://loanofficer.me/… (set by Card publish)"
             wide
           />
           <Field

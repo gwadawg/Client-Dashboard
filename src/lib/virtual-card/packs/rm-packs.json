@@ -1,0 +1,122 @@
+{
+  "product": "rm",
+  "layouts": ["card", "educate"],
+  "packs": [
+    {
+      "pack_id": "forest",
+      "display_name": "Forest",
+      "mood": "Calm professional green. Paul-like baseline; soft neutral paper, never cream.",
+      "best_default_for": "rm",
+      "light_or_dark": "light",
+      "axis": "green × soft-neutral paper × modern sans × light",
+      "colors": {
+        "paper": "#f3f4f1",
+        "paper_deep": "#e5e8e2",
+        "ink": "#15201b",
+        "ink_soft": "#2f3f37",
+        "muted": "#647069",
+        "faint": "#939b94",
+        "line": "rgba(21, 32, 27, 0.10)",
+        "accent": "#3a6a58",
+        "accent_deep": "#284f41",
+        "accent_wash": "rgba(58, 106, 88, 0.11)",
+        "on_accent": "#f2f7f4",
+        "surface": "rgba(255, 255, 255, 0.58)",
+        "shadow": "0 18px 40px -24px rgba(40, 79, 65, 0.34)"
+      },
+      "fonts": {
+        "display": "Outfit",
+        "body": "Source Sans 3",
+        "google": "Outfit:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600"
+      },
+      "sample_value_line": "Helping retired homeowners use the equity they already built, without a new monthly mortgage payment."
+    },
+    {
+      "pack_id": "coastal",
+      "display_name": "Coastal",
+      "mood": "Open sky blue-gray. Cool paper, soft blue accent; gentle and low-pressure.",
+      "best_default_for": "rm",
+      "light_or_dark": "light",
+      "axis": "blue × cool paper × soft sans × light",
+      "colors": {
+        "paper": "#eef4f8",
+        "paper_deep": "#dde8ef",
+        "ink": "#153040",
+        "ink_soft": "#2a4556",
+        "muted": "#5a7384",
+        "faint": "#8aa0ae",
+        "line": "rgba(21, 48, 64, 0.10)",
+        "accent": "#3f6f8a",
+        "accent_deep": "#2c556c",
+        "accent_wash": "rgba(63, 111, 138, 0.12)",
+        "on_accent": "#f1f7fb",
+        "surface": "rgba(255, 255, 255, 0.60)",
+        "shadow": "0 18px 40px -24px rgba(44, 85, 108, 0.30)"
+      },
+      "fonts": {
+        "display": "Plus Jakarta Sans",
+        "body": "Source Sans 3",
+        "google": "Plus+Jakarta+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600"
+      },
+      "sample_value_line": "A calm guide for retired homeowners exploring how home equity can ease monthly pressure."
+    },
+    {
+      "pack_id": "heritage",
+      "display_name": "Heritage",
+      "mood": "Warm letter on cream paper. The only serif pack; deep burgundy, not brick.",
+      "best_default_for": "rm",
+      "light_or_dark": "light",
+      "axis": "burgundy × warm cream × serif display × light",
+      "colors": {
+        "paper": "#f6f0e6",
+        "paper_deep": "#ebe2d4",
+        "ink": "#1a1614",
+        "ink_soft": "#3b322c",
+        "muted": "#73685e",
+        "faint": "#9e9388",
+        "line": "rgba(26, 22, 20, 0.11)",
+        "accent": "#6e2f3a",
+        "accent_deep": "#511f2a",
+        "accent_wash": "rgba(110, 47, 58, 0.10)",
+        "on_accent": "#f9f3ec",
+        "surface": "rgba(255, 251, 245, 0.64)",
+        "shadow": "0 18px 40px -24px rgba(81, 31, 42, 0.28)"
+      },
+      "fonts": {
+        "display": "Literata",
+        "body": "Source Sans 3",
+        "google": "Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400&family=Source+Sans+3:wght@400;500;600"
+      },
+      "sample_value_line": "Helping retired homeowners turn home equity into calmer monthly cash flow."
+    },
+    {
+      "pack_id": "night-desk",
+      "display_name": "Night Desk",
+      "mood": "Dark charcoal desk with soft brass accent. The only dark pack; senior-safe.",
+      "best_default_for": "either",
+      "light_or_dark": "dark",
+      "axis": "brass × charcoal × geometric sans × dark",
+      "colors": {
+        "paper": "#17191c",
+        "paper_deep": "#0f1113",
+        "ink": "#ece9e3",
+        "ink_soft": "#c6c0b6",
+        "muted": "#979187",
+        "faint": "#6c6760",
+        "line": "rgba(236, 233, 227, 0.12)",
+        "accent": "#c9ad78",
+        "accent_deep": "#a88f5c",
+        "accent_wash": "rgba(201, 173, 120, 0.14)",
+        "on_accent": "#17191c",
+        "surface": "rgba(255, 255, 255, 0.055)",
+        "shadow": "0 18px 40px -18px rgba(0, 0, 0, 0.58)"
+      },
+      "fonts": {
+        "display": "Space Grotesk",
+        "body": "IBM Plex Sans",
+        "google": "Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600"
+      },
+      "sample_value_line": "Straightforward reverse-mortgage guidance for retired homeowners who want the facts."
+    }
+  ]
+}

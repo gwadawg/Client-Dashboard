@@ -155,6 +155,8 @@ alter table clients add column if not exists legal_business_name    text;
 alter table clients add column if not exists business_type          text;
 alter table clients add column if not exists website                text;
 alter table clients add column if not exists funnel_url             text;
+alter table clients add column if not exists virtual_card_slug      text;
+alter table clients add column if not exists virtual_business_card_url text;
 alter table clients add column if not exists source                 text;
 alter table clients add column if not exists biography              text;
 alter table clients add column if not exists primary_contact_name   text;
@@ -1606,8 +1608,8 @@ create table if not exists client_form_submissions (
   submitted_at  timestamptz not null default now(),
   constraint client_form_submissions_form_type_check check (
     form_type in (
-      'new_client', 'onboarding', 'kickoff', 'launch', 'launch_kit', 'churn',
-      'reinstate', 'reinstate_onboarding'
+      'new_client', 'onboarding', 'kickoff', 'launch', 'launch_kit', 'virtual_card',
+      'churn', 'reinstate', 'reinstate_onboarding'
     )
   ),
   constraint client_form_submissions_status_check check (

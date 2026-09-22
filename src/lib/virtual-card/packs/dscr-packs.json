@@ -1,0 +1,217 @@
+{
+  "product": "dscr",
+  "layouts": [
+    "card",
+    "educate"
+  ],
+  "shared_pack_ids_with_rm": [
+    "ink"
+  ],
+  "culled_packs": [
+    "blueprint",
+    "forge",
+    "concrete→ledger"
+  ],
+  "design_note": "Four packs only. Each has a hard visual signature (type, frame, radius, ornament) — not recolors.",
+  "personality_token_enums": {
+    "case": [
+      "uppercase",
+      "none"
+    ],
+    "frame": [
+      "ring",
+      "brackets",
+      "plate",
+      "double"
+    ],
+    "texture": [
+      "grain-glow",
+      "grid",
+      "none",
+      "hairline",
+      "grain-heavy",
+      "brushed"
+    ],
+    "motion": [
+      "rise",
+      "draw",
+      "snap",
+      "fade",
+      "slide",
+      "heat"
+    ],
+    "role_style": [
+      "normal",
+      "italic"
+    ]
+  },
+  "motion_patterns_ported_from_21st": [
+    "words-stagger (hero words: blur+lift)",
+    "reveal (scroll: blur+lift)",
+    "border-beam (headshot once, next-row loop)",
+    "shimmer-button (primary Call hover shine)"
+  ],
+  "packs": [
+    {
+      "pack_id": "operator",
+      "display_name": "Operator",
+      "mood": "Evening charcoal desk with amber — the working LO’s default. Peer tone, not boardroom.",
+      "best_default_for": "dscr",
+      "light_or_dark": "dark",
+      "colors": {
+        "paper": "#141210",
+        "paper_deep": "#1f1b17",
+        "ink": "#f5f0e8",
+        "ink_soft": "#d0c8bc",
+        "muted": "#9a9186",
+        "faint": "#6a635a",
+        "line": "rgba(245, 240, 232, 0.11)",
+        "accent": "#d4a054",
+        "accent_deep": "#b8843c",
+        "accent_wash": "rgba(212, 160, 84, 0.14)",
+        "on_accent": "#1a140c"
+      },
+      "fonts": {
+        "display": "Literata",
+        "body": "Source Sans 3",
+        "mono": "Source Sans 3",
+        "google": "Literata:ital,opsz,wght@0,7..72,500;0,7..72,600;0,7..72,700;1,7..72,400&family=Source+Sans+3:wght@400;500;600"
+      },
+      "style": {
+        "case": "none",
+        "radius": "8px",
+        "frame": "brackets",
+        "texture": "grain-glow",
+        "motion": "rise",
+        "display_weight": 600,
+        "display_weight_hero": 700,
+        "display_tracking": "-0.015em",
+        "name_size": "2.2rem",
+        "h1_size": "clamp(2.3rem, 10vw, 2.9rem)",
+        "h1_leading": 1.02
+      },
+      "sample_value_line": "Refinance the rental on its rent — not your tax returns."
+    },
+    {
+      "pack_id": "capital",
+      "display_name": "Capital",
+      "mood": "Private-client navy and quiet gold — boardroom calm. Larger type, more air, formal frame.",
+      "best_default_for": "dscr",
+      "light_or_dark": "dark",
+      "colors": {
+        "paper": "#0e1424",
+        "paper_deep": "#161e32",
+        "ink": "#f3efe6",
+        "ink_soft": "#cdc5b6",
+        "muted": "#918a96",
+        "faint": "#635e6e",
+        "line": "rgba(243, 239, 230, 0.10)",
+        "accent": "#c4a45a",
+        "accent_deep": "#a68842",
+        "accent_wash": "rgba(196, 164, 90, 0.12)",
+        "on_accent": "#16120a"
+      },
+      "fonts": {
+        "display": "Instrument Serif",
+        "body": "Source Sans 3",
+        "mono": "Source Sans 3",
+        "google": "Instrument+Serif:ital@0;1&family=Source+Sans+3:wght@400;500;600"
+      },
+      "style": {
+        "role_style": "italic",
+        "case": "none",
+        "radius": "3px",
+        "frame": "double",
+        "texture": "hairline",
+        "motion": "fade",
+        "display_weight": 400,
+        "display_weight_hero": 400,
+        "display_tracking": "-0.012em",
+        "name_size": "2.7rem",
+        "h1_size": "clamp(2.7rem, 12vw, 3.35rem)",
+        "h1_leading": 1.04
+      },
+      "sample_value_line": "Put the equity in your property back to work — rent-based refinance."
+    },
+    {
+      "pack_id": "ink",
+      "display_name": "Ink",
+      "mood": "Daylight paper and charcoal — clean modern calling card. Soft sans, no ornament. Shared with RM.",
+      "best_default_for": "either",
+      "light_or_dark": "light",
+      "colors": {
+        "paper": "#f6f5f2",
+        "paper_deep": "#ebeae6",
+        "ink": "#1a1c1e",
+        "ink_soft": "#3a3e44",
+        "muted": "#6b7178",
+        "faint": "#9aa0a6",
+        "line": "rgba(26, 28, 30, 0.10)",
+        "accent": "#2c333c",
+        "accent_deep": "#1a1e24",
+        "accent_wash": "rgba(44, 51, 60, 0.08)",
+        "on_accent": "#f7f6f3"
+      },
+      "fonts": {
+        "display": "Outfit",
+        "body": "Source Sans 3",
+        "mono": "Source Sans 3",
+        "google": "Outfit:wght@500;600;700&family=Source+Sans+3:wght@400;500;600"
+      },
+      "style": {
+        "case": "none",
+        "radius": "16px",
+        "frame": "ring",
+        "texture": "none",
+        "motion": "fade",
+        "display_weight": 600,
+        "display_weight_hero": 600,
+        "display_tracking": "-0.025em",
+        "name_size": "2.05rem",
+        "h1_size": "clamp(2.15rem, 9vw, 2.65rem)",
+        "h1_leading": 1.08
+      },
+      "sample_value_line": "Investor refinancing on the rent — not your W-2s."
+    },
+    {
+      "pack_id": "ledger",
+      "display_name": "Ledger",
+      "mood": "Warm sand paper and terracotta — editorial letter from a trusted advisor. Softest, most human.",
+      "best_default_for": "dscr",
+      "light_or_dark": "light",
+      "colors": {
+        "paper": "#f1ebe2",
+        "paper_deep": "#e6dfd4",
+        "ink": "#241f1a",
+        "ink_soft": "#433c34",
+        "muted": "#74695e",
+        "faint": "#9a8f83",
+        "line": "rgba(36, 31, 26, 0.12)",
+        "accent": "#a05a3c",
+        "accent_deep": "#7e452e",
+        "accent_wash": "rgba(160, 90, 60, 0.12)",
+        "on_accent": "#faf5ef"
+      },
+      "fonts": {
+        "display": "Fraunces",
+        "body": "Source Sans 3",
+        "mono": "Source Sans 3",
+        "google": "Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=Source+Sans+3:wght@400;500;600"
+      },
+      "style": {
+        "case": "none",
+        "radius": "4px",
+        "frame": "plate",
+        "texture": "grain-glow",
+        "motion": "rise",
+        "display_weight": 600,
+        "display_weight_hero": 600,
+        "display_tracking": "-0.02em",
+        "name_size": "2.4rem",
+        "h1_size": "clamp(2.4rem, 10.5vw, 3rem)",
+        "h1_leading": 1.05
+      },
+      "sample_value_line": "Cash-out refinance on investment property — qualify on the rent roll."
+    }
+  ]
+}

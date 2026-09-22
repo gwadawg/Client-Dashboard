@@ -7,6 +7,7 @@ import ModalCloseButton from "@/components/ModalCloseButton";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import LaunchKitWizard from "@/components/LaunchKitWizard";
+import VirtualCardWizard from "@/components/VirtualCardWizard";
 import { isLaunchKitLifecycle } from "@/lib/launch-kit/intake";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
 import PendingEventsPanel from "@/components/PendingEventsPanel";
@@ -86,6 +87,8 @@ type Client = {
   facebook_page_name?: string | null;
   website?: string | null;
   funnel_url?: string | null;
+  virtual_business_card_url?: string | null;
+  virtual_card_slug?: string | null;
   landing_page_url?: string | null;
   instagram_handle?: string | null;
   ad_account_name?: string | null;
@@ -103,7 +106,7 @@ type Client = {
   account_primary_email?: string | null;
   engagement_kind?: string | null;
   total_paid?: number;
-  form_progress?: Partial<Record<"new_client" | "onboarding" | "kickoff" | "launch_kit" | "launch", boolean>>;
+  form_progress?: Partial<Record<"new_client" | "onboarding" | "kickoff" | "launch_kit" | "virtual_card" | "launch", boolean>>;
   next_cs_call?: {
     scheduled_at: string;
     call_type: "onboarding" | "launch" | "checkin" | null;
@@ -560,6 +563,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   const [kickoffFor, setKickoffFor] = useState<{ id: string; name: string } | null>(null);
   const [launchFor, setLaunchFor] = useState<{ id: string; name: string } | null>(null);
   const [launchKitFor, setLaunchKitFor] = useState<{ id: string; name: string } | null>(null);
+  const [virtualCardFor, setVirtualCardFor] = useState<{ id: string; name: string } | null>(null);
   const [offboardFor, setOffboardFor] = useState<{ id: string; name: string } | null>(null);
   const [showRevenue, setShowRevenue] = useState(initialCanViewRevenue);
   const [query, setQuery] = useState("");
@@ -899,6 +903,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
         onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
         onOpenLaunchKit={() => setLaunchKitFor({ id: c.id, name: c.name })}
+        onOpenVirtualCard={() => setVirtualCardFor({ id: c.id, name: c.name })}
         onOpenOffboard={() => setOffboardFor({ id: c.id, name: c.name })}
         onOpenNotes={() => openClientFile(c.id, c.name, { scrollToNotes: true })}
         onOpenCalls={() => openClientFile(c.id, c.name, { scrollToCalls: true })}
@@ -1408,6 +1413,15 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         />
       )}
 
+      {virtualCardFor && (
+        <VirtualCardWizard
+          clientId={virtualCardFor.id}
+          fallbackName={virtualCardFor.name}
+          onClose={() => setVirtualCardFor(null)}
+          onPublished={reload}
+        />
+      )}
+
       {offboardFor && (
         <ChurnOffboardingWizard
           clientId={offboardFor.id}
@@ -1534,7 +1548,7 @@ function AccountGroupHeaderRow({
 }
 
 function ClientRow({
-  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange,   columns, colSpan, benchmarksOpen, actionsOpen, onToggleActions, onRequestStatusChange, onPatch, onAdsUpdated, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenLaunchKit, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onAddOffer, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete, variant = "standalone",
+  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange,   columns, colSpan, benchmarksOpen, actionsOpen, onToggleActions, onRequestStatusChange, onPatch, onAdsUpdated, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenLaunchKit, onOpenVirtualCard, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onAddOffer, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete, variant = "standalone",
 }: {
   client: Client;
   allClients: Client[];
@@ -1557,6 +1571,7 @@ function ClientRow({
   onOpenKickoff: () => void;
   onOpenLaunch: () => void;
   onOpenLaunchKit: () => void;
+  onOpenVirtualCard: () => void;
   onOpenOffboard: () => void;
   onOpenNotes: () => void;
   onOpenCalls: () => void;
@@ -1581,6 +1596,7 @@ function ClientRow({
   const showLaunchAction = c.lifecycle_status === "onboarding" || c.lifecycle_status === "new_account";
   const showLaunchKitAction = isLaunchKitLifecycle(c.lifecycle_status);
   const launchKitDone = !!c.form_progress?.launch_kit;
+  const virtualCardDone = !!c.virtual_business_card_url || !!c.form_progress?.virtual_card;
   const showOffboardAction = isChurnOffboardEligible(c.lifecycle_status);
   const showReinstateAction = c.lifecycle_status === "churned";
 
@@ -1799,6 +1815,17 @@ function ClientRow({
                 Kit{launchKitDone ? " ✓" : ""}
               </ActionButton>
             )}
+            <ActionButton
+              onClick={onOpenVirtualCard}
+              color={virtualCardDone ? "#a78bfa" : "#c4b5fd"}
+              title={
+                virtualCardDone
+                  ? `Virtual Business Card live${c.virtual_business_card_url ? `: ${c.virtual_business_card_url}` : ""}`
+                  : "Publish virtual business card on loanofficer.me"
+              }
+            >
+              Card{virtualCardDone ? " ✓" : ""}
+            </ActionButton>
             {showLaunchAction && (
               <ActionButton onClick={onOpenLaunch} color="#34d399" title="Launch checklist — mark client live">Launch</ActionButton>
             )}

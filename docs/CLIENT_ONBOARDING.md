@@ -10,6 +10,7 @@ Mr. Waiz (Supabase `clients` table) is the **source of truth** for client data. 
 | 2. Onboarding | Client | `/onboard` (static link in GHL emails) | Match by email/phone → update client; else unmapped queue |
 | 3. Kickoff | CS manager | Kick-Off wizard in Client Roster | Ops fields + PM brief (JSON audit) |
 | 3b. Launch Kit | CSM | **Kit** wizard in Client Roster | Branded client PDF → Storage, `launch_kit` submission, Slack links |
+| 3c. Virtual Card | CS / ops | **Card** wizard in Client Roster / File | `loanofficer.me/{slug}` + `/learn`; URL on `clients.virtual_business_card_url` |
 | 4. Launch | Ops | Launch checklist wizard | `lifecycle_status: active`, `launch_date`, Slack via Make |
 
 **Scheduled CS calls** (onboarding / launch / check-in calendars from GHL Client Success) sync via Make into `cs_appointments` and show on Ops Overview + Client Roster/File. See [`docs/CS_APPOINTMENTS.md`](CS_APPOINTMENTS.md).
@@ -166,8 +167,38 @@ The PDF is deterministic — no AI, no free-form copy. Only per-client fields ar
 
 The Launch wizard shows a non-blocking notice when no kit exists. It does not prevent go-live.
 
-## 4. Launch checklist
+## 3c. Virtual Business Card (CS / ops)
 
+Per-client mobile card on **loanofficer.me/{slug}** plus educate page at **/{slug}/learn**. No Waiz branding on public pages. Stock RM / DSCR layouts and style packs (frozen demos in Wm-os `demos/rm-loanofficer-templates` + `demos/dscr-loanofficer-templates`).
+
+Open **Card** from Client Roster actions or Client File (shows **✓** when published). Soft kickoff warning only — does not hard-block.
+
+### Wizard steps
+
+1. **Identity** — slug, name, title, company, NMLS, states, phone, email, headshot URL, optional value line (prefill from `clients`).
+2. **Product & style** — RM or DSCR + one of four style packs.
+3. **Links** — booking calendar **Needed / Not needed** (required URL only when Needed; prefills Launch Kit `calendar_url` when present). Educate `/learn` always on; optional LO note.
+4. **Review & publish** — mobile preview → Save draft / Publish. After publish: card URL, learn URL, SMS snippet, QR image.
+
+### On publish
+
+- Inserts `client_form_submissions` (`form_type: virtual_card`, `status: applied`) with the full card payload.
+- Writes `clients.virtual_card_slug` + `clients.virtual_business_card_url` (roster field **Virtual Business Card**).
+- Sets form progress `virtual_card` when an applied submission exists.
+- Public pages read published payload by slug (Paul Scheper remains a hardcoded fallback until republished).
+
+### Team outputs to send
+
+| Output | Example |
+|--------|---------|
+| Card URL | `https://loanofficer.me/paul-scheper` |
+| Educate | `https://loanofficer.me/paul-scheper/learn` |
+| SMS | `Hi — here's Paul's contact card: https://loanofficer.me/paul-scheper` |
+| QR | Generated from card URL (copy image URL from wizard) |
+
+Run migration `supabase/migrations/add_virtual_card.sql` before first publish.
+
+## 4. Launch checklist
 Open **Launch** from Client Roster when kickoff is complete. The wizard is a 4-department checklist (18 items). All answers live in `client_form_submissions.responses` JSON — no extra columns on `clients`.
 
 ### Departments

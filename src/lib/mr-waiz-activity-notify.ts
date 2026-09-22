@@ -24,6 +24,7 @@ export const MR_WAIZ_ACTIVITY_EVENT_KEYS = [
   'closebot.agent_log_created',
   'client.launch_kit_generated',
   'client.launch_kit_sent',
+  'client.virtual_card_published',
 ] as const;
 
 export type MrWaizActivityEventKey = (typeof MR_WAIZ_ACTIVITY_EVENT_KEYS)[number];
@@ -214,6 +215,17 @@ export function formatMrWaizActivityMessage(
           line('Client', fields.client_name),
           line('Version', fields.version),
           fields.channel ? line('Channel', fields.channel) : null,
+        ]),
+      ].join('\n');
+
+    case 'client.virtual_card_published':
+      return [
+        '🪪 *Virtual Business Card published*',
+        details([
+          line('Client', fields.client_name),
+          line('Slug', fields.slug),
+          line('Product', fields.product),
+          line('URL', fields.card_url),
         ]),
       ].join('\n');
 

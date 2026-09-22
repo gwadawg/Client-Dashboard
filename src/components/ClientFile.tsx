@@ -42,6 +42,7 @@ import LoanLogLinkSection from "@/components/loan-log/LoanLogLinkSection";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import LaunchKitWizard from "@/components/LaunchKitWizard";
+import VirtualCardWizard from "@/components/VirtualCardWizard";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
 import { reinstateFormHref } from "@/lib/internal-forms";
 import Link from "next/link";
@@ -115,6 +116,8 @@ type FileClient = {
   website: string | null;
   drive_folder_url: string | null;
   funnel_url: string | null;
+  virtual_business_card_url?: string | null;
+  virtual_card_slug?: string | null;
   landing_page_url: string | null;
   brokerage_name: string | null;
   legal_business_name: string | null;
@@ -380,6 +383,7 @@ export default function ClientFile({
   const [showKickoff, setShowKickoff] = useState(openKickoff);
   const [showLaunch, setShowLaunch] = useState(false);
   const [showLaunchKit, setShowLaunchKit] = useState(false);
+  const [showVirtualCard, setShowVirtualCard] = useState(false);
   const [showOffboard, setShowOffboard] = useState(false);
   const [offerRow, setOfferRow] = useState<{ name: string; reporting_type: string | null } | null>(null);
   const [csAppointments, setCsAppointments] = useState<
@@ -815,6 +819,17 @@ export default function ClientFile({
         }}
       />
     )}
+    {showVirtualCard && (
+      <VirtualCardWizard
+        clientId={clientId}
+        fallbackName={offerName}
+        onClose={() => setShowVirtualCard(false)}
+        onPublished={() => {
+          load();
+          onUpdated?.();
+        }}
+      />
+    )}
     {showOffboard && (
       <ChurnOffboardingWizard
         clientId={clientId}
@@ -976,6 +991,23 @@ export default function ClientFile({
                     Kit
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setShowVirtualCard(true)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                  style={{
+                    color: "#c4b5fd",
+                    background: "rgba(167,139,250,0.12)",
+                    border: "1px solid rgba(167,139,250,0.3)",
+                  }}
+                  title={
+                    client.virtual_business_card_url
+                      ? `Virtual Business Card: ${client.virtual_business_card_url}`
+                      : "Publish virtual business card on loanofficer.me"
+                  }
+                >
+                  Card{client.virtual_business_card_url ? " ✓" : ""}
+                </button>
                 {(client.lifecycle_status === "onboarding" || client.lifecycle_status === "new_account") && (
                   <button
                     type="button"
@@ -1438,6 +1470,37 @@ export default function ClientFile({
               </div>
             )}
 
+            <div
+              className="rounded-lg px-4 py-3 flex items-start justify-between gap-4 flex-wrap"
+              style={{
+                background: "rgba(167,139,250,0.08)",
+                border: "1px solid rgba(167,139,250,0.25)",
+              }}
+            >
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "#c4b5fd" }}>
+                  Virtual Business Card
+                </p>
+                <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
+                  {client?.virtual_business_card_url
+                    ? `Live at ${client.virtual_business_card_url}`
+                    : "Publish a loanofficer.me card + /learn page for nurture (Call / Text / Save / Book)."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowVirtualCard(true)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                style={{
+                  color: "#c4b5fd",
+                  background: "rgba(167,139,250,0.12)",
+                  border: "1px solid rgba(167,139,250,0.3)",
+                }}
+              >
+                {client?.virtual_business_card_url ? "Edit card" : "Open Card"}
+              </button>
+            </div>
+
             <Section title="This offer / subaccount">
               <p className="text-xs mb-3" style={{ color: "#64748b" }}>
                 GHL subaccount settings for this offer. Lifecycle and ads controls are in the header above.
@@ -1595,6 +1658,22 @@ export default function ClientFile({
                     </a>
                   ) : null}
                   missing={!client?.funnel_url}
+                  wide
+                />
+                <Detail
+                  label="Virtual Business Card"
+                  value={client?.virtual_business_card_url ? (
+                    <a
+                      href={client.virtual_business_card_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:opacity-80 break-all"
+                      style={{ color: "#c4b5fd" }}
+                    >
+                      {client.virtual_business_card_url}
+                    </a>
+                  ) : null}
+                  missing={!client?.virtual_business_card_url}
                   wide
                 />
                 <Detail
