@@ -343,12 +343,16 @@ export default function VirtualCardWizard({
                   placeholder="CA, AZ"
                 />
               </Field>
-              <Field label="Phone">
+              <Field
+                label="Phone"
+                hint="Internal: use our Go High Level prospecting number for this subaccount — not the LO's personal phone."
+              >
                 <input
                   className="w-full rounded-lg px-3 py-2 text-sm"
                   style={fieldStyle}
                   value={draft.phone}
                   onChange={e => patch("phone", e.target.value)}
+                  placeholder="GHL number we prospect with"
                 />
               </Field>
               <Field label="Email">
@@ -623,16 +627,21 @@ export default function VirtualCardWizard({
 
 function Field({
   label,
+  hint,
   children,
   className = "",
 }: {
   label: string;
+  hint?: string;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
     <label className={`block ${className}`}>
       <span className="mb-1 block text-[11px] font-medium text-slate-500">{label}</span>
+      {hint && (
+        <span className="mb-1.5 block text-[11px] leading-snug text-amber-400/90">{hint}</span>
+      )}
       {children}
     </label>
   );

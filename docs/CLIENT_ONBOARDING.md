@@ -175,7 +175,7 @@ Open **Card** from Client Roster actions or Client File (shows **✓** when publ
 
 ### Wizard steps
 
-1. **Identity** — slug, name, title, company, NMLS, states, phone, email, headshot URL, optional value line (prefill from `clients`).
+1. **Identity** — slug, name, title, company, NMLS, states, phone (prefill from `clients.phone_ghl` — our GHL prospecting number), email, headshot URL, optional value line.
 2. **Product & style** — RM or DSCR + one of four style packs.
 3. **Links** — booking calendar **Needed / Not needed** (required URL only when Needed; prefills Launch Kit `calendar_url` when present). Educate `/learn` always on; optional LO note.
 4. **Review & publish** — mobile preview → Save draft / Publish. After publish: card URL, learn URL, SMS snippet, QR image.
@@ -199,7 +199,7 @@ Open **Card** from Client Roster actions or Client File (shows **✓** when publ
 Run migration `supabase/migrations/add_virtual_card.sql` before first publish.
 
 ## 4. Launch checklist
-Open **Launch** from Client Roster when kickoff is complete. The wizard is a 4-department checklist (18 items). All answers live in `client_form_submissions.responses` JSON — no extra columns on `clients`.
+Open **Launch** from Client Roster when kickoff is complete. The wizard is a 4-department checklist (18 items). Checklist answers live in `client_form_submissions.responses` JSON. On submit the form also writes `clients.phone_ghl` (Go High Level prospecting number) plus lifecycle / launch date.
 
 ### Departments
 
@@ -231,6 +231,7 @@ Open **Launch** from Client Roster when kickoff is complete. The wizard is a 4-d
 
 ### Confirmation rules
 
+- **Go High Level number**: required text field — the subaccount number we prospect with (saved to `clients.phone_ghl`, used on the virtual card)
 - Routine items: checkbox only
 - Critical items (marked *type yes* above): rep must type `yes` and check the box
 - Final gate: rep types `LAUNCH` before submit
@@ -238,7 +239,7 @@ Open **Launch** from Client Roster when kickoff is complete. The wizard is a 4-d
 
 ### On complete
 
-- `lifecycle_status → active`, `launch_date` set, launch call logged
+- `lifecycle_status → active`, `launch_date` set, `phone_ghl` saved, launch call logged
 - **ops-alerts** Slack channel: full department audit (configure slug in Automations; default `ops_alerts` via `SLACK_OPS_CHANNEL_SLUG`)
 - **Client Slack channel** (`clients.slack_id`): short go-live announcement
 - Make webhook fallback if Slack is unavailable: `MAKE_LAUNCH_COMPLETE_WEBHOOK_URL`

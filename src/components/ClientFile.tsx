@@ -127,6 +127,7 @@ type FileClient = {
   states_licensed: string[] | null;
   timezone: string | null;
   ghl_location_id: string | null;
+  phone_ghl: string | null;
   phone_live_transfer: string | null;
   live_transfer_approved: boolean | null;
   offer_summary: string | null;
@@ -1513,6 +1514,11 @@ export default function ClientFile({
                     <span className="font-mono text-sm">{client.ghl_location_id}</span>
                   ) : null}
                   missing={!client?.ghl_location_id}
+                />
+                <Detail
+                  label="Go High Level number"
+                  value={client?.phone_ghl}
+                  missing={!client?.phone_ghl}
                 />
                 <Detail
                   label="Accepts live transfers"

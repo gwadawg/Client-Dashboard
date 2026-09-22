@@ -97,6 +97,7 @@ create table if not exists clients (
   primary_contact_name   text,
   email                  text,
   phone                  text,
+  phone_ghl              text,
   phone_live_transfer    text,
   phone_notifications    text,
   live_transfer_approved boolean default false,
@@ -162,6 +163,7 @@ alter table clients add column if not exists biography              text;
 alter table clients add column if not exists primary_contact_name   text;
 alter table clients add column if not exists email                  text;
 alter table clients add column if not exists phone                  text;
+alter table clients add column if not exists phone_ghl              text;
 alter table clients add column if not exists phone_live_transfer    text;
 alter table clients add column if not exists phone_notifications    text;
 alter table clients add column if not exists live_transfer_approved boolean default false;

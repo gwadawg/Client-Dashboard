@@ -35,7 +35,7 @@ export type VirtualCardDraft = {
 };
 
 export const VIRTUAL_CARD_CLIENT_FIELDS =
-  "id, name, lifecycle_status, primary_contact_name, brokerage_name, legal_business_name, reporting_type, nmls, email, phone, states_licensed, ghl_location_id, virtual_card_slug, virtual_business_card_url";
+  "id, name, lifecycle_status, primary_contact_name, brokerage_name, legal_business_name, reporting_type, nmls, email, phone, phone_ghl, states_licensed, ghl_location_id, virtual_card_slug, virtual_business_card_url";
 
 export type VirtualCardClient = {
   id: string;
@@ -48,6 +48,7 @@ export type VirtualCardClient = {
   nmls: string | null;
   email: string | null;
   phone: string | null;
+  phone_ghl?: string | null;
   states_licensed: string[] | null;
   ghl_location_id?: string | null;
   headshot_url?: string | null;
@@ -196,7 +197,7 @@ export function draftFromClient(
     statesLicensed: prev.statesLicensed.length
       ? prev.statesLicensed
       : (client.states_licensed ?? []).map(s => String(s).trim()).filter(Boolean),
-    phone: prev.phone || (client.phone ?? "").trim(),
+    phone: prev.phone || (client.phone_ghl ?? "").trim(),
     email: prev.email || (client.email ?? "").trim(),
     headshotUrl: headshot,
     valueLine: prev.valueLine,

@@ -85,6 +85,7 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
           data.default_launch_date ?? "",
           data.default_completed_by ?? "",
           data.default_completed_by_label ?? "",
+          data.client?.phone_ghl ?? "",
         ),
       );
       setLoading(false);
@@ -132,7 +133,7 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
       return;
     }
     if (!isLaunchChecklistComplete(draft, formProfile)) {
-      setSaveError("Confirm every checklist item, add the launch call recording link, select completed-by, and type LAUNCH before going live.");
+      setSaveError("Confirm every checklist item, add the Go High Level number, add the launch call recording link, select completed-by, and type LAUNCH before going live.");
       const items = getLaunchItemsForProfile(formProfile);
       const firstIncomplete = items.find(item => !isLaunchItemSatisfied(item, draft));
       if (firstIncomplete) scrollToItem(firstIncomplete.key);
@@ -234,6 +235,20 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
                       <option key={user.id} value={user.id}>{user.email}</option>
                     ))}
                   </select>
+                </label>
+                <label className="block space-y-1.5 sm:col-span-2">
+                  <span className="text-sm font-medium text-slate-400">Go High Level number</span>
+                  <input
+                    type="tel"
+                    value={draft.phone_ghl}
+                    onChange={e => setDraft(prev => ({ ...prev, phone_ghl: e.target.value }))}
+                    placeholder="Number we prospect this client with"
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={fieldStyle}
+                  />
+                  <p className="text-xs text-slate-500">
+                    Saved on the client file and used on the virtual business card — our GHL number, not the LO&apos;s personal phone.
+                  </p>
                 </label>
               </div>
 

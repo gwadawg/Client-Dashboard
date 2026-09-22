@@ -197,6 +197,8 @@ export type LaunchFormDraft = {
   launch_date: string;
   completed_by_user_id: string;
   completed_by_label: string;
+  /** GHL subaccount phone we prospect with — written to clients.phone_ghl on launch. */
+  phone_ghl: string;
   recording_url: string;
   transcript: string;
   notes: string;
@@ -246,6 +248,7 @@ export function emptyLaunchDraft(
   launchDate = '',
   completedByUserId = '',
   completedByLabel = '',
+  phoneGhl = '',
 ): LaunchFormDraft {
   const checklist: Record<string, boolean> = {};
   const confirmations: Record<string, string> = {};
@@ -257,6 +260,7 @@ export function emptyLaunchDraft(
     launch_date: launchDate || new Date().toISOString().slice(0, 10),
     completed_by_user_id: completedByUserId,
     completed_by_label: completedByLabel,
+    phone_ghl: phoneGhl,
     recording_url: '',
     transcript: '',
     notes: '',
@@ -303,6 +307,7 @@ export function isLaunchChecklistComplete(
 ): boolean {
   if (!draft.launch_date.trim()) return false;
   if (!draft.completed_by_user_id.trim()) return false;
+  if (!draft.phone_ghl.trim()) return false;
   if (!draft.recording_url.trim()) return false;
   if (draft.final_confirmation.trim().toUpperCase() !== LAUNCH_FINAL_CONFIRMATION) return false;
   return getLaunchItemsForProfile(profile).every(item => isLaunchItemSatisfied(item, draft));
@@ -330,6 +335,7 @@ export function launchDraftToResponses(
     launch_date: draft.launch_date,
     completed_by_user_id: draft.completed_by_user_id,
     completed_by_label: draft.completed_by_label.trim() || null,
+    phone_ghl: draft.phone_ghl.trim() || null,
     recording_url: draft.recording_url.trim() || null,
     transcript: draft.transcript.trim() || null,
     notes: draft.notes.trim() || null,
@@ -352,6 +358,7 @@ export function launchResponsesToDraft(
     typeof responses.launch_date === 'string' ? responses.launch_date : undefined,
     typeof responses.completed_by_user_id === 'string' ? responses.completed_by_user_id : '',
     typeof responses.completed_by_label === 'string' ? responses.completed_by_label : '',
+    typeof responses.phone_ghl === 'string' ? responses.phone_ghl : '',
   );
   draft.recording_url = typeof responses.recording_url === 'string' ? responses.recording_url : '';
   draft.transcript = typeof responses.transcript === 'string' ? responses.transcript : '';

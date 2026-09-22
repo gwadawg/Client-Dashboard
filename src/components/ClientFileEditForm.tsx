@@ -53,6 +53,7 @@ export type EditableClient = {
   performance_terms: string | null;
   churned_at: string | null;
   ghl_location_id?: string | null;
+  phone_ghl: string | null;
   phone_live_transfer: string | null;
   live_transfer_approved: boolean | null;
   offer_summary: string | null;
@@ -74,6 +75,7 @@ type Draft = {
   service_program: ServiceProgram | "";
   clickup_task_id: string;
   ghl_location_id: string;
+  phone_ghl: string;
   source: string;
   website: string;
   drive_folder_url: string;
@@ -129,6 +131,7 @@ export function clientToDraft(c: EditableClient): Draft {
     service_program: normalizeServiceProgram(c.service_program) ?? "",
     clickup_task_id: c.clickup_task_id ?? "",
     ghl_location_id: c.ghl_location_id ?? "",
+    phone_ghl: c.phone_ghl ?? "",
     source: normalizeClientLeadSource(c.source) ?? "",
     website: c.website ?? "",
     drive_folder_url: c.drive_folder_url ?? "",
@@ -179,6 +182,7 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
       : null,
     clickup_task_id: draft.clickup_task_id.trim() || null,
     ghl_location_id: draft.ghl_location_id.trim() || null,
+    phone_ghl: draft.phone_ghl.trim() || null,
     source: normalizeClientLeadSource(draft.source),
     website: draft.website.trim() || null,
     drive_folder_url: draft.drive_folder_url.trim() || null,
@@ -297,6 +301,13 @@ export default function ClientFileEditForm({
             placeholder="Location id or GHL dashboard URL"
             highlightEmpty
             mono
+          />
+          <Field
+            label="Go High Level number"
+            value={draft.phone_ghl}
+            onChange={v => patch("phone_ghl", v)}
+            placeholder="GHL number we prospect with"
+            highlightEmpty
           />
           <Field label="Client name" value={draft.primary_contact_name} onChange={v => patch("primary_contact_name", v)} highlightEmpty />
           <Field label="Email" type="email" value={draft.email} onChange={v => patch("email", v)} highlightEmpty />

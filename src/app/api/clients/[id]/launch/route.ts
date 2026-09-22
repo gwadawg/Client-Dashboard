@@ -144,6 +144,7 @@ function parseLaunchDraft(body: Record<string, unknown>, profile: OnboardingForm
     launch_date: optionalText(body.launch_date) ?? new Date().toISOString().slice(0, 10),
     completed_by_user_id: optionalText(body.completed_by_user_id) ?? '',
     completed_by_label: optionalText(body.completed_by_label) ?? '',
+    phone_ghl: optionalText(body.phone_ghl) ?? '',
     recording_url: optionalText(body.recording_url) ?? '',
     transcript: optionalText(body.transcript) ?? '',
     notes: optionalText(body.notes) ?? '',
@@ -164,6 +165,13 @@ function validateLaunchDraft(
 
   if (!draft.recording_url.trim()) {
     return NextResponse.json({ error: 'Launch call recording link is required' }, { status: 400 });
+  }
+
+  if (!draft.phone_ghl.trim()) {
+    return NextResponse.json(
+      { error: 'Go High Level number is required (the number we prospect with)' },
+      { status: 400 },
+    );
   }
 
   const assignable = assignableUsers.find(u => u.id === draft.completed_by_user_id);
@@ -207,7 +215,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const [clientRes, cycleSubs, onboardingCallRes, assignableUsers, launchKitRes] = await Promise.all([
     ctx.service
       .from('clients')
-      .select('id, name, lifecycle_status, ghl_location_id, primary_contact_name, launch_date, slack_id, reporting_type, service_program')
+      .select('id, name, lifecycle_status, ghl_location_id, phone_ghl, primary_contact_name, launch_date, slack_id, reporting_type, service_program')
       .eq('id', clientId)
       .single(),
     fetchLaunchCycleSubmissions(ctx.service, clientId),
@@ -340,6 +348,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .update({
       lifecycle_status: lifecycleStatus,
       launch_date: draft.launch_date,
+      phone_ghl: draft.phone_ghl.trim(),
       is_live: syncIsLiveWithLifecycle(lifecycleStatus),
     })
     .eq('id', clientId);
@@ -373,6 +382,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     applied_patch: {
       lifecycle_status: lifecycleStatus,
       launch_date: draft.launch_date,
+      phone_ghl: draft.phone_ghl.trim(),
     },
   });
 
