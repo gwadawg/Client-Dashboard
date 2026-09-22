@@ -699,7 +699,6 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
   const [asc, setAsc] = useState(false);
   const [openedKey, setOpenedKey] = useState<string | null>(null);
   const [drill, setDrill] = useState<Record<string, Drilldown | "loading">>({});
-  const [unsourcedOpen, setUnsourcedOpen] = useState(true);
   const [linkTarget, setLinkTarget] = useState<string | null>(null);
   const [libraryOptions, setLibraryOptions] = useState<LibEntry[]>([]);
   const [linkLibraryId, setLinkLibraryId] = useState("");
@@ -783,8 +782,17 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
 
   const scopedAds = useMemo(() => ads.filter((a) => adPassesSlice(a, slice)), [ads, slice]);
 
+  // Unsourced ads always stay in the board (and totals) so spend/leads are visible
+  // before library mapping — the $250 floor only applies to sourced creatives.
   const filteredAds = useMemo(
-    () => (minSpendOn ? scopedAds.filter((a) => a.spend >= MIN_SPEND) : scopedAds),
+    () =>
+      minSpendOn
+        ? scopedAds.filter(
+            (a) =>
+              a.spend >= MIN_SPEND ||
+              (!a.is_sourced && (a.spend > 0 || a.has_meta)),
+          )
+        : scopedAds,
     [scopedAds, minSpendOn],
   );
 
@@ -1055,6 +1063,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
           <p className="text-[11px] tabular-nums" style={{ color: "#94a3b8", fontFamily: "var(--font-plex-mono)" }}>
             {filteredAds.length} showing
             {minSpendOn ? ` · $${MIN_SPEND}+ floor` : ""}
+            {minSpendOn && unsourcedAds.length > 0 ? " · unmapped included" : ""}
             {minSpendOn && scopedAds.length !== filteredAds.length ? ` · ${scopedAds.length} before floor` : ""}
           </p>
         </div>
@@ -1296,77 +1305,27 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
       ) : null}
 
       {unsourcedAds.length > 0 ? (
-        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(251,191,36,0.2)" }}>
-          <button
-            type="button"
-            className="w-full flex items-center justify-between px-4 py-3 text-left"
-            style={{ background: "rgba(251,191,36,0.06)" }}
-            onClick={() => setUnsourcedOpen((v) => !v)}
+        <div
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl px-4 py-3"
+          style={{
+            background: "rgba(251,191,36,0.06)",
+            border: "1px solid rgba(251,191,36,0.22)",
+          }}
+        >
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider"
+            style={{
+              background: "rgba(251,191,36,0.18)",
+              color: "#fbbf24",
+              border: "1px solid rgba(251,191,36,0.35)",
+            }}
           >
-            <span className="text-sm font-semibold" style={{ color: "#fbbf24" }}>
-              Needs library entry ({unsourcedAds.length})
-            </span>
-            <span className="text-xs" style={{ color: "#94a3b8" }}>{unsourcedOpen ? "Hide" : "Show"}</span>
-          </button>
-          {unsourcedOpen ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr style={{ background: "#050c18" }}>
-                    {["Ad name", "Spend", "Leads", "Actions"].map((h, i) => (
-                      <th
-                        key={h}
-                        className={`px-3 py-2 ${i === 0 ? "text-left" : i === 3 ? "text-right" : "text-right"} text-[10px] font-semibold uppercase tracking-wider`}
-                        style={{ color: "#475569" }}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {unsourcedAds.map((ad) => (
-                    <tr
-                      key={ad.row_key}
-                      className="cursor-pointer transition-colors"
-                      style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}
-                      onClick={() => openAd(ad)}
-                    >
-                      <td className="px-3 py-2 text-left" style={{ color: "#e2e8f0" }}>{ad.ad_name}</td>
-                      <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{money(ad.spend)}</td>
-                      <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(ad.leads)}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="text-[11px] underline mr-3"
-                          style={{ color: "#cbd5e1" }}
-                          onClick={() => openAd(ad)}
-                        >
-                          Open
-                        </button>
-                        <button
-                          type="button"
-                          className="text-[11px] underline mr-3"
-                          style={{ color: "#f59e0b" }}
-                          onClick={() => onAddToLibrary(ad.ad_name)}
-                        >
-                          Add to library
-                        </button>
-                        <button
-                          type="button"
-                          className="text-[11px] underline"
-                          style={{ color: "#60a5fa" }}
-                          onClick={() => openLinkModal(ad.ad_name)}
-                        >
-                          Link to existing
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
+            Unmapped · {unsourcedAds.length}
+          </span>
+          <p className="text-xs" style={{ color: "#cbd5e1" }}>
+            Included in the table and totals below. Press the{" "}
+            <span style={{ color: "#fbbf24" }}>Unmapped</span> chip on a row to add or link it in the library.
+          </p>
         </div>
       ) : null}
 
@@ -1545,10 +1504,27 @@ function FragmentRow({
   onViewInLibrary: (libraryId: string) => void;
   onLinkToExisting: (adName: string) => void;
 }) {
+  const [mapOpen, setMapOpen] = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mapOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (mapRef.current && !mapRef.current.contains(e.target as Node)) {
+        setMapOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [mapOpen]);
+
   return (
     <tr
       className="cursor-pointer transition-colors"
-      style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+      style={{
+        borderBottom: "1px solid rgba(255,255,255,0.04)",
+        background: !ad.is_sourced ? "rgba(251,191,36,0.03)" : undefined,
+      }}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -1563,6 +1539,62 @@ function FragmentRow({
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium">{ad.ad_name}</span>
+            {!ad.is_sourced ? (
+              <div className="relative" ref={mapRef} onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  aria-expanded={mapOpen}
+                  aria-haspopup="menu"
+                  onClick={() => setMapOpen((v) => !v)}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider"
+                  style={{
+                    background: "rgba(251,191,36,0.18)",
+                    color: "#fbbf24",
+                    border: "1px solid rgba(251,191,36,0.4)",
+                  }}
+                >
+                  Unmapped
+                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {mapOpen ? (
+                  <div
+                    role="menu"
+                    className="absolute left-0 top-full mt-1 z-20 min-w-[10rem] rounded-lg overflow-hidden shadow-lg"
+                    style={{
+                      background: "#0c182c",
+                      border: "1px solid rgba(251,191,36,0.35)",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.04]"
+                      style={{ color: "#fbbf24" }}
+                      onClick={() => {
+                        setMapOpen(false);
+                        onAddToLibrary(ad.ad_name);
+                      }}
+                    >
+                      Add to library
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.04]"
+                      style={{ color: "#60a5fa", borderTop: "1px solid rgba(255,255,255,0.06)" }}
+                      onClick={() => {
+                        setMapOpen(false);
+                        onLinkToExisting(ad.ad_name);
+                      }}
+                    >
+                      Link to existing
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={(e) => {
@@ -1600,32 +1632,6 @@ function FragmentRow({
               >
                 creative
               </a>
-            ) : null}
-            {!ad.is_sourced ? (
-              <>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAddToLibrary(ad.ad_name);
-                  }}
-                  className="text-[11px] underline"
-                  style={{ color: "#f59e0b" }}
-                >
-                  Add
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onLinkToExisting(ad.ad_name);
-                  }}
-                  className="text-[11px] underline"
-                  style={{ color: "#60a5fa" }}
-                >
-                  Link
-                </button>
-              </>
             ) : null}
           </div>
         </div>

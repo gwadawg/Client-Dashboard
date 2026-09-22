@@ -129,7 +129,7 @@ function AdPerformance({
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [drill, setDrill] = useState<Record<string, Drilldown | "loading">>({});
-  const [unsourcedOpen, setUnsourcedOpen] = useState(true);
+  const [mapMenuKey, setMapMenuKey] = useState<string | null>(null);
   const [linkTarget, setLinkTarget] = useState<string | null>(null);
   const [libraryOptions, setLibraryOptions] = useState<LibEntry[]>([]);
   const [linkLibraryId, setLinkLibraryId] = useState("");
@@ -288,136 +288,27 @@ function AdPerformance({
         />
       </div>
       {unsourcedAds.length > 0 ? (
-        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(251,191,36,0.2)" }}>
-          <button
-            type="button"
-            className="w-full flex items-center justify-between px-4 py-3 text-left"
-            style={{ background: "rgba(251,191,36,0.06)" }}
-            onClick={() => setUnsourcedOpen((v) => !v)}
+        <div
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl px-4 py-3"
+          style={{
+            background: "rgba(251,191,36,0.06)",
+            border: "1px solid rgba(251,191,36,0.22)",
+          }}
+        >
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider"
+            style={{
+              background: "rgba(251,191,36,0.18)",
+              color: "#fbbf24",
+              border: "1px solid rgba(251,191,36,0.35)",
+            }}
           >
-            <span className="text-sm font-semibold" style={{ color: "#fbbf24" }}>
-              Needs library entry ({unsourcedAds.length})
-            </span>
-            <span className="text-xs" style={{ color: "#94a3b8" }}>{unsourcedOpen ? "Hide" : "Show"}</span>
-          </button>
-          {unsourcedOpen ? (
-            <table className="w-full text-xs">
-              <thead>
-                <tr style={{ background: "#050c18" }}>
-                  {["Ad name", "Spend", "Leads", "Actions"].map((h, i) => (
-                    <th
-                      key={h}
-                      className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-wider ${i === 0 ? "text-left" : "text-right"}`}
-                      style={{ color: "#475569" }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {unsourcedAds.map((ad) => {
-                  const isOpen = expanded === ad.row_key;
-                  const dd = drill[ad.row_key];
-                  return (
-                    <Fragment key={ad.row_key}>
-                      <tr
-                        className="cursor-pointer"
-                        style={{
-                          borderTop: "1px solid rgba(255,255,255,0.04)",
-                          background: isOpen ? "rgba(245,158,11,0.04)" : "transparent",
-                        }}
-                        onClick={() => toggleExpand(ad)}
-                      >
-                        <td className="px-3 py-2 text-left" style={{ color: "#e2e8f0" }}>
-                          <div className="flex items-center gap-2">
-                            <svg
-                              className="w-3.5 h-3.5 flex-shrink-0 transition-transform"
-                              style={{ color: "#475569", transform: isOpen ? "rotate(90deg)" : "none" }}
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth={2}
-                              viewBox="0 0 24 24"
-                            >
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                            </svg>
-                            <span>{ad.ad_name}</span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{money(ad.spend)}</td>
-                        <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(ad.leads)}</td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <button type="button" className="text-[11px] underline mr-3" style={{ color: "#cbd5e1" }} onClick={() => toggleExpand(ad)}>
-                            {isOpen ? "Hide" : "Review"}
-                          </button>
-                          <button type="button" className="text-[11px] underline mr-3" style={{ color: "#f59e0b" }} onClick={() => onAddToLibrary(ad.ad_name)}>
-                            Add to library
-                          </button>
-                          <button type="button" className="text-[11px] underline" style={{ color: "#60a5fa" }} onClick={() => openLinkModal(ad.ad_name)}>
-                            Link to existing
-                          </button>
-                        </td>
-                      </tr>
-                      {isOpen ? (
-                        <tr>
-                          <td colSpan={4} className="px-4 py-4" style={{ background: "#050c18" }}>
-                            {dd === "loading" || !dd ? (
-                              <p className="text-xs" style={{ color: "#475569" }}>Loading drilldown…</p>
-                            ) : dd.daily.length === 0 && !(dd.variants && dd.variants.length > 1) ? (
-                              <p className="text-xs" style={{ color: "#64748b" }}>No daily breakdown for this ad in range.</p>
-                            ) : (
-                              <div className="space-y-4">
-                                {dd.daily.length > 0 ? (
-                                  <div className="h-48">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                      <LineChart data={dd.daily}>
-                                        <CartesianGrid stroke="rgba(255,255,255,0.06)" />
-                                        <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 10 }} />
-                                        <YAxis tick={{ fill: "#64748b", fontSize: 10 }} />
-                                        <Tooltip contentStyle={{ background: "#0a1424", border: "1px solid rgba(255,255,255,0.1)" }} />
-                                        <Line type="monotone" dataKey="spend" stroke="#f59e0b" dot={false} name="Spend" />
-                                        <Line type="monotone" dataKey="leads" stroke="#60a5fa" dot={false} name="Leads" />
-                                      </LineChart>
-                                    </ResponsiveContainer>
-                                  </div>
-                                ) : null}
-                                {dd.variants && dd.variants.length > 1 ? (
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-xs">
-                                      <thead>
-                                        <tr>
-                                          {["Variant", "Spend", "Leads", "Appts", "Shows", "Closes", "CPL"].map((h) => (
-                                            <th key={h} className="px-2 py-1 text-left uppercase tracking-wider" style={{ color: "#475569" }}>{h}</th>
-                                          ))}
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {dd.variants.map((v) => (
-                                          <tr key={v.ad_name} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                                            <td className="px-2 py-1" style={{ color: "#e2e8f0" }}>{v.ad_name}</td>
-                                            <td className="px-2 py-1" style={{ color: "#e2e8f0" }}>{money(v.spend)}</td>
-                                            <td className="px-2 py-1" style={{ color: "#94a3b8" }}>{num(v.leads)}</td>
-                                            <td className="px-2 py-1" style={{ color: "#94a3b8" }}>{num(v.appointments)}</td>
-                                            <td className="px-2 py-1" style={{ color: "#94a3b8" }}>{num(v.shows)}</td>
-                                            <td className="px-2 py-1" style={{ color: "#94a3b8" }}>{num(v.closes)}</td>
-                                            <td className="px-2 py-1" style={{ color: "#e2e8f0" }}>{money(v.cpl)}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                ) : null}
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : null}
+            Unmapped · {unsourcedAds.length}
+          </span>
+          <p className="text-xs" style={{ color: "#cbd5e1" }}>
+            Included in the table and totals below. Press the{" "}
+            <span style={{ color: "#fbbf24" }}>Unmapped</span> chip on a row to add or link it in the library.
+          </p>
         </div>
       ) : null}
 
@@ -468,11 +359,73 @@ function AdPerformance({
                     <tr
                       key={ad.row_key}
                       className="cursor-pointer hover:bg-white/[0.02]"
-                      style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}
+                      style={{
+                        borderTop: "1px solid rgba(255,255,255,0.04)",
+                        background: !ad.is_sourced ? "rgba(251,191,36,0.03)" : undefined,
+                      }}
                       onClick={() => toggleExpand(ad)}
                     >
                       <td className="px-3 py-3 text-left">
-                        <div className="font-medium" style={{ color: "#e2e8f0" }}>{ad.ad_name}</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="font-medium" style={{ color: "#e2e8f0" }}>{ad.ad_name}</div>
+                          {!ad.is_sourced ? (
+                            <div className="relative" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                aria-expanded={mapMenuKey === ad.row_key}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider"
+                                style={{
+                                  background: "rgba(251,191,36,0.18)",
+                                  color: "#fbbf24",
+                                  border: "1px solid rgba(251,191,36,0.4)",
+                                }}
+                                onClick={() =>
+                                  setMapMenuKey((k) => (k === ad.row_key ? null : ad.row_key))
+                                }
+                              >
+                                Unmapped
+                                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              {mapMenuKey === ad.row_key ? (
+                                <div
+                                  role="menu"
+                                  className="absolute left-0 top-full mt-1 z-20 min-w-[10rem] rounded-lg overflow-hidden shadow-lg"
+                                  style={{
+                                    background: "#0c182c",
+                                    border: "1px solid rgba(251,191,36,0.35)",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.04]"
+                                    style={{ color: "#fbbf24" }}
+                                    onClick={() => {
+                                      setMapMenuKey(null);
+                                      onAddToLibrary(ad.ad_name);
+                                    }}
+                                  >
+                                    Add to library
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="w-full text-left px-3 py-2 text-xs hover:bg-white/[0.04]"
+                                    style={{ color: "#60a5fa", borderTop: "1px solid rgba(255,255,255,0.06)" }}
+                                    onClick={() => {
+                                      setMapMenuKey(null);
+                                      openLinkModal(ad.ad_name);
+                                    }}
+                                  >
+                                    Link to existing
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
                         {ad.library ? (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {ad.library.ad_format ? (
@@ -486,9 +439,7 @@ function AdPerformance({
                               </span>
                             ) : null}
                           </div>
-                        ) : (
-                          <span className="text-[10px]" style={{ color: "#64748b" }}>Not in library</span>
-                        )}
+                        ) : null}
                       </td>
                       <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money(ad.spend)}</td>
                       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.leads)}</td>
