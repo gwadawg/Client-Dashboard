@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import ReportingTypeBadge from "@/components/ReportingTypeBadge";
 import VirtualCardPreview from "@/components/virtual-card/VirtualCardPreview";
 import {
@@ -84,6 +85,11 @@ export default function VirtualCardWizard({
   const [step, setStep] = useState<Step>("identity");
   const [publishedOut, setPublishedOut] = useState<PublishedOut | null>(null);
   const [statesText, setStatesText] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,31 +213,37 @@ export default function VirtualCardWizard({
     }
   }
 
+  /** Portal above Client File (z-50) / Launch Kit (z-60) stacking contexts. */
+  function portal(node: React.ReactNode) {
+    if (!mounted || typeof document === "undefined") return null;
+    return createPortal(node, document.body);
+  }
+
   if (loading) {
-    return (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+    return portal(
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
         <div className="rounded-xl px-6 py-4 text-sm text-slate-300" style={panelStyle}>
           Loading card…
         </div>
-      </div>
+      </div>,
     );
   }
 
   if (error) {
-    return (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+    return portal(
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
         <div className="max-w-md rounded-xl p-6" style={panelStyle}>
           <p className="text-sm text-rose-300">{error}</p>
           <button type="button" className="mt-4 text-sm text-slate-300 underline" onClick={onClose}>
             Close
           </button>
         </div>
-      </div>
+      </div>,
     );
   }
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/70 p-3 sm:p-6">
+  return portal(
+    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/70 p-3 sm:p-6">
       <div className="my-2 w-full max-w-3xl rounded-2xl shadow-2xl" style={panelStyle}>
         <header className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
           <div>
