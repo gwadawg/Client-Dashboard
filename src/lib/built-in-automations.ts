@@ -19,6 +19,7 @@ export const BUILT_IN_AUTOMATIONS: BuiltInAutomation[] = [
     event_key: 'onboarding.complete',
     trigger: 'Client submits /onboard and email + phone match exactly one client',
     actions: [
+      'GHL — update CS contact fields from OB (address, role, company, team members)',
       'GHL — add tag "OB form Filled" on ghl_contact_id (triggers GHL automations)',
       'ClickUp — comment on clickup_task_id with all form answers',
       'ClickUp — optional status (CLICKUP_OB_TASK_STATUS) and custom fields (CLICKUP_OB_FIELD_MAP)',

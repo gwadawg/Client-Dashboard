@@ -110,7 +110,7 @@ ClickUp should remain: **create task**, optional **update task status** on launc
 |----------|---------|
 | `ADMIN_WEBHOOK_SECRET` | Bearer token on onboard HTTP module |
 | `CLICKUP_AUTO_CREATE_ON_ONBOARD` | Set to `false` when Make always sends `clickup_task_id` |
-| `GHL_CS_API_TOKEN` | CS subaccount PIT — tags GHL contact `OB Form Filled` on OB submit |
+| `GHL_CS_API_TOKEN` | CS subaccount PIT — updates CS contact OB fields + tags `OB Form Filled` |
 | `GHL_CS_LOCATION_ID` | CS location id — same for all clients |
 | `CLICKUP_API_TOKEN` | OB complete comment + optional field updates on ClickUp task |
 

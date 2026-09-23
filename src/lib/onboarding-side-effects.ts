@@ -1,5 +1,5 @@
 /**
- * Onboarding complete side effects — GHL tag + ClickUp task update.
+ * Onboarding complete side effects — GHL contact fields + tag + ClickUp task update.
  * Fire-and-forget: failures are logged, never block the client thank-you screen.
  */
 
@@ -19,7 +19,14 @@ import {
   updateClickUpTask,
 } from '@/lib/clickup';
 import { contactTypeLabel } from '@/lib/client-contacts';
-import { GHL_OB_FORM_FILLED_TAG, getGhlApiToken, getGhlCsLocationId, ghlAddContactTags } from '@/lib/ghl-api';
+import {
+  GHL_OB_FORM_FILLED_TAG,
+  getGhlApiToken,
+  getGhlCsLocationId,
+  ghlAddContactTags,
+  ghlUpdateContact,
+} from '@/lib/ghl-api';
+import { buildGhlCsObContactPayload } from '@/lib/ghl-ob-contact-sync';
 import type { OnboardingFormInput } from '@/lib/onboarding-form';
 import { obRoleToContactRole } from '@/lib/onboarding-form';
 import { formatStatesLicensed } from '@/lib/us-states';
@@ -165,7 +172,10 @@ function fieldMapValues(input: OnboardingFormInput): Record<string, string> {
   };
 }
 
-async function syncGhlOnboardingComplete(client: OnboardingSideEffectClient): Promise<boolean> {
+async function syncGhlOnboardingComplete(
+  client: OnboardingSideEffectClient,
+  input: OnboardingFormInput,
+): Promise<boolean> {
   const contactId = client.ghl_contact_id?.trim();
   if (!contactId) {
     console.warn('[onboarding-side-effects] skip GHL — no ghl_contact_id on client', client.id);
@@ -181,6 +191,10 @@ async function syncGhlOnboardingComplete(client: OnboardingSideEffectClient): Pr
     console.warn('[onboarding-side-effects] skip GHL — GHL_CS_LOCATION_ID not set');
     return false;
   }
+
+  const contactPatch = buildGhlCsObContactPayload(input);
+  await ghlUpdateContact(contactId, locationId, contactPatch);
+  console.info('[onboarding-side-effects] GHL contact fields updated', contactId);
 
   await ghlAddContactTags(contactId, locationId, [GHL_OB_FORM_FILLED_TAG]);
   console.info('[onboarding-side-effects] GHL tag added:', GHL_OB_FORM_FILLED_TAG, contactId);
@@ -268,7 +282,7 @@ export async function runOnboardingUnmappedNotification(
   await notifyOpsSlack(service, text);
 }
 
-/** GHL tag + ClickUp — only after a matched client file. Slack ops alert included. Never throws. */
+/** GHL contact fields + tag + ClickUp — only after a matched client file. Slack ops alert included. Never throws. */
 export async function runOnboardingSideEffects(
   client: OnboardingSideEffectClient,
   input: OnboardingFormInput,
@@ -278,7 +292,7 @@ export async function runOnboardingSideEffects(
   let clickupUpdated = false;
 
   try {
-    ghlTagged = await syncGhlOnboardingComplete(client);
+    ghlTagged = await syncGhlOnboardingComplete(client, input);
   } catch (e) {
     console.error('[onboarding-side-effects] GHL failed', e);
   }

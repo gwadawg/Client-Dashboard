@@ -109,8 +109,24 @@ Primary onboarding stays on the universal `/onboard` link. For additional users 
 
 When a matched client submits `/onboard`, Mr. Waiz:
 
-1. **GHL** — adds tag `OB form Filled` on the stored `ghl_contact_id` (from Step 1). This tag triggers your GHL automations (confirmation email, etc.).
+1. **GHL** — updates the CS contact (`ghl_contact_id`) with OB fields for subaccount/user setup, then adds tag `OB Form Filled` (triggers GHL automations / emails).
 2. **ClickUp** — posts a formatted comment on `clickup_task_id` with all OB answers. Optionally updates task status (`CLICKUP_OB_TASK_STATUS`) and custom fields (`CLICKUP_OB_FIELD_MAP` JSON).
+
+**GHL CS contact fields written (partial update — does not clear unrelated fields; does not overwrite name / email / phone):**
+
+| OB source | GHL target |
+|-----------|------------|
+| `street_address` (if set) | standard `address1` |
+| `city` | standard `city` |
+| `state` | standard `state` |
+| `zip_code` (if set) | standard `postalCode` |
+| `ob_role` | custom `own_the_company` — exact `MLO For Brokerage/Lender` / `Owner of Brokerage/Lender` |
+| `brokerage_name` | standard `companyName` |
+| `company_nmls` | custom `company_nmls` (owner only) |
+| `website` | custom `company_website` (owner only) |
+| `additional_members` | custom `other_user_information` (`{label}: {value}` rows; omitted if none) |
+
+Unmapped submissions skip GHL until linked in **Unmapped onboarding forms**.
 
 **Required env (Railway):**
 
@@ -124,10 +140,11 @@ When a matched client submits `/onboard`, Mr. Waiz:
 
 | Variable | Purpose |
 |----------|---------|
+| `GHL_CS_OB_FIELD_MAP` | JSON overrides for custom field IDs (defaults baked in for CS location) |
 | `CLICKUP_OB_TASK_STATUS` | ClickUp status name after OB submit (e.g. `ob form received`) |
 | `CLICKUP_OB_FIELD_MAP` | JSON map of field keys → ClickUp custom field UUIDs |
 
-Step 1 must store `ghl_contact_id` on the client (see Make payload above). CS location is global via `GHL_CS_LOCATION_ID` on Railway — not stored per client.
+Step 1 must store `ghl_contact_id` on the client (see Make payload above). Without it, GHL tag + field sync are skipped. CS location is global via `GHL_CS_LOCATION_ID` on Railway — not stored per client.
 
 ### Storage
 
