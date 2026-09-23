@@ -174,7 +174,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
       return;
     }
     if (saveMode === "complete" && serviceProgramApplies(draft.reporting_type) && !draft.service_program) {
-      setSaveError("Select a service program (Core or Lead Gen) before completing.");
+      setSaveError("Select fulfillment (Call Center or Leads Only) before completing.");
       return;
     }
     if (saveMode === "complete" && shareMode) {
@@ -405,7 +405,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
 
               {draft.vertical_confirmed && draft.reporting_type === "CALL_CENTER" && (
                 <p className="text-sm mt-3" style={{ color: subtitleColor }}>
-                  Service program is not applicable for Call Center clients.
+                  Service program is not applicable for Call Center Lead (product) clients.
                 </p>
               )}
             </Section>
@@ -564,8 +564,8 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
                 {!shareMode && (
                   <Section title="Post Call" shareMode={shareMode}>
                     <div className="space-y-4">
-                      <Field label="GHL sub-account name" required shareMode={shareMode} status={fieldStatus("sub_account_name")} helper="Copy exact location name from GHL.">
-                        <input value={draft.sub_account_name} disabled={saving} onChange={e => patch("sub_account_name", e.target.value)} placeholder="e.g. Ken Adler's Office" className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("sub_account_name"))} />
+                      <Field label="GHL sub-account name" required shareMode={shareMode} status={fieldStatus("sub_account_name")} helper="Copy the exact location name from GHL (OK if it matches the LO).">
+                        <input value={draft.sub_account_name} disabled={saving} onChange={e => patch("sub_account_name", e.target.value)} placeholder="Exact GHL location name" className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus("sub_account_name"))} />
                       </Field>
                       <Field label="Client GHL Location ID" required shareMode={shareMode} status={fieldStatus("ghl_location_id")}>
                         <input value={draft.ghl_location_id} disabled={saving} onChange={e => patch("ghl_location_id", e.target.value)} placeholder="GHL subaccount location id" className="w-full px-3 py-2 rounded-lg text-sm outline-none font-mono" style={fieldStyle(shareMode, fieldStatus("ghl_location_id"))} />

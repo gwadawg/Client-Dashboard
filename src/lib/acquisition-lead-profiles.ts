@@ -1,4 +1,5 @@
 import { GHL_ACQUISITION_LOCATION_ID } from '@/lib/acquisition-config';
+import { getSalesPackageLabel } from '@/lib/offer-catalog';
 
 export type AcquisitionFunnelStage =
   | 'lead'
@@ -349,7 +350,7 @@ export function buildAcquisitionLeadProfile(
       event_type: 'offer_made',
       occurred_at: offer.offered_at,
       details: joinDetails([
-        offer.offer_type,
+        offer.offer_type ? getSalesPackageLabel(offer.offer_type) : null,
         offer.setter_name ? `setter ${offer.setter_name}` : null,
         offer.offered_by ? `closer ${offer.offered_by}` : null,
         offer.cash_collected != null ? `$${offer.cash_collected}` : null,
@@ -367,7 +368,10 @@ export function buildAcquisitionLeadProfile(
         id: `offer-closed-${offer.id}`,
         event_type: 'offer_closed',
         occurred_at: offer.offered_at,
-        details: joinDetails([offer.offer_type, 'marked closed on offer sheet']),
+        details: joinDetails([
+          offer.offer_type ? getSalesPackageLabel(offer.offer_type) : null,
+          'marked closed on offer sheet',
+        ]),
         recording_url: offer.recording_link,
         transcript_url: null,
         transcript: null,
@@ -386,7 +390,7 @@ export function buildAcquisitionLeadProfile(
       event_type: dismissed ? 'close_dismissed' : 'client_closed',
       occurred_at: close.closed_at,
       details: joinDetails([
-        close.offer_type,
+        close.offer_type ? getSalesPackageLabel(close.offer_type) : null,
         close.close_source,
         dismissed
           ? 'excluded from reporting'

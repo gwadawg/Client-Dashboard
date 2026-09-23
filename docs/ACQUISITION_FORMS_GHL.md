@@ -24,12 +24,12 @@ Products and sales packages are defined in **Admin → Offer Catalog** (`offer_c
 | Context | GHL / webhook field | Maps to | Example values |
 |---------|---------------------|---------|----------------|
 | Lead created | `offer` or `offer_interest` | **Product interest** → `acquisition_leads.offer_interest` | Reverse → `RM`, DSCR → `DSCR` |
-| Offer recorded | `offer` or `offer_type` | **Sales package** → `acquisition_offers.offer_type` | Core Offer → `core_offer` |
+| Offer recorded | `offer` or `offer_type` | **Sales package** → `acquisition_offers.offer_type` | Call Center → `core_offer`, Leads Only → `mid_offer` |
 | Closer form close | `offer_type` + `reporting_type` | Package + product on `acquisition_closes` | `core_offer` + `RM` |
 
-**Sales package codes:** `core_offer`, `mid_offer`, `skool` (active). `bootcamp` is legacy/inactive.
+**Sales package codes:** `core_offer` (Call Center), `mid_offer` (Leads Only), `skool` (active). `bootcamp` is legacy/inactive.
 
-**Fulfillment:** `service_program` on clients and closes is **derived** — Core Offer → `core`, Mid Offer → `lead_gen`, Call Center product → `null`.
+**Fulfillment:** `service_program` on clients and closes is **derived** — Call Center package → `core`, Leads Only → `lead_gen`, Call Center Lead product → `null`.
 
 
 ### When to use

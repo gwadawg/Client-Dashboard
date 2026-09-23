@@ -13,14 +13,14 @@ export type ServiceProgramMeta = {
 
 export const SERVICE_PROGRAM_META: Record<ServiceProgram, ServiceProgramMeta> = {
   core: {
-    label: 'Core — Full Service',
-    shortLabel: 'Core',
+    label: 'Call Center',
+    shortLabel: 'CC',
     description: 'We generate leads, dial, book appointments, and qualify.',
     color: '#34d399',
     background: 'rgba(52,211,153,0.12)',
   },
   lead_gen: {
-    label: 'Lead Gen Only',
+    label: 'Leads Only',
     shortLabel: 'Leads',
     description: 'We generate leads only — client handles dial, booking, and qualification.',
     color: '#94a3b8',
@@ -32,7 +32,14 @@ export function normalizeServiceProgram(value: unknown): ServiceProgram | null {
   const raw = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '_');
   if (!raw) return null;
   if (raw === 'core' || raw.includes('full')) return 'core';
-  if (raw === 'lead_gen' || raw === 'leadgen' || raw.includes('lead_gen') || raw.includes('lead gen')) {
+  if (
+    raw === 'lead_gen' ||
+    raw === 'leadgen' ||
+    raw.includes('lead_gen') ||
+    raw.includes('lead gen') ||
+    raw.includes('leads_only') ||
+    raw.includes('leads only')
+  ) {
     return 'lead_gen';
   }
   return null;

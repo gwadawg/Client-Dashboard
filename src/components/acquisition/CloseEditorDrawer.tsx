@@ -6,6 +6,7 @@ import {
   type CloseCompleteness,
 } from "@/lib/acquisition-close-completeness";
 import { REPORTING_TYPES } from "@/lib/reporting-types";
+import { getSalesPackageLabel } from "@/lib/offer-catalog";
 
 type ClientOption = { id: string; name: string; email?: string | null; phone?: string | null };
 type LeadOffer = {
@@ -45,8 +46,8 @@ type Props = {
 };
 
 const DEFAULT_PACKAGES = [
-  { code: "core_offer", label: "Core Offer" },
-  { code: "mid_offer", label: "Mid Offer" },
+  { code: "core_offer", label: "Call Center" },
+  { code: "mid_offer", label: "Leads Only" },
   { code: "skool", label: "Skool" },
 ];
 
@@ -528,7 +529,7 @@ export default function CloseEditorDrawer({ closeId, onClose, onSaved }: Props) 
                           color: "#cbd5e1",
                         }}
                       >
-                        {offer.offer_type} · {offer.offered_at.slice(0, 10)}
+                        {getSalesPackageLabel(offer.offer_type)} · {offer.offered_at.slice(0, 10)}
                         {offer.cash_collected != null ? ` · $${offer.cash_collected}` : ""}
                         {offer.is_closed ? " · closed" : ""}
                       </button>

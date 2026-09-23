@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getSalesPackageLabel } from "@/lib/offer-catalog";
+import { getReportingTypeLabel } from "@/lib/reporting-types";
 
 type PendingClose = {
   id: string;
@@ -95,7 +97,12 @@ export default function AcquisitionPendingCloses() {
           <div>
             <p className="font-medium text-slate-200">{leadLabel(row)}</p>
             <p className="text-xs text-slate-500 mt-1">
-              Closed {new Date(row.closed_at).toLocaleDateString()} · {row.reporting_type ?? row.offer_type ?? "—"}
+              Closed {new Date(row.closed_at).toLocaleDateString()} ·{" "}
+              {row.reporting_type
+                ? getReportingTypeLabel(row.reporting_type)
+                : row.offer_type
+                  ? getSalesPackageLabel(row.offer_type)
+                  : "—"}
               {row.cash_collected != null ? ` · $${row.cash_collected}` : ""}
             </p>
           </div>

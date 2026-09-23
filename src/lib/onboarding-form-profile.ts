@@ -11,19 +11,19 @@ export type OnboardingFormProfileMeta = {
 
 export const ONBOARDING_PROFILE_META: Record<OnboardingFormProfile, OnboardingFormProfileMeta> = {
   marketing_core: {
-    label: 'Full Service',
-    shortLabel: 'Core',
-    description: 'Ads, creative, dial, book, and qualify',
+    label: 'Call Center',
+    shortLabel: 'CC',
+    description: 'Ads, creative, dial, book, and qualify (Waiz call center)',
   },
   marketing_lead_gen: {
-    label: 'Lead Gen Only',
+    label: 'Leads Only',
     shortLabel: 'Leads',
     description: 'We generate leads; client handles dial and booking',
   },
   call_center: {
-    label: 'Call Center',
-    shortLabel: 'CC',
-    description: 'Dialing the LO\'s existing leads',
+    label: 'Call Center Lead (product)',
+    shortLabel: 'CC Lead',
+    description: "Dialing the LO's existing leads — no ad-gen motion",
   },
 };
 
@@ -71,10 +71,10 @@ export function validateKickoffClassification(
 
   if (saveMode === 'complete') {
     if (serviceProgramApplies(v) && !normalizeServiceProgram(serviceProgram)) {
-      return 'Select a service program (Core or Lead Gen) before completing kick-off';
+      return 'Select fulfillment (Call Center or Leads Only) before completing kick-off';
     }
     if (v === 'CALL_CENTER' && normalizeServiceProgram(serviceProgram)) {
-      return 'Call Center clients do not use a service program';
+      return 'Call Center Lead clients do not use a fulfillment package';
     }
   }
 

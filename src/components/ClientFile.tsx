@@ -130,6 +130,7 @@ type FileClient = {
   phone_ghl: string | null;
   phone_live_transfer: string | null;
   live_transfer_approved: boolean | null;
+  appointment_watch: boolean | null;
   offer_summary: string | null;
   facebook_page_name: string | null;
   instagram_handle: string | null;
@@ -1525,6 +1526,11 @@ export default function ClientFile({
                   value={client?.live_transfer_approved === true ? "Yes" : client?.live_transfer_approved === false ? "No" : null}
                   missing={client?.live_transfer_approved == null}
                 />
+                <Detail
+                  label="Appointment Watch"
+                  value={client?.appointment_watch === true ? "Yes" : client?.appointment_watch === false ? "No" : null}
+                  missing={client?.appointment_watch == null}
+                />
                 <Detail label="Live transfer phone" value={client?.phone_live_transfer} missing={!client?.phone_live_transfer} />
                 <Detail
                   label="Drive folder"
@@ -1553,7 +1559,7 @@ export default function ClientFile({
                   missing={!client?.reporting_type}
                 />
                 <Detail
-                  label="Service program"
+                  label="Fulfillment"
                   value={client?.service_program ? (
                     <span className="inline-flex items-center gap-2">
                       <ServiceProgramBadge value={client.service_program} size="md" />

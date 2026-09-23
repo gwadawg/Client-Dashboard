@@ -27,8 +27,8 @@ Make SOP: [`make-blueprints/MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLI
 
 ### Step 1 field mapping
 
-| GHL / Make | Payload field | `clients` column |
-|------------|---------------|------------------|
+| GHL / Make | Payload field | `clients` / notes |
+|------------|---------------|-------------------|
 | Client name (person) | `primary_contact_name` | `primary_contact_name`, `primary_contact` |
 | *(derived)* | — | `name` = person name until kickoff sets GHL sub-account name |
 | Email | `email` | `email`, `billing_email` |
@@ -37,6 +37,12 @@ Make SOP: [`make-blueprints/MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLI
 | ClickUp task id | `clickup_task_id` | `clickup_task_id` |
 | Slack channel id | `slack_id` | `slack_id` |
 | GHL contact id (CS) | `ghl_contact_id` | `ghl_contact_id` |
+| Appointment Watch (Yes/No) | `appointment_watch` | `appointment_watch` |
+| Daily adspend | `daily_adspend` | `daily_adspend` |
+| Agreed Offer Terms | `offer_summary` | `offer_summary` |
+| Custom ads | `custom_ads` | `client_notes` (internal) |
+| Onboarding setup breakdown | `onboarding_setup` | `client_notes` (internal) |
+| Notes on client | `notes` | `client_notes` (internal) |
 
 ### Recommended Make payload (after ClickUp + Slack modules)
 
@@ -49,7 +55,13 @@ Make SOP: [`make-blueprints/MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLI
   "date_signed": "{{1.date_signed}}",
   "clickup_task_id": "{{2.id}}",
   "slack_id": "{{3.id}}",
-  "ghl_contact_id": "{{1.contact_id}}"
+  "ghl_contact_id": "{{1.contact_id}}",
+  "appointment_watch": "{{1.appointment_watch}}",
+  "daily_adspend": "{{1.daily_adspend}}",
+  "offer_summary": "{{1.offer_summary}}",
+  "custom_ads": "{{1.custom_ads}}",
+  "onboarding_setup": "{{1.onboarding_setup}}",
+  "notes": "{{1.notes}}"
 }
 ```
 
@@ -138,7 +150,7 @@ The PDF is deterministic — no AI, no free-form copy. Only per-client fields ar
 | Axis | Source | Values |
 |------|--------|--------|
 | Product | `clients.reporting_type` | `rm` (Reverse mortgage) · `dscr` |
-| Who works leads | `clients.service_program` | `core` → **Waiz** (call center / Laura) · `lead_gen` → **client** (LO / VA, gets playbooks) |
+| Who works leads | `clients.service_program` | `core` → **Call Center** (Waiz dials) · `lead_gen` → **Leads Only** (client dials; gets playbooks) |
 
 `CALL_CENTER` clients prefill "Waiz" and require the CSM to choose the product. Both can be overridden in step 1 of the wizard.
 

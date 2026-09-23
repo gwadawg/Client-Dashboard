@@ -21,7 +21,7 @@ import { normalizeClientLeadSource } from '@/lib/client-lead-source';
 import { ensureAccountGroupForNewClient } from '@/lib/client-account-groups';
 
 const ONBOARD_FIELDS =
-  'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, ghl_contact_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, created_at';
+  'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, ghl_contact_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, offer_summary, daily_adspend, appointment_watch, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, created_at';
 
 const SIGNING_BILLING_REF = 'onboard-signing';
 
@@ -47,6 +47,59 @@ function normalizeBillingType(v: unknown): string | null {
   if (lower === 'pif') return 'pif';
   if (lower.includes('pif') && lower.includes('month')) return 'pif_monthly';
   return lower;
+}
+
+/** GHL / Make often send "Yes"/"No" (or true/false) for Appointment Watch. */
+function parseYesNo(v: unknown): boolean | null {
+  if (v == null || v === '') return null;
+  if (typeof v === 'boolean') return v;
+  const s = String(v).trim().toLowerCase();
+  if (['yes', 'y', 'true', '1', 'on'].includes(s)) return true;
+  if (['no', 'n', 'false', '0', 'off'].includes(s)) return false;
+  return null;
+}
+
+type OnboardNoteSeed = { marker: string; label: string; body: string };
+
+function collectOnboardNotes(body: OnboardPayload): OnboardNoteSeed[] {
+  const seeds: { marker: string; label: string; keys: string[] }[] = [
+    {
+      marker: '[New Client Form — Custom ads]',
+      label: 'Custom ads',
+      keys: ['custom_ads', 'custom_ads_notes', 'custom_ad_notes'],
+    },
+    {
+      marker: '[New Client Form — Onboarding setup]',
+      label: 'Onboarding setup breakdown',
+      keys: [
+        'onboarding_setup',
+        'onboarding_setup_breakdown',
+        'breakdown_onboarding_setup',
+        'onboarding_breakdown',
+      ],
+    },
+    {
+      marker: '[New Client Form — Client notes]',
+      label: 'Notes on client',
+      keys: ['notes', 'client_notes', 'notes_on_client', 'closer_notes'],
+    },
+  ];
+
+  const out: OnboardNoteSeed[] = [];
+  for (const seed of seeds) {
+    let text: string | null = null;
+    for (const key of seed.keys) {
+      text = trimString(body[key]);
+      if (text) break;
+    }
+    if (!text) continue;
+    out.push({
+      marker: seed.marker,
+      label: seed.label,
+      body: `${seed.marker}\n${text}`,
+    });
+  }
+  return out;
 }
 
 function normalizeOffer(v: unknown): ReportingType | null {
@@ -129,6 +182,18 @@ export function parseOnboardPayload(body: OnboardPayload) {
       trimString(body.sales_call_recording) ??
       trimString(body.sales_call_recording_url) ??
       trimString(body.sales_call_url),
+    appointment_watch:
+      parseYesNo(body.appointment_watch) ??
+      parseYesNo(body.appointmentWatch),
+    offer_summary:
+      trimString(body.offer_summary) ??
+      trimString(body.agreed_offer_terms) ??
+      trimString(body.offer_terms),
+    daily_adspend:
+      numberField(body.daily_adspend) ??
+      numberField(body.daily_ad_spend) ??
+      numberField(body.adspend),
+    notes: collectOnboardNotes(body),
   };
 }
 
@@ -215,15 +280,56 @@ function buildClientRecord(parsed: ParsedOnboard): Record<string, unknown> {
     'brokerage_name', 'ghl_location_id', 'ghl_contact_id',
     'ghl_subaccount_url', 'source',
     'clickup_task_id', 'slack_id',
+    'offer_summary', 'daily_adspend',
   ];
   for (const k of optional) {
     const v = parsed[k];
     if (v != null && v !== '') record[k] = v;
   }
+  if (parsed.appointment_watch != null) {
+    record.appointment_watch = parsed.appointment_watch;
+  }
   if (record.primary_contact_name) {
     record.primary_contact = record.primary_contact_name;
   }
   return record;
+}
+
+async function upsertOnboardNotes(
+  service: SupabaseClient,
+  clientId: string,
+  notes: OnboardNoteSeed[],
+): Promise<number> {
+  if (!notes.length) return 0;
+
+  const { data: existing } = await service
+    .from('client_notes')
+    .select('id, body')
+    .eq('client_id', clientId)
+    .is('deleted_at', null);
+
+  const existingBodies = (existing ?? []).map((n) => String(n.body ?? ''));
+  let inserted = 0;
+
+  for (const note of notes) {
+    const already = existingBodies.some(
+      (b) => b.startsWith(note.marker) || b === note.body,
+    );
+    if (already) continue;
+
+    const { error } = await service.from('client_notes').insert({
+      client_id: clientId,
+      note_type: 'internal',
+      body: note.body,
+    });
+    if (error) {
+      console.error('[onboard] client note insert failed', note.label, error.message);
+      continue;
+    }
+    inserted += 1;
+  }
+
+  return inserted;
 }
 
 function shouldAutoCreateClickUpTask(parsed: ParsedOnboard): boolean {
@@ -492,6 +598,12 @@ export async function onboardClient(
 
   const billing_id = await upsertSigningBilling(service, String(client.id), parsed);
   const sales_call_id = await upsertSalesCall(service, String(client.id), parsed);
+
+  try {
+    await upsertOnboardNotes(service, String(client.id), parsed.notes);
+  } catch (e) {
+    console.error('[onboard] notes upsert failed', e);
+  }
 
   let formSubmissionId: string | null = null;
   try {

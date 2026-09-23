@@ -18,12 +18,16 @@ Two fields describe **what product line** a client is on and **what package** th
 
 | Code | UI label | Auto fulfillment (`service_program`) |
 |------|----------|--------------------------------------|
-| `core_offer` | Core Offer | `core` — full service (ads + dial + book + qualify) |
-| `mid_offer` | Mid Offer | `lead_gen` — lead gen only |
+| `core_offer` | **Call Center** | `core` — Waiz dials, books, and qualifies (ads + dial) |
+| `mid_offer` | **Leads Only** | `lead_gen` — we generate leads; client handles dial/book |
 | `skool` | Skool | `null` — reverse downsell (not a full roster client) |
 | `bootcamp` | Bootcamp | Legacy downsell — inactive for new closes |
 
+**New Client Form:** use Call Center / Leads Only only (skip Skool). Codes stay `core_offer` / `mid_offer` for DB + Make compatibility; GHL may send either the new or old labels.
+
 Do not set `service_program` manually in forms — it is derived from product + sales package.
+
+**Naming note:** Product `CALL_CENTER` (Call Center Lead) ≠ package `core_offer` (Call Center fulfillment on an RM/DSCR account).
 
 ## Where it's stored
 
@@ -47,9 +51,9 @@ Catalog definitions (labels, GHL aliases, active flag): **Admin → Offer Catalo
 - **Client File:** Shared **Client profile** (contact, NMLS, licenses, location) plus **This offer** (GHL sub-account, vertical, lifecycle). Multiple offers for the same LO link via `identity_client_id`.
 - **Kick-off form:** Skips the shared "Confirm Information" block when identity is already on file from a linked offer; still collects offer-specific setup (GHL sub-account, ad spend, PM/CC notes).
 - **Closer form:** Product + Sales package (no separate service tier)
-- **Acquisition KPIs:** offer scope uses catalog `is_downsell` (Skool/Bootcamp vs Core/Mid)
+- **Acquisition KPIs:** offer scope uses catalog `is_downsell` (Skool/Bootcamp vs Call Center/Leads Only)
 
 ## KPI / dashboard impact
 
-- **Call Center:** booking + show grading (no ad-spend KPIs)
+- **Call Center (product):** booking + show grading (no ad-spend KPIs)
 - **RM / DSCR:** full marketing dashboard; `service_program` still drives kickoff form variants internally

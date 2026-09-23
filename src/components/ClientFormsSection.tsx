@@ -39,7 +39,7 @@ const PM_LABELS: Record<string, string> = {
 
 const KICKOFF_META_LABELS: Record<string, string> = {
   reporting_type: "Client vertical",
-  service_program: "Service program",
+  service_program: "Fulfillment",
   form_profile: "Form profile",
   vertical_confirmed: "Vertical confirmed",
 };
@@ -63,7 +63,7 @@ function humanizeLaunchResponses(responses: Record<string, unknown>): { label: s
     rows.push({ label: "Client vertical", value: getReportingTypeLabel(responses.reporting_type) });
   }
   if (responses.service_program) {
-    rows.push({ label: "Service program", value: getServiceProgramLabel(responses.service_program) ?? String(responses.service_program) });
+    rows.push({ label: "Fulfillment", value: getServiceProgramLabel(responses.service_program) ?? String(responses.service_program) });
   }
   if (responses.completed_by_label) {
     rows.push({ label: "Completed by", value: String(responses.completed_by_label) });

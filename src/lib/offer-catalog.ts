@@ -86,12 +86,20 @@ const DEFAULT_PACKAGES: OfferCatalogRow[] = [
     id: 'default-core',
     kind: 'sales_package',
     code: 'core_offer',
-    label: 'Core Offer',
-    short_label: 'Core',
-    description: 'Full service: ads, dial, book, and qualify',
+    label: 'Call Center',
+    short_label: 'CC',
+    description: 'Full service: ads, dial, book, and qualify (Waiz call center)',
     color: '#34d399',
     background: 'rgba(52,211,153,0.12)',
-    ghl_aliases: ['Core Offer', 'core offer', 'Full Service', 'full service', 'RM'],
+    ghl_aliases: [
+      'Call Center',
+      'call center',
+      'Core Offer',
+      'core offer',
+      'Full Service',
+      'full service',
+      'RM',
+    ],
     applies_to: ['RM', 'DSCR', 'CALL_CENTER'],
     is_downsell: false,
     is_active: true,
@@ -101,12 +109,21 @@ const DEFAULT_PACKAGES: OfferCatalogRow[] = [
     id: 'default-mid',
     kind: 'sales_package',
     code: 'mid_offer',
-    label: 'Mid Offer',
-    short_label: 'Mid',
+    label: 'Leads Only',
+    short_label: 'Leads',
     description: 'Lead gen only — client handles dial, booking, and qualification',
     color: '#94a3b8',
     background: 'rgba(148,163,184,0.12)',
-    ghl_aliases: ['Mid Offer', 'mid offer'],
+    ghl_aliases: [
+      'Leads Only',
+      'leads only',
+      'Leads',
+      'leads',
+      'Mid Offer',
+      'mid offer',
+      'Lead Gen',
+      'lead gen',
+    ],
     applies_to: ['RM', 'DSCR'],
     is_downsell: false,
     is_active: true,
@@ -295,6 +312,16 @@ export function getSalesPackageLabel(
   const normalized = normalizeSalesPackage(code, catalog);
   const row = getSalesPackages(catalog, { activeOnly: false }).find(p => p.code === normalized);
   return row?.label ?? String(code);
+}
+
+export function getSalesPackageShortLabel(
+  code: unknown,
+  catalog: OfferCatalogRow[] = [...DEFAULT_PRODUCTS, ...DEFAULT_PACKAGES],
+): string {
+  if (!code) return '';
+  const normalized = normalizeSalesPackage(code, catalog);
+  const row = getSalesPackages(catalog, { activeOnly: false }).find(p => p.code === normalized);
+  return row?.short_label ?? row?.label ?? String(code);
 }
 
 /** Derive fulfillment scope from product + sales package. */

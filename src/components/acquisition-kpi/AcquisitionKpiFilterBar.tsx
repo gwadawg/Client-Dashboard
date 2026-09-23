@@ -26,7 +26,7 @@ type Props = {
 };
 
 const SCOPE_LABELS: Record<OfferScope, string> = {
-  core: "Core Offer",
+  core: "Call Center + Leads Only",
   skool: "Skool",
   all_downsells: "All Downsells",
   all: "All Offers",

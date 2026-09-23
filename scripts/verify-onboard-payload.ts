@@ -73,10 +73,39 @@ function testGhlContactFields() {
   assert.equal(alias.ghl_contact_id, 'explicit-id');
 }
 
+function testAppointmentWatchAndOfferFields() {
+  const parsed = parseOnboardPayload({
+    primary_contact_name: 'Jane Doe',
+    appointment_watch: 'Yes',
+    daily_adspend: '75',
+    offer_summary: 'DSCR Core — $3k setup + $2.5k/mo',
+    custom_ads: 'Need cash-out UGC + rate static',
+    onboarding_setup: 'Laura dials; client wants 15-min slots',
+    notes: 'Prefers text over email',
+  });
+
+  assert.equal(parsed.appointment_watch, true);
+  assert.equal(parsed.daily_adspend, 75);
+  assert.equal(parsed.offer_summary, 'DSCR Core — $3k setup + $2.5k/mo');
+  assert.equal(parsed.notes.length, 3);
+  assert.ok(parsed.notes[0].body.includes('Custom ads'));
+  assert.ok(parsed.notes[1].body.includes('Onboarding setup'));
+  assert.ok(parsed.notes[2].body.includes('Client notes'));
+  assert.ok(parsed.notes[2].body.includes('Prefers text over email'));
+
+  const noWatch = parseOnboardPayload({
+    primary_contact_name: 'Jane Doe',
+    appointment_watch: 'No',
+  });
+  assert.equal(noWatch.appointment_watch, false);
+  assert.equal(noWatch.notes.length, 0);
+}
+
 testStep1CorePayload();
 testSubAccountNameOverridesPlaceholder();
 testClickUpIdAliases();
 testDoesNotUseNameFieldAsSubAccountWhenOnlyPrimaryContactSent();
 testGhlContactFields();
+testAppointmentWatchAndOfferFields();
 
 console.log('verify-onboard-payload: all assertions passed');

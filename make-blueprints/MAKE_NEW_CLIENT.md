@@ -9,7 +9,9 @@
 
 Blueprint reference: [`ccm-new-client-onboard.blueprint.json`](ccm-new-client-onboard.blueprint.json)
 
-## Mr. Waiz payload (step 1 core fields)
+## Mr. Waiz payload (step 1)
+
+### Core contact / IDs
 
 | GHL / Make source | JSON field | Mr. Waiz column |
 |-------------------|------------|-----------------|
@@ -23,6 +25,67 @@ Blueprint reference: [`ccm-new-client-onboard.blueprint.json`](ccm-new-client-on
 | GHL contact id | `ghl_contact_id` (`{{1.contact_id}}`) | `ghl_contact_id` |
 
 Always include `"lifecycle_status": "new_account"`.
+
+### Offer / money (already supported)
+
+| GHL / Make source | JSON field | Mr. Waiz column |
+|-------------------|------------|-----------------|
+| Offer / product (RM · DSCR · Call Center Lead) | `offer` | `offer`, `reporting_type` |
+| Sales package (Call Center · Leads Only) | `sales_package` | `sales_package` (+ derives `service_program`) |
+| MRR | `mrr` | `mrr` |
+| Billing type | `billing_type` | `billing_type` |
+| Contract term | `contract_term_months` | `contract_term_months` |
+| Cash collected | `cash_collected` | signing billing row |
+| Lead source | `source` | `source` |
+| Sales call recording URL | `sales_call_recording` | `client_calls` row |
+
+**Sales package form options:** `Call Center` or `Leads Only` (also accepts legacy `Core Offer` / `Mid Offer`). Codes stored: `core_offer` / `mid_offer`. Do not put Call Center / Leads Only in the product `offer` field.
+
+### New Client Form fields (closer nuance)
+
+| GHL form field | JSON field | Where it lands |
+|----------------|------------|----------------|
+| Appointment Watch (Yes/No) | `appointment_watch` | `clients.appointment_watch` (boolean) |
+| Daily adspend | `daily_adspend` | `clients.daily_adspend` |
+| Agreed Offer Terms | `offer_summary` | `clients.offer_summary` |
+| Custom ads (write-out) | `custom_ads` | `client_notes` (internal) |
+| Break Down on Onboarding Setup | `onboarding_setup` | `client_notes` (internal) |
+| Notes on Client | `notes` | `client_notes` (internal) |
+
+Notes are **not** separate `clients` columns. Mr. Waiz writes one internal note per non-empty field, tagged with a `[New Client Form — …]` marker so re-runs do not duplicate.
+
+`appointment_watch` accepts `Yes` / `No` / `true` / `false` (case-insensitive).
+
+### Recommended Make HTTP body
+
+Map `{{1.*}}` to your GHL webhook field names (rename if your form keys differ):
+
+```json
+{
+  "primary_contact_name": "{{1.name}}",
+  "lifecycle_status": "new_account",
+  "email": "{{1.email}}",
+  "phone": "{{1.phone}}",
+  "date_signed": "{{1.date_signed}}",
+  "clickup_task_id": "{{2.id}}",
+  "slack_id": "{{3.id}}",
+  "ghl_contact_id": "{{1.contact_id}}",
+  "cash_collected": "{{1.cash_collected}}",
+  "contract_term_months": "{{1.contract_term}}",
+  "billing_type": "{{1.billing_type}}",
+  "mrr": "{{1.mrr}}",
+  "source": "{{1.source}}",
+  "offer": "{{1.offer}}",
+  "sales_package": "{{1.sales_package}}",
+  "sales_call_recording": "{{1.sales_call_recording}}",
+  "appointment_watch": "{{1.appointment_watch}}",
+  "daily_adspend": "{{1.daily_adspend}}",
+  "offer_summary": "{{1.offer_summary}}",
+  "custom_ads": "{{1.custom_ads}}",
+  "onboarding_setup": "{{1.onboarding_setup}}",
+  "notes": "{{1.notes}}"
+}
+```
 
 ## Retire these Make modules
 
@@ -41,10 +104,10 @@ ClickUp should remain: **create task**, optional **update task status** on launc
 |----------|---------|
 | `ADMIN_WEBHOOK_SECRET` | Bearer token on onboard HTTP module |
 | `CLICKUP_AUTO_CREATE_ON_ONBOARD` | Set to `false` when Make always sends `clickup_task_id` |
-| `GHL_CS_API_TOKEN` | CS subaccount PIT — tags GHL contact `OB form Filled` on OB submit |
+| `GHL_CS_API_TOKEN` | CS subaccount PIT — tags GHL contact `OB Form Filled` on OB submit |
 | `GHL_CS_LOCATION_ID` | CS location id — same for all clients |
 | `CLICKUP_API_TOKEN` | OB complete comment + optional field updates on ClickUp task |
 
 ## Idempotency
 
-Re-running the scenario with the same `clickup_task_id` updates the same Mr. Waiz client row (no duplicate folder).
+Re-running the scenario with the same `clickup_task_id` updates the same Mr. Waiz client row (no duplicate folder). New Client Form notes are inserted once per marker.

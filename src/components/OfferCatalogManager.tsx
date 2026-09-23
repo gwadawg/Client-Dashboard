@@ -283,7 +283,7 @@ export default function OfferCatalogManager() {
       <div>
         <h1 className="text-xl font-bold" style={{ color: "#e2e8f0" }}>Offer Catalog</h1>
         <p className="text-sm mt-1" style={{ color: "#64748b" }}>
-          Products (RM / DSCR / Call Center) and sales packages (Core Offer / Mid Offer / Skool).
+          Products (RM / DSCR / Call Center Lead) and sales packages (Call Center / Leads Only / Skool).
           Codes are stable for reporting; edit labels and GHL webhook aliases here.
         </p>
       </div>

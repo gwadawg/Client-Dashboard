@@ -56,6 +56,7 @@ export type EditableClient = {
   phone_ghl: string | null;
   phone_live_transfer: string | null;
   live_transfer_approved: boolean | null;
+  appointment_watch: boolean | null;
   offer_summary: string | null;
   facebook_page_name: string | null;
   instagram_handle: string | null;
@@ -103,6 +104,7 @@ type Draft = {
   churned_at: string;
   phone_live_transfer: string;
   live_transfer_approved: boolean;
+  appointment_watch: boolean;
   offer_summary: string;
   facebook_page_name: string;
   instagram_handle: string;
@@ -159,6 +161,7 @@ export function clientToDraft(c: EditableClient): Draft {
     churned_at: toDateInputValue(c.churned_at),
     phone_live_transfer: c.phone_live_transfer ?? "",
     live_transfer_approved: c.live_transfer_approved === true,
+    appointment_watch: c.appointment_watch === true,
     offer_summary: c.offer_summary ?? "",
     facebook_page_name: c.facebook_page_name ?? "",
     instagram_handle: c.instagram_handle ?? "",
@@ -206,6 +209,7 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     performance_terms: draft.performance_terms.trim() || null,
     phone_live_transfer: draft.phone_live_transfer.trim() || null,
     live_transfer_approved: draft.live_transfer_approved,
+    appointment_watch: draft.appointment_watch,
     offer_summary: draft.offer_summary.trim() || null,
     facebook_page_name: draft.facebook_page_name.trim() || null,
     instagram_handle: draft.instagram_handle.trim() || null,
@@ -322,7 +326,7 @@ export default function ClientFileEditForm({
           </SelectField>
           {serviceProgramApplies(draft.reporting_type) && (
             <SelectField
-              label="Service program"
+              label="Fulfillment"
               value={draft.service_program}
               onChange={v => patch("service_program", (normalizeServiceProgram(v) ?? "") as ServiceProgram | "")}
             >
@@ -379,6 +383,21 @@ export default function ClientFileEditForm({
                 className="rounded"
               />
               Yes
+            </label>
+          </label>
+          <label className="flex flex-col gap-1 justify-end">
+            <span className="text-xs uppercase tracking-wider" style={{ color: "#475569" }}>
+              Appointment Watch
+            </span>
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none py-2" style={{ color: "#e2e8f0" }}>
+              <input
+                type="checkbox"
+                checked={draft.appointment_watch}
+                disabled={busy}
+                onChange={e => patch("appointment_watch", e.target.checked)}
+                className="rounded"
+              />
+              Yes — dial appointments & live transfer
             </label>
           </label>
           <label className="flex flex-col gap-1 col-span-2 md:col-span-3">

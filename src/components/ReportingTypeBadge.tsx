@@ -12,6 +12,7 @@ import {
 } from '@/lib/service-program';
 import {
   getSalesPackageLabel,
+  getSalesPackageShortLabel,
   normalizeSalesPackage,
 } from '@/lib/offer-catalog';
 
@@ -60,20 +61,26 @@ export function SalesPackageBadge({ value, size = 'sm' }: { value: unknown; size
   const code = normalizeSalesPackage(value);
   if (!value) return null;
   const label = getSalesPackageLabel(code);
+  const short = getSalesPackageShortLabel(code);
   const pad = size === 'md' ? 'px-2 py-0.5' : 'px-1.5 py-0.5';
   const text = size === 'md' ? 'text-xs' : 'text-[10px]';
   const isDownsell = code === 'skool' || code === 'bootcamp';
+  const isLeadsOnly = code === 'mid_offer';
 
   return (
     <span
       className={`inline-flex items-center font-semibold uppercase tracking-wide rounded shrink-0 ${pad} ${text}`}
       style={{
-        color: isDownsell ? '#f472b6' : '#34d399',
-        background: isDownsell ? 'rgba(244,114,182,0.12)' : 'rgba(52,211,153,0.12)',
+        color: isDownsell ? '#f472b6' : isLeadsOnly ? '#94a3b8' : '#34d399',
+        background: isDownsell
+          ? 'rgba(244,114,182,0.12)'
+          : isLeadsOnly
+            ? 'rgba(148,163,184,0.12)'
+            : 'rgba(52,211,153,0.12)',
       }}
       title={label}
     >
-      {label.split(' ')[0]}
+      {short}
     </span>
   );
 }

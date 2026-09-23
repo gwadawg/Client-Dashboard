@@ -59,7 +59,7 @@ export default function AcquisitionDashboard({ startDate, endDate }: Props) {
             onChange={(e) => setIncludeDownsells(e.target.checked)}
             className="rounded"
           />
-          Include Skool / Mid Offer / Bootcamp in offer &amp; close KPIs
+          Include Skool / Bootcamp in offer &amp; close KPIs
         </label>
       </div>
 

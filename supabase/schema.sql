@@ -83,7 +83,7 @@ create table if not exists clients (
   -- Offer / identity
   offer               text,       -- RM | DSCR | CALL_CENTER (mirrors reporting_type)
   offer_summary       text,       -- brief ad/offer blurb for setter-facing directory
-  service_program     text,       -- core | lead_gen (RM/DSCR only)
+  service_program     text,       -- core (Call Center) | lead_gen (Leads Only); RM/DSCR only
   nmls                text,
   brokerage_name      text,
   legal_business_name text,
@@ -101,6 +101,7 @@ create table if not exists clients (
   phone_live_transfer    text,
   phone_notifications    text,
   live_transfer_approved boolean default false,
+  appointment_watch      boolean,  -- dial appointments + live transfer (New Client Form)
   contact_role           text,
   appointment_settings   text,
   facebook_page_name     text,
@@ -167,6 +168,7 @@ alter table clients add column if not exists phone_ghl              text;
 alter table clients add column if not exists phone_live_transfer    text;
 alter table clients add column if not exists phone_notifications    text;
 alter table clients add column if not exists live_transfer_approved boolean default false;
+alter table clients add column if not exists appointment_watch      boolean;
 alter table clients add column if not exists contact_role           text;
 alter table clients add column if not exists appointment_settings   text;
 alter table clients add column if not exists facebook_page_name     text;

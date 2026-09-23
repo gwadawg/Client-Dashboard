@@ -66,6 +66,7 @@ type Client = {
   lifecycle_status?: string | null;
   mrr?: number | null;
   daily_adspend?: number | null;
+  appointment_watch?: boolean | null;
   ads_paused?: boolean | null;
   ads_paused_at?: string | null;
   ads_paused_note?: string | null;
@@ -165,6 +166,7 @@ type ColumnKey =
   | "stage"
   | "tenure"
   | "adspend"
+  | "watch"
   | "ads"
   | "launch"
   | "cs_call"
@@ -186,8 +188,8 @@ const ROSTER_VIEWS: { key: RosterView; label: string }[] = [
 ];
 
 const VIEW_COLUMNS: Record<RosterView, ColumnKey[]> = {
-  full: ["stage", "tenure", "cs_call", "adspend"],
-  cs: ["stage", "tenure", "cs_call"],
+  full: ["stage", "tenure", "cs_call", "adspend", "watch"],
+  cs: ["stage", "tenure", "cs_call", "watch"],
   media: ["drive", "states", "page", "instagram", "ad_account", "sites", "tz", "product", "adspend", "ads"],
 };
 
@@ -233,6 +235,30 @@ const COLUMN_DEFS: Record<ColumnKey, { header: string; revenueOnly?: boolean; re
           {c.daily_adspend != null ? `${moneyShort(c.daily_adspend)}/day` : "—"}
         </span>
       );
+    },
+  },
+  watch: {
+    header: "Appt watch",
+    render: c => {
+      if (c.appointment_watch === true) {
+        return (
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded whitespace-nowrap"
+            style={{ color: "#4ade80", background: "rgba(74,222,128,0.12)" }}
+            title="Dial appointments and live transfer"
+          >
+            Yes
+          </span>
+        );
+      }
+      if (c.appointment_watch === false) {
+        return (
+          <span className="text-xs" style={{ color: "#64748b" }} title="Do not run appointment watch">
+            No
+          </span>
+        );
+      }
+      return <span className="text-xs" style={{ color: "#334155" }}>—</span>;
     },
   },
   ads: {
@@ -1195,8 +1221,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
                 <div className="flex items-center gap-1 flex-wrap" title="Filter by sales package">
                   {([
                     { key: "all", label: "All packages" },
-                    { key: "core_offer", label: "Core Offer" },
-                    { key: "mid_offer", label: "Mid Offer" },
+                    { key: "core_offer", label: "Call Center" },
+                    { key: "mid_offer", label: "Leads Only" },
                     { key: "skool", label: "Skool" },
                     { key: "unset", label: "Unset" },
                   ] as const).map(opt => {

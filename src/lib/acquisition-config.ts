@@ -15,9 +15,30 @@ export const DEMO_CALENDAR_IDS = new Set([
 
 export const META_FUNNEL_EXCLUDED_TYPES = new Set(['bamfam', 'followup', 'organic', 'other']);
 
-export const DOWNSELL_OFFER_TYPES = new Set(['Skool', 'Mid Offer', 'Bootcamp', 'skool', 'mid offer', 'bootcamp']);
+export const DOWNSELL_OFFER_TYPES = new Set([
+  'Skool',
+  'skool',
+  'Bootcamp',
+  'bootcamp',
+]);
 
-export const CORE_OFFER_TYPES = new Set(['Core Offer', 'core offer', 'RM']);
+/** Legacy label matchers — codes are core_offer / mid_offer. */
+export const CORE_OFFER_TYPES = new Set([
+  'Call Center',
+  'call center',
+  'Core Offer',
+  'core offer',
+  'core_offer',
+  'RM',
+]);
+
+export const LEADS_ONLY_OFFER_TYPES = new Set([
+  'Leads Only',
+  'leads only',
+  'Mid Offer',
+  'mid offer',
+  'mid_offer',
+]);
 
 export const META_LEAD_SOURCES = new Set(['Meta', 'meta', 'Facebook', 'facebook']);
 
