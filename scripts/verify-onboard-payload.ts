@@ -88,9 +88,9 @@ function testAppointmentWatchAndOfferFields() {
   assert.equal(parsed.daily_adspend, 75);
   assert.equal(parsed.offer_summary, 'DSCR Core — $3k setup + $2.5k/mo');
   assert.equal(parsed.notes.length, 3);
-  assert.ok(parsed.notes[0].body.includes('Custom ads'));
-  assert.ok(parsed.notes[1].body.includes('Onboarding setup'));
-  assert.ok(parsed.notes[2].body.includes('Client notes'));
+  assert.ok(parsed.notes[0].body.includes('Custom Ads (New Client Form)'));
+  assert.ok(parsed.notes[1].body.includes('Onboarding Setup Breakdown (New Client Form)'));
+  assert.ok(parsed.notes[2].body.includes('Notes on Client (New Client Form)'));
   assert.ok(parsed.notes[2].body.includes('Prefers text over email'));
 
   const noWatch = parseOnboardPayload({
@@ -101,11 +101,44 @@ function testAppointmentWatchAndOfferFields() {
   assert.equal(noWatch.notes.length, 0);
 }
 
+function testOfferTypeVsOfferPackage() {
+  // Form: Offer Type = DSCR, Offer = Call Center
+  const core = parseOnboardPayload({
+    primary_contact_name: 'Jane Doe',
+    offer_type: 'DSCR',
+    offer: 'Call Center',
+  });
+  assert.equal(core.reporting_type, 'DSCR');
+  assert.equal(core.sales_package, 'core_offer');
+  assert.equal(core.service_program, 'core');
+
+  // Form: Offer Type = HE, Offer = Leads Only (package ignored for HE fulfillment)
+  const he = parseOnboardPayload({
+    primary_contact_name: 'Jane Doe',
+    offer_type: 'HE',
+    offer: 'Leads Only',
+  });
+  assert.equal(he.reporting_type, 'CALL_CENTER');
+  assert.equal(he.sales_package, 'mid_offer');
+  assert.equal(he.service_program, null);
+
+  // Explicit Make fields
+  const mid = parseOnboardPayload({
+    primary_contact_name: 'Jane Doe',
+    reporting_type: 'RM',
+    sales_package: 'Leads Only',
+  });
+  assert.equal(mid.reporting_type, 'RM');
+  assert.equal(mid.sales_package, 'mid_offer');
+  assert.equal(mid.service_program, 'lead_gen');
+}
+
 testStep1CorePayload();
 testSubAccountNameOverridesPlaceholder();
 testClickUpIdAliases();
 testDoesNotUseNameFieldAsSubAccountWhenOnlyPrimaryContactSent();
 testGhlContactFields();
 testAppointmentWatchAndOfferFields();
+testOfferTypeVsOfferPackage();
 
 console.log('verify-onboard-payload: all assertions passed');

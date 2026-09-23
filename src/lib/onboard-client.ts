@@ -62,14 +62,20 @@ function parseYesNo(v: unknown): boolean | null {
 type OnboardNoteSeed = { marker: string; label: string; body: string };
 
 function collectOnboardNotes(body: OnboardPayload): OnboardNoteSeed[] {
-  const seeds: { marker: string; label: string; keys: string[] }[] = [
+  const nested =
+    body.form_notes && typeof body.form_notes === 'object' && !Array.isArray(body.form_notes)
+      ? (body.form_notes as Record<string, unknown>)
+      : null;
+
+  const seeds: { marker: string; label: string; keys: string[]; nestedKeys: string[] }[] = [
     {
-      marker: '[New Client Form — Custom ads]',
+      marker: 'Custom Ads (New Client Form)',
       label: 'Custom ads',
       keys: ['custom_ads', 'custom_ads_notes', 'custom_ad_notes'],
+      nestedKeys: ['custom_ads', 'ads'],
     },
     {
-      marker: '[New Client Form — Onboarding setup]',
+      marker: 'Onboarding Setup Breakdown (New Client Form)',
       label: 'Onboarding setup breakdown',
       keys: [
         'onboarding_setup',
@@ -77,26 +83,36 @@ function collectOnboardNotes(body: OnboardPayload): OnboardNoteSeed[] {
         'breakdown_onboarding_setup',
         'onboarding_breakdown',
       ],
+      nestedKeys: ['onboarding_setup', 'setup'],
     },
     {
-      marker: '[New Client Form — Client notes]',
+      marker: 'Notes on Client (New Client Form)',
       label: 'Notes on client',
       keys: ['notes', 'client_notes', 'notes_on_client', 'closer_notes'],
+      nestedKeys: ['client', 'notes', 'general'],
     },
   ];
 
   const out: OnboardNoteSeed[] = [];
   for (const seed of seeds) {
     let text: string | null = null;
-    for (const key of seed.keys) {
-      text = trimString(body[key]);
-      if (text) break;
+    if (nested) {
+      for (const key of seed.nestedKeys) {
+        text = trimString(nested[key]);
+        if (text) break;
+      }
+    }
+    if (!text) {
+      for (const key of seed.keys) {
+        text = trimString(body[key]);
+        if (text) break;
+      }
     }
     if (!text) continue;
     out.push({
       marker: seed.marker,
       label: seed.label,
-      body: `${seed.marker}\n${text}`,
+      body: `${seed.marker}\n\n${text}`,
     });
   }
   return out;
@@ -107,6 +123,29 @@ function normalizeOffer(v: unknown): ReportingType | null {
   if (!s) return null;
   // GHL New Client Form sends catalog labels (e.g. "DSCR Offer") — use alias matching.
   return normalizeProduct(s);
+}
+
+/** Form "Offer Type" = product (RM / DSCR / HE). Bare "Call Center" is NOT a product. */
+function isProductToken(raw: string): boolean {
+  const s = raw.trim().toLowerCase().replace(/\s+/g, ' ');
+  const upper = raw.trim().toUpperCase().replace(/\s+/g, '_');
+  if (['RM', 'DSCR', 'HE', 'CALL_CENTER', 'CALLCENTER', 'CALL_CENTER_LEAD'].includes(upper)) {
+    return true;
+  }
+  if (s.includes('reverse')) return true;
+  if (s === 'dscr' || s.startsWith('dscr ')) return true;
+  if (s.includes('home equity') || s.includes('call center lead')) return true;
+  return false;
+}
+
+/** Form "Offer" = fulfillment package (Call Center / Leads Only). */
+function isPackageToken(raw: string): boolean {
+  const s = raw.trim().toLowerCase().replace(/\s+/g, ' ');
+  const code = s.replace(/\s+/g, '_');
+  if (['core_offer', 'mid_offer', 'skool', 'bootcamp'].includes(code)) return true;
+  if (s === 'call center' || s === 'core offer' || s.includes('full service')) return true;
+  if (s === 'leads only' || s === 'leads' || s === 'mid offer' || s.includes('lead gen')) return true;
+  return false;
 }
 
 function reportingTypeFromOffer(offer: ReportingType | null, explicit: unknown): ReportingType {
@@ -136,11 +175,44 @@ export function parseOnboardPayload(body: OnboardPayload) {
 
   const email = trimString(body.email);
   const billingEmail = trimString(body.billing_email) ?? email;
-  const offer = normalizeOffer(body.offer) ?? normalizeOffer(body.reporting_type);
-  const reporting_type = reportingTypeFromOffer(offer, body.reporting_type);
-  const sales_package = normalizeSalesPackage(
-    body.sales_package ?? body.offer_type ?? body.salesPackage,
-  );
+
+  // Product = Offer Type (RM / DSCR / HE). Package = Offer (Call Center / Leads Only).
+  let productRaw =
+    trimString(body.reporting_type) ??
+    trimString(body.product) ??
+    trimString(body.vertical);
+  let packageRaw =
+    trimString(body.sales_package) ??
+    trimString(body.salesPackage);
+
+  const offerRaw = trimString(body.offer);
+  const offerTypeRaw = trimString(body.offer_type);
+
+  // offer_type: New Client Form = product; legacy acquisition webhooks = package.
+  if (offerTypeRaw) {
+    if (isProductToken(offerTypeRaw)) {
+      if (!productRaw) productRaw = offerTypeRaw;
+    } else if (isPackageToken(offerTypeRaw)) {
+      if (!packageRaw) packageRaw = offerTypeRaw;
+    } else if (!packageRaw) {
+      packageRaw = offerTypeRaw;
+    }
+  }
+
+  // offer: New Client Form = package (Call Center / Leads Only); legacy = product.
+  if (offerRaw) {
+    if (isPackageToken(offerRaw)) {
+      if (!packageRaw) packageRaw = offerRaw;
+    } else if (isProductToken(offerRaw)) {
+      if (!productRaw) productRaw = offerRaw;
+    } else if (!productRaw) {
+      productRaw = offerRaw;
+    }
+  }
+
+  const offer = normalizeOffer(productRaw);
+  const reporting_type = reportingTypeFromOffer(offer, productRaw ?? body.reporting_type);
+  const sales_package = normalizeSalesPackage(packageRaw);
   const service_program = deriveServiceProgram(reporting_type, sales_package);
   const dateSigned = trimString(body.date_signed);
 
@@ -156,7 +228,7 @@ export function parseOnboardPayload(body: OnboardPayload) {
     billing_type: normalizeBillingType(body.billing_type),
     contract_term_months: numberField(body.contract_term_months),
     date_signed: dateSigned,
-    offer,
+    offer: offer ?? reporting_type,
     reporting_type,
     service_program,
     sales_package,

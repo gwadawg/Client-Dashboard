@@ -40,8 +40,8 @@ export const REPORTING_TYPE_META: Record<ReportingType, ReportingTypeMeta> = {
     background: 'rgba(251,191,36,0.14)',
   },
   CALL_CENTER: {
-    label: 'Call Center',
-    shortLabel: 'CC',
+    label: 'HE',
+    shortLabel: 'HE',
     description: 'Dialing the LO\'s leads — no ad-gen motion on our side',
     color: '#a78bfa',
     background: 'rgba(167,139,250,0.14)',
@@ -57,8 +57,10 @@ export function normalizeReportingType(value: unknown): ReportingType {
   const raw = String(value ?? '').trim().toUpperCase().replace(/\s+/g, '_');
   if (!raw) return DEFAULT_REPORTING_TYPE;
 
-  if (raw === 'CALL_CENTER' || raw === 'CALLCENTER' || raw === 'CC') return 'CALL_CENTER';
-  if (raw === 'HE' || raw.includes('APPOINTMENT') || raw.includes('HOME_EQUITY')) return 'CALL_CENTER';
+  if (raw === 'CALL_CENTER' || raw === 'CALLCENTER') return 'CALL_CENTER';
+  if (raw === 'HE' || raw.includes('APPOINTMENT') || raw.includes('HOME_EQUITY') || raw.includes('CALL_CENTER_LEAD')) {
+    return 'CALL_CENTER';
+  }
   if (raw === 'DSCR') return 'DSCR';
   if (raw === 'RM' || raw.includes('REVERSE')) return 'RM';
 

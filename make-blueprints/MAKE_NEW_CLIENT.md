@@ -28,10 +28,10 @@ Always include `"lifecycle_status": "new_account"`.
 
 ### Offer / money (already supported)
 
-| GHL / Make source | JSON field | Mr. Waiz column |
-|-------------------|------------|-----------------|
-| Offer / product (RM · DSCR · Call Center Lead) | `offer` | `offer`, `reporting_type` |
-| Sales package (Call Center · Leads Only) | `sales_package` | `sales_package` (+ derives `service_program`) |
+| GHL form field | JSON field | Mr. Waiz |
+|----------------|------------|---------|
+| **Offer Type** (RM · DSCR · HE) | `reporting_type` | `reporting_type` + `offer` (HE → `CALL_CENTER`) |
+| **Offer** (Call Center · Leads Only) | `sales_package` | `sales_package` → `core_offer` / `mid_offer` (+ derives `service_program`) |
 | MRR | `mrr` | `mrr` |
 | Billing type | `billing_type` | `billing_type` |
 | Contract term | `contract_term_months` | `contract_term_months` |
@@ -39,7 +39,12 @@ Always include `"lifecycle_status": "new_account"`.
 | Lead source | `source` | `source` |
 | Sales call recording URL | `sales_call_recording` | `client_calls` row |
 
-**Sales package form options:** `Call Center` or `Leads Only` (also accepts legacy `Core Offer` / `Mid Offer`). Codes stored: `core_offer` / `mid_offer`. Do not put Call Center / Leads Only in the product `offer` field.
+**Do not** put Call Center / Leads Only in `reporting_type`. That is the **Offer** field → `sales_package`.
+
+| Form "Offer" | Make `sales_package` | Stored code | Fulfillment |
+|---|---|---|---|
+| Call Center | `Call Center` | `core_offer` | Waiz dials |
+| Leads Only | `Leads Only` | `mid_offer` | Client dials |
 
 ### New Client Form fields (closer nuance)
 
@@ -47,45 +52,46 @@ Always include `"lifecycle_status": "new_account"`.
 |----------------|------------|----------------|
 | Appointment Watch (Yes/No) | `appointment_watch` | `clients.appointment_watch` (boolean) |
 | Daily adspend | `daily_adspend` | `clients.daily_adspend` |
-| Agreed Offer Terms | `offer_summary` | `clients.offer_summary` |
-| Custom ads (write-out) | `custom_ads` | `client_notes` (internal) |
-| Break Down on Onboarding Setup | `onboarding_setup` | `client_notes` (internal) |
-| Notes on Client | `notes` | `client_notes` (internal) |
+| Agreed Offer Term | `offer_summary` | `clients.offer_summary` |
+| Custom ads · Onboarding setup · Notes on client | `form_notes` | **notes only** — 3 separate `client_notes` rows |
 
-Notes are **not** separate `clients` columns. Mr. Waiz writes one internal note per non-empty field, tagged with a `[New Client Form — …]` marker so re-runs do not duplicate.
+`form_notes` is **not** stored on the client row. Each non-empty value becomes its own Client File note with a clear title:
+
+- `Custom Ads (New Client Form)`
+- `Onboarding Setup Breakdown (New Client Form)`
+- `Notes on Client (New Client Form)`
 
 `appointment_watch` accepts `Yes` / `No` / `true` / `false` (case-insensitive).
 
 ### Recommended Make HTTP body
 
-Map `{{1.*}}` to your GHL webhook field names (rename if your form keys differ):
-
 ```json
 {
-  "primary_contact_name": "{{1.name}}",
+  "primary_contact_name": "{{1.full_name}}",
   "lifecycle_status": "new_account",
   "email": "{{1.email}}",
   "phone": "{{1.phone}}",
-  "date_signed": "{{1.date_signed}}",
+  "ghl_contact_id": "{{1.contact_id}}",
   "clickup_task_id": "{{2.id}}",
   "slack_id": "{{3.id}}",
-  "ghl_contact_id": "{{1.contact_id}}",
-  "cash_collected": "{{1.cash_collected}}",
-  "contract_term_months": "{{1.contract_term}}",
-  "billing_type": "{{1.billing_type}}",
-  "mrr": "{{1.mrr}}",
-  "source": "{{1.source}}",
-  "offer": "{{1.offer}}",
-  "sales_package": "{{1.sales_package}}",
-  "sales_call_recording": "{{1.sales_call_recording}}",
-  "appointment_watch": "{{1.appointment_watch}}",
-  "daily_adspend": "{{1.daily_adspend}}",
-  "offer_summary": "{{1.offer_summary}}",
-  "custom_ads": "{{1.custom_ads}}",
-  "onboarding_setup": "{{1.onboarding_setup}}",
-  "notes": "{{1.notes}}"
+  "reporting_type": "{{1.Offer}}",
+  "sales_package": "{{1.Sales Package}}",
+  "sales_call_recording": "{{1.Call Recording Link}}",
+  "appointment_watch": "{{1.Appointment Watch}}",
+  "daily_adspend": "{{1.Daily Adspend}}",
+  "offer_summary": "{{1.Agreed Offer Term}}",
+  "form_notes": {
+    "custom_ads": "{{1.Custom Ads}}",
+    "onboarding_setup": "{{1.Break Down on Onboarding Setup}}",
+    "client": "{{1.Notes on Client}}"
+  }
 }
 ```
+
+| Form | Make | Values |
+|---|---|---|
+| **Offer** | `reporting_type` | `RM` · `HE` · `DSCR` |
+| **Sales Package** | `sales_package` | `Call Center` · `Leads Only` |
 
 ## Retire these Make modules
 

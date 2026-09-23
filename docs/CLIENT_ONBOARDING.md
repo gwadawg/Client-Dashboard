@@ -37,6 +37,8 @@ Make SOP: [`make-blueprints/MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLI
 | ClickUp task id | `clickup_task_id` | `clickup_task_id` |
 | Slack channel id | `slack_id` | `slack_id` |
 | GHL contact id (CS) | `ghl_contact_id` | `ghl_contact_id` |
+| **Offer Type** (RM · DSCR · HE) | `reporting_type` | `reporting_type` + `offer` (HE → `CALL_CENTER`) |
+| **Offer** (Call Center · Leads Only) | `sales_package` | `sales_package` (`core_offer` / `mid_offer`) |
 | Appointment Watch (Yes/No) | `appointment_watch` | `appointment_watch` |
 | Daily adspend | `daily_adspend` | `daily_adspend` |
 | Agreed Offer Terms | `offer_summary` | `offer_summary` |
@@ -56,6 +58,8 @@ Make SOP: [`make-blueprints/MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLI
   "clickup_task_id": "{{2.id}}",
   "slack_id": "{{3.id}}",
   "ghl_contact_id": "{{1.contact_id}}",
+  "reporting_type": "{{1.offer_type}}",
+  "sales_package": "{{1.offer}}",
   "appointment_watch": "{{1.appointment_watch}}",
   "daily_adspend": "{{1.daily_adspend}}",
   "offer_summary": "{{1.offer_summary}}",

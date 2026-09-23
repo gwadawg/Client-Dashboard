@@ -68,12 +68,21 @@ const DEFAULT_PRODUCTS: OfferCatalogRow[] = [
     id: 'default-cc',
     kind: 'product',
     code: 'CALL_CENTER',
-    label: 'Call Center Lead',
-    short_label: 'CC',
+    label: 'HE',
+    short_label: 'HE',
     description: "Dialing the LO's existing leads — no ad-gen motion",
     color: '#a78bfa',
     background: 'rgba(167,139,250,0.14)',
-    ghl_aliases: ['CALL_CENTER', 'Call Center', 'call center', 'CC', 'HE', 'Home Equity'],
+    // Do NOT alias bare "Call Center" — that is the sales package (core_offer).
+    ghl_aliases: [
+      'HE',
+      'Home Equity',
+      'home equity',
+      'CALL_CENTER',
+      'Call Center Lead',
+      'call center lead',
+      'CC Lead',
+    ],
     applies_to: [],
     is_downsell: false,
     is_active: true,
@@ -98,7 +107,7 @@ const DEFAULT_PACKAGES: OfferCatalogRow[] = [
       'core offer',
       'Full Service',
       'full service',
-      'RM',
+      'core_offer',
     ],
     applies_to: ['RM', 'DSCR', 'CALL_CENTER'],
     is_downsell: false,
@@ -265,8 +274,8 @@ export function normalizeProduct(
   if (matched) return matched.code as ProductCode;
 
   const upper = raw.toUpperCase().replace(/\s+/g, '_');
-  if (upper === 'CALL_CENTER' || upper === 'CALLCENTER' || upper === 'CC') return 'CALL_CENTER';
-  if (upper === 'HE' || raw.toLowerCase().includes('appointment') || raw.toLowerCase().includes('home_equity')) {
+  if (upper === 'CALL_CENTER' || upper === 'CALLCENTER') return 'CALL_CENTER';
+  if (upper === 'HE' || raw.toLowerCase().includes('appointment') || raw.toLowerCase().includes('home equity') || raw.toLowerCase().includes('call center lead')) {
     return 'CALL_CENTER';
   }
   if (upper === 'DSCR') return 'DSCR';
