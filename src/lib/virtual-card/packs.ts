@@ -68,6 +68,13 @@ export function defaultStylePackId(product: VirtualCardProduct): string {
 /** CSS custom properties for a pack (card + educate). */
 export function packCssVars(pack: StylePack): Record<string, string> {
   const c = pack.colors;
+  const dark = pack.light_or_dark === "dark";
+  // Solid paper lifts only — translucent white on dark packs paints grey slabs.
+  const surface = c.surface ?? (dark ? c.paper_deep : "#ffffff");
+  const shadow =
+    c.shadow ??
+    (dark ? "0 18px 40px -28px rgba(0,0,0,0.75)" : "0 14px 34px -24px rgba(0,0,0,0.22)");
+
   return {
     "--vc-paper": c.paper,
     "--vc-paper-deep": c.paper_deep,
@@ -80,8 +87,8 @@ export function packCssVars(pack: StylePack): Record<string, string> {
     "--vc-accent-deep": c.accent_deep,
     "--vc-accent-wash": c.accent_wash,
     "--vc-on-accent": c.on_accent,
-    "--vc-surface": c.surface ?? "rgba(255,255,255,0.55)",
-    "--vc-shadow": c.shadow ?? "0 18px 40px -24px rgba(0,0,0,0.35)",
+    "--vc-surface": surface,
+    "--vc-shadow": shadow,
     "--vc-display": `"${pack.fonts.display}", system-ui, sans-serif`,
     "--vc-body": `"${pack.fonts.body}", system-ui, sans-serif`,
     "--vc-radius": String(pack.style?.radius ?? "14px"),
