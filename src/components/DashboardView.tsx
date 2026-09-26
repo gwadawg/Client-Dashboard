@@ -666,8 +666,10 @@ export default function DashboardView({
     const paint = (d: Bundle) => {
       if (d.error) {
         setTrendsError(d.error);
+        setMetrics(null);
         return;
       }
+      setTrendsError("");
       const { trends: bundledTrends, error: _ignored, ...rest } = d;
       setMetrics(rest as MetricsResult);
       if (wantTrends) {
@@ -703,8 +705,9 @@ export default function DashboardView({
       })
       .catch(() => {
         if (ac.signal.aborted) return;
+        setTrendsError("Failed to load metrics");
+        setMetrics(null);
         if (wantTrends) {
-          setTrendsError("Failed to load trends");
           setTrends(null);
           setSparkMap(null);
         }

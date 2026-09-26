@@ -311,25 +311,55 @@ async function loadViaSql(
           p_end: filters.end_date,
           p_granularity: opts.granularity,
         })
-      : Promise.resolve({ data: null, error: null });
+      : Promise.resolve({ data: null, error: null as { message: string } | null });
 
-  const [
-    countsResolved,
-    timelineRes,
-    spendRows,
-    trendSpend,
-    speed,
-    dealTotals,
-  ] = await Promise.all([
-    resolveKpiCounts(service, clientIds, filters, startIso, endIso),
-    timelinePromise,
-    fetchCombinedSpendForMetrics(service, spendFilters),
-    opts.includeTrends
-      ? fetchCombinedTrendSpend(service, spendFilters)
-      : Promise.resolve([]),
-    resolveSpeedToLead(service, filters, scopedClientIds, clientIds, startIso, endIso),
-    fetchDealTotals(service, filters, scopedClientIds),
-  ]);
+  // All-clients (null scope) + month windows: running counts + timeline + STL in
+  // parallel saturates Postgres and hits statement timeout. Serialize counts first.
+  const broadScope = clientIds == null;
+
+  let countsResolved: Awaited<ReturnType<typeof resolveKpiCounts>>;
+  let timelineRes: { data: unknown; error: { message: string } | null };
+  let spendRows: Awaited<ReturnType<typeof fetchCombinedSpendForMetrics>>;
+  let trendSpend: Awaited<ReturnType<typeof fetchCombinedTrendSpend>>;
+  let speed: SpeedToLeadResult;
+  let dealTotals: Awaited<ReturnType<typeof fetchDealTotals>>;
+
+  if (broadScope) {
+    countsResolved = await resolveKpiCounts(
+      service,
+      clientIds,
+      filters,
+      startIso,
+      endIso,
+    );
+    [timelineRes, spendRows, trendSpend, speed, dealTotals] = await Promise.all([
+      timelinePromise,
+      fetchCombinedSpendForMetrics(service, spendFilters),
+      opts.includeTrends
+        ? fetchCombinedTrendSpend(service, spendFilters)
+        : Promise.resolve([] as Awaited<ReturnType<typeof fetchCombinedTrendSpend>>),
+      resolveSpeedToLead(service, filters, scopedClientIds, clientIds, startIso, endIso),
+      fetchDealTotals(service, filters, scopedClientIds),
+    ]);
+  } else {
+    [
+      countsResolved,
+      timelineRes,
+      spendRows,
+      trendSpend,
+      speed,
+      dealTotals,
+    ] = await Promise.all([
+      resolveKpiCounts(service, clientIds, filters, startIso, endIso),
+      timelinePromise,
+      fetchCombinedSpendForMetrics(service, spendFilters),
+      opts.includeTrends
+        ? fetchCombinedTrendSpend(service, spendFilters)
+        : Promise.resolve([] as Awaited<ReturnType<typeof fetchCombinedTrendSpend>>),
+      resolveSpeedToLead(service, filters, scopedClientIds, clientIds, startIso, endIso),
+      fetchDealTotals(service, filters, scopedClientIds),
+    ]);
+  }
 
   if (!countsResolved.ok) {
     if (countsResolved.missingRpc) return null;

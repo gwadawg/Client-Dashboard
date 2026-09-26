@@ -53,7 +53,7 @@ type FilterState = {
 };
 
 const DEFAULT_STATE: FilterState = {
-  clientId: "",
+  clientId: LIVE_SCOPE,
   offerScope: "",
   preset: DEFAULT_PRESET,
   customStart: "",

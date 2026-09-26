@@ -204,6 +204,13 @@ export default function ClientKpiPanel({
             <span className="text-sm font-medium">Loading metrics…</span>
           </div>
         </div>
+      ) : !metrics && trendsError ? (
+        <div
+          className="rounded-lg px-4 py-6 text-sm"
+          style={{ color: "#fca5a5", background: "rgba(127,29,29,0.25)", border: "1px solid rgba(248,113,113,0.35)" }}
+        >
+          Couldn&apos;t load Client Workspace metrics. {trendsError}
+        </div>
       ) : metrics ? (
         conversions ? (
           <ClientConversionsView
