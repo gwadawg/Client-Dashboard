@@ -5,10 +5,11 @@ import ReportingTypeBadge, { ServiceProgramBadge } from "@/components/ReportingT
 import {
   emptyLaunchKitDraft,
   LAUNCH_KIT_PROPERTIES,
+  LAUNCH_KIT_REVIEW_FIELDS,
   resolveVariant,
   validateForGenerate,
   type LaunchKitDraft,
-  type LaunchKitPropertyKey,
+  type LaunchKitNaKey,
 } from "@/lib/launch-kit/intake";
 import type { LaunchKitVersionRow } from "@/lib/launch-kit/storage";
 import { KIT_DIAL_OWNER_LABELS, KIT_PRODUCT_LABELS, type KitDialOwner, type KitProduct } from "@/lib/launch-kit/types";
@@ -109,7 +110,7 @@ export default function LaunchKitWizard({ clientId, fallbackName, onClose, onGen
     setNotice(null);
   }
 
-  function toggleNa(key: LaunchKitPropertyKey, na: boolean) {
+  function toggleNa(key: LaunchKitNaKey, na: boolean) {
     setDraft(prev => ({ ...prev, property_na: { ...prev.property_na, [key]: na || undefined } }));
     setSaveError(null);
   }
@@ -372,10 +373,10 @@ function VariantStep({ draft, patch }: { draft: LaunchKitDraft; patch: PatchFn }
           onChange={v => patch("dial_owner", v)}
         />
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Contact first name" hint="Used in the greeting: “Jordan — your account is ready.”">
+          <Field label="Contact first name" hint="Used in the greeting: “Welcome, Jordan” on the cover.">
             <TextInput value={draft.contact_first_name} onChange={e => patch("contact_first_name", e.target.value)} />
           </Field>
-          <Field label="Company / DBA" hint="Cover subtitle and footer.">
+          <Field label="Company / DBA" hint="Cover subtitle, on-file receipt, and footer.">
             <TextInput value={draft.company_name} onChange={e => patch("company_name", e.target.value)} />
           </Field>
           <Field label="Go-live date">
@@ -384,6 +385,21 @@ function VariantStep({ draft, patch }: { draft: LaunchKitDraft; patch: PatchFn }
           <Field label="Market / geo" hint="States or metro, as sold.">
             <TextInput value={draft.market} onChange={e => patch("market", e.target.value)} placeholder="Florida" />
           </Field>
+        </div>
+
+        <div className="pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <h4 className="text-sm font-semibold text-slate-200 mb-1">On file with us</h4>
+          <p className="text-xs text-slate-500 mb-3">
+            Snapshot for this kit only. Editing here does not change the client file.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="NMLS #">
+              <TextInput value={draft.nmls} onChange={e => patch("nmls", e.target.value)} placeholder="123456" className="font-mono" />
+            </Field>
+            <Field label="States licensed" hint="Comma-separated, e.g. FL, TX, CA">
+              <TextInput value={draft.states_licensed} onChange={e => patch("states_licensed", e.target.value)} placeholder="FL, TX" />
+            </Field>
+          </div>
         </div>
       </div>
     </section>
@@ -436,60 +452,95 @@ function LiveStep({
 }: {
   draft: LaunchKitDraft;
   patch: PatchFn;
-  toggleNa: (key: LaunchKitPropertyKey, na: boolean) => void;
+  toggleNa: (key: LaunchKitNaKey, na: boolean) => void;
   driveFolderUrl: string | null;
 }) {
   return (
-    <section className="rounded-lg overflow-hidden" style={panelStyle}>
-      <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <h3 className="text-sm font-semibold text-slate-200">What&apos;s live</h3>
-        <p className="text-xs mt-0.5 text-slate-500">
-          Every URL here is clicked on the Launch Call. Fill it or mark N/A — never ship a guessed link. Funnel and CRM write back to the client file.
-        </p>
-      </div>
-      <div className="px-4 py-4 space-y-4">
-        {LAUNCH_KIT_PROPERTIES.map(p => {
-          const na = draft.property_na[p.key] === true;
-          return (
-            <div key={p.key} className="space-y-1.5">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-slate-400">{p.label}</span>
-                {p.naAllowed && (
-                  <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer">
-                    <input type="checkbox" checked={na} onChange={e => toggleNa(p.key, e.target.checked)} />
-                    Not part of this account
-                  </label>
+    <div className="space-y-4">
+      <section className="rounded-lg overflow-hidden" style={panelStyle}>
+        <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <h3 className="text-sm font-semibold text-slate-200">What&apos;s live</h3>
+          <p className="text-xs mt-0.5 text-slate-500">
+            Every URL here is clicked on the Launch Call. Fill it or mark N/A — never ship a guessed link. Funnel and CRM write back to the client file.
+          </p>
+        </div>
+        <div className="px-4 py-4 space-y-4">
+          {LAUNCH_KIT_PROPERTIES.map(p => {
+            const na = draft.property_na[p.key] === true;
+            return (
+              <div key={p.key} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-slate-400">{p.label}</span>
+                  {p.naAllowed && (
+                    <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer">
+                      <input type="checkbox" checked={na} onChange={e => toggleNa(p.key, e.target.checked)} />
+                      Not part of this account
+                    </label>
+                  )}
+                </div>
+                <TextInput
+                  type="url"
+                  value={draft[p.key]}
+                  disabled={na}
+                  onChange={e => patch(p.key, e.target.value)}
+                  placeholder="https://…"
+                  className={na ? "opacity-40" : ""}
+                />
+                {p.key === "launch_kit_folder_url" && (
+                  <p className="text-xs text-slate-500">
+                    The client&apos;s <code>Launch Kit/</code> Drive folder (01-Launch-PDF, 02-Links, 03-Swipe-and-Ads, 04-Recordings).
+                    {driveFolderUrl && !draft.launch_kit_folder_url && (
+                      <>
+                        {" "}Client Drive root:{" "}
+                        <button type="button" className="underline text-sky-300" onClick={() => patch("launch_kit_folder_url", driveFolderUrl)}>
+                          use root folder
+                        </button>
+                      </>
+                    )}
+                  </p>
                 )}
               </div>
-              <TextInput
-                type="url"
-                value={draft[p.key]}
-                disabled={na}
-                onChange={e => patch(p.key, e.target.value)}
-                placeholder="https://…"
-                className={na ? "opacity-40" : ""}
-              />
-              {p.key === "launch_kit_folder_url" && (
-                <p className="text-xs text-slate-500">
-                  The client&apos;s <code>Launch Kit/</code> Drive folder (01-Launch-PDF, 02-Links, 03-Swipe-and-Ads, 04-Recordings).
-                  {driveFolderUrl && !draft.launch_kit_folder_url && (
-                    <>
-                      {" "}Client Drive root:{" "}
-                      <button type="button" className="underline text-sky-300" onClick={() => patch("launch_kit_folder_url", driveFolderUrl)}>
-                        use root folder
-                      </button>
-                    </>
-                  )}
-                </p>
-              )}
-            </div>
-          );
-        })}
-        <Field label="Slack channel name" hint="Shown in the PDF as the default channel (e.g. #hale-capital). Optional.">
-          <TextInput value={draft.slack_channel_name} onChange={e => patch("slack_channel_name", e.target.value)} placeholder="#client-channel" />
-        </Field>
-      </div>
-    </section>
+            );
+          })}
+          <Field label="Slack channel name" hint="Shown in the PDF as the default channel (e.g. #hale-capital). Optional.">
+            <TextInput value={draft.slack_channel_name} onChange={e => patch("slack_channel_name", e.target.value)} placeholder="#client-channel" />
+          </Field>
+        </div>
+      </section>
+
+      <section className="rounded-lg overflow-hidden" style={panelStyle}>
+        <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <h3 className="text-sm font-semibold text-slate-200">Please review</h3>
+          <p className="text-xs mt-0.5 text-slate-500">
+            Snapshot for this kit only. Prefills from the client file but does not write back if you change it here.
+          </p>
+        </div>
+        <div className="px-4 py-4 space-y-4">
+          {LAUNCH_KIT_REVIEW_FIELDS.map(p => {
+            const na = draft.property_na[p.key] === true;
+            return (
+              <div key={p.key} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-slate-400">{p.label}</span>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer">
+                    <input type="checkbox" checked={na} onChange={e => toggleNa(p.key, e.target.checked)} />
+                    {p.naLabel}
+                  </label>
+                </div>
+                <TextInput
+                  type={p.kind === "url" ? "url" : "text"}
+                  value={draft[p.key]}
+                  disabled={na}
+                  onChange={e => patch(p.key, e.target.value)}
+                  placeholder={p.kind === "url" ? "https://…" : p.key.startsWith("phone") ? "+1 …" : undefined}
+                  className={na ? "opacity-40" : ""}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -553,7 +604,13 @@ function ReviewStep({
     ["Go-live", draft.go_live_date || "—"],
     ["CSM", draft.csm_name || "—"],
     ["Market", draft.market || "—"],
+    ["NMLS", draft.nmls || "—"],
+    ["States licensed", draft.states_licensed || "—"],
     ...LAUNCH_KIT_PROPERTIES.map<[string, string]>(p => [
+      p.label,
+      draft.property_na[p.key] ? "N/A" : draft[p.key] || "—",
+    ]),
+    ...LAUNCH_KIT_REVIEW_FIELDS.map<[string, string]>(p => [
       p.label,
       draft.property_na[p.key] ? "N/A" : draft[p.key] || "—",
     ]),

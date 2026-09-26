@@ -35,6 +35,12 @@ const client: LaunchKitClient = {
   drive_folder_url: 'https://drive.google.com/drive/folders/hale',
   states_licensed: ['FL'],
   ghl_location_id: 'loc_1',
+  website: 'https://halecapital.example',
+  nmls: '1987654',
+  phone_ghl: '+1 (555) 010-2000',
+  phone_live_transfer: '+1 (555) 010-2001',
+  virtual_business_card_url: 'https://loanofficer.me/jordan-hale',
+  facebook_page_name: 'Hale Capital Lending',
 };
 
 function completeDraft(overrides: Partial<LaunchKitDraft> = {}): LaunchKitDraft {
@@ -56,6 +62,14 @@ function completeDraft(overrides: Partial<LaunchKitDraft> = {}): LaunchKitDraft 
     ads_url: 'https://example.com/ads/hale',
     skool_url: 'https://example.com/skool/hale',
     launch_kit_folder_url: 'https://drive.google.com/drive/folders/hale-kit',
+    website_url: 'https://halecapital.example',
+    legal_notice_url: 'https://halecapital.example/legal',
+    phone_prospecting: '+1 (555) 010-2000',
+    phone_live_transfer: '+1 (555) 010-2001',
+    virtual_card_url: 'https://loanofficer.me/jordan-hale',
+    facebook_page: 'Hale Capital Lending',
+    nmls: '1987654',
+    states_licensed: 'FL',
     ...overrides,
   };
 }
@@ -117,20 +131,37 @@ describe('prefill', () => {
     assert.equal(d.launch_kit_folder_url, 'https://drive.google.com/drive/folders/hale');
     assert.equal(d.market, 'FL');
     assert.equal(d.who_works_leads, 'Jordan and your team');
+    assert.equal(d.website_url, 'https://halecapital.example');
+    assert.equal(d.phone_prospecting, '+1 (555) 010-2000');
+    assert.equal(d.phone_live_transfer, '+1 (555) 010-2001');
+    assert.equal(d.virtual_card_url, 'https://loanofficer.me/jordan-hale');
+    assert.equal(d.facebook_page, 'Hale Capital Lending');
+    assert.equal(d.nmls, '1987654');
+    assert.equal(d.states_licensed, 'FL');
   });
 
   it('last kit submission wins for kit-only fields; clients wins for owned URLs', () => {
     const last = draftToResponses(
-      completeDraft({ csm_name: 'Sam', funnel_url: 'https://old.example.com', launch_kit_folder_url: 'https://kit' }),
+      completeDraft({
+        csm_name: 'Sam',
+        funnel_url: 'https://old.example.com',
+        launch_kit_folder_url: 'https://kit',
+        website_url: 'https://kit-snapshot.example',
+        facebook_page: 'Kit Facebook Name',
+        nmls: '999',
+      }),
     );
     const d = draftFromClient(client, last);
     assert.equal(d.csm_name, 'Sam');
     assert.equal(d.funnel_url, 'https://example.com/hale-rm');
     assert.equal(d.launch_kit_folder_url, 'https://kit');
+    assert.equal(d.website_url, 'https://kit-snapshot.example');
+    assert.equal(d.facebook_page, 'Kit Facebook Name');
+    assert.equal(d.nmls, '999');
   });
 
   it('responses round-trip', () => {
-    const d = completeDraft({ property_na: { skool_url: true }, skool_url: '' });
+    const d = completeDraft({ property_na: { skool_url: true, legal_notice_url: true }, skool_url: '', legal_notice_url: '' });
     const back = draftFromResponses(draftToResponses(d));
     assert.deepEqual(back, d);
   });
@@ -151,6 +182,21 @@ describe('validateForGenerate', () => {
     const errs = validateForGenerate(completeDraft({ property_na: { funnel_url: true, crm_url: true } }));
     assert.ok(errs.some(e => e.includes('Perspective funnel cannot be marked N/A')));
     assert.ok(errs.some(e => e.includes('CRM cannot be marked N/A')));
+  });
+
+  it('rejects missing review fields unless marked N/A', () => {
+    const errs = validateForGenerate(completeDraft({ website_url: '' }));
+    assert.ok(errs.some(e => e.startsWith('Website is missing')));
+    assert.deepEqual(
+      validateForGenerate(completeDraft({ website_url: '', property_na: { website_url: true } })),
+      [],
+    );
+  });
+
+  it('requires NMLS and states licensed for the receipt', () => {
+    const errs = validateForGenerate(completeDraft({ nmls: '', states_licensed: '' }));
+    assert.ok(errs.some(e => e.startsWith('NMLS is required')));
+    assert.ok(errs.some(e => e.startsWith('States licensed is required')));
   });
 
   it('rejects [TO FILL] anywhere and non-http URLs', () => {
@@ -184,8 +230,33 @@ describe('buildLaunchKitBlocks', () => {
       assert.equal(text.includes(TO_FILL), false);
       assert.equal(cover.productLabel, variant.product === 'rm' ? 'Reverse mortgage' : 'DSCR');
       assert.equal(cover.goLiveLabel, '15 September 2026');
+      assert.equal(cover.welcomeName, 'Jordan');
+      assert.equal(cover.subtitle, 'Hale Capital Lending');
     });
   }
+
+  it('includes Please review and On file sections', () => {
+    const { blocks, cover } = buildLaunchKitBlocks(completeDraft(), { version: 1, clientName: client.name });
+    const text = flattenBlockText(blocks).join('\n');
+    assert.ok(text.includes('Please review'));
+    assert.ok(text.includes('On file with us'));
+    assert.ok(text.includes('Legal notice (compliance approve)'));
+    assert.ok(text.includes('Number we use to contact leads'));
+    assert.ok(text.includes('Number we use for live transfers'));
+    assert.ok(text.includes('https://loanofficer.me/jordan-hale'));
+    assert.ok(text.includes('1987654'));
+    assert.ok(text.includes('States licensed'));
+    assert.equal(cover.welcomeName, 'Jordan');
+  });
+
+  it('shows declined label when legal notice is marked N/A', () => {
+    const { blocks } = buildLaunchKitBlocks(
+      completeDraft({ legal_notice_url: '', property_na: { legal_notice_url: true } }),
+      { version: 1, clientName: client.name },
+    );
+    const text = flattenBlockText(blocks).join('\n');
+    assert.ok(text.includes('Declined / not part of this account'));
+  });
 
   it('client-dials variants list playbooks; waiz-dials variants do not hand them the daily system', () => {
     const clientKit = buildLaunchKitBlocks(completeDraft({ product: 'dscr', dial_owner: 'client' }), { version: 1, clientName: 'x' });
@@ -225,11 +296,23 @@ describe('buildLaunchKitBlocks', () => {
 });
 
 describe('helpers', () => {
-  it('client patch only includes changed, non-N/A URLs', () => {
+  it('client patch only includes changed, non-N/A URLs (funnel + CRM only)', () => {
     assert.deepEqual(clientPatchFromDraft(completeDraft(), client), {});
     assert.deepEqual(
       clientPatchFromDraft(completeDraft({ funnel_url: 'https://new.example.com' }), client),
       { funnel_url: 'https://new.example.com' },
+    );
+    assert.deepEqual(
+      clientPatchFromDraft(
+        completeDraft({
+          website_url: 'https://changed.example',
+          facebook_page: 'Changed Page',
+          nmls: '000',
+          phone_prospecting: '+1 999',
+        }),
+        client,
+      ),
+      {},
     );
   });
 

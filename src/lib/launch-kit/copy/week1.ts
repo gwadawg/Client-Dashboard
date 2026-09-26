@@ -37,11 +37,11 @@ function speedCallout(speedStandard: string): KitBlock {
 }
 
 function ifThen(rows: string[][]): KitBlock {
-  return { type: 'table', headers: ['If', 'Then'], col_widths: [0.42, 0.58], rows };
+  return { type: 'table', variant: 'grid', headers: ['If', 'Then'], col_widths: [0.42, 0.58], rows };
 }
 
 function dailyRhythm(rows: string[][]): KitBlock {
-  return { type: 'table', headers: ['Block', 'What happens'], col_widths: [0.26, 0.74], rows };
+  return { type: 'table', variant: 'rhythm', headers: ['Block', 'What happens'], col_widths: [0.26, 0.74], rows };
 }
 
 const RHYTHM_CLIENT_DIALS = dailyRhythm([
@@ -61,10 +61,10 @@ function rmClient(p: Week1Params): KitBlock[] {
     H1,
     {
       type: 'body',
-      text: `Reverse mortgage. ${p.whoWorksLeads} work new leads. The bot and the drip support you — they do not replace the phone.`,
+      text: `Reverse mortgage. ${p.whoWorksLeads} work new leads. The bot and the drip support you. They do not replace the phone.`,
     },
     { type: 'numbered', text: 'When a lead hits, work it. Do not batch until tonight.' },
-    { type: 'numbered', text: 'Call first. Text if you miss. Leave a short voicemail — then move on.' },
+    { type: 'numbered', text: 'Call first. Text if you miss. Leave a short voicemail, then move on.' },
     { type: 'numbered', text: 'Never end a live conversation without the next step on the calendar (BAMFAM).' },
     { type: 'numbered', text: 'Update the disposition before you touch the next name.' },
     { type: 'numbered', text: 'If they text back, call. Do not write a novel in the thread.' },
@@ -75,7 +75,7 @@ function rmClient(p: Week1Params): KitBlock[] {
       ['No answer', 'Voicemail + text. Disposition. Next name.'],
       ['They engage but will not book', 'Hold a time inside 72 hours or set a real callback.'],
       ['They book', 'Confirm on the phone. Reminders stay on.'],
-      ['Something in the CRM looks wrong', 'Slack — do not invent a workaround.'],
+      ['Something in the CRM looks wrong', 'Slack. Do not invent a workaround.'],
     ]),
     DAILY_RHYTHM,
     RHYTHM_CLIENT_DIALS,
@@ -100,9 +100,9 @@ function rmWaiz(p: Week1Params): KitBlock[] {
     ifThen([
       ['An appointment lands on your calendar', 'Accept it. Read the notes. Show up.'],
       ['A lead no-shows', 'Tell us in Slack. We re-engage and rebook.'],
-      ['You need to move an appointment', 'Slack — we reschedule and re-confirm so the lead is not lost.'],
+      ['You need to move an appointment', 'Slack. We reschedule and re-confirm so the lead is not lost.'],
       ['You want to reach a lead directly', 'Ask first. We keep one voice in front of the prospect.'],
-      ['Something in the CRM looks wrong', 'Slack — do not invent a workaround.'],
+      ['Something in the CRM looks wrong', 'Slack. Do not invent a workaround.'],
     ]),
     DAILY_RHYTHM,
     RHYTHM_WAIZ_DIALS,
@@ -115,7 +115,7 @@ function dscrClient(p: Week1Params): KitBlock[] {
     H1,
     {
       type: 'body',
-      text: `DSCR. ${p.whoWorksLeads} are the system. The drip is the safety net — it does not replace the call.`,
+      text: `DSCR. ${p.whoWorksLeads} are the system. The drip is the safety net. It does not replace the call.`,
     },
     { type: 'numbered', text: 'You or your VA work every lead. Do not also run our assistant as the daily owner.' },
     { type: 'numbered', text: 'The first 48 hours decide the file. When they text back, call.' },
@@ -129,7 +129,7 @@ function dscrClient(p: Week1Params): KitBlock[] {
       ['No answer', 'Short voicemail + text. Disposition. Next name.'],
       ['They text back', 'Call. Do not negotiate in the thread.'],
       ['They engage but will not book', 'Hold a time inside 72 hours or set a real callback.'],
-      ['Something in the CRM looks wrong', 'Slack — do not invent a workaround.'],
+      ['Something in the CRM looks wrong', 'Slack. Do not invent a workaround.'],
     ]),
     DAILY_RHYTHM,
     RHYTHM_CLIENT_DIALS,
@@ -145,7 +145,7 @@ function dscrWaiz(p: Week1Params): KitBlock[] {
       text: `DSCR. ${p.whoWorksLeads} owns SMS and booking. You own the consult. Do not run a second daily system on top of it.`,
     },
     { type: 'numbered', text: 'Confirm calendar holds the same day they land. Show up prepared.' },
-    { type: 'numbered', text: 'Read the lead notes before the consult. Run their exact numbers on the call — not over text.' },
+    { type: 'numbered', text: 'Read the lead notes before the consult. Run their exact numbers on the call, not over text.' },
     { type: 'numbered', text: 'After every consult, log the outcome so the pipeline stays honest.' },
     { type: 'numbered', text: 'If a lead needs you before a consult is booked, we ping you in Slack. Pick up.' },
     { type: 'numbered', text: 'Do not text leads the assistant is still working unless we hand them to you.' },
@@ -154,9 +154,9 @@ function dscrWaiz(p: Week1Params): KitBlock[] {
     ifThen([
       ['A consult lands on your calendar', 'Accept it. Read the notes. Show up.'],
       ['A lead no-shows', 'Tell us in Slack. We re-engage and rebook.'],
-      ['You need to move a consult', 'Slack — we reschedule and re-confirm so the lead is not lost.'],
+      ['You need to move a consult', 'Slack. We reschedule and re-confirm so the lead is not lost.'],
       ['A lead asks you for numbers over text', 'Move it to the call. No rates, LTV, or payments in a thread.'],
-      ['Something in the CRM looks wrong', 'Slack — do not invent a workaround.'],
+      ['Something in the CRM looks wrong', 'Slack. Do not invent a workaround.'],
     ]),
     DAILY_RHYTHM,
     RHYTHM_WAIZ_DIALS,

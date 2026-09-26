@@ -5,7 +5,7 @@
  * can be traced to the wording they were rendered with.
  */
 
-export const TEMPLATE_VERSION = '2026-09-12.1';
+export const TEMPLATE_VERSION = '2026-09-25.2';
 
 export * from './shared';
 export * from './week1';

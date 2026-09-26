@@ -8,12 +8,17 @@
 
 import {
   AT_A_GLANCE_HEADING,
+  coverLead,
   creativeBlocks,
   engineBlocks,
   FIRST_30_DAYS,
   FIRST_30_DAYS_JOB_CLIENT_DIALS,
   FIRST_30_DAYS_JOB_WAIZ_DIALS,
-  footerBlocks,
+  ON_FILE_HEADING,
+  ON_FILE_INTRO,
+  ON_FILE_NOTE,
+  PLEASE_REVIEW_HEADING,
+  PLEASE_REVIEW_INTRO,
   RESOURCE_INDEX_INTRO,
   resourceTable,
   TEMPLATE_VERSION,
@@ -26,7 +31,13 @@ import {
   whoToPingBlocks,
   YOUR_JOB_HEADING,
 } from './copy';
-import { isPropertyNa, resolveVariant, TO_FILL, type LaunchKitDraft } from './intake';
+import {
+  isPropertyNa,
+  LAUNCH_KIT_REVIEW_FIELDS,
+  resolveVariant,
+  TO_FILL,
+  type LaunchKitDraft,
+} from './intake';
 import { KIT_PRODUCT_LABELS, type KitBlock, type KitCoverMeta, type KitVariant } from './types';
 
 const MONTHS = [
@@ -73,7 +84,7 @@ function slackChannelLabel(draft: LaunchKitDraft): string {
   return s.startsWith('#') ? s : `#${s}`;
 }
 
-/** 01 property table — Slack sits between ads and Skool, as in the sample. */
+/** 01 property list. Slack sits between ads and Skool, as in the sample. */
 function whatsLiveRows(draft: LaunchKitDraft): string[][] {
   const rows: string[][] = [];
   const add = (key: 'funnel_url' | 'crm_url' | 'calendar_url' | 'ads_url' | 'skool_url' | 'launch_kit_folder_url', label: string) => {
@@ -88,6 +99,24 @@ function whatsLiveRows(draft: LaunchKitDraft): string[][] {
   add('skool_url', 'Training (Skool)');
   add('launch_kit_folder_url', 'Launch Kit folder (Drive)');
   return rows;
+}
+
+const REVIEW_NA_LABEL = 'Declined / not part of this account';
+
+/** Client-facing review checklist. Always list every row so declines are visible. */
+function pleaseReviewRows(draft: LaunchKitDraft): string[][] {
+  return LAUNCH_KIT_REVIEW_FIELDS.map(field => {
+    if (isPropertyNa(draft, field.key)) return [field.pdfLabel, REVIEW_NA_LABEL];
+    return [field.pdfLabel, orFill(draft[field.key])];
+  });
+}
+
+function onFileRows(draft: LaunchKitDraft, company: string): string[][] {
+  return [
+    ['Company name', orFill(company)],
+    ['NMLS #', orFill(draft.nmls)],
+    ['States licensed', orFill(draft.states_licensed)],
+  ];
 }
 
 function launchKitFolderValue(draft: LaunchKitDraft): string {
@@ -124,16 +153,24 @@ export function buildLaunchKitBlocks(
     ...welcomeBlocks({ contactFirstName: contact, productPhrase }),
     { type: 'pagebreak' },
 
-    // 01 What's live
+    // 01 What's live: the properties we click on the call, then the account summary
     ...WHATS_LIVE_INTRO,
-    { type: 'table', headers: ['Property', 'Where to find it'], col_widths: [0.3, 0.7], rows: whatsLiveRows(draft) },
+    {
+      type: 'table',
+      variant: 'kv',
+      headers: ['Property', 'Where to find it'],
+      col_widths: [0.3, 0.7],
+      rows: whatsLiveRows(draft),
+    },
+    variant.dialOwner === 'waiz' ? WHATS_LIVE_CALLOUT_WAIZ_DIALS : WHATS_LIVE_CALLOUT,
     AT_A_GLANCE_HEADING,
     {
       type: 'table',
+      variant: 'kv',
       headers: ['Account', 'Detail'],
       col_widths: [0.3, 0.7],
       rows: [
-        ['Client', `${contact} · ${company}`],
+        ['Client', `${contact}, ${company}`],
         ['Product line', productLabel],
         ['Market', orFill(draft.market)],
         ['Go-live', formatWeekdayDate(draft.go_live_date)],
@@ -141,7 +178,28 @@ export function buildLaunchKitBlocks(
         ['Client Success Manager', csm],
       ],
     },
-    variant.dialOwner === 'waiz' ? WHATS_LIVE_CALLOUT_WAIZ_DIALS : WHATS_LIVE_CALLOUT,
+    { type: 'pagebreak' },
+
+    // 01 continued. The confirmation page: what the client ticks off, and the receipt of what we hold
+    PLEASE_REVIEW_HEADING,
+    PLEASE_REVIEW_INTRO,
+    {
+      type: 'table',
+      variant: 'checklist',
+      headers: ['Item', 'Open / confirm'],
+      col_widths: [0.36, 0.64],
+      rows: pleaseReviewRows(draft),
+    },
+    ON_FILE_HEADING,
+    ON_FILE_INTRO,
+    {
+      type: 'table',
+      variant: 'receipt',
+      headers: ['Detail', 'On file'],
+      col_widths: [0.3, 0.7],
+      rows: onFileRows(draft, company),
+    },
+    ON_FILE_NOTE,
     { type: 'pagebreak' },
 
     // 02 How the engine works
@@ -172,13 +230,16 @@ export function buildLaunchKitBlocks(
       contactFirstName: contact,
       dialOwner: variant.dialOwner,
     }),
-    ...footerBlocks({ companyName: company, monthYear }),
+    // The running page footer carries "Waiz Media / Client Launch Kit for {company}",
+    // so the closing caption from the Wm-os template is not repeated here.
   ];
 
   const cover: KitCoverMeta = {
     title: 'Client Launch Kit',
-    subtitle: `${contact} · ${company}`,
-    abstract: `${productLabel} · Go-live ${goLive}`,
+    subtitle: company,
+    abstract: `${productLabel}. Go-live ${goLive}.`,
+    welcomeName: contact === TO_FILL ? 'there' : contact,
+    lead: coverLead(productPhrase),
     clientName: company,
     productLabel,
     goLiveLabel: goLive,

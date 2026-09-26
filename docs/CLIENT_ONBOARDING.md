@@ -177,8 +177,8 @@ The PDF is deterministic — no AI, no free-form copy. Only per-client fields ar
 
 ### Wizard steps
 
-1. **Variant** — product, who works leads, contact first name, company / DBA, go-live date, market.
-2. **What's live** — funnel, CRM, calendar, Meta ads, Skool, Launch Kit Drive folder, Slack channel name. Every URL must be a full `http(s)` link or explicitly marked *Not part of this account* (funnel and CRM can never be N/A). `[TO FILL]` is rejected at generate.
+1. **Variant** — product, who works leads, contact first name, company / DBA, go-live date, market, plus on-file snapshot (NMLS, states licensed). Snapshot fields do not write back to the client file.
+2. **What's live** — funnel, CRM, calendar, Meta ads, Skool, Launch Kit Drive folder, Slack channel name, plus a **Please review** block (website, legal notice, prospecting / live-transfer numbers, virtual card, Facebook). Every URL must be a full `http(s)` link or explicitly marked *Not part of this account* / declined (funnel and CRM can never be N/A). Review fields prefill from `clients` but never write back. `[TO FILL]` is rejected at generate.
 3. **Operator setup** — CSM name, who works leads (sentence subject), speed standard *as sold* (blank → kit says "as sold on your Kickoff" instead of inventing a number), internal notes.
 4. **Review & generate** — intake table, blocking errors, version list with **Download** and **Send to client**.
 

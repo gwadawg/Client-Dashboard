@@ -3,7 +3,7 @@
  *
  * No `clients` columns are added for the kit. Kit-only fields live in
  * `client_form_submissions.responses` (form_type = 'launch_kit'); URLs that already have a
- * column are written back via `clientPatchFromDraft`.
+ * column are written back via `clientPatchFromDraft` (funnel + CRM only).
  */
 
 import { normalizeReportingType } from '@/lib/reporting-types';
@@ -24,6 +24,65 @@ export const LAUNCH_KIT_PROPERTIES = [
 
 export type LaunchKitPropertyKey = (typeof LAUNCH_KIT_PROPERTIES)[number]['key'];
 
+/**
+ * Client-facing review checklist. Prefills from `clients` but is kit-snapshot only —
+ * never written back via `clientPatchFromDraft`.
+ */
+export const LAUNCH_KIT_REVIEW_FIELDS = [
+  {
+    key: 'website_url',
+    label: 'Website',
+    kind: 'url' as const,
+    naAllowed: true,
+    naLabel: 'Not part of this account',
+    pdfLabel: 'Website',
+  },
+  {
+    key: 'legal_notice_url',
+    label: 'Legal notice',
+    kind: 'url' as const,
+    naAllowed: true,
+    naLabel: 'Declined / not needed',
+    pdfLabel: 'Legal notice (compliance approve)',
+  },
+  {
+    key: 'phone_prospecting',
+    label: 'Prospecting number',
+    kind: 'text' as const,
+    naAllowed: true,
+    naLabel: 'Not part of this account',
+    pdfLabel: 'Number we use to contact leads',
+  },
+  {
+    key: 'phone_live_transfer',
+    label: 'Live-transfer number',
+    kind: 'text' as const,
+    naAllowed: true,
+    naLabel: 'Not part of this account',
+    pdfLabel: 'Number we use for live transfers',
+  },
+  {
+    key: 'virtual_card_url',
+    label: 'Virtual business card',
+    kind: 'url' as const,
+    naAllowed: true,
+    naLabel: 'Not part of this account',
+    pdfLabel: 'Virtual business card',
+  },
+  {
+    key: 'facebook_page',
+    label: 'Facebook page',
+    kind: 'text' as const,
+    naAllowed: true,
+    naLabel: 'Not part of this account',
+    pdfLabel: 'Facebook page',
+  },
+] as const;
+
+export type LaunchKitReviewKey = (typeof LAUNCH_KIT_REVIEW_FIELDS)[number]['key'];
+
+export type LaunchKitNaKey = LaunchKitPropertyKey | LaunchKitReviewKey;
+
 export type LaunchKitDraft = {
   product: KitProduct | '';
   dial_owner: KitDialOwner | '';
@@ -41,8 +100,18 @@ export type LaunchKitDraft = {
   ads_url: string;
   skool_url: string;
   launch_kit_folder_url: string;
-  /** Property keys the CSM has explicitly marked as not part of this account. */
-  property_na: Partial<Record<LaunchKitPropertyKey, boolean>>;
+  /** Kit-snapshot review fields (prefill from clients; never write back). */
+  website_url: string;
+  legal_notice_url: string;
+  phone_prospecting: string;
+  phone_live_transfer: string;
+  virtual_card_url: string;
+  facebook_page: string;
+  /** On-file receipt (kit snapshot). */
+  nmls: string;
+  states_licensed: string;
+  /** Property / review keys the CSM has explicitly marked as not part of this account. */
+  property_na: Partial<Record<LaunchKitNaKey, boolean>>;
   notes: string;
 };
 
@@ -62,10 +131,16 @@ export type LaunchKitClient = {
   drive_folder_url: string | null;
   states_licensed: string[] | null;
   ghl_location_id: string | null;
+  website: string | null;
+  nmls: string | null;
+  phone_ghl: string | null;
+  phone_live_transfer: string | null;
+  virtual_business_card_url: string | null;
+  facebook_page_name: string | null;
 };
 
 export const LAUNCH_KIT_CLIENT_FIELDS =
-  'id, name, lifecycle_status, primary_contact_name, brokerage_name, legal_business_name, reporting_type, service_program, launch_date, slack_id, funnel_url, ghl_subaccount_url, drive_folder_url, states_licensed, ghl_location_id';
+  'id, name, lifecycle_status, primary_contact_name, brokerage_name, legal_business_name, reporting_type, service_program, launch_date, slack_id, funnel_url, ghl_subaccount_url, drive_folder_url, states_licensed, ghl_location_id, website, nmls, phone_ghl, phone_live_transfer, virtual_business_card_url, facebook_page_name';
 
 export function emptyLaunchKitDraft(): LaunchKitDraft {
   return {
@@ -85,6 +160,14 @@ export function emptyLaunchKitDraft(): LaunchKitDraft {
     ads_url: '',
     skool_url: '',
     launch_kit_folder_url: '',
+    website_url: '',
+    legal_notice_url: '',
+    phone_prospecting: '',
+    phone_live_transfer: '',
+    virtual_card_url: '',
+    facebook_page: '',
+    nmls: '',
+    states_licensed: '',
     property_na: {},
     notes: '',
   };
@@ -135,6 +218,10 @@ function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
+function statesLicensedLabel(states: string[] | null | undefined): string {
+  return (states ?? []).map(s => String(s).trim()).filter(Boolean).join(', ');
+}
+
 /** Prefill: last kit submission wins for kit-only fields; `clients` columns win for URLs they own. */
 export function draftFromClient(
   client: LaunchKitClient,
@@ -147,6 +234,7 @@ export function draftFromClient(
   const dialOwner = dialOwnerFromClient(client.reporting_type, client.service_program) || base.dial_owner;
   const contact = base.contact_first_name || firstName(client.primary_contact_name);
   const variant = resolveVariant({ product, dial_owner: dialOwner });
+  const clientStates = statesLicensedLabel(client.states_licensed);
 
   return {
     ...base,
@@ -156,11 +244,20 @@ export function draftFromClient(
     company_name:
       base.company_name || client.brokerage_name?.trim() || client.legal_business_name?.trim() || client.name,
     go_live_date: client.launch_date ?? base.go_live_date,
-    market: base.market || (client.states_licensed ?? []).join(', '),
+    market: base.market || clientStates,
     who_works_leads: base.who_works_leads || defaultWhoWorksLeads(variant, contact),
     funnel_url: client.funnel_url?.trim() || base.funnel_url,
     crm_url: client.ghl_subaccount_url?.trim() || base.crm_url,
     launch_kit_folder_url: base.launch_kit_folder_url || client.drive_folder_url?.trim() || '',
+    // Review + receipt: last kit wins when present; otherwise prefill from client (never write back).
+    website_url: base.website_url || client.website?.trim() || '',
+    legal_notice_url: base.legal_notice_url,
+    phone_prospecting: base.phone_prospecting || client.phone_ghl?.trim() || '',
+    phone_live_transfer: base.phone_live_transfer || client.phone_live_transfer?.trim() || '',
+    virtual_card_url: base.virtual_card_url || client.virtual_business_card_url?.trim() || '',
+    facebook_page: base.facebook_page || client.facebook_page_name?.trim() || '',
+    nmls: base.nmls || client.nmls?.trim() || '',
+    states_licensed: base.states_licensed || clientStates,
   };
 }
 
@@ -179,10 +276,16 @@ export function draftFromResponses(responses: Record<string, unknown>): LaunchKi
   d.who_works_leads = str(responses.who_works_leads);
   d.speed_standard = str(responses.speed_standard);
   d.notes = str(responses.notes);
+  d.nmls = str(responses.nmls);
+  d.states_licensed = str(responses.states_licensed);
   for (const p of LAUNCH_KIT_PROPERTIES) d[p.key] = str(responses[p.key]);
+  for (const p of LAUNCH_KIT_REVIEW_FIELDS) d[p.key] = str(responses[p.key]);
   const na = responses.property_na;
   if (na && typeof na === 'object') {
     for (const p of LAUNCH_KIT_PROPERTIES) {
+      if ((na as Record<string, unknown>)[p.key] === true) d.property_na[p.key] = true;
+    }
+    for (const p of LAUNCH_KIT_REVIEW_FIELDS) {
       if ((na as Record<string, unknown>)[p.key] === true) d.property_na[p.key] = true;
     }
   }
@@ -190,6 +293,10 @@ export function draftFromResponses(responses: Record<string, unknown>): LaunchKi
 }
 
 export function draftToResponses(draft: LaunchKitDraft): Record<string, unknown> {
+  const naKeys = [
+    ...LAUNCH_KIT_PROPERTIES.filter(p => draft.property_na[p.key]).map(p => p.key),
+    ...LAUNCH_KIT_REVIEW_FIELDS.filter(p => draft.property_na[p.key]).map(p => p.key),
+  ];
   const out: Record<string, unknown> = {
     product: draft.product || null,
     dial_owner: draft.dial_owner || null,
@@ -202,11 +309,12 @@ export function draftToResponses(draft: LaunchKitDraft): Record<string, unknown>
     who_works_leads: draft.who_works_leads.trim(),
     speed_standard: draft.speed_standard.trim(),
     notes: draft.notes.trim(),
-    property_na: Object.fromEntries(
-      LAUNCH_KIT_PROPERTIES.filter(p => draft.property_na[p.key]).map(p => [p.key, true]),
-    ),
+    nmls: draft.nmls.trim(),
+    states_licensed: draft.states_licensed.trim(),
+    property_na: Object.fromEntries(naKeys.map(k => [k, true])),
   };
   for (const p of LAUNCH_KIT_PROPERTIES) out[p.key] = draft[p.key].trim();
+  for (const p of LAUNCH_KIT_REVIEW_FIELDS) out[p.key] = draft[p.key].trim();
   return out;
 }
 
@@ -226,7 +334,7 @@ export function isValidHttpUrl(value: string): boolean {
   }
 }
 
-export function isPropertyNa(draft: LaunchKitDraft, key: LaunchKitPropertyKey): boolean {
+export function isPropertyNa(draft: LaunchKitDraft, key: LaunchKitNaKey): boolean {
   return draft.property_na[key] === true;
 }
 
@@ -259,6 +367,27 @@ export function validateForGenerate(draft: LaunchKitDraft): string[] {
     if (!isValidHttpUrl(value)) errors.push(`${p.label} must be a full http(s) URL.`);
   }
 
+  for (const p of LAUNCH_KIT_REVIEW_FIELDS) {
+    const value = draft[p.key].trim();
+    const na = isPropertyNa(draft, p.key);
+    if (na) continue;
+    if (!value) {
+      errors.push(
+        p.kind === 'url'
+          ? `${p.label} is missing. Fill it or mark N/A — never ship a guessed link.`
+          : `${p.label} is missing. Fill it or mark N/A.`,
+      );
+      continue;
+    }
+    if (value.includes(TO_FILL)) {
+      errors.push(`${p.label} still contains ${TO_FILL}.`);
+      continue;
+    }
+    if (p.kind === 'url' && !isValidHttpUrl(value)) {
+      errors.push(`${p.label} must be a full http(s) URL.`);
+    }
+  }
+
   const textFields: Array<[keyof LaunchKitDraft, string]> = [
     ['contact_first_name', 'Contact first name'],
     ['company_name', 'Company / DBA'],
@@ -267,16 +396,21 @@ export function validateForGenerate(draft: LaunchKitDraft): string[] {
     ['who_works_leads', 'Who works leads'],
     ['speed_standard', 'Speed standard'],
     ['slack_channel_name', 'Slack channel'],
+    ['nmls', 'NMLS'],
+    ['states_licensed', 'States licensed'],
   ];
   for (const [key, label] of textFields) {
     const v = draft[key];
     if (typeof v === 'string' && v.includes(TO_FILL)) errors.push(`${label} still contains ${TO_FILL}.`);
   }
 
+  if (!draft.nmls.trim()) errors.push('NMLS is required for the on-file receipt.');
+  if (!draft.states_licensed.trim()) errors.push('States licensed is required for the on-file receipt.');
+
   return errors;
 }
 
-/** URL write-backs to `clients` for columns the kit intake owns a copy of. */
+/** URL write-backs to `clients` for columns the kit intake owns a copy of. Funnel + CRM only. */
 export function clientPatchFromDraft(
   draft: LaunchKitDraft,
   client: Pick<LaunchKitClient, 'funnel_url' | 'ghl_subaccount_url'>,
