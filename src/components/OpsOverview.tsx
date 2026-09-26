@@ -228,12 +228,22 @@ export default function OpsOverview({ embedded = false }: { embedded?: boolean }
 
   useEffect(() => {
     void load();
-    const id = window.setInterval(() => void load(), 10 * 60 * 1000);
-    const onFocus = () => void load();
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      void load();
+    }, 10 * 60 * 1000);
+    const onFocus = () => {
+      if (!document.hidden) void load();
+    };
+    const onVisibility = () => {
+      if (!document.hidden) void load();
+    };
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [load]);
 

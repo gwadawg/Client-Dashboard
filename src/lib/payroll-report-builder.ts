@@ -7,6 +7,7 @@ import {
   type RosterAgentWithPay,
   type UnifiedPayrollReport,
 } from '@/lib/agent-commissions';
+import { showEventsPayWindowOrFilter, acquisitionScheduledPayWindowOrFilter } from '@/lib/agent-call-rep-credits';
 import {
   attachB2BPendingDisposition,
   buildB2BSetterCommissionReport,
@@ -82,9 +83,7 @@ export async function buildUnifiedPayrollReport(
       .from('events')
       .select(EVENT_FIELDS)
       .eq('event_type', 'show')
-      .or(
-        `and(scheduled_at.gte.${startDate}T00:00:00.000Z,scheduled_at.lte.${endDate}T23:59:59.999Z),scheduled_at.is.null`,
-      ),
+      .or(showEventsPayWindowOrFilter(startDate, endDate)),
     service
       .from('events')
       .select('id, event_type, occurred_at, scheduled_at, calendar_name, lead_name, agent_name')
@@ -96,9 +95,7 @@ export async function buildUnifiedPayrollReport(
       .from('acquisition_appointments')
       .select('id, lead_name, phone, scheduled_at, status, qualified, setter_name, call_taken_by')
       .eq('appointment_type', 'demo')
-      .or(
-        `and(scheduled_at.gte.${startDate}T00:00:00.000Z,scheduled_at.lte.${endDate}T23:59:59.999Z),scheduled_at.is.null`,
-      ),
+      .or(acquisitionScheduledPayWindowOrFilter(startDate, endDate)),
     service
       .from('acquisition_closes')
       .select('id, lead_id, closed_at, setter_name')
@@ -111,9 +108,7 @@ export async function buildUnifiedPayrollReport(
       .select('id, lead_name, scheduled_at, setter_name, call_taken_by, intro_call_id')
       .eq('appointment_type', 'demo')
       .is('intro_call_id', null)
-      .or(
-        `and(scheduled_at.gte.${startDate}T00:00:00.000Z,scheduled_at.lte.${endDate}T23:59:59.999Z),scheduled_at.is.null`,
-      ),
+      .or(acquisitionScheduledPayWindowOrFilter(startDate, endDate)),
     fetchEnrichedBookingsInRange(service, startDate, endDate, { dateField: 'scheduled_at' }).then(
       data => ({ data, error: null as string | null }),
       (e: unknown) => ({

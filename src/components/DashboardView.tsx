@@ -696,7 +696,7 @@ export default function DashboardView({
     }
 
     const ac = new AbortController();
-    cachedJsonFetch<Bundle>(cacheKey, url, { signal: ac.signal, preferCache: false })
+    cachedJsonFetch<Bundle>(cacheKey, url, { signal: ac.signal, preferCache: true })
       .then(d => {
         if (ac.signal.aborted) return;
         paint(d);
@@ -741,7 +741,7 @@ export default function DashboardView({
     const ac = new AbortController();
     cachedJsonFetch<MetricsResult>(cacheKey, `/api/metrics?${params}`, {
       signal: ac.signal,
-      preferCache: false,
+      preferCache: true,
     })
       .then(d => {
         if (!ac.signal.aborted) setPrevMetrics(d);
@@ -767,7 +767,7 @@ export default function DashboardView({
     const ac = new AbortController();
     cachedJsonFetch<{ count?: number }>(cacheKey, `/api/metrics/overdue-appointments?${params}`, {
       signal: ac.signal,
-      preferCache: false,
+      preferCache: true,
       staleTime: 60_000,
     })
       .then(d => {

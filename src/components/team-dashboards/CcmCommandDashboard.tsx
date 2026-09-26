@@ -62,7 +62,7 @@ export default function CcmCommandDashboard({ onNavigate, embedded = false }: Pr
       const json = await cachedJsonFetch<CcmCommandPayload & { error?: string }>(
         CACHE_KEY,
         "/api/team-dashboards/ccm",
-        { staleTime: STALE_MS, preferCache: false },
+        { staleTime: STALE_MS, preferCache: true },
       );
       if (json.error) {
         setError(json.error);
@@ -79,8 +79,18 @@ export default function CcmCommandDashboard({ onNavigate, embedded = false }: Pr
 
   useEffect(() => {
     void load();
-    const id = setInterval(() => void load(), POLL_MS);
-    return () => clearInterval(id);
+    const id = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      void load();
+    }, POLL_MS);
+    const onVisibility = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [load]);
 
   function go(view: string, tab?: string) {

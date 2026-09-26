@@ -9,6 +9,11 @@ import {
   MB_MORNING_DIGEST_EVENT_KEY,
   runMbMorningDigestScheduledAlert,
 } from '@/lib/scheduled-alerts/mb-morning-digest';
+import {
+  DAILY_KPI_REFRESH_ALERT_ID,
+  DAILY_KPI_REFRESH_EVENT_KEY,
+  runEventsDailyKpiRefreshScheduledAlert,
+} from '@/lib/scheduled-alerts/events-daily-kpi-refresh';
 
 /** Daily digest alerts — add new entries here. */
 export const DAILY_SCHEDULED_ALERTS: ScheduledAlertDefinition[] = [
@@ -25,6 +30,13 @@ export const DAILY_SCHEDULED_ALERTS: ScheduledAlertDefinition[] = [
     name: 'Media Buyer morning digest',
     enabled: true,
     run: runMbMorningDigestScheduledAlert,
+  },
+  {
+    id: DAILY_KPI_REFRESH_ALERT_ID,
+    event_key: DAILY_KPI_REFRESH_EVENT_KEY,
+    name: 'Refresh events_daily_kpi (yesterday UTC)',
+    enabled: true,
+    run: runEventsDailyKpiRefreshScheduledAlert,
   },
 ];
 

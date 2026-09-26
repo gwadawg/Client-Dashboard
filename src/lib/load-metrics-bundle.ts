@@ -1,8 +1,7 @@
 /**
  * Shared dashboard metrics loader.
- * Prefer Postgres dashboard_kpi_* RPCs (counts + timeline); fall back to
- * shipping event rows only if the RPC is unavailable.
- * Speed-to-lead still needs a slim lead/dial pull (pairing + availability).
+ * Prefer Postgres dashboard_kpi_* RPCs (counts + timeline + speed-to-lead summary);
+ * fall back to shipping event rows only if an RPC is unavailable (dev / override).
  */
 
 import {
@@ -22,7 +21,9 @@ import { fetchLoanDealTotals } from '@/lib/loan-deals';
 import {
   metricsFromSqlCounts,
   parseSqlKpiCounts,
+  parseSqlSpeedToLeadSummary,
   parseSqlTimelineRows,
+  speedResultFromSqlSummary,
   trendsFromSqlTimeline,
 } from '@/lib/metrics-from-sql';
 import { fetchCombinedSpendForMetrics, fetchCombinedTrendSpend } from '@/lib/spend';
@@ -37,8 +38,17 @@ import {
   computeSpeedToLead,
   type AvailabilityWindow,
   type SpeedToLeadEventRow,
+  type SpeedToLeadResult,
 } from '@/lib/speed-to-lead';
+import { CALL_CENTER_TIMEZONE } from '@/lib/time';
+import { enforceRowCap } from '@/lib/row-cap';
+import {
+  isClosedUtcRange,
+  readMetricsRangeCache,
+  writeMetricsRangeCache,
+} from '@/lib/metrics-range-cache';
 import type { createServiceClient } from '@/lib/supabase';
+import type { SqlKpiCounts } from '@/lib/metrics-from-sql';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
@@ -48,6 +58,14 @@ export const METRICS_EVENT_SELECT =
 
 const STL_EVENT_SELECT =
   'event_type, client_id, ghl_contact_id, lead_phone, phone_number_used, agent_name, occurred_at, occurred_at_has_time, lead_created_at';
+
+/** Hard caps for residual row pulls (RPC path preferred). */
+export const METRICS_EVENTS_ROW_LIMIT = 100_000;
+export const STL_EVENTS_ROW_LIMIT = 100_000;
+
+function isMissingRpcError(message: string, rpcName: string): boolean {
+  return new RegExp(`${rpcName}|Could not find the function|schema cache`, 'i').test(message);
+}
 
 export type TrendsPayload = {
   granularity: 'day' | 'week';
@@ -66,6 +84,8 @@ export type MetricsBundleFilters = {
 export type MetricsBundleResult = {
   metrics: MetricsResult;
   trends: TrendsPayload | null;
+  /** Present when a capped row pull hit its limit (dev / override only). */
+  warnings?: string[];
 };
 
 type ScopedIds = string[] | null;
@@ -176,11 +196,96 @@ async function fetchSpeedToLeadEvents(
   else if (scopedClientIds) q = q.in('client_id', liveClientFilter(scopedClientIds));
   if (filters.start_date) q = q.gte('occurred_at', `${filters.start_date}T00:00:00.000Z`);
   if (filters.end_date) q = q.lte('occurred_at', `${filters.end_date}T23:59:59.999Z`);
-  q = q.limit(100000);
+  q = q.limit(STL_EVENTS_ROW_LIMIT);
 
   const { data, error } = await q;
   if (error) throw new Error(error.message);
-  return (data ?? []) as SpeedToLeadEventRow[];
+  const rows = (data ?? []) as SpeedToLeadEventRow[];
+  enforceRowCap(rows.length, STL_EVENTS_ROW_LIMIT, 'speed-to-lead events');
+  return rows;
+}
+
+async function resolveSpeedToLead(
+  service: ServiceClient,
+  filters: MetricsBundleFilters,
+  scopedClientIds: ScopedIds,
+  clientIds: string[] | null,
+  startIso: string | null,
+  endIso: string | null,
+): Promise<SpeedToLeadResult> {
+  const stlRes = await service.rpc('dashboard_speed_to_lead_summary', {
+    p_client_ids: clientIds,
+    p_start: startIso,
+    p_end: endIso,
+    p_time_zone: CALL_CENTER_TIMEZONE,
+  });
+
+  if (!stlRes.error) {
+    const summary = parseSqlSpeedToLeadSummary(stlRes.data);
+    if (summary) return speedResultFromSqlSummary(summary);
+  } else if (!isMissingRpcError(stlRes.error.message, 'dashboard_speed_to_lead_summary')) {
+    throw new Error(stlRes.error.message);
+  }
+
+  // RPC missing / empty — fall back to row pull + JS (golden path for local / pre-migration).
+  const [stlEvents, availability] = await Promise.all([
+    fetchSpeedToLeadEvents(service, filters, scopedClientIds),
+    loadAvailability(service),
+  ]);
+  if (availability.error) throw new Error(availability.error);
+  return computeSpeedToLead(stlEvents, availability.data);
+}
+
+async function resolveKpiCounts(
+  service: ServiceClient,
+  clientIds: string[] | null,
+  filters: MetricsBundleFilters,
+  startIso: string | null,
+  endIso: string | null,
+): Promise<
+  | { ok: true; counts: SqlKpiCounts }
+  | { ok: false; missingRpc: true }
+  | { ok: false; missingRpc: false; error: string }
+> {
+  if (filters.start_date && filters.end_date && isClosedUtcRange(filters.start_date, filters.end_date)) {
+    const cached = await readMetricsRangeCache(
+      service,
+      clientIds,
+      filters.start_date,
+      filters.end_date,
+    );
+    if (cached) return { ok: true, counts: cached };
+  }
+
+  const countsRes = await service.rpc('dashboard_kpi_counts', {
+    p_client_ids: clientIds,
+    p_start: startIso,
+    p_end: endIso,
+  });
+
+  if (countsRes.error) {
+    if (isMissingRpcError(countsRes.error.message, 'dashboard_kpi_counts')) {
+      return { ok: false, missingRpc: true };
+    }
+    return { ok: false, missingRpc: false, error: countsRes.error.message };
+  }
+
+  const counts = parseSqlKpiCounts(countsRes.data);
+  if (!counts) {
+    return { ok: false, missingRpc: false, error: 'dashboard_kpi_counts returned empty payload' };
+  }
+
+  if (filters.start_date && filters.end_date) {
+    void writeMetricsRangeCache(
+      service,
+      clientIds,
+      filters.start_date,
+      filters.end_date,
+      counts,
+    ).catch(() => undefined);
+  }
+
+  return { ok: true, counts };
 }
 
 async function loadViaSql(
@@ -198,12 +303,6 @@ async function loadViaSql(
     end_date: filters.end_date ?? undefined,
   };
 
-  const countsPromise = service.rpc('dashboard_kpi_counts', {
-    p_client_ids: clientIds,
-    p_start: startIso,
-    p_end: endIso,
-  });
-
   const timelinePromise =
     opts.includeTrends && filters.start_date && filters.end_date
       ? service.rpc('dashboard_kpi_timeline', {
@@ -215,55 +314,37 @@ async function loadViaSql(
       : Promise.resolve({ data: null, error: null });
 
   const [
-    countsRes,
+    countsResolved,
     timelineRes,
     spendRows,
     trendSpend,
-    availability,
-    stlEvents,
+    speed,
     dealTotals,
   ] = await Promise.all([
-    countsPromise,
+    resolveKpiCounts(service, clientIds, filters, startIso, endIso),
     timelinePromise,
     fetchCombinedSpendForMetrics(service, spendFilters),
     opts.includeTrends
       ? fetchCombinedTrendSpend(service, spendFilters)
       : Promise.resolve([]),
-    loadAvailability(service),
-    fetchSpeedToLeadEvents(service, filters, scopedClientIds),
+    resolveSpeedToLead(service, filters, scopedClientIds, clientIds, startIso, endIso),
     fetchDealTotals(service, filters, scopedClientIds),
   ]);
 
-  if (countsRes.error) {
-    // Function missing / permission — signal fallback.
-    if (
-      /dashboard_kpi_counts|Could not find the function|schema cache/i.test(
-        countsRes.error.message,
-      )
-    ) {
-      return null;
-    }
-    throw new Error(countsRes.error.message);
+  if (!countsResolved.ok) {
+    if (countsResolved.missingRpc) return null;
+    throw new Error(countsResolved.error);
   }
-  if (availability.error) throw new Error(availability.error);
 
-  const counts = parseSqlKpiCounts(countsRes.data);
-  if (!counts) throw new Error('dashboard_kpi_counts returned empty payload');
-
-  const speed = computeSpeedToLead(stlEvents, availability.data);
   const metrics = attachLoanDealMetrics(
-    metricsFromSqlCounts(counts, spendRows, speed),
+    metricsFromSqlCounts(countsResolved.counts, spendRows, speed),
     dealTotals,
   );
 
   let trends: TrendsPayload | null = null;
   if (opts.includeTrends && filters.start_date && filters.end_date) {
     if (timelineRes.error) {
-      if (
-        /dashboard_kpi_timeline|Could not find the function|schema cache/i.test(
-          timelineRes.error.message,
-        )
-      ) {
+      if (isMissingRpcError(timelineRes.error.message, 'dashboard_kpi_timeline')) {
         return null;
       }
       throw new Error(timelineRes.error.message);
@@ -297,7 +378,7 @@ async function loadViaEventsFallback(
   if (filters.end_date) {
     eventsQuery = eventsQuery.lte('occurred_at', `${filters.end_date}T23:59:59.999Z`);
   }
-  eventsQuery = eventsQuery.limit(100000);
+  eventsQuery = eventsQuery.limit(METRICS_EVENTS_ROW_LIMIT);
 
   const spendFilters = {
     client_id: filters.client_id ?? undefined,
@@ -321,6 +402,11 @@ async function loadViaEventsFallback(
   if (availability.error) throw new Error(availability.error);
 
   const eventRows = (events ?? []) as EventRow[];
+  const truncWarn = enforceRowCap(
+    eventRows.length,
+    METRICS_EVENTS_ROW_LIMIT,
+    'metrics events fallback',
+  );
   const metrics = attachLoanDealMetrics(
     calculateMetrics(eventRows, spendRows, availability.data),
     dealTotals,
@@ -352,7 +438,11 @@ async function loadViaEventsFallback(
     };
   }
 
-  return { metrics, trends };
+  return {
+    metrics,
+    trends,
+    ...(truncWarn ? { warnings: [truncWarn] } : {}),
+  };
 }
 
 export async function loadMetricsBundle(
@@ -391,6 +481,14 @@ export async function loadMetricsBundle(
 
     let result = await loadViaSql(service, filters, scopedClientIds, loadOpts);
     if (!result) {
+      const allowEventsFallback =
+        process.env.NODE_ENV !== 'production' ||
+        process.env.ALLOW_METRICS_EVENTS_FALLBACK === '1';
+      if (!allowEventsFallback) {
+        throw new Error(
+          'dashboard_kpi_* RPC unavailable; refusing events fallback in production. Apply KPI migrations or set ALLOW_METRICS_EVENTS_FALLBACK=1.',
+        );
+      }
       result = await loadViaEventsFallback(service, filters, scopedClientIds, loadOpts);
     }
 

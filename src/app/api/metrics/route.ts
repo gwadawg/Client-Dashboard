@@ -34,10 +34,20 @@ export async function GET(req: Request) {
   // Backward-compatible flat metrics payload; optional nested trends for dashboard.
   if (include_trends) {
     return NextResponse.json(
-      { ...data.metrics, trends: data.trends },
+      {
+        ...data.metrics,
+        trends: data.trends,
+        ...(data.warnings?.length ? { warnings: data.warnings } : {}),
+      },
       { headers: metricsCacheHeaders() },
     );
   }
 
-  return NextResponse.json(data.metrics, { headers: metricsCacheHeaders() });
+  return NextResponse.json(
+    {
+      ...data.metrics,
+      ...(data.warnings?.length ? { warnings: data.warnings } : {}),
+    },
+    { headers: metricsCacheHeaders() },
+  );
 }

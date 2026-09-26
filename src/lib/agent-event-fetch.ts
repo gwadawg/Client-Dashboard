@@ -1,4 +1,5 @@
 import type { createServiceClient } from './supabase';
+import { enforceRowCap } from './row-cap';
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
@@ -60,5 +61,6 @@ export async function fetchAgentEventsInRange(
     if (data.length < PAGE_SIZE) break;
   }
 
+  enforceRowCap(rows.length, HARD_CAP, 'agent-stats events');
   return rows;
 }

@@ -1,6 +1,6 @@
 /**
  * Build MetricsResult / trend payloads from SQL dashboard_kpi_* RPCs
- * (no raw event rows required except for speed-to-lead).
+ * (speed-to-lead summary via dashboard_speed_to_lead_summary when available).
  */
 
 import {
@@ -399,6 +399,61 @@ export function emptySpeedResult(): SpeedToLeadResult {
     readings: [],
     time_zone: 'America/New_York',
     live_window_count: 0,
+  };
+}
+
+/** Summary fields returned by dashboard_speed_to_lead_summary RPC. */
+export type SqlSpeedToLeadSummary = Pick<
+  SpeedToLeadResult,
+  | 'median_min'
+  | 'sample_size'
+  | 'excluded_out_of_window'
+  | 'excluded_no_time'
+  | 'excluded_before_cutoff'
+  | 'excluded_after_cutoff'
+  | 'time_zone'
+  | 'live_window_count'
+>;
+
+export function parseSqlSpeedToLeadSummary(raw: unknown): SqlSpeedToLeadSummary | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const num = (v: unknown): number => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const medianRaw = o.median_min;
+  const median_min =
+    medianRaw === null || medianRaw === undefined
+      ? null
+      : (() => {
+          const n = typeof medianRaw === 'number' ? medianRaw : Number(medianRaw);
+          return Number.isFinite(n) ? n : null;
+        })();
+  return {
+    median_min,
+    sample_size: num(o.sample_size),
+    excluded_out_of_window: num(o.excluded_out_of_window),
+    excluded_no_time: num(o.excluded_no_time),
+    excluded_before_cutoff: num(o.excluded_before_cutoff),
+    excluded_after_cutoff: num(o.excluded_after_cutoff),
+    time_zone: typeof o.time_zone === 'string' ? o.time_zone : 'America/Sao_Paulo',
+    live_window_count: num(o.live_window_count),
+  };
+}
+
+/** Expand SQL summary into a full SpeedToLeadResult (empty readings / by_*). */
+export function speedResultFromSqlSummary(summary: SqlSpeedToLeadSummary): SpeedToLeadResult {
+  return {
+    ...emptySpeedResult(),
+    median_min: summary.median_min,
+    sample_size: summary.sample_size,
+    excluded_out_of_window: summary.excluded_out_of_window,
+    excluded_no_time: summary.excluded_no_time,
+    excluded_before_cutoff: summary.excluded_before_cutoff,
+    excluded_after_cutoff: summary.excluded_after_cutoff,
+    time_zone: summary.time_zone,
+    live_window_count: summary.live_window_count,
   };
 }
 

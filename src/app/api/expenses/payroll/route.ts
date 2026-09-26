@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission } from '@/lib/api-auth';
 import { requireExpenseAccess } from '@/lib/expense-auth';
 import { buildCommissionReport, type RosterAgentWithPay } from '@/lib/agent-commissions';
+import { showEventsPayWindowOrFilter } from '@/lib/agent-call-rep-credits';
 import {
   PAYROLL_ROLE_BUCKETS,
   PAYROLL_ROLE_FULFILLMENT_LINES,
@@ -130,9 +131,7 @@ export async function POST(req: Request) {
       .from('events')
       .select(EVENT_FIELDS)
       .eq('event_type', 'show')
-      .or(
-        `and(scheduled_at.gte.${startDate}T00:00:00.000Z,scheduled_at.lte.${endDate}T23:59:59.999Z),scheduled_at.is.null`,
-      ),
+      .or(showEventsPayWindowOrFilter(startDate, endDate)),
   ]);
 
   if (rosterError) return NextResponse.json({ error: rosterError.message }, { status: 500 });

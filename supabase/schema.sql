@@ -1279,6 +1279,24 @@ create index if not exists misc_revenue_source_date on misc_revenue(source, occu
 -- ─────────────────────────────────────────────────────────────────────────────
 create index if not exists events_client_occurred  on events(client_id, occurred_at desc);
 create index if not exists events_type             on events(event_type);
+-- Hot path: type+date and client+type+date (dashboard KPI / STL / heatmap)
+create index if not exists events_type_occurred_idx
+  on events(event_type, occurred_at desc);
+create index if not exists events_client_type_occurred_idx
+  on events(client_id, event_type, occurred_at desc);
+create index if not exists events_scheduled_at_idx
+  on events(scheduled_at)
+  where scheduled_at is not null;
+create index if not exists events_outcome_external_id_idx
+  on events(external_id)
+  where event_type in ('show', 'no_show', 'appointment_cancelled', 'lo_bailed')
+    and external_id is not null;
+create index if not exists events_ghl_contact_id_idx
+  on events(ghl_contact_id)
+  where ghl_contact_id is not null;
+create index if not exists events_client_type_contact_idx
+  on events(client_id, event_type, ghl_contact_id)
+  where ghl_contact_id is not null;
 create index if not exists events_external_id_idx  on events(external_id)  where external_id is not null;
 create index if not exists events_calendar_id_idx  on events(calendar_id)  where calendar_id is not null;
 create index if not exists events_agent_name_idx   on events(agent_name)   where agent_name is not null;

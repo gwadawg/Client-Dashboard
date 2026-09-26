@@ -26,10 +26,13 @@ import {
   parseSqlKpiCountsByClient,
   type SqlKpiCounts,
 } from '@/lib/metrics-from-sql';
+import { enforceRowCap } from '@/lib/row-cap';
 import type { createServiceClient } from '@/lib/supabase';
 
 const EVENT_SELECT =
   'client_id, occurred_at, event_type, is_pickup, is_conversation, speed_to_lead_seconds, is_qualified, is_hot, is_out_of_state, ghl_contact_id, lead_phone, lead_email, lead_name';
+
+const COMPARE_EVENTS_ROW_LIMIT = 200_000;
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
 
@@ -206,9 +209,10 @@ export async function loadClientCompareBundle(
       .select(EVENT_SELECT)
       .gte('occurred_at', `${opts.start}T00:00:00.000Z`)
       .lte('occurred_at', `${opts.end}T23:59:59.999Z`)
-      .limit(200000);
+      .limit(COMPARE_EVENTS_ROW_LIMIT);
     if (eventsRes.error) throw new Error(eventsRes.error.message);
     events = (eventsRes.data ?? []) as ClientEventWithDate[];
+    enforceRowCap(events.length, COMPARE_EVENTS_ROW_LIMIT, 'client-compare events fallback');
     const byClient = groupEventsByClient(events);
     const { calculateMetrics } = await import('@/lib/metrics');
     rows = roster.map(c => {
@@ -243,9 +247,10 @@ export async function loadClientCompareBundle(
         .select(EVENT_SELECT)
         .gte('occurred_at', `${opts.start}T00:00:00.000Z`)
         .lte('occurred_at', `${opts.end}T23:59:59.999Z`)
-        .limit(200000);
+        .limit(COMPARE_EVENTS_ROW_LIMIT);
       if (eventsRes.error) throw new Error(eventsRes.error.message);
       events = (eventsRes.data ?? []) as ClientEventWithDate[];
+      enforceRowCap(events.length, COMPARE_EVENTS_ROW_LIMIT, 'client-compare timeline events fallback');
     }
     const byClient = groupEventsByClient(events);
     const eventsByClient = new Map<string, TrendEventRow[]>();

@@ -89,7 +89,24 @@ export function countCallRepCreditsByAgent(
   return byAgent;
 }
 
-/** PostgREST filter used by payroll for show pay-window events. */
+/** PostgREST filter used by payroll for show pay-window events.
+ *  (scheduled_at in range) OR (scheduled_at is null AND occurred_at in range)
+ *  — never unbounded null scheduled_at.
+ */
 export function showEventsPayWindowOrFilter(startDate: string, endDate: string): string {
-  return `and(scheduled_at.gte.${startDate}T00:00:00.000Z,scheduled_at.lte.${endDate}T23:59:59.999Z),scheduled_at.is.null`;
+  return [
+    `and(scheduled_at.gte.${startDate}T00:00:00.000Z,scheduled_at.lte.${endDate}T23:59:59.999Z)`,
+    `and(scheduled_at.is.null,occurred_at.gte.${startDate}T00:00:00.000Z,occurred_at.lte.${endDate}T23:59:59.999Z)`,
+  ].join(',');
+}
+
+/** Same idea for acquisition_appointments (fallback timestamp = booked_at). */
+export function acquisitionScheduledPayWindowOrFilter(
+  startDate: string,
+  endDate: string,
+): string {
+  return [
+    `and(scheduled_at.gte.${startDate}T00:00:00.000Z,scheduled_at.lte.${endDate}T23:59:59.999Z)`,
+    `and(scheduled_at.is.null,booked_at.gte.${startDate}T00:00:00.000Z,booked_at.lte.${endDate}T23:59:59.999Z)`,
+  ].join(',');
 }

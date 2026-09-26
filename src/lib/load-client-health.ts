@@ -34,6 +34,7 @@ import {
 import { OPEN_ACTION_STATUSES, summarizeOpenAction, type ActionLogRow } from '@/lib/client-health-interventions';
 import { normalizeReportingType, usesCallCenterKpiLayout } from '@/lib/kpi-layouts';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
+import { enforceRowCap } from '@/lib/row-cap';
 import type { EventRow, MetricsResult, SpendRow } from '@/lib/metrics';
 import {
   emptySqlKpiCounts,
@@ -557,6 +558,7 @@ export async function loadClientHealthBundle(
   if (eventsError) throw new Error(eventsError.message);
 
   const allEvents = (events ?? []) as ClientEventWithDate[];
+  enforceRowCap(allEvents.length, 200000, 'client-health events fallback');
   const inRange = (e: ClientEventWithDate, s: string, en: string) =>
     e.occurred_at >= `${s}T00:00:00.000Z` && e.occurred_at <= `${en}T23:59:59.999Z`;
 
