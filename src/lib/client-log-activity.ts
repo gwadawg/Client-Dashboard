@@ -1,3 +1,4 @@
+import { canonicalEventAdName } from '@/lib/ad-performance';
 import { buildContactKey } from '@/lib/contact-key';
 import { parseLoanSizeFromRaw } from '@/lib/loan-deals';
 
@@ -27,6 +28,7 @@ export type ActivityRow = {
   submitted_on: string | null;
   fell_out_on: string | null;
   dq_reason: string | null;
+  ad_name: string | null;
 };
 
 export type ActivitySummary = {
@@ -58,6 +60,8 @@ export type ActivityEventInput = {
   lead_phone: string | null;
   occurred_at: string | null;
   dq_reason: string | null;
+  ad_name?: string | null;
+  utm_content?: string | null;
   raw: unknown;
 };
 
@@ -180,6 +184,7 @@ export function buildClientLogActivity(
       submitted_on: deal.submitted_at.slice(0, 10),
       fell_out_on: deal.fell_out_at?.slice(0, 10) ?? null,
       dq_reason: null,
+      ad_name: null,
     });
   }
 
@@ -210,6 +215,7 @@ export function buildClientLogActivity(
       submitted_on: null,
       fell_out_on: null,
       dq_reason: null,
+      ad_name: null,
     });
   }
 
@@ -230,6 +236,7 @@ export function buildClientLogActivity(
       submitted_on: null,
       fell_out_on: null,
       dq_reason: ev.dq_reason,
+      ad_name: canonicalEventAdName(ev),
     });
   }
 

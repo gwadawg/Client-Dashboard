@@ -16,7 +16,7 @@ import {
   type DataExplorerTab,
   type HeatmapTab,
 } from "@/lib/nav";
-import { isKpiRoiSub, type ConversionStage } from "@/lib/conversion-explorer";
+import { isKpiRoiSub, type ExplorerConv } from "@/lib/conversion-explorer";
 import type { DashboardClient, DashboardFilters } from "@/lib/use-dashboard-filters";
 import WorkLogComposer from "../WorkLogComposer";
 
@@ -40,7 +40,7 @@ type Props = {
   railOpen: boolean;
   onToggleRail: () => void;
   canOpenExplorer: boolean;
-  onOpenConversionLeads: (stage: ConversionStage) => void;
+  onOpenConversionLeads: (stage: ExplorerConv) => void;
 };
 
 export default function ClientWorkspaceHub({

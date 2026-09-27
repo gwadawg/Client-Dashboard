@@ -148,4 +148,28 @@ describe('activity and quality filters', () => {
     );
     assert.equal(rows.length, 1);
   });
+
+  it('keeps disqualified leads even when the lead event is outside the range', () => {
+    const rows = profilesForConversionExplorer(
+      [
+        {
+          has_proposal_made: false,
+          has_submission_made: false,
+          has_loan_funded: false,
+          has_lead_in_period: false,
+          has_manual_dq: true,
+        },
+        {
+          has_proposal_made: false,
+          has_submission_made: false,
+          has_loan_funded: false,
+          has_lead_in_period: true,
+          has_manual_dq: false,
+        },
+      ],
+      'manual_dq',
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].has_manual_dq, true);
+  });
 });

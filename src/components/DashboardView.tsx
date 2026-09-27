@@ -51,7 +51,7 @@ import { cachedJsonFetch, peekCachedJson } from "@/lib/client-fetch-cache";
 import { hasTeamCommandPermission } from "@/lib/team-dashboards/access";
 import {
   conversionExplorerNav,
-  type ConversionStage,
+  type ExplorerConv,
 } from "@/lib/conversion-explorer";
 
 function TabLoading({ label = "Loading…" }: { label?: string }) {
@@ -871,7 +871,7 @@ export default function DashboardView({
     setSidebarOpen(false);
   }, [searchParams, pathname, router]);
 
-  const goToConversionLeads = useCallback((stage: ConversionStage) => {
+  const goToConversionLeads = useCallback((stage: ExplorerConv) => {
     const nav = conversionExplorerNav(stage);
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", nav.view);

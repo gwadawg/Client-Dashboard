@@ -247,6 +247,7 @@ export function metricsFromSqlCounts(
     proposals_made,
     submissions_made,
     funded_loans,
+    manual_dqs: 0,
     submitted_deals: 0,
     funded_deals: 0,
     loan_volume: 0,

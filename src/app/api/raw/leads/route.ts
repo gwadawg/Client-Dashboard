@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requirePermission, type AuthContext } from '@/lib/api-auth';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import { buildContactKey, eventPhone } from '@/lib/contact-key';
+import { isClientLogFormRaw } from '@/lib/dq-reasons';
 import {
   isActivityStage,
   isLeadQualityFilter,
@@ -124,6 +125,8 @@ type LeadProfile = {
   has_proposal_made: boolean;
   has_submission_made: boolean;
   has_loan_funded: boolean;
+  has_manual_dq: boolean;
+  dq_reason: string | null;
   ghl_contact_id: string | null;
   ghl_location_id: string | null;
   counts: LeadCounts;
@@ -561,6 +564,8 @@ function ingestEventRows(
         has_proposal_made: false,
         has_submission_made: false,
         has_loan_funded: false,
+        has_manual_dq: false,
+        dq_reason: null,
         ghl_contact_id: null,
         ghl_location_id: clientRecord(row.clients)?.ghl_location_id ?? null,
         counts: emptyCounts(),
@@ -577,6 +582,10 @@ function ingestEventRows(
     if (PROPOSAL_EVENT_TYPES.has(row.event_type)) profile.has_proposal_made = true;
     if (SUBMISSION_EVENT_TYPES.has(row.event_type)) profile.has_submission_made = true;
     if (FUNDED_EVENT_TYPES.has(row.event_type)) profile.has_loan_funded = true;
+    if (row.event_type === 'manual_dq' && isClientLogFormRaw(row.raw)) {
+      profile.has_manual_dq = true;
+      if (row.dq_reason && !profile.dq_reason) profile.dq_reason = row.dq_reason;
+    }
 
     if (row.lead_name && !profile.lead_name) profile.lead_name = row.lead_name;
     if (row.lead_email && !profile.lead_email) profile.lead_email = row.lead_email;
@@ -815,7 +824,9 @@ export async function GET(req: Request) {
 
   // Stage filters only need the relevant event types, not every dial.
   if (conversion_event && view === 'leads') {
-    if (isActivityStage(conversion_event)) {
+    if (conversion_event === 'manual_dq') {
+      q = q.in('event_type', ['lead', 'manual_dq']);
+    } else if (isActivityStage(conversion_event)) {
       q = q.in('event_type', ['lead', 'claimed', 'live_transfer', 'show']);
     } else {
       q = q.in('event_type', [

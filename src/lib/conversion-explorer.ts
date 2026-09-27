@@ -14,6 +14,8 @@ export const ACTIVITY_STAGES = [
 
 export type ConversionStage = (typeof CONVERSION_STAGES)[number];
 export type ActivityStage = (typeof ACTIVITY_STAGES)[number];
+/** Explorer `conv` values opened from KPI cards, including manual DQ. */
+export type ExplorerConv = ConversionStage | 'manual_dq';
 
 export type ConversionFlags = {
   has_proposal_made: boolean;
@@ -38,6 +40,12 @@ export function isConversionStage(
     value === 'submission_made' ||
     value === 'loan_funded'
   );
+}
+
+export function isManualDqStage(
+  value: string | null | undefined,
+): value is 'manual_dq' {
+  return value === 'manual_dq';
 }
 
 export function isActivityStage(
@@ -101,9 +109,13 @@ export function matchesConversionRollup(
 export function profilesForConversionExplorer<
   T extends ConversionFlags & {
     has_lead_in_period: boolean;
+    has_manual_dq?: boolean;
     counts?: ActivityCounts;
   },
 >(profiles: T[], conversionEvent: string | null | undefined): T[] {
+  if (isManualDqStage(conversionEvent)) {
+    return profiles.filter((p) => p.has_manual_dq === true);
+  }
   if (isActivityStage(conversionEvent)) {
     return profiles.filter(
       (p) =>
@@ -122,11 +134,11 @@ export function shouldShowConversionCosts(adSpend: number): boolean {
   return Number.isFinite(adSpend) && adSpend > 0;
 }
 
-export function conversionExplorerNav(stage: ConversionStage): {
+export function conversionExplorerNav(stage: ExplorerConv): {
   view: 'client_workspace';
   tab: 'explorer';
   sub: 'leads';
-  conv: ConversionStage;
+  conv: ExplorerConv;
 } {
   return {
     view: 'client_workspace',

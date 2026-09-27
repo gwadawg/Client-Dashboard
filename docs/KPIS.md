@@ -415,6 +415,10 @@ The **Media Buyer** view (Overview group) ranks Facebook ads **globally across a
 
 - **Spend / platform metrics** from `meta_ad_insights` (spend, impressions, clicks, CTR, CPC, CPM), summed across clients.
 - **Funnel outcomes** attributed from `events`: the ad name on each `lead` builds a per-client contact → ad map (via `buildContactKey`), and that contact's later `appointment_booked` / `show` / `no_show` / `claimed` / `live_transfer` / `proposal_made` / `submission_made` / `loan_funded` events inherit the lead's ad. Unique-lead rates use the same `leadIdentityKey` as client KPI cards.
+- **Manual DQs** (`event_type = 'manual_dq'`, `raw.source = 'client_log_form'`)
+  use only that lead map. A name copied onto the DQ row is ignored, so a later
+  remap cannot split the creative. A DQ whose lead is outside the range does
+  not count.
 
 | Metric | Formula (per ad name, summed across clients) |
 |--------|----------------------------------------------|
@@ -434,13 +438,19 @@ The **Media Buyer** view (Overview group) ranks Facebook ads **globally across a
 | **Proposals** | Unique leads with `proposal_made` / `proposal_sent` **or later** (submission / funded roll up) |
 | **Submissions** | Unique leads with `submission_made` / `loan_processing` **or later** (funded rolls up) |
 | **Funded** | Unique borrowers with `loan_funded` / `closed` |
+| **DQs** | Unique contacts with a form `manual_dq` whose lead is also in range |
+| **DQ %** | `Unique DQs ÷ Leads × 100` |
+| **DQ reasons** | Count of each slug in `raw.dq_reasons` (LTV, FICO, Low Property Value, Seasoning, Low Income, Other). One contact can increment more than one reason. Shown in the ad workspace, not as separate leaderboard columns. |
 | **CPP / CPS / CPF** | `Spend ÷ unique proposals / submissions / funded` — same formulas as client cards |
 | **Booking Rate** | `Unique booked leads ÷ Qualified × 100` |
 | **Cost per Show** | `Spend ÷ Show events` — platform/secondary only; **not** CPCONV |
 | **Cost per Close** | `Spend ÷ Closes` |
 | **Show Rate** (Media Buyer ad board) | Slot/event attendance (`Shows ÷ (Shows + No Shows)`). **Not** Client Success graded **Show Rate** (unique booked → spoke) |
 
-Opening an ad loads the **ad workspace**: CPL / CPQL / CPCONV plus backend CPP / CPS / CPF (and qual / hand-raise / conversation rate) as day or week series (week when the range is > 90 days, same rule as client cost trends), plus a per-client table so a blended spike can be split into **creative fatigue** (most accounts drift together) vs **one account**.
+Opening an ad loads the **ad workspace**: CPL / CPQL / CPCONV plus backend CPP / CPS / CPF (and qual / hand-raise / conversation rate) as day or week series (week when the range is > 90 days, same rule as client cost trends), the manual-DQ reason mix, plus a per-client table so a blended spike can be split into **creative fatigue** (most accounts drift together) vs **one account**.
+
+Client Workspace → Conversions shows the same unique form-DQ count.
+That card opens Explorer with the Disqualified stage filter.
 
 Each ad can also have an **Ad Library** entry (`ad_library` table): a Google Drive link to the creative plus a summary and visual notes. This is curated manually and is the structured input a future "AI recreate this winning ad" feature will use.
 

@@ -11,7 +11,7 @@ import ClientKpiPeriodBar from "../ClientKpiPeriodBar";
 import { formatKpiValue, usesRmKpiLayout, type ReportingType } from "@/lib/kpi-layouts";
 import {
   shouldShowConversionCosts,
-  type ConversionStage,
+  type ExplorerConv,
 } from "@/lib/conversion-explorer";
 import type { CostTrendPoint, KpiTimelineBucket, MetricsResult } from "@/lib/metrics";
 import type { DashboardClient, DashboardFilters } from "@/lib/use-dashboard-filters";
@@ -60,7 +60,7 @@ type Props = {
   onReviewOverdue: () => void;
   /** When true, unique-lead conversion cards open Explorer. */
   canOpenExplorer: boolean;
-  onOpenConversionLeads: (stage: ConversionStage) => void;
+  onOpenConversionLeads: (stage: ExplorerConv) => void;
 };
 
 export default function ClientKpiPanel({
@@ -92,7 +92,7 @@ export default function ClientKpiPanel({
   const conversions = showConversions;
   const showCosts = metrics ? shouldShowConversionCosts(metrics.ad_spend) : false;
   const openStage = canOpenExplorer
-    ? (stage: ConversionStage) => onOpenConversionLeads(stage)
+    ? (stage: ExplorerConv) => onOpenConversionLeads(stage)
     : undefined;
 
   const [betMarkerCache, setBetMarkerCache] = useState<{
@@ -285,6 +285,12 @@ export default function ClientKpiPanel({
                   value={formatKpiValue(metrics.funded_deals, "int")}
                   accent
                   hint="Each loan file that funded in this range. Same borrower or same house, two loans = two transactions."
+                />
+                <KpiCard
+                  label="Disqualified"
+                  value={formatKpiValue(metrics.manual_dqs ?? 0, "int")}
+                  hint="Unique contacts the loan officer logged as disqualified in this range."
+                  onActivate={openStage ? () => openStage("manual_dq") : undefined}
                 />
                 <KpiCard
                   label="Unique Funded Borrowers"

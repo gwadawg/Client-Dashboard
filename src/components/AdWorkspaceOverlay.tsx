@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import { adFormatLabel } from "@/lib/ad-formats";
 import type { AdTagRef } from "@/lib/ad-tags";
+import { dqReasonLabel } from "@/lib/dq-reasons";
 
 export type AdWorkspaceLibrary = {
   id: string;
@@ -58,6 +59,9 @@ export type AdWorkspaceAd = {
   unique_proposals: number;
   unique_submissions: number;
   unique_funded: number;
+  unique_dqs?: number;
+  dq_rate?: number | null;
+  dq_reasons?: { slug: string; count: number }[];
   client_count: number;
   library: AdWorkspaceLibrary | null;
   variant_names: string[];
@@ -808,6 +812,7 @@ export default function AdWorkspaceOverlay({
                     <StatTile label="Submissions" value={num(ad.unique_submissions ?? 0)} tip="Unique submission ∪ funded" layer="cost" />
                     <StatTile label="Funded" value={num(ad.unique_funded ?? 0)} tip="Unique funded borrowers" layer="cost" />
                   </div>
+                  <DqReasonMix ad={ad} />
                 </div>
               </LayerSection>
 
@@ -1372,6 +1377,43 @@ function EngagementScatter({
       <p className="text-[10px] mt-1" style={{ color: "#475569" }}>
         Bottom-right is the winner: wanted and cheap. Top-left is a dead creative. A single stray dot is that account&apos;s auction, not the concept.
       </p>
+    </div>
+  );
+}
+
+function DqReasonMix({ ad }: { ad: AdWorkspaceAd }) {
+  const reasons = ad.dq_reasons ?? [];
+  const total = ad.unique_dqs ?? 0;
+  if (total === 0 && reasons.length === 0) return null;
+  return (
+    <div
+      className="md:col-span-2 xl:col-span-4 rounded-xl px-3 py-3"
+      style={{ background: "rgba(127,29,29,0.18)", border: "1px solid rgba(248,113,113,0.28)" }}
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[10px] uppercase tracking-wider" style={{ color: "#fca5a5" }}>
+          Manual DQ
+        </p>
+        <p className="text-sm font-semibold tabular-nums" style={{ color: "#fecaca" }}>
+          {num(total)} · {pct(ad.dq_rate)} of leads
+        </p>
+      </div>
+      <p className="text-[11px] mt-1" style={{ color: "#fca5a5" }}>
+        Loan officers logged these. One lead can count in more than one reason.
+      </p>
+      {reasons.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {reasons.map((reason) => (
+            <span
+              key={reason.slug}
+              className="text-[11px] font-medium px-2 py-0.5 rounded-full tabular-nums"
+              style={{ background: "rgba(248,113,113,0.16)", color: "#fecaca" }}
+            >
+              {dqReasonLabel(reason.slug)} {reason.count}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

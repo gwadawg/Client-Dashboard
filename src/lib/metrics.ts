@@ -151,6 +151,8 @@ export type MetricsResult = {
   proposals_made: number;
   submissions_made: number;
   funded_loans: number;
+  /** Unique contacts with a client-log `manual_dq` in range. */
+  manual_dqs: number;
   /** Loan transactions that reached submitted (includes later-funded files dated in range). */
   submitted_deals: number;
   /** Loan transactions that funded in range — production volume, not unique borrowers. */
@@ -413,6 +415,7 @@ export function calculateMetrics(
     proposals_made,
     submissions_made,
     funded_loans,
+    manual_dqs: uniqueLeadCountForEvents(events, new Set(['manual_dq'])),
     submitted_deals: 0,
     funded_deals: 0,
     loan_volume: 0,

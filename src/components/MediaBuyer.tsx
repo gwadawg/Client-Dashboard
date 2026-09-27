@@ -84,6 +84,9 @@ type AdRow = {
   unique_proposals: number;
   unique_submissions: number;
   unique_funded: number;
+  unique_dqs?: number;
+  dq_rate?: number | null;
+  dq_reasons?: { slug: string; count: number }[];
   cpl: number | null;
   cost_per_qualified: number | null;
   cost_per_appointment: number | null;
@@ -255,6 +258,7 @@ function rollupAds(list: AdRow[]) {
   const unique_proposals = list.reduce((s, a) => s + (a.unique_proposals ?? 0), 0);
   const unique_submissions = list.reduce((s, a) => s + (a.unique_submissions ?? 0), 0);
   const unique_funded = list.reduce((s, a) => s + (a.unique_funded ?? 0), 0);
+  const unique_dqs = list.reduce((s, a) => s + (a.unique_dqs ?? 0), 0);
   return {
     ads: list.length,
     spend,
@@ -275,6 +279,8 @@ function rollupAds(list: AdRow[]) {
     unique_proposals,
     unique_submissions,
     unique_funded,
+    unique_dqs,
+    dq_rate: leads > 0 ? (unique_dqs / leads) * 100 : null,
     cp_proposal: unique_proposals > 0 ? spend / unique_proposals : null,
     cp_submission: unique_submissions > 0 ? spend / unique_submissions : null,
     cp_funded: unique_funded > 0 ? spend / unique_funded : null,
@@ -628,6 +634,8 @@ type SortKey =
   | "unique_proposals"
   | "unique_submissions"
   | "unique_funded"
+  | "unique_dqs"
+  | "dq_rate"
   | "hand_raise_rate"
   | "conversation_rate"
   | "cost_per_show";
@@ -1029,7 +1037,7 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
     !!search.trim();
 
   const totals = rollupAds(filteredAds);
-  const colCount = showPlatform ? 20 : 14;
+  const colCount = showPlatform ? 21 : 16;
   const rankPresets = [
     { label: "CPCONV", key: "cp_conversation" as const, nextAsc: true },
     { label: "CPQL", key: "cost_per_qualified" as const, nextAsc: true },
@@ -1345,6 +1353,8 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
           { label: "Proposals", value: num(totals.unique_proposals) },
           { label: "Submissions", value: num(totals.unique_submissions) },
           { label: "Funded", value: num(totals.unique_funded) },
+          { label: "DQs", value: num(totals.unique_dqs) },
+          { label: "DQ %", value: pct(totals.dq_rate) },
           { label: "CPF", value: money2(totals.cp_funded) },
           { label: "Hand-raise", value: pct(totals.hand_raise_rate) },
         ].map((s) => (
@@ -1383,6 +1393,8 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                 <SortHeader label="Prop" k="unique_proposals" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Sub" k="unique_submissions" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Funded" k="unique_funded" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="DQ" k="unique_dqs" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="DQ %" k="dq_rate" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="CPF" k="cp_funded" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                   Clients
@@ -1656,6 +1668,8 @@ function FragmentRow({
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.unique_proposals ?? 0)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.unique_submissions ?? 0)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{num(ad.unique_funded ?? 0)}</td>
+      <td className="px-3 py-3 text-right" style={{ color: "#fca5a5" }}>{num(ad.unique_dqs ?? 0)}</td>
+      <td className="px-3 py-3 text-right" style={{ color: "#fca5a5" }}>{pct(ad.dq_rate)}</td>
       <td className="px-3 py-3 text-right font-semibold" style={{ color: "#34d399" }}>{money2(ad.cp_funded)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#475569" }}>{ad.client_count}</td>
     </tr>

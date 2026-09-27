@@ -40,6 +40,7 @@ import {
   type SpeedToLeadEventRow,
   type SpeedToLeadResult,
 } from '@/lib/speed-to-lead';
+import { isClientLogFormRaw } from '@/lib/dq-reasons';
 import { CALL_CENTER_TIMEZONE } from '@/lib/time';
 import { enforceRowCap } from '@/lib/row-cap';
 import {
@@ -168,6 +169,42 @@ function rangeBounds(filters: MetricsBundleFilters): {
     startIso: filters.start_date ? `${filters.start_date}T00:00:00.000Z` : null,
     endIso: filters.end_date ? `${filters.end_date}T23:59:59.999Z` : null,
   };
+}
+
+/**
+ * Unique contacts with a client-log manual DQ in range.
+ * Uses events_type_occurred_idx (event_type + occurred_at), then keeps form rows.
+ */
+async function countFormManualDqs(
+  service: ServiceClient,
+  clientIds: string[] | null,
+  startIso: string | null,
+  endIso: string | null,
+): Promise<number> {
+  const keys = new Set<string>();
+  const pageSize = 1000;
+  for (let from = 0; from < 20_000; from += pageSize) {
+    let q = service
+      .from('events')
+      .select('client_id, ghl_contact_id, lead_phone, raw')
+      .eq('event_type', 'manual_dq')
+      .order('occurred_at', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (clientIds && clientIds.length > 0) q = q.in('client_id', clientIds);
+    if (startIso) q = q.gte('occurred_at', startIso);
+    if (endIso) q = q.lte('occurred_at', endIso);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    const rows = data ?? [];
+    for (const row of rows) {
+      if (!isClientLogFormRaw(row.raw)) continue;
+      const id = (row.ghl_contact_id ?? '').trim() || (row.lead_phone ?? '').trim();
+      if (!id) continue;
+      keys.add(`${row.client_id}|${id}`);
+    }
+    if (rows.length < pageSize) break;
+  }
+  return keys.size;
 }
 
 async function fetchDealTotals(
@@ -370,6 +407,7 @@ async function loadViaSql(
     metricsFromSqlCounts(countsResolved.counts, spendRows, speed),
     dealTotals,
   );
+  metrics.manual_dqs = await countFormManualDqs(service, clientIds, startIso, endIso);
 
   let trends: TrendsPayload | null = null;
   if (opts.includeTrends && filters.start_date && filters.end_date) {
@@ -440,6 +478,13 @@ async function loadViaEventsFallback(
   const metrics = attachLoanDealMetrics(
     calculateMetrics(eventRows, spendRows, availability.data),
     dealTotals,
+  );
+  const { startIso, endIso } = rangeBounds(filters);
+  metrics.manual_dqs = await countFormManualDqs(
+    service,
+    rpcClientIds(filters, scopedClientIds),
+    startIso,
+    endIso,
   );
 
   let trends: TrendsPayload | null = null;

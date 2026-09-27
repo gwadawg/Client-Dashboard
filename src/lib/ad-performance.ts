@@ -20,9 +20,18 @@ export type AdEventRow = {
   lead_email?: string | null;
   lead_name?: string | null;
   ad_name?: string | null;
+  /** Meta/Perspective UTM — source of truth when it disagrees with ad_name. */
+  utm_content?: string | null;
   is_qualified?: boolean | null;
   is_hot?: boolean | null;
   occurred_at?: string | null;
+  /** Reason slugs on a `manual_dq` row (`raw.dq_reasons`). */
+  dq_reasons?: string[] | null;
+};
+
+export type DqReasonCount = {
+  slug: string;
+  count: number;
 };
 
 const HAND_RAISE_TYPES = new Set(['appointment_booked', 'claimed', 'live_transfer']);
@@ -56,6 +65,12 @@ export type AdPerformanceRow = {
   unique_proposals: number;
   unique_submissions: number;
   unique_funded: number;
+  /** Unique contacts with a form `manual_dq` whose lead is in range. */
+  unique_dqs: number;
+  /** Unique DQs ÷ leads × 100. */
+  dq_rate: number | null;
+  /** Reason slug counts. A lead can contribute to more than one slug. */
+  dq_reasons: DqReasonCount[];
   cpl: number | null;
   cost_per_qualified: number | null;
   cost_per_appointment: number | null;
@@ -163,6 +178,17 @@ export function normalizeAdName(v: string | null | undefined): string | null {
   return s || null;
 }
 
+/**
+ * Canonical ad name for a funnel event.
+ *
+ * `utm_content` is the immutable original creative name stamped at lead ingest
+ * (Make maps GHL "UTM Ad Name" → ad_name; ingest mirrors into utm_content). Prefer
+ * utm when it disagrees with a later ad_name remap, then fall back to ad_name.
+ */
+export function canonicalEventAdName(e: Pick<AdEventRow, 'ad_name' | 'utm_content'>): string | null {
+  return normalizeAdName(e.utm_content) ?? normalizeAdName(e.ad_name);
+}
+
 /** Lower-cased grouping key so trivial casing differences fold together. */
 function adKey(name: string): string {
   return name.toLowerCase();
@@ -206,6 +232,8 @@ type Acc = {
   proposalKeys: Set<string>;
   submissionKeys: Set<string>;
   fundedKeys: Set<string>;
+  dqKeys: Set<string>;
+  dqReasonCounts: Map<string, number>;
   clients: Set<string>;
   has_meta: boolean;
 };
@@ -229,6 +257,8 @@ function blankAcc(displayName: string): Acc {
     proposalKeys: new Set(),
     submissionKeys: new Set(),
     fundedKeys: new Set(),
+    dqKeys: new Set(),
+    dqReasonCounts: new Map(),
     clients: new Set(),
     has_meta: false,
   };
@@ -249,6 +279,8 @@ function applyFunnelEvent(
     proposalKeys: Set<string>;
     submissionKeys: Set<string>;
     fundedKeys: Set<string>;
+    dqKeys: Set<string>;
+    dqReasonCounts: Map<string, number>;
   },
   e: AdEventRow,
 ): void {
@@ -286,6 +318,14 @@ function applyFunnelEvent(
     acc.submissionKeys.add(id);
   }
   if (FUNDED_TYPES.has(e.event_type)) acc.fundedKeys.add(id);
+  if (e.event_type === 'manual_dq' && !acc.dqKeys.has(id)) {
+    acc.dqKeys.add(id);
+    for (const slug of e.dq_reasons ?? []) {
+      const key = slug.trim().toLowerCase();
+      if (!key) continue;
+      acc.dqReasonCounts.set(key, (acc.dqReasonCounts.get(key) ?? 0) + 1);
+    }
+  }
 }
 
 /**
@@ -297,7 +337,7 @@ function buildContactAdMap(events: AdEventRow[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const e of events) {
     if (e.event_type !== 'lead') continue;
-    const name = normalizeAdName(e.ad_name);
+    const name = canonicalEventAdName(e);
     if (!name) continue;
     const key = buildContactKey(
       e.client_id ?? '',
@@ -309,12 +349,31 @@ function buildContactAdMap(events: AdEventRow[]): Map<string, string> {
   return map;
 }
 
-/** Resolve the ad name for any event: its own ad_name, else its contact's lead ad. */
+/**
+ * Resolve the ad name for any event.
+ * Manual DQs use only the contact's lead ad (utm, then ad name). A name copied
+ * onto the DQ row is ignored so a later remap cannot split the creative, and a
+ * DQ whose lead is outside the loaded window stays unattributed.
+ */
 function resolveEventAdName(e: AdEventRow, contactAd: Map<string, string>): string | null {
-  const own = normalizeAdName(e.ad_name);
-  if (own) return own;
   const key = buildContactKey(e.client_id ?? '', eventPhone(e), e.ghl_contact_id);
+  if (e.event_type === 'manual_dq') return contactAd.get(key) ?? null;
+  const own = canonicalEventAdName(e);
+  if (own) return own;
   return contactAd.get(key) ?? null;
+}
+
+export function dqReasonCountList(counts: Map<string, number>): DqReasonCount[] {
+  return [...counts.entries()]
+    .filter(([, count]) => count > 0)
+    .map(([slug, count]) => ({ slug, count }))
+    .sort((a, b) => b.count - a.count || a.slug.localeCompare(b.slug));
+}
+
+function mergeDqReasonCounts(target: Map<string, number>, counts: DqReasonCount[] | undefined): void {
+  for (const row of counts ?? []) {
+    target.set(row.slug, (target.get(row.slug) ?? 0) + row.count);
+  }
 }
 
 function ratio(numerator: number, denominator: number): number | null {
@@ -436,6 +495,7 @@ function accToRow(acc: Acc & { booked_converted?: number }): AdPerformanceRow {
   const unique_proposals = acc.proposalKeys.size;
   const unique_submissions = acc.submissionKeys.size;
   const unique_funded = acc.fundedKeys.size;
+  const unique_dqs = acc.dqKeys.size;
   const costs = costMetrics(
     acc.spend,
     acc.leads,
@@ -468,6 +528,9 @@ function accToRow(acc: Acc & { booked_converted?: number }): AdPerformanceRow {
     unique_proposals,
     unique_submissions,
     unique_funded,
+    unique_dqs,
+    dq_rate: pct(unique_dqs, acc.leads),
+    dq_reasons: dqReasonCountList(acc.dqReasonCounts),
     ...costs,
     booking_rate: pct(unique_booked, acc.qualified),
     qualified_rate: pct(acc.qualified, acc.leads),
@@ -503,6 +566,8 @@ type RollupAcc = {
   unique_proposals: number;
   unique_submissions: number;
   unique_funded: number;
+  unique_dqs: number;
+  dqReasonCounts: Map<string, number>;
   clients: Set<string>;
   has_meta: boolean;
 };
@@ -528,6 +593,8 @@ function rollupAccToRow(acc: RollupAcc): RolledUpAdPerformanceRow {
     proposalKeys: numberedSet(acc.unique_proposals),
     submissionKeys: numberedSet(acc.unique_submissions),
     fundedKeys: numberedSet(acc.unique_funded),
+    dqKeys: numberedSet(acc.unique_dqs),
+    dqReasonCounts: acc.dqReasonCounts,
     clients: acc.clients,
     has_meta: acc.has_meta,
   });
@@ -591,6 +658,8 @@ export function rollupAdPerformanceByLibrary(
       unique_proposals: 0,
       unique_submissions: 0,
       unique_funded: 0,
+      unique_dqs: 0,
+      dqReasonCounts: new Map<string, number>(),
       clients: new Set<string>(),
       has_meta: false,
     }));
@@ -613,6 +682,8 @@ export function rollupAdPerformanceByLibrary(
     acc.unique_proposals += row.unique_proposals;
     acc.unique_submissions += row.unique_submissions;
     acc.unique_funded += row.unique_funded;
+    acc.unique_dqs += row.unique_dqs;
+    mergeDqReasonCounts(acc.dqReasonCounts, row.dq_reasons);
     if (row.has_meta) acc.has_meta = true;
     for (const id of row.client_ids ?? []) acc.clients.add(id);
   }
@@ -744,6 +815,8 @@ type RawBucket = {
   proposalKeys: Set<string>;
   submissionKeys: Set<string>;
   fundedKeys: Set<string>;
+  dqKeys: Set<string>;
+  dqReasonCounts: Map<string, number>;
 };
 
 function blankBucket(): RawBucket {
@@ -764,6 +837,8 @@ function blankBucket(): RawBucket {
     proposalKeys: new Set(),
     submissionKeys: new Set(),
     fundedKeys: new Set(),
+    dqKeys: new Set(),
+    dqReasonCounts: new Map(),
   };
 }
 

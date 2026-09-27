@@ -18,6 +18,7 @@ import {
 import { buildCreativeIntel } from '@/lib/ad-creative-intel';
 import type { CreativeIntelReport } from '@/lib/ad-creative-lenses';
 import { eventPhone, normalizePhone } from '@/lib/contact-key';
+import { isClientLogFormRaw, parseDqReasonSlugs } from '@/lib/dq-reasons';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 import { tagsByLibraryId } from '@/lib/ad-tags-db';
 import type { AdTagRef } from '@/lib/ad-tags';
@@ -42,7 +43,42 @@ export const FUNNEL_EVENT_TYPES = [
 ] as const;
 
 export const EVENT_SELECT =
-  'client_id, event_type, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, is_qualified, is_hot, occurred_at';
+  'client_id, event_type, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, utm_content, is_qualified, is_hot, occurred_at';
+
+/** Manual DQ only — `raw` stays off the shared funnel select. */
+export const DQ_EVENT_SELECT =
+  'client_id, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, utm_content, occurred_at, raw';
+
+type ManualDqDbRow = {
+  client_id?: string | null;
+  ghl_contact_id?: string | null;
+  lead_phone?: string | null;
+  phone_number_used?: string | null;
+  lead_email?: string | null;
+  lead_name?: string | null;
+  ad_name?: string | null;
+  utm_content?: string | null;
+  occurred_at?: string | null;
+  raw?: unknown;
+};
+
+/** Form DQs only. Webhook disqualifications are a different process. */
+export function formManualDqEvent(row: ManualDqDbRow): AdEventRow | null {
+  if (!isClientLogFormRaw(row.raw)) return null;
+  return {
+    client_id: row.client_id,
+    event_type: 'manual_dq',
+    ghl_contact_id: row.ghl_contact_id,
+    lead_phone: row.lead_phone,
+    phone_number_used: row.phone_number_used,
+    lead_email: row.lead_email,
+    lead_name: row.lead_name,
+    ad_name: row.ad_name,
+    utm_content: row.utm_content,
+    occurred_at: row.occurred_at,
+    dq_reasons: parseDqReasonSlugs(row.raw),
+  };
+}
 
 export const META_SELECT = 'client_id, ad_name, insight_date, spend, impressions, clicks';
 
@@ -184,40 +220,54 @@ export async function loadMediaBuyerWindow(
         .from('events')
         .select(EVENT_SELECT)
         .in('event_type', [...FUNNEL_EVENT_TYPES]) as unknown as Scopeable;
+      let dqQuery: Scopeable = service
+        .from('events')
+        .select(DQ_EVENT_SELECT)
+        .eq('event_type', 'manual_dq') as unknown as Scopeable;
       let metaQuery: Scopeable = service
         .from('meta_ad_insights')
         .select(META_SELECT) as unknown as Scopeable;
 
       const clients = await resolveClientScope(service, scope.clientId);
       eventsQuery = applyClientScope(eventsQuery, clients);
+      dqQuery = applyClientScope(dqQuery, clients);
       metaQuery = applyClientScope(metaQuery, clients);
       eventsQuery = withDateRange(eventsQuery, 'occurred_at', scope.startDate, scope.endDate, true);
+      dqQuery = withDateRange(dqQuery, 'occurred_at', scope.startDate, scope.endDate, true);
       metaQuery = withDateRange(metaQuery, 'insight_date', scope.startDate, scope.endDate, false);
       eventsQuery = eventsQuery.limit(ROW_LIMIT);
+      dqQuery = dqQuery.limit(ROW_LIMIT);
       metaQuery = metaQuery.limit(ROW_LIMIT);
 
       const [
         { data: events, error: eventsError },
+        { data: dqRows, error: dqError },
         { data: meta, error: metaError },
         { data: library, error: libError },
         { data: aliases, error: aliasError },
       ] = await Promise.all([
         eventsQuery as unknown as QueryResult<AdEventRow>,
+        dqQuery as unknown as QueryResult<ManualDqDbRow>,
         metaQuery as unknown as QueryResult<AdMetaRow>,
         service.from('ad_library').select(LIBRARY_SELECT),
         service.from('ad_library_aliases').select('id, library_id, alias_name'),
       ]);
 
-      if (eventsError || metaError || libError || aliasError) {
+      if (eventsError || dqError || metaError || libError || aliasError) {
         return {
           error:
             eventsError?.message ??
+            dqError?.message ??
             metaError?.message ??
             libError?.message ??
             aliasError?.message ??
             'Failed to load media buyer window',
         };
       }
+
+      const manualDqs = ((dqRows ?? []) as ManualDqDbRow[])
+        .map(formManualDqEvent)
+        .filter((row): row is AdEventRow => row != null);
 
       const libraryRows = (library ?? []) as AdLibraryMeta[];
       const tagLookup = await tagsByLibraryId(
@@ -227,13 +277,15 @@ export async function loadMediaBuyerWindow(
 
       return {
         data: {
-          events: (events ?? []) as AdEventRow[],
+          events: [...((events ?? []) as AdEventRow[]), ...manualDqs],
           meta: (meta ?? []) as AdMetaRow[],
           library: libraryRows,
           aliases: (aliases ?? []) as AdLibraryAliasRow[],
           tagsById: tagLookup.data,
           truncated:
-            (events?.length ?? 0) >= ROW_LIMIT || (meta?.length ?? 0) >= ROW_LIMIT,
+            (events?.length ?? 0) >= ROW_LIMIT ||
+            (dqRows?.length ?? 0) >= ROW_LIMIT ||
+            (meta?.length ?? 0) >= ROW_LIMIT,
         },
       };
     } catch (e) {
@@ -352,32 +404,57 @@ export async function loadMediaBuyerDrilldownRows(
   metaQuery = withDateRange(metaQuery, 'insight_date', scope.startDate, scope.endDate, false);
   metaQuery = metaQuery.limit(ROW_LIMIT);
 
-  let namedEventsQuery: Scopeable = service
+  let namedByAdQuery: Scopeable = service
     .from('events')
     .select(EVENT_SELECT)
     .in('event_type', [...FUNNEL_EVENT_TYPES])
     .in('ad_name', names) as unknown as Scopeable;
-  namedEventsQuery = applyClientScope(namedEventsQuery, clients);
-  namedEventsQuery = withDateRange(
-    namedEventsQuery,
+  namedByAdQuery = applyClientScope(namedByAdQuery, clients);
+  namedByAdQuery = withDateRange(
+    namedByAdQuery,
     'occurred_at',
     scope.startDate,
     scope.endDate,
     true,
   );
-  namedEventsQuery = namedEventsQuery.limit(ROW_LIMIT);
+  namedByAdQuery = namedByAdQuery.limit(ROW_LIMIT);
 
-  const [{ data: meta, error: metaError }, { data: namedEvents, error: namedError }] =
-    await Promise.all([
-      metaQuery as unknown as QueryResult<AdMetaRow>,
-      namedEventsQuery as unknown as QueryResult<AdEventRow>,
-    ]);
+  let namedByUtmQuery: Scopeable = service
+    .from('events')
+    .select(EVENT_SELECT)
+    .in('event_type', [...FUNNEL_EVENT_TYPES])
+    .in('utm_content', names) as unknown as Scopeable;
+  namedByUtmQuery = applyClientScope(namedByUtmQuery, clients);
+  namedByUtmQuery = withDateRange(
+    namedByUtmQuery,
+    'occurred_at',
+    scope.startDate,
+    scope.endDate,
+    true,
+  );
+  namedByUtmQuery = namedByUtmQuery.limit(ROW_LIMIT);
 
-  if (metaError || namedError) {
-    return { error: metaError?.message ?? namedError?.message ?? 'Drilldown query failed' };
+  const [
+    { data: meta, error: metaError },
+    { data: namedByAd, error: namedAdError },
+    { data: namedByUtm, error: namedUtmError },
+  ] = await Promise.all([
+    metaQuery as unknown as QueryResult<AdMetaRow>,
+    namedByAdQuery as unknown as QueryResult<AdEventRow>,
+    namedByUtmQuery as unknown as QueryResult<AdEventRow>,
+  ]);
+
+  if (metaError || namedAdError || namedUtmError) {
+    return {
+      error:
+        metaError?.message ??
+        namedAdError?.message ??
+        namedUtmError?.message ??
+        'Drilldown query failed',
+    };
   }
 
-  const seedEvents = (namedEvents ?? []) as AdEventRow[];
+  const seedEvents = [...(namedByAd ?? []), ...(namedByUtm ?? [])] as AdEventRow[];
   const ghlIds: string[] = [];
   const rawPhones: string[] = [];
   const seenGhl = new Set<string>();
@@ -447,6 +524,44 @@ export async function loadMediaBuyerDrilldownRows(
     const { data, error } = await (q as unknown as QueryResult<AdEventRow>);
     if (error) return { error: error.message };
     for (const row of (data ?? []) as AdEventRow[]) remember(row);
+  }
+
+  // Form DQs for those contacts. Attribution uses the lead's ad, not the
+  // snapshot copied onto the DQ row, so this is not filtered by ad name.
+  const rememberDq = (rows: ManualDqDbRow[]) => {
+    for (const row of rows) {
+      const ev = formManualDqEvent(row);
+      if (ev) remember(ev);
+    }
+  };
+
+  for (const idChunk of chunk(ghlIds, IN_CHUNK)) {
+    let q: Scopeable = service
+      .from('events')
+      .select(DQ_EVENT_SELECT)
+      .eq('event_type', 'manual_dq')
+      .in('ghl_contact_id', idChunk) as unknown as Scopeable;
+    q = applyClientScope(q, clients);
+    q = withDateRange(q, 'occurred_at', scope.startDate, scope.endDate, true);
+    q = q.limit(ROW_LIMIT);
+    const { data, error } = await (q as unknown as QueryResult<ManualDqDbRow>);
+    if (error) return { error: error.message };
+    rememberDq((data ?? []) as ManualDqDbRow[]);
+  }
+
+  for (const phoneChunk of chunk(rawPhones, IN_CHUNK)) {
+    const list = phoneChunk.map((p) => `"${p.replace(/"/g, '')}"`).join(',');
+    let q: Scopeable = service
+      .from('events')
+      .select(DQ_EVENT_SELECT)
+      .eq('event_type', 'manual_dq')
+      .or(`lead_phone.in.(${list}),phone_number_used.in.(${list})`) as unknown as Scopeable;
+    q = applyClientScope(q, clients);
+    q = withDateRange(q, 'occurred_at', scope.startDate, scope.endDate, true);
+    q = q.limit(ROW_LIMIT);
+    const { data, error } = await (q as unknown as QueryResult<ManualDqDbRow>);
+    if (error) return { error: error.message };
+    rememberDq((data ?? []) as ManualDqDbRow[]);
   }
 
   const events = [...byStamp.values()];

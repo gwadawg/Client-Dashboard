@@ -268,6 +268,16 @@ function ActivityDetailPanel({
               </p>
             </div>
           )}
+          {row.ad_name && (
+            <div className="col-span-2">
+              <p className="text-xs uppercase tracking-wide" style={{ color: WAIZ.muted }}>
+                Ad
+              </p>
+              <p className="mt-1" style={{ color: WAIZ.ink }}>
+                {row.ad_name}
+              </p>
+            </div>
+          )}
         </div>
 
         {row.editable && (
@@ -464,6 +474,11 @@ export default function ClientLogActivity({ token, refreshKey = 0 }: Props) {
                           {row.lead_phone && (
                             <p className="text-xs mt-0.5" style={{ color: WAIZ.muted }}>
                               {row.lead_phone}
+                            </p>
+                          )}
+                          {row.stage === "disqualified" && row.ad_name && (
+                            <p className="text-xs mt-0.5" style={{ color: WAIZ.muted }}>
+                              {row.ad_name}
                             </p>
                           )}
                         </td>

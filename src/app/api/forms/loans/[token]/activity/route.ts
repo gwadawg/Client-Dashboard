@@ -11,7 +11,7 @@ import { createServiceClient } from '@/lib/supabase';
 const INVALID = 'This link isn’t valid. Ask your Waiz contact for a new one.';
 
 const EVENT_SELECT =
-  'id, event_type, ghl_contact_id, lead_name, lead_phone, occurred_at, dq_reason, raw';
+  'id, event_type, ghl_contact_id, lead_name, lead_phone, occurred_at, dq_reason, ad_name, utm_content, raw';
 
 export async function GET(
   req: Request,

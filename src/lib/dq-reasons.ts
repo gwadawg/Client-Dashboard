@@ -20,3 +20,26 @@ export function dqReasonLabel(slug: string): string {
 export function isDqReasonSlug(value: string): value is DqReasonSlug {
   return SLUG_SET.has(value);
 }
+
+/** Loan-officer form writes `raw.source = client_log_form` on `manual_dq`. */
+export function isClientLogFormRaw(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  return (raw as { source?: unknown }).source === 'client_log_form';
+}
+
+/** Slugs stored on `events.raw.dq_reasons` for a manual DQ. */
+export function parseDqReasonSlugs(raw: unknown): DqReasonSlug[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const reasons = (raw as { dq_reasons?: unknown }).dq_reasons;
+  if (!Array.isArray(reasons)) return [];
+  const out: DqReasonSlug[] = [];
+  const seen = new Set<string>();
+  for (const item of reasons) {
+    if (typeof item !== 'string') continue;
+    const slug = item.trim().toLowerCase();
+    if (!isDqReasonSlug(slug) || seen.has(slug)) continue;
+    seen.add(slug);
+    out.push(slug);
+  }
+  return out;
+}

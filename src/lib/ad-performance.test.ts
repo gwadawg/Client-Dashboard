@@ -5,6 +5,7 @@ import {
   aggregateAdPerformance,
   buildAdDrilldown,
   buildMultiAdDrilldown,
+  canonicalEventAdName,
   resolveAdGranularity,
   rollupAdPerformanceByLibrary,
   type AdEventRow,
@@ -40,6 +41,47 @@ describe('resolveAdGranularity', () => {
 
   it('uses week when the range is over 90 days', () => {
     assert.equal(resolveAdGranularity('2026-01-01', '2026-04-15'), 'week');
+  });
+});
+
+describe('canonicalEventAdName', () => {
+  it('prefers utm_content when it disagrees with ad_name', () => {
+    assert.equal(
+      canonicalEventAdName({
+        ad_name: 'dscr_navy-grid_nodocs_cashout_TOF',
+        utm_content: 'dscr_nodocs-cashout_st_v1a',
+      }),
+      'dscr_nodocs-cashout_st_v1a',
+    );
+  });
+
+  it('falls back to ad_name when utm_content is blank', () => {
+    assert.equal(
+      canonicalEventAdName({ ad_name: 'DSCR_SBS_MOF_Carwash', utm_content: null }),
+      'DSCR_SBS_MOF_Carwash',
+    );
+  });
+});
+
+describe('aggregateAdPerformance prefers utm_content on remapped leads', () => {
+  it('attributes the lead to utm_content, not the remapped ad_name', () => {
+    const rows = aggregateAdPerformance(
+      [
+        meta({ ad_name: 'dscr_nodocs-cashout_st_v1a', spend: 100 }),
+        meta({ ad_name: 'dscr_navy-grid_nodocs_cashout_TOF', spend: 50 }),
+      ],
+      [
+        evt({
+          event_type: 'lead',
+          ad_name: 'dscr_navy-grid_nodocs_cashout_TOF',
+          utm_content: 'dscr_nodocs-cashout_st_v1a',
+          is_qualified: true,
+        }),
+      ],
+    );
+    const byName = Object.fromEntries(rows.map((r) => [r.ad_name, r]));
+    assert.equal(byName['dscr_nodocs-cashout_st_v1a']?.leads, 1);
+    assert.equal(byName['dscr_navy-grid_nodocs_cashout_TOF']?.leads ?? 0, 0);
   });
 });
 
@@ -131,6 +173,58 @@ describe('aggregateAdPerformance unique funnel', () => {
     assert.equal(row.cp_proposal, 300);
     assert.equal(row.cp_submission, 600);
     assert.equal(row.cp_funded, 600);
+  });
+
+  it('attributes manual DQs to the lead ad and counts each reason once', () => {
+    const rows = aggregateAdPerformance(
+      [meta({ ad_name: 'Hook A', spend: 200 }), meta({ ad_name: 'Original', spend: 50 })],
+      [
+        evt({ event_type: 'lead', ghl_contact_id: 'a', ad_name: 'Hook A' }),
+        evt({
+          event_type: 'manual_dq',
+          ghl_contact_id: 'a',
+          ad_name: 'Remapped',
+          dq_reasons: ['fico', 'ltv'],
+        }),
+        evt({ event_type: 'lead', ghl_contact_id: 'b', ad_name: 'Hook A' }),
+        evt({
+          event_type: 'manual_dq',
+          ghl_contact_id: 'b',
+          ad_name: 'Somewhere Else',
+          dq_reasons: ['fico'],
+        }),
+        // Lead outside this window — the copied ad name must not create a row.
+        evt({
+          event_type: 'manual_dq',
+          ghl_contact_id: 'c',
+          ad_name: 'Hook A',
+          dq_reasons: ['seasoning'],
+        }),
+        evt({
+          event_type: 'lead',
+          ghl_contact_id: 'd',
+          ad_name: 'Remapped',
+          utm_content: 'Original',
+        }),
+        evt({
+          event_type: 'manual_dq',
+          ghl_contact_id: 'd',
+          ad_name: 'Remapped',
+          utm_content: 'Remapped',
+          dq_reasons: ['other'],
+        }),
+      ],
+    );
+    const byName = Object.fromEntries(rows.map((r) => [r.ad_name, r]));
+    assert.equal(byName['Hook A'].unique_dqs, 2);
+    assert.equal(byName['Hook A'].dq_rate, 100);
+    assert.deepEqual(byName['Hook A'].dq_reasons, [
+      { slug: 'fico', count: 2 },
+      { slug: 'ltv', count: 1 },
+    ]);
+    assert.equal(byName['Original'].unique_dqs, 1);
+    assert.deepEqual(byName['Original'].dq_reasons, [{ slug: 'other', count: 1 }]);
+    assert.equal(byName['Remapped'], undefined);
   });
 });
 

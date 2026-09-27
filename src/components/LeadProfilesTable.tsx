@@ -61,6 +61,8 @@ type LeadProfile = {
   has_proposal_made: boolean;
   has_submission_made: boolean;
   has_loan_funded: boolean;
+  has_manual_dq?: boolean;
+  dq_reason?: string | null;
   ghl_contact_id: string | null;
   ghl_location_id: string | null;
   counts: LeadCounts;
@@ -545,6 +547,7 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
             <option value="proposal_made">Has Proposal</option>
             <option value="submission_made">Has Submission</option>
             <option value="loan_funded">Has Funded Loan</option>
+            <option value="manual_dq">Disqualified</option>
           </optgroup>
         </select>
         <select
@@ -655,6 +658,11 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap font-medium" style={{ color: "#e2e8f0" }}>
                         {row.lead_name ?? "—"}
+                        {!isUnmappedView && row.dq_reason ? (
+                          <p className="text-[11px] font-normal mt-0.5 max-w-[16rem] truncate" style={{ color: "#fca5a5" }} title={row.dq_reason}>
+                            {row.dq_reason}
+                          </p>
+                        ) : null}
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1">
@@ -673,6 +681,7 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
                               <Flag on={row.has_proposal_made} label="Proposal" color="#38bdf8" />
                               <Flag on={row.has_submission_made} label="Submission" color="#f59e0b" />
                               <Flag on={row.has_loan_funded} label="Funded" color="#22c55e" />
+                              <Flag on={row.has_manual_dq === true} label="DQ" color="#f87171" />
                             </>
                           )}
                         </div>

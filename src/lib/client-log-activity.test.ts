@@ -234,6 +234,8 @@ describe('buildClientLogActivity', () => {
           lead_phone: '5557778888',
           occurred_at: '2026-08-18T12:00:00.000Z',
           dq_reason: 'ltv, fico',
+          ad_name: 'Remapped',
+          utm_content: 'DSCR_SBS_MOF_Carwash',
           raw: { source: 'client_log_form' },
         },
         {
@@ -254,6 +256,7 @@ describe('buildClientLogActivity', () => {
     assert.equal(result.summary.disqualified, 1);
     assert.equal(result.rows.length, 1);
     assert.equal(result.rows[0].stage, 'disqualified');
+    assert.equal(result.rows[0].ad_name, 'DSCR_SBS_MOF_Carwash');
   });
 
   it('excludes rows outside range', () => {
