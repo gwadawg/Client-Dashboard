@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getAuthContext, isAuthError, requirePermission, requireAnyPermission, requireClientRevenue } from '@/lib/api-auth';
+import { getAuthContext, isAuthError, requirePermission, requireAnyPermission } from '@/lib/api-auth';
 import { normalizeReportingType } from '@/lib/kpi-layouts';
-import { normalizeServiceProgram, serviceProgramApplies } from '@/lib/service-program';
+import { normalizeServiceProgram } from '@/lib/service-program';
 import { normalizeStatesLicensed } from '@/lib/us-states';
 import { canViewClientRevenue, redactClientMoneyFields } from '@/lib/client-revenue-access';
 import { findClientConflicts, formatClientConflictMessage } from '@/lib/client-duplicate-check';
@@ -13,7 +13,7 @@ import { normalizeClientLeadSource } from '@/lib/client-lead-source';
 import { ensureAccountGroupForNewClient } from '@/lib/client-account-groups';
 
 const DETAIL_FIELDS =
-  'id, name, is_live, reporting_type, service_program, sales_package, offer, share_token, created_at, lifecycle_status, mrr, daily_adspend, ads_paused, ads_paused_at, ads_paused_note, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, drive_folder_url, facebook_page_name, website, funnel_url, virtual_business_card_url, virtual_card_slug, landing_page_url, instagram_handle, ad_account_name, ad_account_url, thank_you_page_url, second_landing_page_url, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, clickup_task_id, ghl_location_id, account_group_id, engagement_kind, appointment_watch';
+  'id, name, is_live, reporting_type, service_program, sales_package, offer, share_token, created_at, lifecycle_status, mrr, daily_adspend, ads_paused, ads_paused_at, ads_paused_note, billing_type, billing_day, launch_date, date_signed, churned_at, contract_term_months, contract_end_date, performance_terms, email, billing_email, primary_contact, primary_contact_name, states_licensed, timezone, drive_folder_url, facebook_page_name, website, funnel_url, virtual_business_card_url, virtual_card_slug, landing_page_url, instagram_handle, ad_account_name, ad_account_url, thank_you_page_url, second_landing_page_url, kpi_benchmarks, kpi_benchmarks_updated_at, kpi_benchmarks_updated_by, kpi_benchmarks_note, onboarding_clickup_task_id, clickup_task_id, ghl_location_id, account_group_id, engagement_kind, appointment_watch';
 
 // GET is intentionally open to any authenticated user: the client list powers
 // the global client-filter dropdown on nearly every tab, so it is a shared
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
   const clientsRes = await ctx.service.from('clients').select(DETAIL_FIELDS).order('name');
   if (clientsRes.error) return NextResponse.json({ error: clientsRes.error.message }, { status: 500 });
 
-  let paidByClient = new Map<string, number>();
+  const paidByClient = new Map<string, number>();
   if (includeRevenue) {
     const paidRes = await ctx.service.from('client_billings').select('client_id, amount_paid');
     if (paidRes.error) return NextResponse.json({ error: paidRes.error.message }, { status: 500 });

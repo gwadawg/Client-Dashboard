@@ -138,6 +138,7 @@ type FileClient = {
   ad_account_url: string | null;
   thank_you_page_url: string | null;
   second_landing_page_url: string | null;
+  onboarding_clickup_task_id?: string | null;
   clickup_task_id?: string | null;
   created_at: string | null;
   churned_at: string | null;
@@ -459,11 +460,14 @@ export default function ClientFile({
             setCalls(d.calls ?? []);
           }
 
-          const clickupId = (d.client?.clickup_task_id as string | null | undefined)?.trim();
+          const clickupId = (
+            (d.client?.onboarding_clickup_task_id as string | null | undefined)?.trim() ||
+            (d.client?.clickup_task_id as string | null | undefined)?.trim()
+          );
           if (clickupId) {
             try {
               const csRes = await fetch(
-                `/api/cs-appointments?clickup_task_id=${encodeURIComponent(clickupId)}&history=1`,
+                `/api/cs-appointments?onboarding_clickup_task_id=${encodeURIComponent(clickupId)}&history=1`,
               );
               const csData = await csRes.json().catch(() => ({}));
               setCsAppointments(csRes.ok ? (csData.appointments ?? []) : []);
@@ -1073,7 +1077,7 @@ export default function ClientFile({
         ) : editing && client ? (
           <div className="px-6 py-5">
             <ClientFileEditForm
-              key={`${client.id}-${client.churned_at ?? ""}-${client.launch_date ?? ""}-${client.date_signed ?? ""}-${client.clickup_task_id ?? ""}-${client.billing_email ?? ""}-${client.offer ?? ""}-${client.ghl_location_id ?? ""}`}
+              key={`${client.id}-${client.churned_at ?? ""}-${client.launch_date ?? ""}-${client.date_signed ?? ""}-${client.onboarding_clickup_task_id ?? client.clickup_task_id ?? ""}-${client.billing_email ?? ""}-${client.offer ?? ""}-${client.ghl_location_id ?? ""}`}
               client={client}
               canViewRevenue={canViewRevenue}
               saving={savingProfile}
@@ -1577,15 +1581,15 @@ export default function ClientFile({
                   ) : null}
                 />
                 <Detail
-                  label="ClickUp task"
-                  value={client?.clickup_task_id ? (
+                  label="ClickUp onboarding task"
+                  value={(client?.onboarding_clickup_task_id || client?.clickup_task_id) ? (
                     <a
-                      href={`https://app.clickup.com/t/${client.clickup_task_id}`}
+                      href={`https://app.clickup.com/t/${client.onboarding_clickup_task_id || client.clickup_task_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sky-400 hover:underline"
                     >
-                      {client.clickup_task_id} ↗
+                      {client.onboarding_clickup_task_id || client.clickup_task_id} ↗
                     </a>
                   ) : null}
                 />
@@ -1818,11 +1822,11 @@ export default function ClientFile({
               <Section title="CS call history">
                 <p className="text-xs mb-3" style={{ color: "#64748b" }}>
                   Onboarding, launch, and check-in appointments from Client Success calendars
-                  {client?.clickup_task_id ? "" : " — add a ClickUp task ID to sync these"}.
+                  {(client?.onboarding_clickup_task_id || client?.clickup_task_id) ? "" : " — add a ClickUp onboarding task ID to sync these"}.
                 </p>
-                {!client?.clickup_task_id ? (
+                {!(client?.onboarding_clickup_task_id || client?.clickup_task_id) ? (
                   <p className="text-sm py-6 text-center" style={{ color: "#334155" }}>
-                    No ClickUp task ID on this client — CS appointments map by ClickUp ID.
+                    No ClickUp onboarding task ID on this client — CS appointments map by that task ID.
                   </p>
                 ) : csAppointments.length === 0 ? (
                   <p className="text-sm py-6 text-center" style={{ color: "#334155" }}>

@@ -22,7 +22,7 @@ import { normalizeClientLeadSource } from '@/lib/client-lead-source';
 import { ensureAccountGroupForNewClient } from '@/lib/client-account-groups';
 
 const ONBOARD_FIELDS =
-  'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, ghl_location_id, ghl_contact_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, offer_summary, daily_adspend, appointment_watch, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, created_at';
+  'id, name, is_live, reporting_type, lifecycle_status, clickup_task_id, onboarding_clickup_task_id, ghl_location_id, ghl_contact_id, email, billing_email, primary_contact_name, phone, mrr, billing_type, contract_term_months, date_signed, offer, offer_summary, daily_adspend, appointment_watch, nmls, brokerage_name, ghl_subaccount_url, source, slack_id, created_at';
 
 const SIGNING_BILLING_REF = 'onboard-signing';
 
@@ -241,7 +241,8 @@ export function parseOnboardPayload(body: OnboardPayload) {
     slack_id: trimString(body.slack_id) ?? trimString(body.slackId),
     lifecycle_status: lifecycleStatus,
     is_live: syncIsLiveWithLifecycle(lifecycleStatus),
-    clickup_task_id:
+    onboarding_clickup_task_id:
+      trimString(body.onboarding_clickup_task_id) ??
       trimString(body.clickup_task_id) ??
       trimString(body.clickup_id) ??
       trimString(body.clickup_client_id),
@@ -317,13 +318,20 @@ async function findExistingClient(
   service: SupabaseClient,
   parsed: ParsedOnboard,
 ): Promise<{ id: string } | null> {
-  if (parsed.clickup_task_id) {
+  if (parsed.onboarding_clickup_task_id) {
     const { data } = await service
       .from('clients')
       .select('id')
-      .eq('clickup_task_id', parsed.clickup_task_id)
+      .eq('onboarding_clickup_task_id', parsed.onboarding_clickup_task_id)
       .maybeSingle();
     if (data) return data;
+
+    const { data: legacy } = await service
+      .from('clients')
+      .select('id')
+      .eq('clickup_task_id', parsed.onboarding_clickup_task_id)
+      .maybeSingle();
+    if (legacy) return legacy;
   }
 
   if (parsed.ghl_contact_id) {
@@ -393,7 +401,7 @@ function buildClientRecord(parsed: ParsedOnboard): Record<string, unknown> {
     'billing_type', 'contract_term_months', 'date_signed', 'offer', 'service_program', 'sales_package', 'nmls',
     'brokerage_name', 'ghl_location_id', 'ghl_contact_id',
     'ghl_subaccount_url', 'source',
-    'clickup_task_id', 'slack_id',
+    'onboarding_clickup_task_id', 'slack_id',
     'offer_summary', 'daily_adspend',
   ];
   for (const k of optional) {
@@ -447,7 +455,7 @@ async function upsertOnboardNotes(
 }
 
 function shouldAutoCreateClickUpTask(parsed: ParsedOnboard): boolean {
-  if (parsed.clickup_task_id) return false;
+  if (parsed.onboarding_clickup_task_id) return false;
   const flag = process.env.CLICKUP_AUTO_CREATE_ON_ONBOARD?.trim().toLowerCase();
   if (flag === 'false' || flag === '0' || flag === 'no') return false;
   return true;
@@ -571,6 +579,7 @@ export async function onboardClient(
   body: OnboardPayload,
 ): Promise<{
   client: Record<string, unknown>;
+  onboarding_clickup_task_id: string | null;
   clickup_task_id: string | null;
   created: boolean;
   billing_id: string | null;
@@ -684,13 +693,14 @@ export async function onboardClient(
     created = true;
   }
 
-  let clickupTaskId = trimString(client.clickup_task_id);
+  let onboardingClickUpTaskId =
+    trimString(client.onboarding_clickup_task_id) ?? trimString(client.clickup_task_id);
 
-  if (!clickupTaskId && shouldAutoCreateClickUpTask(parsed)) {
+  if (!onboardingClickUpTaskId && shouldAutoCreateClickUpTask(parsed)) {
     const token = getClickUpToken();
     const listId = getClientHubListId();
     if (!token) {
-      throw new Error('CLICKUP_API_TOKEN must be set to create Client Hub tasks');
+      throw new Error('CLICKUP_API_TOKEN must be set to create ClickUp onboarding tasks');
     }
 
     const task = await createClickUpTask(listId, token, {
@@ -698,11 +708,11 @@ export async function onboardClient(
       description: buildClickUpDescription(parsed, String(client.id)),
       status: 'onboarding',
     });
-    clickupTaskId = task.id;
+    onboardingClickUpTaskId = task.id;
 
     const { data: updated, error: upErr } = await service
       .from('clients')
-      .update({ clickup_task_id: clickupTaskId })
+      .update({ onboarding_clickup_task_id: onboardingClickUpTaskId })
       .eq('id', client.id)
       .select(ONBOARD_FIELDS)
       .single();
@@ -752,5 +762,12 @@ export async function onboardClient(
     console.error('[onboard] acquisition link failed', e);
   }
 
-  return { client, clickup_task_id: clickupTaskId, created, billing_id, sales_call_id };
+  return {
+    client,
+    onboarding_clickup_task_id: onboardingClickUpTaskId,
+    clickup_task_id: onboardingClickUpTaskId,
+    created,
+    billing_id,
+    sales_call_id,
+  };
 }

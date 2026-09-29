@@ -100,7 +100,10 @@ export async function upsertCsAppointment(
     payload.ghl_appointment_id ?? payload.appointment_id ?? payload.external_id,
   );
   const clickupTaskId = str(
-    payload.clickup_task_id ?? payload.clickup_id ?? payload.clickup_client_id,
+    payload.onboarding_clickup_task_id ??
+      payload.clickup_task_id ??
+      payload.clickup_id ??
+      payload.clickup_client_id,
   );
   const calendarId = str(payload.calendar_id);
   const scheduledAt = parseCsScheduledAt(payload.scheduled_at ?? payload.start_time);
@@ -109,7 +112,7 @@ export async function upsertCsAppointment(
     return { ok: false, status: 400, error: 'ghl_appointment_id is required' };
   }
   if (!clickupTaskId) {
-    return { ok: false, status: 400, error: 'clickup_task_id is required' };
+    return { ok: false, status: 400, error: 'onboarding_clickup_task_id is required' };
   }
   if (!calendarId) {
     return { ok: false, status: 400, error: 'calendar_id is required' };
@@ -186,7 +189,7 @@ export async function upsertCsAppointment(
   const { data: client } = await service
     .from('clients')
     .select('id')
-    .eq('clickup_task_id', clickupTaskId)
+    .eq('onboarding_clickup_task_id', clickupTaskId)
     .maybeSingle();
 
   try {
@@ -348,18 +351,25 @@ async function enrichCsAppointments(
       .in('calendar_id', calendarIds),
     service
       .from('clients')
-      .select('id, name, clickup_task_id')
-      .in('clickup_task_id', clickupIds),
+      .select('id, name, onboarding_clickup_task_id, clickup_task_id')
+      .or(
+        `onboarding_clickup_task_id.in.(${clickupIds.join(',')}),clickup_task_id.in.(${clickupIds.join(',')})`,
+      ),
   ]);
 
   const typeByCal = new Map(
     (configs ?? []).map(c => [c.calendar_id as string, c.call_type as CsCallType]),
   );
   const clientByClickup = new Map(
-    (clients ?? []).map(c => [
-      c.clickup_task_id as string,
-      { id: c.id as string, name: c.name as string },
-    ]),
+    (clients ?? []).flatMap(c => {
+      const entries: [string, { id: string; name: string }][] = [];
+      const client = { id: c.id as string, name: c.name as string };
+      if (c.onboarding_clickup_task_id) {
+        entries.push([c.onboarding_clickup_task_id as string, client]);
+      }
+      if (c.clickup_task_id) entries.push([c.clickup_task_id as string, client]);
+      return entries;
+    }),
   );
 
   return rows.map(r => {

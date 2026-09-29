@@ -124,6 +124,8 @@ create table if not exists clients (
 
   -- Sync key for a future ClickUp → Supabase import
   clickup_task_id text,
+  -- ClickUp task used by the onboarding process
+  onboarding_clickup_task_id text,
 
   constraint clients_reporting_type_check check (reporting_type in ('RM', 'DSCR', 'CALL_CENTER', 'HE'))
 );
@@ -187,6 +189,7 @@ alter table clients add column if not exists zip_code               text;
 alter table clients add column if not exists timezone               text;
 alter table clients add column if not exists states_licensed        text[];
 alter table clients add column if not exists clickup_task_id        text;
+alter table clients add column if not exists onboarding_clickup_task_id text;
 alter table clients add column if not exists ghl_contact_id         text;
 alter table clients add column if not exists ghl_cs_location_id     text;
 alter table clients add column if not exists performance_terms      text;
@@ -225,6 +228,9 @@ end $$;
 
 create unique index if not exists clients_clickup_task_id_key
   on clients (clickup_task_id) where clickup_task_id is not null;
+
+create unique index if not exists clients_onboarding_clickup_task_id_key
+  on clients (onboarding_clickup_task_id) where onboarding_clickup_task_id is not null;
 
 create unique index if not exists clients_ghl_contact_id_key
   on clients (ghl_contact_id) where ghl_contact_id is not null;

@@ -26,6 +26,7 @@ export type EditableClient = {
   reporting_type: string | null;
   offer?: string | null;
   service_program?: string | null;
+  onboarding_clickup_task_id?: string | null;
   clickup_task_id?: string | null;
   source: string | null;
   website: string | null;
@@ -74,6 +75,7 @@ type Draft = {
   phone: string;
   reporting_type: ReportingType;
   service_program: ServiceProgram | "";
+  onboarding_clickup_task_id: string;
   clickup_task_id: string;
   ghl_location_id: string;
   phone_ghl: string;
@@ -131,6 +133,7 @@ export function clientToDraft(c: EditableClient): Draft {
     phone: c.phone ?? "",
     reporting_type: normalizeReportingType(c.reporting_type),
     service_program: normalizeServiceProgram(c.service_program) ?? "",
+    onboarding_clickup_task_id: c.onboarding_clickup_task_id ?? c.clickup_task_id ?? "",
     clickup_task_id: c.clickup_task_id ?? "",
     ghl_location_id: c.ghl_location_id ?? "",
     phone_ghl: c.phone_ghl ?? "",
@@ -183,7 +186,7 @@ export function draftToPatchBody(draft: Draft, canViewRevenue: boolean): Record<
     service_program: serviceProgramApplies(draft.reporting_type)
       ? draft.service_program || null
       : null,
-    clickup_task_id: draft.clickup_task_id.trim() || null,
+    onboarding_clickup_task_id: draft.onboarding_clickup_task_id.trim() || null,
     ghl_location_id: draft.ghl_location_id.trim() || null,
     phone_ghl: draft.phone_ghl.trim() || null,
     source: normalizeClientLeadSource(draft.source),
@@ -359,9 +362,9 @@ export default function ClientFileEditForm({
           <Field label="City" value={draft.city} onChange={v => patch("city", v)} />
           <Field label="State" value={draft.state} onChange={v => patch("state", v)} highlightEmpty />
           <Field
-            label="ClickUp task ID"
-            value={draft.clickup_task_id}
-            onChange={v => patch("clickup_task_id", v)}
+            label="ClickUp onboarding task ID"
+            value={draft.onboarding_clickup_task_id}
+            onChange={v => patch("onboarding_clickup_task_id", v)}
             placeholder="e.g. 86abc123"
           />
           <Field

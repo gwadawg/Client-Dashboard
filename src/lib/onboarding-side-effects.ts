@@ -35,6 +35,7 @@ import { timezoneLabel } from '@/lib/us-timezones';
 export type OnboardingSideEffectClient = {
   id: string;
   name: string;
+  onboarding_clickup_task_id?: string | null;
   clickup_task_id: string | null;
   ghl_contact_id: string | null;
 };
@@ -153,6 +154,7 @@ function fieldMapValues(input: OnboardingFormInput): Record<string, string> {
     .join(', ');
 
   return {
+    ob_form: 'Filled',
     email: input.email,
     phone: input.phone,
     nmls: input.nmls,
@@ -205,9 +207,14 @@ async function syncClickUpOnboardingComplete(
   client: OnboardingSideEffectClient,
   input: OnboardingFormInput,
 ): Promise<boolean> {
-  const taskId = client.clickup_task_id?.trim();
+  const taskId =
+    client.onboarding_clickup_task_id?.trim() ??
+    client.clickup_task_id?.trim();
   if (!taskId) {
-    console.warn('[onboarding-side-effects] skip ClickUp — no clickup_task_id on client', client.id);
+    console.warn(
+      '[onboarding-side-effects] skip ClickUp — no onboarding_clickup_task_id on client',
+      client.id,
+    );
     return false;
   }
 
@@ -311,7 +318,10 @@ export async function runOnboardingSideEffects(
       primary_contact_name: input.legal_business_name || client.name,
       has_ghl_contact: !!client.ghl_contact_id?.trim(),
       ghl_tagged: ghlTagged,
-      has_clickup_task: !!client.clickup_task_id?.trim(),
+      has_clickup_task: !!(
+        client.onboarding_clickup_task_id?.trim() ??
+        client.clickup_task_id?.trim()
+      ),
       clickup_updated: clickupUpdated,
     });
     await notifyOpsSlack(service, text);

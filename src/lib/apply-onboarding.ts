@@ -21,7 +21,7 @@ import { runOnboardingSideEffects, runOnboardingUnmappedNotification } from '@/l
 import { ensureAccountGroupForNewClient } from '@/lib/client-account-groups';
 
 const CLIENT_FIELDS =
-  'id, name, lifecycle_status, email, phone, primary_contact_name, slack_id, clickup_task_id, ghl_contact_id';
+  'id, name, lifecycle_status, email, phone, primary_contact_name, slack_id, onboarding_clickup_task_id, clickup_task_id, ghl_contact_id';
 
 async function saveOnboardingOverflowNote(
   service: SupabaseClient,
@@ -118,6 +118,7 @@ export async function applyOnboardingSubmission(
     {
       id: updated.id,
       name: updated.name,
+      onboarding_clickup_task_id: updated.onboarding_clickup_task_id ?? null,
       clickup_task_id: updated.clickup_task_id ?? null,
       ghl_contact_id: updated.ghl_contact_id ?? null,
     },
@@ -193,6 +194,7 @@ export async function applyPendingOnboardingToClient(
       {
         id: clientId,
         name: client.name,
+        onboarding_clickup_task_id: client.onboarding_clickup_task_id ?? null,
         clickup_task_id: client.clickup_task_id ?? null,
         ghl_contact_id: client.ghl_contact_id ?? null,
       },

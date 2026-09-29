@@ -6,7 +6,7 @@ import { replayPendingForClientId } from '@/lib/pending-events';
 import { createServiceClient } from '@/lib/supabase';
 
 // POST /api/admin/onboard — secret-guarded; called by Make.com after GHL New Client Form.
-// Upserts the client in Supabase, creates a ClickUp Client Hub task, returns stable IDs.
+// Upserts the client in Supabase, creates/links a ClickUp onboarding task, returns stable IDs.
 export async function POST(req: Request) {
   if (!validateWebhookSecret(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -21,7 +21,14 @@ export async function POST(req: Request) {
 
   try {
     const service = createServiceClient();
-    const { client, clickup_task_id, created, billing_id, sales_call_id } = await onboardClient(service, body);
+    const {
+      client,
+      onboarding_clickup_task_id,
+      clickup_task_id,
+      created,
+      billing_id,
+      sales_call_id,
+    } = await onboardClient(service, body);
 
     let pending_replay = { replayed: 0, skipped: 0, failed: 0, errors: [] as string[] };
     try {
@@ -33,8 +40,11 @@ export async function POST(req: Request) {
     return NextResponse.json({
       client_id: client.id,
       client,
+      onboarding_clickup_task_id,
       clickup_task_id,
-      clickup_task_url: clickup_task_id ? clickUpTaskUrl(clickup_task_id) : null,
+      clickup_task_url: onboarding_clickup_task_id
+        ? clickUpTaskUrl(onboarding_clickup_task_id)
+        : null,
       billing_id,
       sales_call_id,
       created,

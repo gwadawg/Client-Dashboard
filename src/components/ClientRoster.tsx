@@ -100,6 +100,7 @@ type Client = {
   kpi_benchmarks_updated_at?: string | null;
   kpi_benchmarks_updated_by?: string | null;
   kpi_benchmarks_note?: string | null;
+  onboarding_clickup_task_id?: string | null;
   clickup_task_id?: string | null;
   ghl_location_id?: string | null;
   account_group_id?: string | null;
@@ -543,6 +544,7 @@ function clientMatchesQuery(c: Client, q: string): boolean {
     c.primary_contact_name,
     c.primary_contact,
     c.account_display_name,
+    c.onboarding_clickup_task_id,
     c.clickup_task_id,
     ...(c.states_licensed ?? []),
   ]
@@ -633,12 +635,16 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
 
   async function attachNextCsCalls(loaded: Client[]): Promise<Client[]> {
     const clickupIds = [
-      ...new Set(loaded.map(c => c.clickup_task_id).filter((id): id is string => !!id)),
+      ...new Set(
+        loaded
+          .map(c => c.onboarding_clickup_task_id || c.clickup_task_id)
+          .filter((id): id is string => !!id),
+      ),
     ];
     if (clickupIds.length === 0) return loaded;
     try {
       const csRes = await fetch(
-        `/api/cs-appointments?scope=next_by_clickup&clickup_task_ids=${encodeURIComponent(clickupIds.join(","))}`,
+        `/api/cs-appointments?scope=next_by_clickup&onboarding_clickup_task_ids=${encodeURIComponent(clickupIds.join(","))}`,
       );
       const csData = await csRes.json().catch(() => ({}));
       const nextMap = (csData.next_by_clickup ?? {}) as Record<
@@ -647,7 +653,9 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
       >;
       return loaded.map(c => ({
         ...c,
-        next_cs_call: c.clickup_task_id ? nextMap[c.clickup_task_id] ?? null : null,
+        next_cs_call: (c.onboarding_clickup_task_id || c.clickup_task_id)
+          ? nextMap[c.onboarding_clickup_task_id || c.clickup_task_id || ""] ?? null
+          : null,
       }));
     } catch {
       return loaded;
@@ -1882,9 +1890,9 @@ function ClientRow({
             >
               {benchmarksOpen ? "Close bands" : stale ? "KPI bands ⚠" : hasOverrides ? "KPI bands ●" : "KPI bands"}
             </ActionButton>
-            {c.clickup_task_id && (
+            {(c.onboarding_clickup_task_id || c.clickup_task_id) && (
               <a
-                href={`https://app.clickup.com/t/${c.clickup_task_id}`}
+                href={`https://app.clickup.com/t/${c.onboarding_clickup_task_id || c.clickup_task_id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs font-semibold transition-colors hover:underline"

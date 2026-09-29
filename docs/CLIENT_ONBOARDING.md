@@ -2,6 +2,12 @@
 
 Mr. Waiz (Supabase `clients` table) is the **source of truth** for client data. GHL handles the closer New Client form and outbound comms. Make.com orchestrates Slack, emails, and ClickUp **tasks only** (no field mirroring to ClickUp).
 
+Onboarding writes target the ClickUp onboarding task, not the retired
+Client Hub task. Store that pointer explicitly on the client record as
+`clients.onboarding_clickup_task_id`. Keep `clients.clickup_task_id` only
+as legacy Client Hub history unless a later migration deliberately
+renames it. New onboarding code must not write `clickup_task_id`.
+
 ## Flow overview
 
 | Step | Who | Where | Mr. Waiz effect |
@@ -18,9 +24,9 @@ Mr. Waiz (Supabase `clients` table) is the **source of truth** for client data. 
 ## 1. New Client (GHL + Make)
 
 1. Closer submits **GHL New Client Form** after payment.
-2. **Make.com** creates ClickUp Client Hub task, then Slack channel.
+2. **Make.com** creates ClickUp onboarding task, then Slack channel.
 3. **Make.com** calls `POST /api/admin/onboard` **last** — single write with contact fields + both IDs.
-4. Mr. Waiz upserts client (`lifecycle_status: new_account`); links `clickup_task_id` and `slack_id` (no duplicate ClickUp task when ID is sent).
+4. Mr. Waiz upserts client (`lifecycle_status: new_account`); links `onboarding_clickup_task_id` and `slack_id` (no duplicate ClickUp task when ID is sent).
 
 Blueprint: [`make-blueprints/ccm-new-client-onboard.blueprint.json`](../make-blueprints/ccm-new-client-onboard.blueprint.json)  
 Make SOP: [`make-blueprints/MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLIENT.md)
@@ -34,7 +40,7 @@ Make SOP: [`make-blueprints/MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLI
 | Email | `email` | `email`, `billing_email` |
 | Phone | `phone` | `phone` |
 | Date signed | `date_signed` | `date_signed` |
-| ClickUp task id | `clickup_task_id` | `clickup_task_id` |
+| ClickUp onboarding task id | `onboarding_clickup_task_id` | `onboarding_clickup_task_id`; required for all onboarding ClickUp writes |
 | Slack channel id | `slack_id` | `slack_id` |
 | GHL contact id (CS) | `ghl_contact_id` | `ghl_contact_id` |
 | **Offer Type** (RM · DSCR · HE) | `reporting_type` | `reporting_type` + `offer` (HE → `CALL_CENTER`) |
@@ -55,7 +61,7 @@ Make SOP: [`make-blueprints/MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLI
   "email": "{{1.email}}",
   "phone": "{{1.phone}}",
   "date_signed": "{{1.date_signed}}",
-  "clickup_task_id": "{{2.id}}",
+  "onboarding_clickup_task_id": "{{2.id}}",
   "slack_id": "{{3.id}}",
   "ghl_contact_id": "{{1.contact_id}}",
   "reporting_type": "{{1.offer_type}}",
@@ -73,7 +79,7 @@ Do **not** send GHL sub-account name at sign-up — kick-off sets `clients.name`
 
 **Retire in Make:** ClickUp custom-field updates that mirror client data (tasks/status only). See [`MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLIENT.md).
 
-**Optional env:** `CLICKUP_AUTO_CREATE_ON_ONBOARD=false` when Make always sends `clickup_task_id`.
+**Optional env:** `CLICKUP_AUTO_CREATE_ON_ONBOARD=false` when Make always sends `onboarding_clickup_task_id`.
 
 ## 2. Client onboarding form
 
@@ -110,7 +116,7 @@ Primary onboarding stays on the universal `/onboard` link. For additional users 
 When a matched client submits `/onboard`, Mr. Waiz:
 
 1. **GHL** — updates the CS contact (`ghl_contact_id`) with OB fields for subaccount/user setup, then adds tag `OB Form Filled` (triggers GHL automations / emails).
-2. **ClickUp** — posts a formatted comment on `clickup_task_id` with all OB answers. Optionally updates task status (`CLICKUP_OB_TASK_STATUS`) and custom fields (`CLICKUP_OB_FIELD_MAP` JSON).
+2. **ClickUp** — posts a formatted comment on `onboarding_clickup_task_id` with all OB answers. Optionally updates task status (`CLICKUP_OB_TASK_STATUS`) and custom fields (`CLICKUP_OB_FIELD_MAP` JSON).
 
 **GHL CS contact fields written (partial update — does not clear unrelated fields; does not overwrite name / email / phone):**
 
@@ -128,13 +134,16 @@ When a matched client submits `/onboard`, Mr. Waiz:
 
 Unmapped submissions skip GHL until linked in **Unmapped onboarding forms**.
 
+**Create client GHL subaccount (Make):** after OB fields are on the CS contact, fire the CS→Make webhook to create the location from the DSCR / RM snapshot and invite the primary user. See [`make-blueprints/MAKE_GHL_SUBACCOUNT.md`](../make-blueprints/MAKE_GHL_SUBACCOUNT.md).
+
+
 **Required env (Railway):**
 
 | Variable | Purpose |
 |----------|---------|
 | `GHL_CS_API_TOKEN` or `GHL_API_TOKEN` | Private Integration Token with contacts write / tags |
 | `GHL_CS_LOCATION_ID` | Waiz CS location — same for all clients (`ShWJuggoS02PZidEL4HK`) |
-| `CLICKUP_API_TOKEN` | Already used elsewhere |
+| `CLICKUP_API_TOKEN` | Required in Railway for onboarding ClickUp comments, custom-field writes, and future replay actions |
 
 **Optional env:**
 
@@ -142,9 +151,77 @@ Unmapped submissions skip GHL until linked in **Unmapped onboarding forms**.
 |----------|---------|
 | `GHL_CS_OB_FIELD_MAP` | JSON overrides for custom field IDs (defaults baked in for CS location) |
 | `CLICKUP_OB_TASK_STATUS` | ClickUp status name after OB submit (e.g. `ob form received`) |
-| `CLICKUP_OB_FIELD_MAP` | JSON map of field keys → ClickUp custom field UUIDs |
+| `CLICKUP_OB_FIELD_MAP` | JSON map of field keys → typed ClickUp field config; legacy `key: "field_uuid"` still works for text fields |
 
 Step 1 must store `ghl_contact_id` on the client (see Make payload above). Without it, GHL tag + field sync are skipped. CS location is global via `GHL_CS_LOCATION_ID` on Railway — not stored per client.
+
+Step 1 must also store `onboarding_clickup_task_id` on the client. Without
+it, onboarding comments, custom-field writes, calendar joins, and replay
+actions do not have a task target.
+
+### ClickUp write policy
+
+ClickUp custom fields are for operational facts only — values the board
+uses for routing, filtering, or automations. Full form answers stay in
+`client_form_submissions.responses` and are posted to the ClickUp task as
+comments when helpful.
+
+Do not mirror large form-answer sets such as biography, address, licensed
+states, brokerage notes, PM brief, launch checklist details, or transcripts
+into ClickUp custom fields unless that value is needed for a ClickUp
+automation or saved view.
+
+Planned fact fields:
+
+| Source | ClickUp fields |
+|--------|----------------|
+| New Client | `Mr. Waiz`, `Offer`, `Deliverable`, initial `OB Stage`, `OB Form`, `OB Call` |
+| GHL CS appointment sync | `OB Call = Booked`, `OB Call Date` |
+| Onboarding Form | `OB Form = Filled` |
+| Kickoff Form | `Kickoff Form = Submitted`, `Launch Call Date` when known |
+| Tech QA Form | `Tech QA = Complete` |
+| Marketing QA Form | `Marketing QA = Complete` |
+| Launch Form | `Launch Form = Submitted` |
+
+Use `CLICKUP_OB_FIELD_MAP` for live ClickUp field IDs and dropdown option
+UUIDs. Keep IDs in Railway, not hardcoded in code.
+
+### Phase 1 implementation packet
+
+Implemented in code on 2026-09-29:
+
+1. Add `clients.onboarding_clickup_task_id` to the Supabase schema and a
+   partial unique index for non-null values.
+2. Update `src/lib/onboard-client.ts` to parse
+   `onboarding_clickup_task_id`, match existing clients by it, store it,
+   return it, and use it for ClickUp auto-create fallback. During
+   migration only, a read fallback to `clickup_task_id` is acceptable for
+   old rows; new writes go only to `onboarding_clickup_task_id`.
+3. Update `src/lib/onboarding-side-effects.ts` so comments, custom-field
+   writes, and replay actions target `onboarding_clickup_task_id`.
+4. Update `src/lib/cs-appointments.ts` to accept
+   `onboarding_clickup_task_id` from Make/GHL and join clients on
+   `clients.onboarding_clickup_task_id`.
+5. Update Client File / Client Roster UI labels from generic “ClickUp
+   task” to “ClickUp onboarding task” wherever the onboarding pointer is
+   shown or edited.
+6. Support typed `CLICKUP_OB_FIELD_MAP` entries for dropdowns, dates,
+   labels, numbers and text fields.
+
+Still required before production proof:
+
+- Run `supabase/migrations/add_onboarding_clickup_task_id.sql`.
+- Add `CLICKUP_API_TOKEN` to Railway.
+- Set `CLICKUP_CLIENT_HUB_LIST_ID` to the onboarding list ID in Railway.
+- Export live onboarding list field IDs and option UUIDs, then populate
+  `CLICKUP_OB_FIELD_MAP`. Example: `{ "ob_form": { "id": "field_uuid",
+  "type": "dropdown", "options": { "Filled": "option_uuid" } } }`.
+- Update/import Make scenarios so they send `onboarding_clickup_task_id`.
+
+Proof test: use a test onboarding task, have Mr. Waiz set one safe
+ClickUp fact field through the API, confirm the ClickUp automation fires,
+then submit or replay one onboarding form and confirm the comment lands on
+the same task.
 
 ### Storage
 
@@ -330,7 +407,7 @@ Roster shows progress strip: Sign | OB | KO | Kit | Live. Launch Kit rows in Cli
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ADMIN_WEBHOOK_SECRET` | Yes | Onboard + admin integration routes |
-| `CLICKUP_API_TOKEN` | If auto-creating Hub tasks | When `clickup_task_id` not sent |
+| `CLICKUP_API_TOKEN` | Yes for onboarding ClickUp writes | Comments, custom-field writes, replay actions, and task creation fallback |
 | `MAKE_ONBOARDING_COMPLETE_WEBHOOK_URL` | No | GHL confirmation email trigger |
 | `MAKE_LAUNCH_COMPLETE_WEBHOOK_URL` | No | Launch go-live fallback when Slack unavailable |
 | `SLACK_OPS_CHANNEL_SLUG` | No | Team channel for launch audit + Launch Kit notices (default `ops_alerts`) |

@@ -19,9 +19,9 @@ function startOfUtcDay(ymd: string): string {
 /**
  * GET /api/cs-appointments
  *   ?scope=upcoming          — next 14 days (Ops / Roster)
- *   ?scope=next_by_clickup&clickup_task_ids=a,b,c — next scheduled per ClickUp ID
+ *   ?scope=next_by_clickup&clickup_task_ids=a,b,c — next scheduled per ClickUp onboarding task ID
  *   ?from=&to=               — range for Calendars view (YMD or ISO)
- *   ?clickup_task_id=X       — appointments for one client (Client File)
+ *   ?onboarding_clickup_task_id=X or ?clickup_task_id=X — appointments for one client (Client File)
  */
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -29,8 +29,14 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const scope = url.searchParams.get('scope');
-  const clickupTaskId = url.searchParams.get('clickup_task_id')?.trim() || null;
-  const clickupIdsRaw = url.searchParams.get('clickup_task_ids')?.trim() || '';
+  const clickupTaskId =
+    url.searchParams.get('onboarding_clickup_task_id')?.trim() ||
+    url.searchParams.get('clickup_task_id')?.trim() ||
+    null;
+  const clickupIdsRaw =
+    url.searchParams.get('onboarding_clickup_task_ids')?.trim() ||
+    url.searchParams.get('clickup_task_ids')?.trim() ||
+    '';
   const fromParam = url.searchParams.get('from')?.trim() || '';
   const toParam = url.searchParams.get('to')?.trim() || '';
 
@@ -74,7 +80,7 @@ export async function GET(req: Request) {
     return NextResponse.json(
       {
         error:
-          'Provide scope=upcoming, scope=next_by_clickup&clickup_task_ids=, from=&to=, or clickup_task_id=',
+          'Provide scope=upcoming, scope=next_by_clickup&onboarding_clickup_task_ids=, from=&to=, or onboarding_clickup_task_id=',
       },
       { status: 400 },
     );

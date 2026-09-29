@@ -93,39 +93,128 @@ export async function updateClickUpTask(
 
 export async function setClickUpCustomField(
   taskId: string,
-  fieldId: string,
+  field: string | ClickUpFieldConfig,
   token: string,
-  value: string | number,
+  value: unknown,
 ): Promise<void> {
+  const config = typeof field === 'string' ? { id: field, type: 'text' as const } : field;
   const res = await fetch(
-    `${CLICKUP_API}/task/${encodeURIComponent(taskId)}/field/${encodeURIComponent(fieldId)}`,
+    `${CLICKUP_API}/task/${encodeURIComponent(taskId)}/field/${encodeURIComponent(config.id)}`,
     {
       method: 'POST',
       headers: { Authorization: token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value }),
+      body: JSON.stringify(buildClickUpCustomFieldPayload(config, value)),
     },
   );
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`ClickUp custom field ${fieldId} ${res.status}: ${text}`);
+    throw new Error(`ClickUp custom field ${config.id} ${res.status}: ${text}`);
   }
 }
 
-/** Parse CLICKUP_OB_FIELD_MAP JSON: { "nmls": "field_uuid", ... } */
-export function parseClickUpObFieldMap(): Record<string, string> {
+export type ClickUpCustomFieldType =
+  | 'text'
+  | 'url'
+  | 'email'
+  | 'phone'
+  | 'number'
+  | 'dropdown'
+  | 'date'
+  | 'labels';
+
+export type ClickUpFieldConfig = {
+  id: string;
+  type: ClickUpCustomFieldType;
+  /** Dropdown/label display value → ClickUp option UUID. */
+  options?: Record<string, string>;
+};
+
+function lookupClickUpOption(config: ClickUpFieldConfig, raw: unknown): string {
+  const value = String(raw ?? '').trim();
+  const option = config.options?.[value] ?? config.options?.[value.toLowerCase()];
+  return option ?? value;
+}
+
+function buildClickUpCustomFieldPayload(
+  config: ClickUpFieldConfig,
+  raw: unknown,
+): Record<string, unknown> {
+  if (config.type === 'date') {
+    const date =
+      typeof raw === 'number'
+        ? raw
+        : raw instanceof Date
+          ? raw.getTime()
+          : Date.parse(String(raw ?? ''));
+    return { value: date, value_options: { time: true } };
+  }
+
+  if (config.type === 'dropdown') {
+    return { value: lookupClickUpOption(config, raw) };
+  }
+
+  if (config.type === 'labels') {
+    const values = Array.isArray(raw) ? raw : [raw];
+    return {
+      value: values
+        .map(v => lookupClickUpOption(config, v))
+        .filter(Boolean),
+    };
+  }
+
+  if (config.type === 'number') {
+    return { value: typeof raw === 'number' ? raw : Number(String(raw ?? '').trim()) };
+  }
+
+  return { value: String(raw ?? '') };
+}
+
+/** Parse CLICKUP_OB_FIELD_MAP JSON.
+ *
+ * Legacy shape is still accepted:
+ * { "nmls": "field_uuid" }
+ *
+ * Preferred typed shape:
+ * { "ob_form": { "id": "field_uuid", "type": "dropdown", "options": { "Filled": "option_uuid" } } }
+ */
+export function parseClickUpObFieldMap(): Record<string, ClickUpFieldConfig> {
   const raw = process.env.CLICKUP_OB_FIELD_MAP?.trim();
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const out: Record<string, string> = {};
+    const out: Record<string, ClickUpFieldConfig> = {};
     for (const [k, v] of Object.entries(parsed)) {
-      if (typeof v === 'string' && v.trim()) out[k] = v.trim();
+      if (typeof v === 'string' && v.trim()) {
+        out[k] = { id: v.trim(), type: 'text' };
+      } else if (v && typeof v === 'object' && !Array.isArray(v)) {
+        const cfg = v as Record<string, unknown>;
+        const id = typeof cfg.id === 'string' ? cfg.id.trim() : '';
+        const type = typeof cfg.type === 'string' ? cfg.type.trim() : 'text';
+        const options =
+          cfg.options && typeof cfg.options === 'object' && !Array.isArray(cfg.options)
+            ? Object.fromEntries(
+                Object.entries(cfg.options as Record<string, unknown>)
+                  .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+              )
+            : undefined;
+        if (id) {
+          out[k] = {
+            id,
+            type: isClickUpCustomFieldType(type) ? type : 'text',
+            ...(options ? { options } : {}),
+          };
+        }
+      }
     }
     return out;
   } catch {
     console.error('[clickup] invalid CLICKUP_OB_FIELD_MAP JSON');
     return {};
   }
+}
+
+function isClickUpCustomFieldType(v: string): v is ClickUpCustomFieldType {
+  return ['text', 'url', 'email', 'phone', 'number', 'dropdown', 'date', 'labels'].includes(v);
 }
 
 export function fmtMoney(n: number | null | undefined): string {
