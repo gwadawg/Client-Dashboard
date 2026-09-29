@@ -114,7 +114,7 @@ export async function applyOnboardingSubmission(
     applied_patch: patch,
   });
 
-  void runOnboardingSideEffects(
+  await runOnboardingSideEffects(
     {
       id: updated.id,
       name: updated.name,
@@ -190,7 +190,7 @@ export async function applyPendingOnboardingToClient(
     .single();
 
   if (client) {
-    void runOnboardingSideEffects(
+    await runOnboardingSideEffects(
       {
         id: clientId,
         name: client.name,
