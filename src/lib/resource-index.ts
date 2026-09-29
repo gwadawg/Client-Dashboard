@@ -16,7 +16,7 @@ import { rowToDocMeta, type LibraryDocumentRow } from "@/lib/library-processor";
 
 export type LibSection = "playbooks" | "forms" | "links";
 
-export type LinkCategory = "form" | "sop" | "document" | "template" | "other";
+export type LinkCategory = "form" | "sop" | "document" | "template" | "client_playbook" | "other";
 
 export type LinkResource = {
   id: string;

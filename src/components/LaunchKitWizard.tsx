@@ -136,6 +136,7 @@ export default function LaunchKitWizard({ clientId, fallbackName, onClose, onGen
             const title = typeof row.title === "string" ? row.title : "";
             const url = typeof row.url === "string" ? row.url : "";
             if (!id || !title || !url) return null;
+            if (row.category !== "client_playbook") return null;
             const description = typeof row.description === "string" ? row.description : "";
             return {
               id,
@@ -143,7 +144,7 @@ export default function LaunchKitWizard({ clientId, fallbackName, onClose, onGen
               title,
               description,
               url: absoluteUrl(url),
-              label: `Link: ${title}`,
+              label: `Client playbook: ${title}`,
             };
           }),
           ...libraryDocs.map((row: Record<string, unknown>): ResourceOption | null => {
@@ -757,7 +758,7 @@ function ResourcesStep({
               className="w-full px-3 py-2 rounded-lg text-sm outline-none"
               style={fieldStyle}
             >
-              <option value="">{loadingOptions ? "Loading resource library…" : options.length ? "Add from resource library…" : "No library resources loaded"}</option>
+              <option value="">{loadingOptions ? "Loading client playbooks…" : options.length ? "Add a client playbook…" : "No client playbooks loaded"}</option>
               {options.map(option => (
                 <option key={`${option.source}:${option.id}`} value={`${option.source}:${option.id}`}>
                   {option.label}

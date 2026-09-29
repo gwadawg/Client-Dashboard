@@ -683,7 +683,7 @@ create table if not exists resources (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
   constraint resources_category_check check (
-    category in ('form', 'sop', 'document', 'template', 'other')
+    category in ('form', 'sop', 'document', 'template', 'client_playbook', 'other')
   )
 );
 

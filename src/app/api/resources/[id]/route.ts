@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireManageUsers } from '@/lib/api-auth';
 
-const VALID_CATEGORY = ['form', 'sop', 'document', 'template', 'other'] as const;
+const VALID_CATEGORY = ['form', 'sop', 'document', 'template', 'client_playbook', 'other'] as const;
 
 function cleanString(v: unknown): string | null {
   if (typeof v !== 'string') return null;

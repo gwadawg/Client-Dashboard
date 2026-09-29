@@ -48,10 +48,11 @@ const CATEGORY_META: Record<Category, { label: string; color: string; tint: stri
   sop: { label: "SOP", color: "#34d399", tint: "rgba(52,211,153,0.12)" },
   document: { label: "Document", color: "#f59e0b", tint: "rgba(245,158,11,0.12)" },
   template: { label: "Template", color: "#c084fc", tint: "rgba(192,132,252,0.12)" },
+  client_playbook: { label: "Client playbook", color: "#fb7185", tint: "rgba(251,113,133,0.12)" },
   other: { label: "Other", color: "#94a3b8", tint: "rgba(148,163,184,0.12)" },
 };
 
-const CATEGORY_ORDER: Category[] = ["form", "sop", "document", "template", "other"];
+const CATEGORY_ORDER: Category[] = ["client_playbook", "form", "sop", "document", "template", "other"];
 const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 const TAB_SECTIONS: LibSection[] = ["playbooks", "forms", "links"];
 type AddContentType = "playbook" | "link" | "form";
@@ -258,11 +259,12 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
-  function openAddLink() {
+  function openAddLink(category: Category = "document") {
     setAddMenuOpen(false);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, category });
     setFormError(null);
     setModalOpen(true);
+    if (section !== "links") setSection("links");
   }
 
   function openAddPlaybook() {
@@ -520,12 +522,13 @@ export default function ResourcesLibrary({ canManage = false }: { canManage?: bo
                 style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 16px 40px rgba(0,0,0,0.5)" }}
               >
                 {([
+                  { type: "link" as AddContentType, label: "Client playbook", color: "#fb7185", action: () => openAddLink("client_playbook") },
                   { type: "playbook" as AddContentType, label: "Playbook / SOP", color: "#34d399", action: openAddPlaybook },
                   { type: "form" as AddContentType, label: "Register Form", color: "#60a5fa", action: openAddForm },
-                  { type: "link" as AddContentType, label: "External Link", color: "#c084fc", action: openAddLink },
+                  { type: "link" as AddContentType, label: "External Link", color: "#c084fc", action: () => openAddLink("document") },
                 ]).map((opt) => (
                   <button
-                    key={opt.type}
+                    key={opt.label}
                     type="button"
                     onClick={opt.action}
                     className="w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-white/[0.04]"
@@ -1461,7 +1464,7 @@ function EmptyState({
         {hasFilters ? "No links match those filters" : "No external links yet"}
       </p>
       <p className="text-xs mt-1 max-w-xs" style={{ color: "#475569" }}>
-        {hasFilters ? "Try clearing filters or a different category." : canManage ? "Add Google Docs, templates, or other bookmarks here." : "Admins can add external links for the team."}
+        {hasFilters ? "Try clearing filters or a different category." : canManage ? "Add client playbooks, Google Docs, templates, or other bookmarks here." : "Admins can add external links for the team."}
       </p>
       {hasFilters ? (
         <button type="button" onClick={onClear} className="mt-5 rounded-full px-4 py-2 text-xs font-semibold" style={{ background: "rgba(255,255,255,0.05)", color: "#94a3b8" }}>Clear filters</button>
@@ -1487,7 +1490,7 @@ function ResourceModal({
       <div className="w-full max-w-lg rounded-[1.6rem] p-1.5" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 30px 70px rgba(0,0,0,0.6)", animation: `res-rise 400ms ${EASE} both` }}>
         <div className="rounded-[1.15rem] p-6" style={{ background: "#0a1628", boxShadow: "inset 0 1px 1px rgba(255,255,255,0.05)" }}>
           <div className="flex items-center justify-between mb-5">
-            <h3 className="text-lg font-semibold" style={{ color: "#f1f5f9" }}>{form.id ? "Edit Link" : "Add Link"}</h3>
+            <h3 className="text-lg font-semibold" style={{ color: "#f1f5f9" }}>{form.id ? "Edit Link" : form.category === "client_playbook" ? "Add client playbook" : "Add Link"}</h3>
             <button type="button" onClick={onClose} className="flex items-center justify-center w-8 h-8 rounded-lg" style={{ color: "#475569", background: "rgba(255,255,255,0.04)" }}>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
