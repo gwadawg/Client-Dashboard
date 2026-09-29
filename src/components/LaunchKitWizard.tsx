@@ -10,6 +10,8 @@ import {
   validateForGenerate,
   type LaunchKitDraft,
   type LaunchKitNaKey,
+  type LaunchKitResource,
+  type LaunchKitResourceSource,
 } from "@/lib/launch-kit/intake";
 import type { LaunchKitVersionRow } from "@/lib/launch-kit/storage";
 import { KIT_DIAL_OWNER_LABELS, KIT_PRODUCT_LABELS, type KitDialOwner, type KitProduct } from "@/lib/launch-kit/types";
@@ -39,13 +41,23 @@ type LoadResponse = {
   template_version: string;
 };
 
-type Step = "variant" | "live" | "operator" | "review";
+type Step = "variant" | "live" | "operator" | "resources" | "review";
 const STEPS: { id: Step; label: string }[] = [
   { id: "variant", label: "Variant" },
   { id: "live", label: "What's live" },
   { id: "operator", label: "Operator setup" },
+  { id: "resources", label: "Resources" },
   { id: "review", label: "Review & generate" },
 ];
+
+type ResourceOption = {
+  id: string;
+  source: LaunchKitResourceSource;
+  title: string;
+  description: string;
+  url: string;
+  label: string;
+};
 
 const fieldStyle = {
   background: "#0f2040",
@@ -65,6 +77,8 @@ export default function LaunchKitWizard({ clientId, fallbackName, onClose, onGen
   const [draft, setDraft] = useState<LaunchKitDraft>(emptyLaunchKitDraft());
   const [step, setStep] = useState<Step>("variant");
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [resourceOptions, setResourceOptions] = useState<ResourceOption[]>([]);
+  const [resourceOptionsLoading, setResourceOptionsLoading] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/clients/${clientId}/launch-kit`);
@@ -96,6 +110,67 @@ export default function LaunchKitWizard({ clientId, fallbackName, onClose, onGen
     })();
     return () => { cancelled = true; };
   }, [clientId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResourceOptionsLoading(true);
+    (async () => {
+      try {
+        const [resourcesRes, libraryRes] = await Promise.all([
+          fetch("/api/resources"),
+          fetch("/api/library"),
+        ]);
+        const [resourcesJson, libraryJson] = await Promise.all([
+          resourcesRes.ok ? resourcesRes.json() : Promise.resolve([]),
+          libraryRes.ok ? libraryRes.json() : Promise.resolve([]),
+        ]);
+        if (cancelled) return;
+
+        const resources = Array.isArray(resourcesJson) ? resourcesJson : [];
+        const libraryDocs = Array.isArray(libraryJson) ? libraryJson : [];
+        const origin = window.location.origin;
+        const absoluteUrl = (url: string) => url.startsWith("/") ? `${origin}${url}` : url;
+        const options: ResourceOption[] = [
+          ...resources.map((row: Record<string, unknown>): ResourceOption | null => {
+            const id = typeof row.id === "string" ? row.id : "";
+            const title = typeof row.title === "string" ? row.title : "";
+            const url = typeof row.url === "string" ? row.url : "";
+            if (!id || !title || !url) return null;
+            const description = typeof row.description === "string" ? row.description : "";
+            return {
+              id,
+              source: "resources",
+              title,
+              description,
+              url: absoluteUrl(url),
+              label: `Link: ${title}`,
+            };
+          }),
+          ...libraryDocs.map((row: Record<string, unknown>): ResourceOption | null => {
+            const slug = typeof row.slug === "string" ? row.slug : "";
+            const title = typeof row.title === "string" ? row.title : "";
+            if (!slug || !title) return null;
+            const description = typeof row.description === "string" ? row.description : "";
+            return {
+              id: slug,
+              source: "library",
+              title,
+              description,
+              url: `${origin}/library/${slug}`,
+              label: `Library: ${title}`,
+            };
+          }),
+        ].filter((option): option is ResourceOption => !!option);
+        options.sort((a, b) => a.title.localeCompare(b.title));
+        setResourceOptions(options);
+      } catch {
+        if (!cancelled) setResourceOptions([]);
+      } finally {
+        if (!cancelled) setResourceOptionsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const variant = useMemo(() => resolveVariant(draft), [draft]);
   const errors = useMemo(() => validateForGenerate(draft), [draft]);
@@ -251,6 +326,14 @@ export default function LaunchKitWizard({ clientId, fallbackName, onClose, onGen
               {step === "variant" && <VariantStep draft={draft} patch={patch} />}
               {step === "live" && <LiveStep draft={draft} patch={patch} toggleNa={toggleNa} driveFolderUrl={data?.client.drive_folder_url ?? null} />}
               {step === "operator" && <OperatorStep draft={draft} patch={patch} />}
+              {step === "resources" && (
+                <ResourcesStep
+                  draft={draft}
+                  patch={patch}
+                  options={resourceOptions}
+                  loadingOptions={resourceOptionsLoading}
+                />
+              )}
               {step === "review" && (
                 <ReviewStep
                   draft={draft}
@@ -577,6 +660,170 @@ function OperatorStep({ draft, patch }: { draft: LaunchKitDraft; patch: PatchFn 
   );
 }
 
+function ResourcesStep({
+  draft,
+  patch,
+  options,
+  loadingOptions,
+}: {
+  draft: LaunchKitDraft;
+  patch: PatchFn;
+  options: ResourceOption[];
+  loadingOptions: boolean;
+}) {
+  function setResources(resources: LaunchKitResource[]) {
+    patch("resources", resources);
+  }
+
+  function addManualResource() {
+    setResources([
+      ...draft.resources,
+      { source: "manual", title: "", description: "", url: "" },
+    ]);
+  }
+
+  function addFromOption(optionId: string) {
+    const option = options.find(o => `${o.source}:${o.id}` === optionId);
+    if (!option) return;
+    setResources([
+      ...draft.resources,
+      {
+        id: option.id,
+        source: option.source,
+        title: option.title,
+        description: option.description,
+        url: option.url,
+      },
+    ]);
+  }
+
+  function updateResource(index: number, patchResource: Partial<LaunchKitResource>) {
+    setResources(draft.resources.map((resource, i) => (
+      i === index ? { ...resource, ...patchResource } : resource
+    )));
+  }
+
+  function removeResource(index: number) {
+    setResources(draft.resources.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-lg overflow-hidden" style={panelStyle}>
+        <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <h3 className="text-sm font-semibold text-slate-200">Lead logging form</h3>
+          <p className="text-xs mt-0.5 text-slate-500">
+            Client-specific form for qualified and disqualified lead outcomes. This keeps lead quality, qualification rate, and follow-up reporting accurate.
+          </p>
+        </div>
+        <div className="px-4 py-4">
+          <Field label="Lead logging form URL" hint="Paste the form generated from the client roster. This is required before generating the kit.">
+            <TextInput
+              type="url"
+              value={draft.lead_logging_form_url}
+              onChange={e => patch("lead_logging_form_url", e.target.value)}
+              placeholder="https://…"
+            />
+          </Field>
+        </div>
+      </section>
+
+      <section className="rounded-lg overflow-hidden" style={panelStyle}>
+        <div className="px-4 py-3 flex items-start justify-between gap-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-200">Client resources</h3>
+            <p className="text-xs mt-0.5 text-slate-500">
+              Add Google Drive PDFs, library playbooks, or one-off links. The generated kit saves a snapshot of these titles, descriptions, and URLs.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={addManualResource}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-200 border border-white/10 shrink-0"
+          >
+            + Add manual
+          </button>
+        </div>
+
+        <div className="px-4 py-4 space-y-4">
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <select
+              value=""
+              onChange={e => {
+                addFromOption(e.target.value);
+                e.currentTarget.value = "";
+              }}
+              disabled={loadingOptions || options.length === 0}
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+              style={fieldStyle}
+            >
+              <option value="">{loadingOptions ? "Loading resource library…" : options.length ? "Add from resource library…" : "No library resources loaded"}</option>
+              {options.map(option => (
+                <option key={`${option.source}:${option.id}`} value={`${option.source}:${option.id}`}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={addManualResource}
+              className="text-sm font-semibold px-4 py-2 rounded-lg text-slate-300 border border-white/10"
+            >
+              Add blank
+            </button>
+          </div>
+
+          {draft.resources.length === 0 ? (
+            <p className="text-sm text-slate-500 rounded-lg px-3 py-3" style={{ background: "#0f2040" }}>
+              No extra resources selected yet. The PDF can still use the default product appendix, but selected rows give the client direct playbook links with your descriptions.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {draft.resources.map((resource, index) => (
+                <div key={index} className="rounded-lg p-3 space-y-3" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      {resource.source === "resources" ? "Resource Library link" : resource.source === "library" ? "Library playbook" : "Manual resource"}
+                    </p>
+                    <button type="button" onClick={() => removeResource(index)} className="text-xs font-semibold text-red-300">
+                      Remove
+                    </button>
+                  </div>
+                  <Field label="Title">
+                    <TextInput
+                      value={resource.title}
+                      onChange={e => updateResource(index, { title: e.target.value, source: resource.source ?? "manual" })}
+                      placeholder="Reverse Mortgage Ads Playbook"
+                    />
+                  </Field>
+                  <Field label="Description" hint="This appears in the “When you need” column of the PDF.">
+                    <textarea
+                      value={resource.description}
+                      onChange={e => updateResource(index, { description: e.target.value, source: resource.source ?? "manual" })}
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                      style={fieldStyle}
+                      placeholder="How the ads are meant to feel and what to reference before reviewing creative."
+                    />
+                  </Field>
+                  <Field label="URL">
+                    <TextInput
+                      type="url"
+                      value={resource.url}
+                      onChange={e => updateResource(index, { url: e.target.value, source: resource.source ?? "manual" })}
+                      placeholder="https://drive.google.com/…"
+                    />
+                  </Field>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ReviewStep({
   draft,
   errors,
@@ -606,6 +853,8 @@ function ReviewStep({
     ["Market", draft.market || "—"],
     ["NMLS", draft.nmls || "—"],
     ["States licensed", draft.states_licensed || "—"],
+    ["Lead logging form", draft.lead_logging_form_url || "—"],
+    ["Selected resources", draft.resources.length ? draft.resources.map(r => r.title || "Untitled resource").join(", ") : "Default product appendix"],
     ...LAUNCH_KIT_PROPERTIES.map<[string, string]>(p => [
       p.label,
       draft.property_na[p.key] ? "N/A" : draft[p.key] || "—",
@@ -620,10 +869,7 @@ function ReviewStep({
     <div className="space-y-4">
       {draft.product === "dscr" && draft.dial_owner === "client" && (
         <Banner tone="info">
-          Before Send to client: drop <code>DSCR-Prospecting-Playbook.pdf</code> and{" "}
-          <code>DSCR-Cash-Out-Drip.md</code> into Drive <code>Launch Kit / 05-Playbooks/</code>{" "}
-          (from Wm-os <code>dscr-dna/assets/playbook-self-serve-nurture/</code>). The PDF resource
-          index points there.
+          DSCR client-dials accounts usually need the prospecting and cash-out drip playbooks. Add their Drive links in Resources if you want direct links in this PDF.
         </Banner>
       )}
       <section className="rounded-lg overflow-hidden" style={panelStyle}>

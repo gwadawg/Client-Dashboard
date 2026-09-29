@@ -68,6 +68,7 @@ function completeDraft(overrides: Partial<LaunchKitDraft> = {}): LaunchKitDraft 
     phone_live_transfer: '+1 (555) 010-2001',
     virtual_card_url: 'https://loanofficer.me/jordan-hale',
     facebook_page: 'Hale Capital Lending',
+    lead_logging_form_url: 'https://forms.example.com/hale-leads',
     nmls: '1987654',
     states_licensed: 'FL',
     ...overrides,
@@ -199,6 +200,21 @@ describe('validateForGenerate', () => {
     assert.ok(errs.some(e => e.startsWith('States licensed is required')));
   });
 
+  it('requires the lead logging form URL', () => {
+    const missing = validateForGenerate(completeDraft({ lead_logging_form_url: '' }));
+    assert.ok(missing.some(e => e.startsWith('Lead logging form URL is required')));
+    const invalid = validateForGenerate(completeDraft({ lead_logging_form_url: 'forms.example.com/hale' }));
+    assert.ok(invalid.some(e => e.startsWith('Lead logging form must be a full http(s) URL')));
+  });
+
+  it('validates selected resource rows', () => {
+    const errs = validateForGenerate(completeDraft({
+      resources: [{ source: 'manual', title: '', description: 'Use this first', url: 'drive.google.com/file' }],
+    }));
+    assert.ok(errs.some(e => e.startsWith('Resource 1 title is required')));
+    assert.ok(errs.some(e => e.includes('must be a full http(s) URL')));
+  });
+
   it('rejects [TO FILL] anywhere and non-http URLs', () => {
     const errs = validateForGenerate(completeDraft({ market: TO_FILL, ads_url: 'notaurl' }));
     assert.ok(errs.some(e => e.includes(`Market still contains ${TO_FILL}`)));
@@ -243,6 +259,8 @@ describe('buildLaunchKitBlocks', () => {
     assert.ok(text.includes('Legal notice (compliance approve)'));
     assert.ok(text.includes('Number we use to contact leads'));
     assert.ok(text.includes('Number we use for live transfers'));
+    assert.ok(text.includes('Lead logging form'));
+    assert.ok(text.includes('https://forms.example.com/hale-leads'));
     assert.ok(text.includes('https://loanofficer.me/jordan-hale'));
     assert.ok(text.includes('1987654'));
     assert.ok(text.includes('States licensed'));
@@ -269,6 +287,28 @@ describe('buildLaunchKitBlocks', () => {
     assert.equal(waizText.includes('DSCR-Prospecting-Playbook.pdf'), false);
     assert.equal(waizText.includes('05-Playbooks'), false);
     assert.ok(waizText.includes('owns SMS and booking'));
+  });
+
+  it('uses selected resource links when provided', () => {
+    const { blocks } = buildLaunchKitBlocks(
+      completeDraft({
+        resources: [
+          {
+            id: 'resource-1',
+            source: 'resources',
+            title: 'Reverse Mortgage Ads Playbook',
+            description: 'How the ads are meant to feel',
+            url: 'https://drive.google.com/file/d/playbook',
+          },
+        ],
+      }),
+      { version: 1, clientName: 'x' },
+    );
+    const text = flattenBlockText(blocks).join('\n');
+    assert.ok(text.includes('Reverse Mortgage Ads Playbook - How the ads are meant to feel'));
+    assert.ok(text.includes('How the ads are meant to feel'));
+    assert.ok(text.includes('https://drive.google.com/file/d/playbook'));
+    assert.equal(text.includes('Lead Nurture Playbook (Waiz Meta Stack)'), false);
   });
 
   it('drafts render blanks as [TO FILL] and skip N/A properties', () => {

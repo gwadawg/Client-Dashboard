@@ -9,6 +9,7 @@
  */
 
 import type { KitBlock, KitVariant } from '../types';
+import type { LaunchKitResource } from '../intake';
 
 // Keep separators plain: "folder / subfolder" reads in any font.
 const SWIPE_ROW = ['Your live ads and approved examples', 'Launch Kit folder / 03-Swipe-and-Ads'];
@@ -50,12 +51,23 @@ export function resourceRows(variant: KitVariant): string[][] {
   return variant.product === 'rm' ? rmRows(variant.dialOwner) : dscrRows(variant.dialOwner);
 }
 
-export function resourceTable(variant: KitVariant): KitBlock {
+export function resourceTable(variant: KitVariant, resources: LaunchKitResource[] = []): KitBlock {
+  const selectedRows = resources
+    .map(resource => {
+      const title = resource.title.trim();
+      const description = resource.description.trim();
+      const url = resource.url.trim();
+      if (!title && !description && !url) return null;
+      const label = title && description ? `${title} - ${description}` : title || description || 'Open this resource';
+      return [label, url || title];
+    })
+    .filter((row): row is string[] => !!row);
+
   return {
     type: 'table',
     variant: 'kv',
     headers: ['When you need', 'Open'],
     col_widths: [0.44, 0.56],
-    rows: resourceRows(variant),
+    rows: selectedRows.length ? selectedRows : resourceRows(variant),
   };
 }

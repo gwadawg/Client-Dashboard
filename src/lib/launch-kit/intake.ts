@@ -83,6 +83,16 @@ export type LaunchKitReviewKey = (typeof LAUNCH_KIT_REVIEW_FIELDS)[number]['key'
 
 export type LaunchKitNaKey = LaunchKitPropertyKey | LaunchKitReviewKey;
 
+export type LaunchKitResourceSource = 'resources' | 'library' | 'manual';
+
+export type LaunchKitResource = {
+  id?: string;
+  source?: LaunchKitResourceSource;
+  title: string;
+  description: string;
+  url: string;
+};
+
 export type LaunchKitDraft = {
   product: KitProduct | '';
   dial_owner: KitDialOwner | '';
@@ -107,6 +117,10 @@ export type LaunchKitDraft = {
   phone_live_transfer: string;
   virtual_card_url: string;
   facebook_page: string;
+  /** Client-specific form where qualified/disqualified lead outcomes are logged. */
+  lead_logging_form_url: string;
+  /** Client-facing resource snapshot for this kit version. */
+  resources: LaunchKitResource[];
   /** On-file receipt (kit snapshot). */
   nmls: string;
   states_licensed: string;
@@ -166,6 +180,8 @@ export function emptyLaunchKitDraft(): LaunchKitDraft {
     phone_live_transfer: '',
     virtual_card_url: '',
     facebook_page: '',
+    lead_logging_form_url: '',
+    resources: [],
     nmls: '',
     states_licensed: '',
     property_na: {},
@@ -216,6 +232,33 @@ function firstName(full: string | null | undefined): string {
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
+}
+
+function resourceSource(v: unknown): LaunchKitResourceSource | undefined {
+  return v === 'resources' || v === 'library' || v === 'manual' ? v : undefined;
+}
+
+function resourcesFromUnknown(v: unknown): LaunchKitResource[] {
+  if (!Array.isArray(v)) return [];
+  const out: LaunchKitResource[] = [];
+  for (const item of v) {
+    if (!item || typeof item !== 'object') continue;
+    const raw = item as Record<string, unknown>;
+    const title = str(raw.title).trim();
+    const description = str(raw.description).trim();
+    const url = str(raw.url).trim();
+    const id = str(raw.id).trim();
+    const source = resourceSource(raw.source);
+    if (!title && !description && !url) continue;
+    out.push({
+      ...(id ? { id } : {}),
+      ...(source ? { source } : {}),
+      title,
+      description,
+      url,
+    });
+  }
+  return out;
 }
 
 function statesLicensedLabel(states: string[] | null | undefined): string {
@@ -278,6 +321,8 @@ export function draftFromResponses(responses: Record<string, unknown>): LaunchKi
   d.notes = str(responses.notes);
   d.nmls = str(responses.nmls);
   d.states_licensed = str(responses.states_licensed);
+  d.lead_logging_form_url = str(responses.lead_logging_form_url);
+  d.resources = resourcesFromUnknown(responses.resources);
   for (const p of LAUNCH_KIT_PROPERTIES) d[p.key] = str(responses[p.key]);
   for (const p of LAUNCH_KIT_REVIEW_FIELDS) d[p.key] = str(responses[p.key]);
   const na = responses.property_na;
@@ -318,6 +363,10 @@ export function launchKitClientFileNoteSections(draft: LaunchKitDraft): { label:
   for (const field of LAUNCH_KIT_REVIEW_FIELDS) {
     add(field.label, draft.property_na[field.key] ? 'N/A' : draft[field.key]);
   }
+  add('Lead logging form', draft.lead_logging_form_url);
+  for (const resource of draft.resources) {
+    add(`Resource: ${resource.title || 'Untitled resource'}`, resource.url);
+  }
   add('NMLS', draft.nmls);
   add('States licensed', draft.states_licensed);
   add('Internal notes', draft.notes);
@@ -343,6 +392,14 @@ export function draftToResponses(draft: LaunchKitDraft): Record<string, unknown>
     notes: draft.notes.trim(),
     nmls: draft.nmls.trim(),
     states_licensed: draft.states_licensed.trim(),
+    lead_logging_form_url: draft.lead_logging_form_url.trim(),
+    resources: draft.resources.map(resource => ({
+      ...(resource.id?.trim() ? { id: resource.id.trim() } : {}),
+      ...(resource.source ? { source: resource.source } : {}),
+      title: resource.title.trim(),
+      description: resource.description.trim(),
+      url: resource.url.trim(),
+    })),
     property_na: Object.fromEntries(naKeys.map(k => [k, true])),
   };
   for (const p of LAUNCH_KIT_PROPERTIES) out[p.key] = draft[p.key].trim();
@@ -380,6 +437,13 @@ export function validateForGenerate(draft: LaunchKitDraft): string[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.go_live_date.trim())) errors.push('Go-live date is required (YYYY-MM-DD).');
   if (!draft.csm_name.trim()) errors.push('CSM name is required.');
   if (!draft.who_works_leads.trim()) errors.push('Who works new leads is required.');
+  if (!draft.lead_logging_form_url.trim()) {
+    errors.push('Lead logging form URL is required.');
+  } else if (draft.lead_logging_form_url.includes(TO_FILL)) {
+    errors.push(`Lead logging form still contains ${TO_FILL}.`);
+  } else if (!isValidHttpUrl(draft.lead_logging_form_url)) {
+    errors.push('Lead logging form must be a full http(s) URL.');
+  }
 
   for (const p of LAUNCH_KIT_PROPERTIES) {
     const value = draft[p.key].trim();
@@ -435,6 +499,20 @@ export function validateForGenerate(draft: LaunchKitDraft): string[] {
     const v = draft[key];
     if (typeof v === 'string' && v.includes(TO_FILL)) errors.push(`${label} still contains ${TO_FILL}.`);
   }
+
+  draft.resources.forEach((resource, i) => {
+    const label = resource.title.trim() || `Resource ${i + 1}`;
+    if (!resource.title.trim()) errors.push(`Resource ${i + 1} title is required.`);
+    if (resource.title.includes(TO_FILL)) errors.push(`${label} title still contains ${TO_FILL}.`);
+    if (resource.description.includes(TO_FILL)) errors.push(`${label} description still contains ${TO_FILL}.`);
+    if (!resource.url.trim()) {
+      errors.push(`${label} URL is required.`);
+    } else if (resource.url.includes(TO_FILL)) {
+      errors.push(`${label} URL still contains ${TO_FILL}.`);
+    } else if (!isValidHttpUrl(resource.url)) {
+      errors.push(`${label} must be a full http(s) URL.`);
+    }
+  });
 
   if (!draft.nmls.trim()) errors.push('NMLS is required for the on-file receipt.');
   if (!draft.states_licensed.trim()) errors.push('States licensed is required for the on-file receipt.');

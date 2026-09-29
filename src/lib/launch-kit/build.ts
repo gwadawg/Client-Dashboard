@@ -94,6 +94,7 @@ function whatsLiveRows(draft: LaunchKitDraft): string[][] {
   add('funnel_url', 'Perspective funnel');
   add('crm_url', 'CRM');
   add('calendar_url', 'Booking calendar');
+  if (draft.lead_logging_form_url.trim()) rows.push(['Lead logging form', draft.lead_logging_form_url.trim()]);
   add('ads_url', 'Meta ads account');
   if (draft.slack_channel_name.trim()) rows.push(['Slack channel', slackChannelLabel(draft)]);
   add('skool_url', 'Training (Skool)');
@@ -122,6 +123,23 @@ function onFileRows(draft: LaunchKitDraft, company: string): string[][] {
 function launchKitFolderValue(draft: LaunchKitDraft): string {
   if (isPropertyNa(draft, 'launch_kit_folder_url')) return 'Your CSM shares the folder link in Slack';
   return orFill(draft.launch_kit_folder_url);
+}
+
+function leadLoggingBlocks(draft: LaunchKitDraft): KitBlock[] {
+  return [
+    { type: 'h2', text: 'Lead logging form' },
+    {
+      type: 'body',
+      text: 'Use this form to log qualified and disqualified leads. Your reporting depends on those outcomes: when the form is current, lead quality, qualification rate, and follow-up visibility stay accurate.',
+    },
+    {
+      type: 'table',
+      variant: 'kv',
+      headers: ['Use this for', 'Open'],
+      col_widths: [0.44, 0.56],
+      rows: [['Qualified and disqualified lead outcomes', orFill(draft.lead_logging_form_url)]],
+    },
+  ];
 }
 
 export type BuiltLaunchKit = {
@@ -212,7 +230,8 @@ export function buildLaunchKitBlocks(
 
     // 04 + 05 on one page
     ...RESOURCE_INDEX_INTRO,
-    resourceTable(variant),
+    ...leadLoggingBlocks(draft),
+    resourceTable(variant, draft.resources),
     ...creativeBlocks(launchKitFolderValue(draft), variant),
     { type: 'pagebreak' },
 
