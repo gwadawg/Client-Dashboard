@@ -1,9 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
+import { recordClientFormNote, saveMarkedClientNote } from '@/lib/client-form-notes';
 import {
+  ONBOARDING_OVERFLOW_NOTE_MARKER,
+  PREVIOUS_ONBOARDING_NOTE_MARKER,
+  onboardingOverflowNoteSections,
   onboardingResponsesFromInput,
   onboardingToClientPatch,
   parseOnboardingFormFields,
+  primaryContactNameFromInput,
   type OnboardingFormInput,
   type OnboardingMemberInput,
 } from '@/lib/onboarding-form';
@@ -13,9 +18,25 @@ import {
   type FormSubmissionRow,
 } from '@/lib/form-submissions';
 import { runOnboardingSideEffects, runOnboardingUnmappedNotification } from '@/lib/onboarding-side-effects';
+import { ensureAccountGroupForNewClient } from '@/lib/client-account-groups';
 
 const CLIENT_FIELDS =
   'id, name, lifecycle_status, email, phone, primary_contact_name, slack_id, clickup_task_id, ghl_contact_id';
+
+async function saveOnboardingOverflowNote(
+  service: SupabaseClient,
+  clientId: string,
+  input: OnboardingFormInput,
+) {
+  await recordClientFormNote(
+    service,
+    clientId,
+    ONBOARDING_OVERFLOW_NOTE_MARKER,
+    onboardingOverflowNoteSections(input),
+    null,
+  );
+  await saveMarkedClientNote(service, clientId, PREVIOUS_ONBOARDING_NOTE_MARKER, null, null);
+}
 
 export type OnboardingSubmitResult = {
   matched: boolean;
@@ -80,6 +101,7 @@ export async function applyOnboardingSubmission(
   if (error) throw new Error(error.message);
 
   await insertOnboardingContacts(service, client.id, input.additional_members);
+  await saveOnboardingOverflowNote(service, client.id, input);
 
   const submission = await insertFormSubmission(service, {
     client_id: client.id,
@@ -145,6 +167,7 @@ export async function applyPendingOnboardingToClient(
   if (upErr) throw new Error(upErr.message);
 
   await insertOnboardingContacts(service, clientId, input.additional_members);
+  await saveOnboardingOverflowNote(service, clientId, input);
 
   const { data: updatedSub, error: subErr } = await service
     .from('client_form_submissions')
@@ -203,12 +226,24 @@ export async function createClientAndApplyPendingOnboarding(
     input.email.split('@')[0] ||
     'New client';
 
+  const accountLink = await ensureAccountGroupForNewClient(service, {
+    name: clientName,
+    primary_contact_name: primaryContactNameFromInput(input),
+    primary_contact: primaryContactNameFromInput(input),
+    email: input.email,
+  });
+
   const { data: client, error: insertErr } = await service
     .from('clients')
     .insert({
       name: clientName,
       lifecycle_status: 'onboarding',
       is_live: syncIsLiveWithLifecycle('onboarding'),
+      account_group_id: accountLink.account_group_id,
+      engagement_kind: accountLink.engagement_kind,
+      ...(accountLink.origin_client_id
+        ? { origin_client_id: accountLink.origin_client_id }
+        : {}),
     })
     .select('id, name')
     .single();

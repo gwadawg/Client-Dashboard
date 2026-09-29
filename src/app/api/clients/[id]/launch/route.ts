@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { CLIENT_CALL_FIELDS } from '@/lib/client-calls';
+import { recordClientFormNote, saveMarkedClientNote } from '@/lib/client-form-notes';
 import { insertFormSubmission, isBackfillFormSubmission } from '@/lib/form-submissions';
 import { isKickoffIncomplete } from '@/lib/kickoff';
 import { isLaunchBlockingForCycle, latestReinstateCutoffIso } from '@/lib/reinstate-progress';
@@ -11,7 +12,9 @@ import {
   getLaunchItemsForProfile,
   isLaunchChecklistComplete,
   isLaunchItemSatisfied,
+  LAUNCH_CLIENT_NOTE_MARKER,
   LAUNCH_FINAL_CONFIRMATION,
+  launchClientFileNoteSections,
   launchDraftToResponses,
   profileFromClient,
   type LaunchFormDraft,
@@ -372,6 +375,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .select(CLIENT_CALL_FIELDS)
     .single();
   if (callErr) return NextResponse.json({ error: callErr.message }, { status: 500 });
+
+  await recordClientFormNote(
+    ctx.service,
+    clientId,
+    LAUNCH_CLIENT_NOTE_MARKER,
+    launchClientFileNoteSections(draft, formProfile),
+    ctx.userId,
+  );
+  await saveMarkedClientNote(ctx.service, clientId, 'Launch checklist — Notes', null, ctx.userId);
 
   const submission = await insertFormSubmission(ctx.service, {
     client_id: clientId,

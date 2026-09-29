@@ -15,6 +15,7 @@ import {
   getClientHubListId,
   getClickUpToken,
 } from '@/lib/clickup';
+import { recordClientFormNote } from '@/lib/client-form-notes';
 import { insertFormSubmission } from '@/lib/form-submissions';
 import { linkAcquisitionCloseFromClient } from '@/lib/acquisition-ingest';
 import { normalizeClientLeadSource } from '@/lib/client-lead-source';
@@ -270,6 +271,47 @@ export function parseOnboardPayload(body: OnboardPayload) {
 }
 
 export type ParsedOnboard = ReturnType<typeof parseOnboardPayload>;
+
+const NEW_CLIENT_NOTE_MARKER = 'New client form';
+
+function newClientNoteSections(parsed: ParsedOnboard): { label: string; value: string }[] {
+  const sections: { label: string; value: string }[] = [];
+  const add = (label: string, value: string | number | null | undefined) => {
+    const text = value == null ? '' : String(value).trim();
+    if (text) sections.push({ label, value: text });
+  };
+  add('Name', parsed.name);
+  add('Contact', parsed.primary_contact_name);
+  add('Email', parsed.email);
+  add('Billing email', parsed.billing_email);
+  add('Phone', parsed.phone);
+  add('Offer', parsed.offer);
+  add('Vertical', parsed.reporting_type);
+  add('Fulfillment', parsed.service_program);
+  add('Package', parsed.sales_package);
+  add('MRR', parsed.mrr);
+  add('Billing type', parsed.billing_type);
+  add('Term (months)', parsed.contract_term_months);
+  add('Date signed', parsed.date_signed);
+  add('Cash collected', parsed.cash_collected);
+  add('NMLS', parsed.nmls);
+  add('Brokerage', parsed.brokerage_name);
+  add('Source', parsed.source);
+  add('Slack', parsed.slack_id);
+  add('GHL location', parsed.ghl_location_id);
+  add('GHL contact', parsed.ghl_contact_id);
+  add('Offer summary', parsed.offer_summary);
+  add('Daily ad spend', parsed.daily_adspend);
+  if (parsed.appointment_watch != null) add('Appointment watch', parsed.appointment_watch ? 'Yes' : 'No');
+  add('Sales call recording', parsed.sales_call_recording);
+  for (const note of parsed.notes) {
+    const text = note.body.startsWith(note.marker)
+      ? note.body.slice(note.marker.length).trim()
+      : note.body;
+    add(note.label, text);
+  }
+  return sections;
+}
 
 async function findExistingClient(
   service: SupabaseClient,
@@ -673,6 +715,13 @@ export async function onboardClient(
 
   try {
     await upsertOnboardNotes(service, String(client.id), parsed.notes);
+    await recordClientFormNote(
+      service,
+      String(client.id),
+      NEW_CLIENT_NOTE_MARKER,
+      newClientNoteSections(parsed),
+      null,
+    );
   } catch (e) {
     console.error('[onboard] notes upsert failed', e);
   }

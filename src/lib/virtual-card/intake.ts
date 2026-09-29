@@ -140,6 +140,33 @@ export function parseVirtualCardDraft(raw: unknown): VirtualCardDraft {
   };
 }
 
+export const VIRTUAL_CARD_NOTE_MARKER = "Virtual business card";
+
+export function virtualCardClientFileNoteSections(draft: VirtualCardDraft): { label: string; value: string }[] {
+  const sections: { label: string; value: string }[] = [];
+  const add = (label: string, value: string | null | undefined) => {
+    const text = (value ?? "").trim();
+    if (text) sections.push({ label, value: text });
+  };
+  add("Slug", draft.slug);
+  add("Full name", draft.fullName);
+  add("Title", draft.title);
+  add("Company", draft.company);
+  add("NMLS", draft.nmls);
+  if (draft.statesLicensed.length) add("States licensed", draft.statesLicensed.join(", "));
+  add("Phone", draft.phone);
+  add("Email", draft.email);
+  add("Headshot", draft.headshotUrl);
+  add("Value line", draft.valueLine);
+  add("Product", draft.product === "rm" ? "Reverse mortgage" : draft.product === "dscr" ? "DSCR" : draft.product);
+  add("Style pack", draft.stylePackId);
+  add("Booking needed", draft.bookingNeeded ? "Yes" : "No");
+  add("Booking URL", draft.bookingUrl);
+  add("Booking button", draft.bookingLabel);
+  add("LO note", draft.loNote);
+  return sections;
+}
+
 export function draftToResponses(draft: VirtualCardDraft): Record<string, unknown> {
   return {
     slug: draft.slug,

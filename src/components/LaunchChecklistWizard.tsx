@@ -302,6 +302,7 @@ export default function LaunchChecklistWizard({ clientId, fallbackName, onClose,
 
               <label className="block space-y-1.5">
                 <span className="text-sm font-medium text-slate-400">Notes (optional)</span>
+                <p className="text-xs text-slate-500">Saved to Client notes on the client file.</p>
                 <textarea
                   value={draft.notes}
                   onChange={e => setDraft(prev => ({ ...prev, notes: e.target.value }))}

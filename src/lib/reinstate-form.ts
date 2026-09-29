@@ -153,3 +153,34 @@ export function parseReinstateDraftFromBody(body: Record<string, unknown>): Rein
   draft.internal_notes = optionalText(body.internal_notes);
   return draft;
 }
+
+export const REINSTATE_NOTE_MARKER = 'Reinstate';
+
+function money(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '';
+  return String(value);
+}
+
+/** Full reinstate submission for Client notes. */
+export function reinstateClientFileNoteSections(draft: ReinstateFormDraft): { label: string; value: string }[] {
+  const sections: { label: string; value: string }[] = [];
+  const add = (label: string, value: string | null | undefined) => {
+    const text = (value ?? '').trim();
+    if (text) sections.push({ label, value: text });
+  };
+  add('Engagement', draft.engagement === 'new_offer' ? 'New offer' : 'Same file');
+  add('Offer', draft.offer);
+  add('Vertical', draft.reporting_type);
+  add('Package', draft.sales_package);
+  add('MRR', money(draft.mrr));
+  add('Signed', draft.closed_at);
+  add('Closer', draft.closer_name);
+  add('Cash collected', money(draft.cash_collected));
+  add('Term (months)', money(draft.contract_term_months));
+  add('Contract end', draft.contract_end_date);
+  add('Reuse GHL', draft.ghl_reuse === 'yes' ? 'Yes' : draft.ghl_reuse === 'no' ? 'No' : 'Unsure');
+  add('Leave billing paused', draft.leave_billing_paused ? 'Yes' : 'No');
+  add('Leave ads paused', draft.leave_ads_paused ? 'Yes' : 'No');
+  add('Internal notes', draft.internal_notes);
+  return sections;
+}

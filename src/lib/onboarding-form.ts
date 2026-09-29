@@ -3,16 +3,19 @@ import {
   normalizeEmailForMatch,
   normalizePhoneForMatch,
 } from '@/lib/form-submissions';
-import type {
-  AccountManagement,
-  CompanyAddress,
-  CrmChoice,
-  MemberDraft,
-  ObRole,
-  OnboardingFormVariant,
-  PerformanceUnit,
+import {
+  ACCOUNT_MANAGEMENT_OPTIONS,
+  CRM_CHOICE_OPTIONS,
+  PERFORMANCE_UNIT_OPTIONS,
+  type AccountManagement,
+  type CompanyAddress,
+  type CrmChoice,
+  type MemberDraft,
+  type ObRole,
+  type OnboardingFormVariant,
+  type PerformanceUnit,
 } from '@/lib/onboarding-steps';
-import { normalizeStatesLicensed } from '@/lib/us-states';
+import { formatStatesLicensed, normalizeStatesLicensed } from '@/lib/us-states';
 import { isKnownUsClientTimezone } from '@/lib/us-timezones';
 
 export type OnboardingMemberInput = {
@@ -314,6 +317,70 @@ export function onboardingResponsesFromInput(input: OnboardingFormInput): Record
     match_email: normalizeEmailForMatch(input.email),
     match_phone: normalizePhoneForMatch(input.phone),
   };
+}
+
+export const ONBOARDING_OVERFLOW_NOTE_MARKER = 'Onboarding';
+const PREVIOUS_ONBOARDING_NOTE_MARKER = 'Onboarding — Extra details';
+
+export { PREVIOUS_ONBOARDING_NOTE_MARKER };
+
+function formatCompanyAddress(address: CompanyAddress): string {
+  const cityLine = [address.city, [address.state, address.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  return [address.street, cityLine].filter(Boolean).join('\n');
+}
+
+/** Full onboarding submission for Client notes. */
+export function onboardingOverflowNoteSections(
+  input: OnboardingFormInput,
+): { label: string; value: string }[] {
+  const sections: { label: string; value: string }[] = [];
+  const add = (label: string, value: string | null | undefined) => {
+    const text = (value ?? '').trim();
+    if (text && text !== '—') sections.push({ label, value: text });
+  };
+
+  add('Form', input.form_variant === 'dscr_performance' ? 'DSCR performance' : 'Core');
+  add('Name', [input.first_name, input.last_name].filter(Boolean).join(' '));
+  const management = ACCOUNT_MANAGEMENT_OPTIONS.find(option => option.value === input.account_management);
+  add('Account management', management?.label);
+  add('Role', input.ob_role === 'owner' ? 'Owner of brokerage / lender' : input.ob_role === 'mlo' ? 'MLO' : input.ob_role);
+  add('Email', input.email);
+  add('Phone', input.phone);
+  add('NMLS', input.nmls);
+  if (input.states_licensed.length) add('States licensed', formatStatesLicensed(input.states_licensed));
+  add('Brokerage', input.brokerage_name);
+  add('Legal business name', input.legal_business_name);
+  add('Website', input.website);
+  add('Company NMLS', input.company_nmls);
+  add('Company address', formatCompanyAddress(input.company_address));
+  if (input.company_states_licensed.length) {
+    add('Company licensed states', formatStatesLicensed(input.company_states_licensed));
+  }
+  add('Bio', input.biography);
+  add('Review link', input.review_url);
+  add('Street', input.street_address);
+  add('City', input.city);
+  add('State', input.state);
+  add('ZIP', input.zip_code);
+  add('Timezone', input.timezone);
+  const unit = PERFORMANCE_UNIT_OPTIONS.find(option => option.value === input.performance_unit);
+  add('Leads or Conversations', unit?.label);
+  const crm = CRM_CHOICE_OPTIONS.find(option => option.value === input.crm_choice);
+  add('CRM', crm?.label);
+  add('Headshot', input.headshot_url);
+  if (input.additional_members.length) {
+    add(
+      'Team members',
+      input.additional_members
+        .map(member =>
+          [member.name, member.contact_type, member.email, member.phone, member.nmls, member.states_licensed?.join(', ')]
+            .filter(Boolean)
+            .join(' · '),
+        )
+        .join('\n'),
+    );
+  }
+  return sections;
 }
 
 export const ONBOARDING_FIELD_LABELS: Record<string, string> = {

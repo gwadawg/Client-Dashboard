@@ -6,18 +6,21 @@ import {
   type KickoffIdentityFieldKey,
 } from '@/lib/client-identity';
 import { clientNeedsGhlMapping } from '@/lib/client-ghl-mapping';
+import { formatMarkedClientNote } from '@/lib/client-form-notes';
 
 export { isKickoffIdentityFieldComplete, KICKOFF_IDENTITY_FIELD_KEYS, type KickoffIdentityFieldKey };
 import {
   getOnboardingFormProfile,
   type OnboardingFormProfile,
 } from '@/lib/onboarding-form-profile';
-import { normalizeReportingType, type ReportingType } from '@/lib/reporting-types';
+import { getReportingTypeLabel, normalizeReportingType, type ReportingType } from '@/lib/reporting-types';
 import {
+  getServiceProgramLabel,
   normalizeServiceProgram,
   serviceProgramApplies,
   type ServiceProgram,
 } from '@/lib/service-program';
+import { formatStatesLicensed } from '@/lib/us-states';
 
 export const KICKOFF_CLIENT_FIELDS =
   'id, name, lifecycle_status, primary_contact_name, phone, contact_role, states_licensed, nmls, brokerage_name, timezone, appointment_settings, daily_adspend, facebook_page_name, phone_notifications, phone_live_transfer, live_transfer_approved, ghl_location_id, reporting_type, service_program, offer';
@@ -98,12 +101,40 @@ export const KICKOFF_FIELD_REGISTRY: KickoffFieldDef[] = [
   { key: 'recording_url', section: 'post_call', profiles: ['marketing_core', 'marketing_lead_gen', 'call_center'] },
 ];
 
-export const CC_KICKOFF_FIELD_LABELS: Record<string, string> = {
+export const CC_KICKOFF_FIELD_LABELS = {
   cc_lead_source: 'Lead source / how leads arrive',
   cc_qualification_criteria: 'Setter qualification criteria',
   cc_hp_tag_user: 'GHL assigned user / HP tag contact',
   cc_setter_notes: 'Setter script / dial notes',
-};
+} as const;
+
+/** Brand / landing narrative. Stored on the client file as a note, not client columns. */
+export const KICKOFF_PM_FIELD_LABELS = {
+  pm_landing_copy: 'Landing page copy notes',
+  pm_brand_assets: 'Brand colors / asset links',
+  pm_compliance_notes: 'Compliance disclaimers',
+  pm_competitor_refs: 'Competitor references',
+  pm_funnel_requirements: 'Special funnel requirements',
+} as const;
+
+export const KICKOFF_PM_NOTE_MARKER = 'Kick-off — Brand & landing notes';
+export const KICKOFF_CC_NOTE_MARKER = 'Kick-off — Call center notes';
+
+const KICKOFF_NARRATIVE_KEYS = [
+  'pm_landing_copy',
+  'pm_brand_assets',
+  'pm_compliance_notes',
+  'pm_competitor_refs',
+  'pm_funnel_requirements',
+  'cc_lead_source',
+  'cc_qualification_criteria',
+  'cc_hp_tag_user',
+  'cc_setter_notes',
+  'recording_url',
+  'transcript',
+] as const satisfies readonly (keyof KickoffDraft)[];
+
+export type KickoffNarrativeKey = (typeof KICKOFF_NARRATIVE_KEYS)[number];
 
 export type KickoffClient = {
   id: string;
@@ -268,6 +299,7 @@ const PREFILL_TRACKED_KEYS: (keyof KickoffDraft)[] = [
   'appointment_settings', 'daily_adspend', 'facebook_page_name', 'phone_notifications',
   'phone_live_transfer', 'live_transfer_approved', 'ghl_location_id', 'recording_url',
   'cc_lead_source', 'cc_qualification_criteria', 'cc_hp_tag_user', 'cc_setter_notes',
+  'pm_landing_copy', 'pm_brand_assets', 'pm_compliance_notes', 'pm_competitor_refs', 'pm_funnel_requirements',
 ];
 
 export function kickoffFieldHadValue(draft: KickoffDraft, key: keyof KickoffDraft): boolean {
@@ -317,6 +349,98 @@ export function kickoffExtraFieldsFromDraft(
   if (profile === 'call_center') return kickoffCcFieldsFromDraft(draft);
   if (profile === 'marketing_core' || profile === 'marketing_lead_gen') return kickoffPmFieldsFromDraft(draft);
   return {};
+}
+
+export function kickoffNarrativeFromResponses(
+  responses: Record<string, unknown> | null | undefined,
+): Partial<Pick<KickoffDraft, KickoffNarrativeKey>> {
+  const out: Partial<Pick<KickoffDraft, KickoffNarrativeKey>> = {};
+  if (!responses) return out;
+  for (const key of KICKOFF_NARRATIVE_KEYS) {
+    const value = responses[key];
+    if (typeof value === 'string' && value.trim()) out[key] = value;
+  }
+  return out;
+}
+
+/** Fill brand / call-center narrative that is not stored on the client row. */
+export function applyKickoffSavedNarrative(
+  draft: KickoffDraft,
+  saved: Partial<Pick<KickoffDraft, KickoffNarrativeKey>> | null | undefined,
+): KickoffDraft {
+  if (!saved) return draft;
+  const next = { ...draft };
+  for (const key of KICKOFF_NARRATIVE_KEYS) {
+    const value = saved[key];
+    if (typeof value === 'string' && value.trim() && !next[key].trim()) next[key] = value;
+  }
+  return next;
+}
+
+function yesNoLabel(value: string | boolean | null | undefined): string {
+  if (value === true || value === 'yes') return 'Yes';
+  if (value === false || value === 'no') return 'No';
+  return '';
+}
+
+/** Full kick-off snapshot for Client notes. Null when every field is blank. */
+export function kickoffClientFileNote(
+  profile: OnboardingFormProfile,
+  draft: KickoffDraft,
+  includeRevenue = true,
+): { marker: string; body: string } | null {
+  const marker = profile === 'call_center' ? KICKOFF_CC_NOTE_MARKER : KICKOFF_PM_NOTE_MARKER;
+  const sections: { label: string; value: string }[] = [];
+  const add = (label: string, value: string | null | undefined) => {
+    const text = (value ?? '').trim();
+    if (text && text !== '—') sections.push({ label, value: text });
+  };
+
+  add('Client vertical', getReportingTypeLabel(draft.reporting_type));
+  if (serviceProgramApplies(draft.reporting_type)) {
+    add('Fulfillment', getServiceProgramLabel(draft.service_program) ?? '');
+  }
+  add('Phone', draft.phone);
+  add('Contact role', draft.contact_role);
+  if (draft.states_licensed.length) add('States licensed', formatStatesLicensed(draft.states_licensed));
+  add('NMLS', draft.nmls);
+  add('Brokerage', draft.brokerage_name);
+  add('Timezone', draft.timezone);
+
+  if (isKickoffFieldVisible('appointment_settings', profile, includeRevenue)) {
+    add('Appointment settings', draft.appointment_settings);
+  }
+  if (includeRevenue && isKickoffFieldVisible('daily_adspend', profile, includeRevenue)) {
+    add('Daily ad spend', draft.daily_adspend.trim() ? `$${draft.daily_adspend.trim()}` : '');
+  }
+  if (isKickoffFieldVisible('facebook_page_name', profile, includeRevenue)) {
+    add('Facebook page', draft.facebook_page_name);
+  }
+  if (isKickoffFieldVisible('phone_notifications', profile, includeRevenue)) {
+    add('Phone number to receive texts', draft.phone_notifications);
+  }
+  if (isKickoffFieldVisible('phone_live_transfer', profile, includeRevenue)) {
+    add('Live transfer phone', draft.phone_live_transfer);
+    add('Live transfer approved', yesNoLabel(draft.live_transfer_approved));
+  }
+
+  if (profile === 'call_center') {
+    for (const key of Object.keys(CC_KICKOFF_FIELD_LABELS) as (keyof typeof CC_KICKOFF_FIELD_LABELS)[]) {
+      add(CC_KICKOFF_FIELD_LABELS[key], draft[key]);
+    }
+  } else {
+    for (const key of Object.keys(KICKOFF_PM_FIELD_LABELS) as (keyof typeof KICKOFF_PM_FIELD_LABELS)[]) {
+      add(KICKOFF_PM_FIELD_LABELS[key], draft[key]);
+    }
+  }
+
+  add('GHL sub-account name', draft.sub_account_name);
+  add('GHL location ID', draft.ghl_location_id);
+  add('OB call recording', draft.recording_url);
+  add('OB call transcript', draft.transcript);
+
+  const body = formatMarkedClientNote(marker, sections);
+  return body ? { marker, body } : null;
 }
 
 export function kickoffDraftToBody(

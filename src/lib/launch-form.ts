@@ -394,6 +394,43 @@ export function launchChecklistSummary(responses: Record<string, unknown>): stri
     .map(item => item.label);
 }
 
+export const LAUNCH_CLIENT_NOTE_MARKER = 'Launch checklist';
+
+/** Every launch answer, including checklist rows and the call transcript. */
+export function launchClientFileNoteSections(
+  draft: LaunchFormDraft,
+  profile: OnboardingFormProfile,
+): { label: string; value: string }[] {
+  const sections: { label: string; value: string }[] = [];
+  const add = (label: string, value: string | null | undefined) => {
+    const text = (value ?? '').trim();
+    if (text) sections.push({ label, value: text });
+  };
+
+  add('Launch date', draft.launch_date);
+  add('Completed by', draft.completed_by_label);
+  add('GHL prospecting phone', draft.phone_ghl);
+  add('Launch call recording', draft.recording_url);
+  add('Launch call transcript', draft.transcript);
+  add('Notes', draft.notes);
+
+  for (const section of getLaunchSectionsForProfile(profile)) {
+    const items = getLaunchItemsForProfile(profile).filter(item => item.section === section.id);
+    for (const item of items) {
+      const status = formatLaunchItemStatus(item, draft);
+      const value =
+        status === 'confirmed_typed_yes'
+          ? 'Confirmed (typed yes)'
+          : status === 'confirmed'
+            ? 'Confirmed'
+            : 'Not confirmed';
+      sections.push({ label: `${section.label} — ${item.label}`, value });
+    }
+  }
+
+  return sections;
+}
+
 export function formatLaunchItemStatus(
   item: LaunchChecklistItemDef,
   draft: LaunchFormDraft,

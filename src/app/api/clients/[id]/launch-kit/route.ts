@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getAppBaseUrl } from '@/lib/app-url';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import { recordClientFormNote, saveMarkedClientNote } from '@/lib/client-form-notes';
 import { insertFormSubmission } from '@/lib/form-submissions';
 import { isKickoffIncomplete } from '@/lib/kickoff';
 import { buildLaunchKitBlocks } from '@/lib/launch-kit/build';
@@ -11,7 +12,9 @@ import {
   draftToResponses,
   isLaunchKitLifecycle,
   LAUNCH_KIT_CLIENT_FIELDS,
+  LAUNCH_KIT_NOTE_MARKER,
   LAUNCH_KIT_PROPERTIES,
+  launchKitClientFileNoteSections,
   parseLaunchKitDraft,
   resolveVariant,
   validateForGenerate,
@@ -125,6 +128,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
 
   if (mode === 'draft') {
+    await recordClientFormNote(
+      ctx.service,
+      clientId,
+      LAUNCH_KIT_NOTE_MARKER,
+      launchKitClientFileNoteSections(draft),
+      ctx.userId,
+    );
+    await saveMarkedClientNote(ctx.service, clientId, 'Launch Kit — Internal notes', null, ctx.userId);
     const submission = await insertFormSubmission(ctx.service, {
       client_id: clientId,
       form_type: 'launch_kit',
@@ -197,6 +208,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     generated_by: ctx.userId,
     sent_to_client_at: null,
   };
+
+  await recordClientFormNote(
+    ctx.service,
+    clientId,
+    LAUNCH_KIT_NOTE_MARKER,
+    launchKitClientFileNoteSections(draft),
+    ctx.userId,
+  );
+  await saveMarkedClientNote(ctx.service, clientId, 'Launch Kit — Internal notes', null, ctx.userId);
 
   const submission = await insertFormSubmission(ctx.service, {
     client_id: clientId,

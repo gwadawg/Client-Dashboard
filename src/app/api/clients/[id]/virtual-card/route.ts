@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAuthContext, isAuthError, requireAnyPermission } from "@/lib/api-auth";
+import { recordClientFormNote } from "@/lib/client-form-notes";
 import { insertFormSubmission } from "@/lib/form-submissions";
 import { isKickoffIncomplete } from "@/lib/kickoff";
 import {
@@ -8,8 +9,10 @@ import {
   VIRTUAL_CARD_TEMPLATE_VERSION,
   clientPatchFromPublish,
   draftFromClient,
+  VIRTUAL_CARD_NOTE_MARKER,
   draftToResponses,
   draftToVirtualCard,
+  virtualCardClientFileNoteSections,
   parseVirtualCardDraft,
   smsSnippet,
   validateForPublish,
@@ -181,6 +184,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
   if (mode === "draft") {
+    await recordClientFormNote(
+      ctx.service,
+      clientId,
+      VIRTUAL_CARD_NOTE_MARKER,
+      virtualCardClientFileNoteSections(draft),
+      ctx.userId,
+    );
     const submission = await insertFormSubmission(ctx.service, {
       client_id: clientId,
       form_type: "virtual_card",
@@ -221,6 +231,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     published_at: new Date().toISOString(),
     template_version: VIRTUAL_CARD_TEMPLATE_VERSION,
   };
+
+  await recordClientFormNote(
+    ctx.service,
+    clientId,
+    VIRTUAL_CARD_NOTE_MARKER,
+    virtualCardClientFileNoteSections(draft),
+    ctx.userId,
+  );
 
   const submission = await insertFormSubmission(ctx.service, {
     client_id: clientId,

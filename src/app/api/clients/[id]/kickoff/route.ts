@@ -18,12 +18,18 @@ import {
   getKickoffConfig,
   isKickoffFieldVisible,
   isKickoffIncomplete,
+  applyKickoffSavedNarrative,
+  KICKOFF_CC_NOTE_MARKER,
+  KICKOFF_PM_NOTE_MARKER,
+  kickoffClientFileNote,
   kickoffDraftFromClient,
   kickoffExtraFieldsFromDraft,
   kickoffIdentitySlice,
+  kickoffNarrativeFromResponses,
   type KickoffClient,
   type KickoffDraft,
 } from '@/lib/kickoff';
+import { saveMarkedClientNote } from '@/lib/client-form-notes';
 import { insertFormSubmission } from '@/lib/form-submissions';
 import { normalizeReportingType } from '@/lib/reporting-types';
 import { normalizeStatesLicensed } from '@/lib/us-states';
@@ -32,7 +38,7 @@ import {
   formatClientConflictMessage,
 } from '@/lib/client-duplicate-check';
 import { replayPendingForClientId } from '@/lib/pending-events';
-import { clientNeedsGhlMapping } from '@/lib/client-ghl-mapping';
+import { extractGhlLocationId } from '@/lib/ghl-location-id';
 import {
   identityFieldsFromPatch,
   isKickoffIdentityFieldComplete,
@@ -70,6 +76,85 @@ async function findOnboardingCall(service: SupabaseClient, clientId: string) {
     .limit(1)
     .maybeSingle();
   return data;
+}
+
+async function findLatestKickoffNarrative(
+  service: SupabaseClient,
+  clientId: string,
+) {
+  const { data } = await service
+    .from('client_form_submissions')
+    .select('responses')
+    .eq('client_id', clientId)
+    .eq('form_type', 'kickoff')
+    .in('status', ['draft', 'applied'])
+    .order('submitted_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return kickoffNarrativeFromResponses(data?.responses as Record<string, unknown> | undefined);
+}
+
+async function persistKickoffNarrative(
+  service: SupabaseClient,
+  noteClientId: string,
+  formClientId: string,
+  userId: string | null,
+  formProfile: ReturnType<typeof getOnboardingFormProfile>,
+  draft: KickoffDraft,
+  saveMode: 'progress' | 'complete',
+  includeRevenue = true,
+) {
+  const note = kickoffClientFileNote(formProfile, draft, includeRevenue);
+  const marker = note?.marker ?? (
+    formProfile === 'call_center' ? KICKOFF_CC_NOTE_MARKER : KICKOFF_PM_NOTE_MARKER
+  );
+  await saveMarkedClientNote(service, noteClientId, marker, note?.body ?? null, userId);
+
+  if (saveMode !== 'progress') return;
+
+  const responses = {
+    ...kickoffExtraFieldsFromDraft(formProfile, draft),
+    recording_url: draft.recording_url.trim() || null,
+    transcript: draft.transcript.trim() || null,
+    reporting_type: draft.reporting_type,
+    service_program: resolveServiceProgramForSave(draft.reporting_type, draft.service_program),
+    form_profile: formProfile,
+    vertical_confirmed: draft.vertical_confirmed,
+  };
+  const { data: existing } = await service
+    .from('client_form_submissions')
+    .select('id')
+    .eq('client_id', formClientId)
+    .eq('form_type', 'kickoff')
+    .eq('status', 'draft')
+    .order('submitted_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing?.id) {
+    const { error } = await service
+      .from('client_form_submissions')
+      .update({
+        responses,
+        submitted_by: userId,
+        submitted_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id);
+    if (error) console.error('[kickoff] progress draft update failed', error.message);
+    return;
+  }
+
+  try {
+    await insertFormSubmission(service, {
+      client_id: formClientId,
+      form_type: 'kickoff',
+      status: 'draft',
+      submitted_by: userId,
+      responses,
+    });
+  } catch (e) {
+    console.error('[kickoff] progress draft insert failed', e);
+  }
 }
 
 async function findLatestKickoffVerticalConfirmed(
@@ -138,10 +223,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const subject = { isOwner: ctx.isOwner, allowedPermissions: ctx.allowedPermissions };
   const includeRevenue = canViewClientRevenue(subject);
 
-  const [clientRes, onboardingCall, priorKickoffConfirmed] = await Promise.all([
+  const [clientRes, onboardingCall, priorKickoffConfirmed, savedNarrative] = await Promise.all([
     ctx.service.from('clients').select(KICKOFF_CLIENT_FIELDS).eq('id', id).single(),
     findOnboardingCall(ctx.service, id),
     findLatestKickoffVerticalConfirmed(ctx.service, id),
+    findLatestKickoffNarrative(ctx.service, id),
   ]);
 
   if (clientRes.error) {
@@ -173,6 +259,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     onboardingCall?.transcript ?? '',
   );
   const identityComplete = isKickoffIdentityFieldComplete(kickoffIdentitySlice(identityDraft));
+  const narrativeDraft = applyKickoffSavedNarrative(identityDraft, savedNarrative);
+  const filedNote = kickoffClientFileNote(formProfile, narrativeDraft, includeRevenue);
+  if (filedNote) {
+    await saveMarkedClientNote(
+      ctx.service,
+      identityGroup?.identity_client_id ?? id,
+      filedNote.marker,
+      filedNote.body,
+      ctx.userId,
+      { insertOnly: true },
+    );
+  }
 
   return NextResponse.json({
     client,
@@ -185,6 +283,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     identity_client_id: identityGroup?.identity_client_id ?? id,
     identity_complete: identityComplete,
     related_offers: identityGroup?.offers ?? [],
+    saved_narrative: savedNarrative,
   });
 }
 
@@ -219,7 +318,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     );
   }
 
-  let ghlLocationId = optionalText(body.ghl_location_id);
+  let ghlLocationId = extractGhlLocationId(optionalText(body.ghl_location_id));
   let recordingUrl = optionalText(body.recording_url);
   let transcript = optionalText(body.transcript);
   const subAccountName = optionalText(body.sub_account_name);
@@ -245,13 +344,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const existingOnboardingCall = await findOnboardingCall(ctx.service, clientId);
 
   if (saveMode === 'complete') {
-    ghlLocationId = ghlLocationId ?? optionalText(existingClient.ghl_location_id);
+    ghlLocationId = ghlLocationId ?? extractGhlLocationId(existingClient.ghl_location_id);
     recordingUrl = recordingUrl ?? optionalText(existingOnboardingCall?.recording_url);
     transcript = transcript ?? optionalText(existingOnboardingCall?.transcript);
     const effectiveSubName = subAccountName ?? optionalText(existingClient.name);
-    if (!effectiveSubName || clientNeedsGhlMapping({ ...existingClient, name: effectiveSubName })) {
+    // Sub-account name may match the LO — that is valid when it is the real GHL location name.
+    if (!effectiveSubName) {
       return NextResponse.json(
-        { error: 'GHL sub-account name is required (copy exact name from GHL — not the person name).' },
+        { error: 'GHL sub-account name is required — copy the exact location name from GHL.' },
         { status: 400 },
       );
     }
@@ -310,7 +410,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     updates.daily_adspend = parseDailyAdspend(body.daily_adspend);
   }
 
-  if (ghlLocationId) updates.ghl_location_id = ghlLocationId;
+  if (ghlLocationId) {
+    updates.ghl_location_id = ghlLocationId;
+    const rawLoc = optionalText(body.ghl_location_id);
+    if (rawLoc && /^https?:\/\//i.test(rawLoc)) {
+      updates.ghl_subaccount_url = rawLoc;
+    }
+  }
   if (subAccountName) updates.name = subAccountName;
 
   if (saveMode === 'complete') {
@@ -389,6 +495,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
+  const noteClientId = identityGroup?.identity_client_id ?? clientId;
+  try {
+    await persistKickoffNarrative(
+      ctx.service,
+      noteClientId,
+      clientId,
+      ctx.userId,
+      formProfile,
+      draft,
+      saveMode,
+      includeRevenue,
+    );
+  } catch (e) {
+    console.error('[kickoff] narrative note failed', e);
+  }
+
   if (saveMode === 'complete') {
     try {
       const extraFields = kickoffExtraFieldsFromDraft(formProfile, draft);
@@ -413,6 +535,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     } catch (e) {
       console.error('[kickoff] form submission log failed', e);
     }
+
+    const { error: dismissError } = await ctx.service
+      .from('client_form_submissions')
+      .update({ status: 'dismissed' })
+      .eq('client_id', clientId)
+      .eq('form_type', 'kickoff')
+      .eq('status', 'draft');
+    if (dismissError) console.error('[kickoff] draft dismiss failed', dismissError.message);
   }
 
   const verticalConfirmed = isClientVerticalConfirmed({

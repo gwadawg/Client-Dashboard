@@ -8,6 +8,7 @@ import {
   getOnboardingFormProfile,
 } from "@/lib/onboarding-form-profile";
 import {
+  applyKickoffSavedNarrative,
   CC_KICKOFF_FIELD_LABELS,
   CONTACT_ROLE_OPTIONS,
   countKickoffFieldsOnFile,
@@ -15,6 +16,7 @@ import {
   isKickoffFieldVisible,
   isKickoffIdentityFieldComplete,
   isKickoffSetupResolved,
+  KICKOFF_PM_FIELD_LABELS,
   kickoffDraftFromClient,
   kickoffDraftToBody,
   kickoffFieldHadValue,
@@ -108,7 +110,10 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
       const recording = data.onboarding_call?.recording_url ?? "";
       const transcript = data.onboarding_call?.transcript ?? "";
       const verticalConfirmed = !!data.vertical_confirmed;
-      const nextDraft = kickoffDraftFromClient(c, recording, verticalConfirmed, transcript);
+      const nextDraft = applyKickoffSavedNarrative(
+        kickoffDraftFromClient(c, recording, verticalConfirmed, transcript),
+        data.saved_narrative,
+      );
       setClientName(c.name || fallbackName);
       setCanViewRevenue(!!data.can_view_revenue);
       setDraft(nextDraft);
@@ -405,7 +410,7 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
 
               {draft.vertical_confirmed && draft.reporting_type === "CALL_CENTER" && (
                 <p className="text-sm mt-3" style={{ color: subtitleColor }}>
-                  Service program is not applicable for Call Center Lead (product) clients.
+                  Fulfillment package is not applicable for HE clients.
                 </p>
               )}
             </Section>
@@ -535,13 +540,16 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
 
                 {!shareMode && kickoffConfig.showPmSection && (
                   <Section title="PM / Landing Page" shareMode={shareMode}>
+                    <p className="text-xs -mt-2 mb-3" style={{ color: helperColor(shareMode) }}>
+                      Saved to Client notes on the client file.
+                    </p>
                     <div className="space-y-4">
-                      {(["pm_landing_copy", "pm_brand_assets", "pm_compliance_notes", "pm_competitor_refs", "pm_funnel_requirements"] as const).map(key => (
-                        <Field key={key} label={{ pm_landing_copy: "Landing page copy notes", pm_brand_assets: "Brand colors / asset links", pm_compliance_notes: "Compliance disclaimers", pm_competitor_refs: "Competitor references", pm_funnel_requirements: "Special funnel requirements" }[key]} shareMode={shareMode}>
+                      {(Object.keys(KICKOFF_PM_FIELD_LABELS) as (keyof typeof KICKOFF_PM_FIELD_LABELS)[]).map(key => (
+                        <Field key={key} label={KICKOFF_PM_FIELD_LABELS[key]} shareMode={shareMode} status={fieldStatus(key)}>
                           {key === "pm_competitor_refs" ? (
-                            <input value={draft[key]} disabled={saving} onChange={e => patch(key, e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, "empty")} />
+                            <input value={draft[key]} disabled={saving} onChange={e => patch(key, e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus(key))} />
                           ) : (
-                            <textarea value={draft[key]} disabled={saving} onChange={e => patch(key, e.target.value)} rows={key === "pm_landing_copy" ? 3 : 2} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, "empty")} />
+                            <textarea value={draft[key]} disabled={saving} onChange={e => patch(key, e.target.value)} rows={key === "pm_landing_copy" ? 3 : 2} className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={fieldStyle(shareMode, fieldStatus(key))} />
                           )}
                         </Field>
                       ))}
@@ -551,6 +559,9 @@ export default function KickOffCallWizard({ clientId, fallbackName, onClose, onC
 
                 {!shareMode && kickoffConfig.showCallCenterSection && (
                   <Section title="Call Center Setup" shareMode={shareMode}>
+                    <p className="text-xs -mt-2 mb-3" style={{ color: helperColor(shareMode) }}>
+                      Saved to Client notes on the client file.
+                    </p>
                     <div className="space-y-4">
                       {(["cc_lead_source", "cc_qualification_criteria", "cc_hp_tag_user", "cc_setter_notes"] as const).map(key => (
                         <Field key={key} label={CC_KICKOFF_FIELD_LABELS[key]} shareMode={shareMode} status={fieldStatus(key)}>

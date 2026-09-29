@@ -232,3 +232,31 @@ export function wouldRejoinLabel(value: string | null | undefined): string {
   if (!value) return '—';
   return WOULD_REJOIN_OPTIONS.find(o => o.value === value)?.label ?? value;
 }
+
+export const CHURN_CLIENT_NOTE_MARKER = 'Churn offboarding';
+
+/** Full churn submission for Client notes, including the call and checklist. */
+export function churnClientFileNoteSections(draft: ChurnFormDraft): { label: string; value: string }[] {
+  const sections: { label: string; value: string }[] = [];
+  const add = (label: string, value: string | null | undefined) => {
+    const text = (value ?? '').trim();
+    if (text && text !== '—') sections.push({ label, value: text });
+  };
+
+  add('Effective date', draft.effective_churn_date);
+  if (isValidReasonCode(draft.reason_code)) add('Reason', reasonLabel(draft.reason_code));
+  add('Client feedback', draft.client_feedback);
+  add('Internal notes', draft.internal_notes);
+  add('Would they rejoin?', draft.would_rejoin ? wouldRejoinLabel(draft.would_rejoin) : '');
+  add('Exit call recording', draft.recording_url);
+  add('Exit call transcript', draft.transcript);
+  for (const item of CHURN_CHECKLIST_ITEMS) {
+    if (draft.checklist[item.key]) {
+      sections.push({ label: item.label, value: 'Done' });
+      continue;
+    }
+    const reason = draft.checklist_exceptions[item.key]?.trim();
+    if (reason) sections.push({ label: item.label, value: `Not done — ${reason}` });
+  }
+  return sections;
+}

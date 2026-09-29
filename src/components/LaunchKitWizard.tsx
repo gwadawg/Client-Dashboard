@@ -563,7 +563,7 @@ function OperatorStep({ draft, patch }: { draft: LaunchKitDraft; patch: PatchFn 
         <Field label="Speed standard (as sold)" hint="Leave blank if not sold with a number — the kit then says “as sold on your Kickoff” instead of inventing one.">
           <TextInput value={draft.speed_standard} onChange={e => patch("speed_standard", e.target.value)} placeholder="call within 5 minutes during business hours" />
         </Field>
-        <Field label="Internal notes (not in the PDF)">
+        <Field label="Internal notes (not in the PDF)" hint="Saved to Client notes on the client file.">
           <textarea
             value={draft.notes}
             onChange={e => patch("notes", e.target.value)}

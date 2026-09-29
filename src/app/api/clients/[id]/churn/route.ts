@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
 import { CLIENT_CALL_FIELDS } from '@/lib/client-calls';
 import { isValidReasonCode } from '@/lib/client-feedback';
+import { recordClientFormNote } from '@/lib/client-form-notes';
 import {
+  CHURN_CLIENT_NOTE_MARKER,
+  churnClientFileNoteSections,
   churnDraftToResponses,
   churnChecklistValidationError,
   formatChurnHistoryNote,
@@ -181,6 +184,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .single();
 
   if (callErr) return NextResponse.json({ error: callErr.message }, { status: 500 });
+
+  await recordClientFormNote(
+    ctx.service,
+    clientId,
+    CHURN_CLIENT_NOTE_MARKER,
+    churnClientFileNoteSections(draft),
+    ctx.userId,
+  );
 
   const submission = await insertFormSubmission(ctx.service, {
     client_id: clientId,

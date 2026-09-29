@@ -292,6 +292,38 @@ export function draftFromResponses(responses: Record<string, unknown>): LaunchKi
   return d;
 }
 
+export const LAUNCH_KIT_NOTE_MARKER = 'Launch Kit';
+
+/** Full kit intake, including links marked N/A and internal notes. */
+export function launchKitClientFileNoteSections(draft: LaunchKitDraft): { label: string; value: string }[] {
+  const sections: { label: string; value: string }[] = [];
+  const add = (label: string, value: string | null | undefined) => {
+    const text = (value ?? '').trim();
+    if (text) sections.push({ label, value: text });
+  };
+
+  add('Product', draft.product === 'rm' ? 'Reverse mortgage' : draft.product === 'dscr' ? 'DSCR' : draft.product);
+  add('Who dials', draft.dial_owner === 'waiz' ? 'Waiz' : draft.dial_owner === 'client' ? 'Client' : draft.dial_owner);
+  add('Contact', draft.contact_first_name);
+  add('Company / DBA', draft.company_name);
+  add('Go-live', draft.go_live_date);
+  add('CSM', draft.csm_name);
+  add('Slack channel', draft.slack_channel_name);
+  add('Market', draft.market);
+  add('Who works new leads', draft.who_works_leads);
+  add('Speed standard', draft.speed_standard);
+  for (const property of LAUNCH_KIT_PROPERTIES) {
+    add(property.label, draft.property_na[property.key] ? 'N/A' : draft[property.key]);
+  }
+  for (const field of LAUNCH_KIT_REVIEW_FIELDS) {
+    add(field.label, draft.property_na[field.key] ? 'N/A' : draft[field.key]);
+  }
+  add('NMLS', draft.nmls);
+  add('States licensed', draft.states_licensed);
+  add('Internal notes', draft.notes);
+  return sections;
+}
+
 export function draftToResponses(draft: LaunchKitDraft): Record<string, unknown> {
   const naKeys = [
     ...LAUNCH_KIT_PROPERTIES.filter(p => draft.property_na[p.key]).map(p => p.key),

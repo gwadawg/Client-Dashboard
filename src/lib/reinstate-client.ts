@@ -1,11 +1,14 @@
 import { randomBytes } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createOfferForAccount } from '@/lib/client-account-groups';
+import { recordClientFormNote, saveMarkedClientNote } from '@/lib/client-form-notes';
 import { insertFormSubmission } from '@/lib/form-submissions';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import { normalizeSalesPackage } from '@/lib/offer-catalog';
 import { normalizeReportingType } from '@/lib/reporting-types';
 import {
+  REINSTATE_NOTE_MARKER,
+  reinstateClientFileNoteSections,
   reinstateDraftToResponses,
   type ReinstateEngagement,
   type ReinstateFormDraft,
@@ -670,6 +673,15 @@ export async function reinstateClient(
     if (e instanceof ReinstateClientError) throw e;
     throw new ReinstateClientError(e instanceof Error ? e.message : String(e), 500);
   }
+
+  await recordClientFormNote(
+    service,
+    targetClientId,
+    REINSTATE_NOTE_MARKER,
+    reinstateClientFileNoteSections(draft),
+    submittedBy,
+  );
+  await saveMarkedClientNote(service, targetClientId, 'Reinstate — Handoff notes', null, submittedBy);
 
   const closeId = await ensureReinstateClose(service, {
     clientId: targetClientId,

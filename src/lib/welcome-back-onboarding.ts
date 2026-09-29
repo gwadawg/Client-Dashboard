@@ -1,8 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { recordClientFormNote } from '@/lib/client-form-notes';
 import { insertFormSubmission } from '@/lib/form-submissions';
 import { CONTACT_ROLE_OPTIONS } from '@/lib/kickoff';
 import { latestReinstateCutoffIso } from '@/lib/reinstate-progress';
-import { normalizeStatesLicensed } from '@/lib/us-states';
+import { formatStatesLicensed, normalizeStatesLicensed } from '@/lib/us-states';
 import { isKnownUsClientTimezone } from '@/lib/us-timezones';
 
 /** Columns needed to resolve + prefill + TTL. Do not select GHL, MRR, or lifecycle. */
@@ -292,6 +293,35 @@ export function welcomeBackResponsesFromInput(input: WelcomeBackFormInput): Reco
   return { ...input };
 }
 
+export const WELCOME_BACK_NOTE_MARKER = 'Welcome-back onboarding';
+
+export function welcomeBackClientFileNoteSections(
+  input: WelcomeBackFormInput,
+): { label: string; value: string }[] {
+  const sections: { label: string; value: string }[] = [];
+  const add = (label: string, value: string | null | undefined) => {
+    const text = (value ?? '').trim();
+    if (text && text !== '—') sections.push({ label, value: text });
+  };
+  add('Name', input.primary_contact_name);
+  add('Email', input.email);
+  add('Phone', input.phone);
+  add('Role', input.contact_role);
+  add('Brokerage', input.brokerage_name);
+  add('Legal business name', input.legal_business_name);
+  add('NMLS', input.nmls);
+  add('Street', input.street_address);
+  add('City', input.city);
+  add('State', input.state);
+  add('ZIP', input.zip_code);
+  if (input.states_licensed.length) add('States licensed', formatStatesLicensed(input.states_licensed));
+  add('Timezone', input.timezone);
+  add('Website', input.website);
+  add('Facebook page', input.facebook_page_name);
+  add('Bio', input.biography);
+  return sections;
+}
+
 export async function applyWelcomeBackSubmission(
   service: SupabaseClient,
   clientId: string,
@@ -301,6 +331,14 @@ export async function applyWelcomeBackSubmission(
   const patch = welcomeBackToClientPatch(input);
   const { error } = await service.from('clients').update(patch).eq('id', clientId);
   if (error) throw new Error(error.message);
+
+  await recordClientFormNote(
+    service,
+    clientId,
+    WELCOME_BACK_NOTE_MARKER,
+    welcomeBackClientFileNoteSections(input),
+    null,
+  );
 
   const submission = await insertFormSubmission(service, {
     client_id: clientId,

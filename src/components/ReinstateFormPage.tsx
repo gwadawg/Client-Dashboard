@@ -573,7 +573,7 @@ export default function ReinstateFormPage({
               value={draft.internal_notes}
               onChange={e => setDraft(prev => ({ ...prev, internal_notes: e.target.value }))}
               rows={3}
-              placeholder="Handoff context for CS — GHL path, billing quirks, why they came back."
+              placeholder="Handoff context for CS — GHL path, billing quirks, why they came back. Saved to Client notes."
               className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-y disabled:opacity-60"
               style={fieldStyle}
             />
