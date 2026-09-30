@@ -440,6 +440,28 @@ export function formatLaunchItemStatus(
   return 'confirmed';
 }
 
+export const LAUNCH_FORM_CLICKUP_KEY = 'launch_form';
+export const LAUNCH_FORM_CLICKUP_VALUE = 'Submitted';
+
+export function formatLaunchClickUpComment(
+  client: { id: string; name: string },
+  draft: LaunchFormDraft,
+  profile: OnboardingFormProfile,
+): string {
+  const responses = launchDraftToResponses(draft, { form_profile: profile });
+  return [
+    '✅ Launch Form submitted',
+    '',
+    `Client (Mr. Waiz): ${client.name}`,
+    `Mr. Waiz ID: ${client.id}`,
+    `Completed by: ${draft.completed_by_label.trim() || '—'}`,
+    `Launch date: ${draft.launch_date}`,
+    ...(draft.recording_url.trim() ? [`Recording: ${draft.recording_url.trim()}`] : []),
+    '',
+    formatLaunchSlackChecklist(responses),
+  ].join('\n');
+}
+
 export function formatLaunchSlackChecklist(responses: Record<string, unknown>): string {
   const profile = profileFromLaunchResponses(responses);
   const draft = launchResponsesToDraft(responses, profile);

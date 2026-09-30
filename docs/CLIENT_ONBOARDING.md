@@ -184,7 +184,7 @@ Planned fact fields:
 | Kickoff Form | `Kickoff Form = Submitted`, `Launch Call Date` when known |
 | Tech QA Form | `Tech QA = Complete` |
 | Marketing QA Form | `Marketing QA = Complete` |
-| Launch Form | `Launch Form = Submitted` |
+| Launch Form | `launch_form` = `Submitted`. ClickUp automation owns Launch Gate. Mr. Waiz does not set it. |
 
 Use `CLICKUP_OB_FIELD_MAP` for live ClickUp field IDs and dropdown option
 UUIDs. Keep IDs in Railway, not hardcoded in code.

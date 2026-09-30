@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import {
+  addClickUpTaskComment,
+  applyClickUpFieldMap,
+  getClickUpToken,
+} from '@/lib/clickup';
 import { CLIENT_CALL_FIELDS } from '@/lib/client-calls';
 import { recordClientFormNote, saveMarkedClientNote } from '@/lib/client-form-notes';
 import { insertFormSubmission, isBackfillFormSubmission } from '@/lib/form-submissions';
@@ -14,6 +19,9 @@ import {
   isLaunchItemSatisfied,
   LAUNCH_CLIENT_NOTE_MARKER,
   LAUNCH_FINAL_CONFIRMATION,
+  LAUNCH_FORM_CLICKUP_KEY,
+  LAUNCH_FORM_CLICKUP_VALUE,
+  formatLaunchClickUpComment,
   launchClientFileNoteSections,
   launchDraftToResponses,
   profileFromClient,
@@ -278,7 +286,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const [clientRes, cycleSubs, onboardingCallRes] = await Promise.all([
     ctx.service
       .from('clients')
-      .select('id, name, lifecycle_status, slack_id, launch_date, ghl_location_id, primary_contact_name, reporting_type, service_program')
+      .select('id, name, lifecycle_status, slack_id, launch_date, ghl_location_id, primary_contact_name, reporting_type, service_program, onboarding_clickup_task_id')
       .eq('id', clientId)
       .single(),
     fetchLaunchCycleSubmissions(ctx.service, clientId),
@@ -339,6 +347,41 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
+  const taskId = client.onboarding_clickup_task_id?.trim();
+  if (!taskId) {
+    return NextResponse.json(
+      { error: 'Client is missing a ClickUp onboarding task ID. Launch writes only to the onboarding task.' },
+      { status: 400 },
+    );
+  }
+
+  const token = getClickUpToken();
+  if (!token) {
+    return NextResponse.json(
+      { error: 'CLICKUP_API_TOKEN is not configured; Launch cannot update ClickUp.' },
+      { status: 500 },
+    );
+  }
+
+  const wrote = await applyClickUpFieldMap(
+    taskId,
+    token,
+    { [LAUNCH_FORM_CLICKUP_KEY]: LAUNCH_FORM_CLICKUP_VALUE },
+    '[launch-form]',
+  );
+  if (wrote < 1) {
+    return NextResponse.json(
+      { error: 'Launch Form ClickUp field is not configured in CLICKUP_OB_FIELD_MAP.' },
+      { status: 500 },
+    );
+  }
+
+  await addClickUpTaskComment(
+    taskId,
+    token,
+    formatLaunchClickUpComment(client, draft, formProfile),
+  );
+
   const responses = launchDraftToResponses(draft, {
     reporting_type: client.reporting_type ?? undefined,
     service_program: client.service_program ?? null,
@@ -395,6 +438,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       lifecycle_status: lifecycleStatus,
       launch_date: draft.launch_date,
       phone_ghl: draft.phone_ghl.trim(),
+      onboarding_clickup_task_id: taskId,
+      clickup_field: LAUNCH_FORM_CLICKUP_KEY,
+      clickup_value: LAUNCH_FORM_CLICKUP_VALUE,
     },
   });
 
