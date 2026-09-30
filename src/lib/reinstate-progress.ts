@@ -37,6 +37,8 @@ export function mapCycleProgress(
       row.form_type === 'new_client' ||
       row.form_type === 'onboarding' ||
       row.form_type === 'kickoff' ||
+      row.form_type === 'tech_qa' ||
+      row.form_type === 'marketing_qa' ||
       row.form_type === 'launch_kit' ||
       row.form_type === 'virtual_card' ||
       row.form_type === 'launch'

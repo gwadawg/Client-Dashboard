@@ -1636,7 +1636,8 @@ create table if not exists client_form_submissions (
   submitted_at  timestamptz not null default now(),
   constraint client_form_submissions_form_type_check check (
     form_type in (
-      'new_client', 'onboarding', 'kickoff', 'launch', 'launch_kit', 'virtual_card',
+      'new_client', 'onboarding', 'kickoff', 'tech_qa', 'marketing_qa',
+      'launch', 'launch_kit', 'virtual_card',
       'churn', 'reinstate', 'reinstate_onboarding'
     )
   ),

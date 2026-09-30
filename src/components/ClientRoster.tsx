@@ -7,6 +7,7 @@ import ModalCloseButton from "@/components/ModalCloseButton";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import LaunchKitWizard from "@/components/LaunchKitWizard";
+import QaSkeletonWizard from "@/components/QaSkeletonWizard";
 import VirtualCardWizard from "@/components/VirtualCardWizard";
 import { isLaunchKitLifecycle } from "@/lib/launch-kit/intake";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
@@ -30,6 +31,7 @@ import ClientLeadSourceSelect from "@/components/ClientLeadSourceSelect";
 import { REPORTING_TYPE_META, REPORTING_TYPES } from "@/lib/reporting-types";
 import { normalizeSalesPackage } from "@/lib/offer-catalog";
 import ReportingTypeBadge, { ReportingTypeSelectOptions, SalesPackageBadge } from "@/components/ReportingTypeBadge";
+import { isQaLifecycle, type QaLane } from "@/lib/qa-form";
 import {
   DEFAULT_KPI_BANDS,
   HE_KPI_KEYS,
@@ -108,7 +110,7 @@ type Client = {
   account_primary_email?: string | null;
   engagement_kind?: string | null;
   total_paid?: number;
-  form_progress?: Partial<Record<"new_client" | "onboarding" | "kickoff" | "launch_kit" | "virtual_card" | "launch", boolean>>;
+  form_progress?: Partial<Record<"new_client" | "onboarding" | "kickoff" | "tech_qa" | "marketing_qa" | "launch_kit" | "virtual_card" | "launch", boolean>>;
   next_cs_call?: {
     scheduled_at: string;
     call_type: "onboarding" | "launch" | "checkin" | null;
@@ -590,6 +592,7 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
   } | null>(null);
   const [kickoffFor, setKickoffFor] = useState<{ id: string; name: string } | null>(null);
   const [launchFor, setLaunchFor] = useState<{ id: string; name: string } | null>(null);
+  const [qaFor, setQaFor] = useState<{ id: string; name: string; lane: QaLane } | null>(null);
   const [launchKitFor, setLaunchKitFor] = useState<{ id: string; name: string } | null>(null);
   const [virtualCardFor, setVirtualCardFor] = useState<{ id: string; name: string } | null>(null);
   const [offboardFor, setOffboardFor] = useState<{ id: string; name: string } | null>(null);
@@ -936,6 +939,8 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         onOpenFile={() => openClientFile(c.id, c.name)}
         onOpenKickoff={() => setKickoffFor({ id: c.id, name: c.name })}
         onOpenLaunch={() => setLaunchFor({ id: c.id, name: c.name })}
+        onOpenTechQa={() => setQaFor({ id: c.id, name: c.name, lane: "tech_setup" })}
+        onOpenMediaQa={() => setQaFor({ id: c.id, name: c.name, lane: "media_buying" })}
         onOpenLaunchKit={() => setLaunchKitFor({ id: c.id, name: c.name })}
         onOpenVirtualCard={() => setVirtualCardFor({ id: c.id, name: c.name })}
         onOpenOffboard={() => setOffboardFor({ id: c.id, name: c.name })}
@@ -1438,6 +1443,16 @@ export default function ClientRoster({ canViewRevenue: initialCanViewRevenue = f
         />
       )}
 
+      {qaFor && (
+        <QaSkeletonWizard
+          clientId={qaFor.id}
+          lane={qaFor.lane}
+          fallbackName={qaFor.name}
+          onClose={() => setQaFor(null)}
+          onCompleted={reload}
+        />
+      )}
+
       {launchKitFor && (
         <LaunchKitWizard
           clientId={launchKitFor.id}
@@ -1582,7 +1597,7 @@ function AccountGroupHeaderRow({
 }
 
 function ClientRow({
-  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange,   columns, colSpan, benchmarksOpen, actionsOpen, onToggleActions, onRequestStatusChange, onPatch, onAdsUpdated, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenLaunchKit, onOpenVirtualCard, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onAddOffer, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete, variant = "standalone",
+  client, allClients, striped, busy, confirmingDelete, deleteSummary, mergeTargetId, onMergeTargetChange,   columns, colSpan, benchmarksOpen, actionsOpen, onToggleActions, onRequestStatusChange, onPatch, onAdsUpdated, onOpenFile, onOpenKickoff, onOpenLaunch, onOpenTechQa, onOpenMediaQa, onOpenLaunchKit, onOpenVirtualCard, onOpenOffboard, onOpenNotes, onOpenCalls, onLogCheckin, onAddOffer, onToggleBenchmarks, onAskDelete, onCancelDelete, onMerge, onDelete, variant = "standalone",
 }: {
   client: Client;
   allClients: Client[];
@@ -1604,6 +1619,8 @@ function ClientRow({
   onOpenFile: () => void;
   onOpenKickoff: () => void;
   onOpenLaunch: () => void;
+  onOpenTechQa: () => void;
+  onOpenMediaQa: () => void;
   onOpenLaunchKit: () => void;
   onOpenVirtualCard: () => void;
   onOpenOffboard: () => void;
@@ -1628,7 +1645,10 @@ function ClientRow({
   const needsGhlMapping = clientNeedsGhlMapping(c);
   const showKickoffAction = isKickoffLifecycle(c.lifecycle_status) || kickoffPending;
   const showLaunchAction = c.lifecycle_status === "onboarding" || c.lifecycle_status === "new_account";
+  const showQaAction = isQaLifecycle(c.lifecycle_status);
   const showLaunchKitAction = isLaunchKitLifecycle(c.lifecycle_status);
+  const techQaDone = !!c.form_progress?.tech_qa;
+  const mediaQaDone = !!c.form_progress?.marketing_qa;
   const launchKitDone = !!c.form_progress?.launch_kit;
   const virtualCardDone = !!c.virtual_business_card_url || !!c.form_progress?.virtual_card;
   const showOffboardAction = isChurnOffboardEligible(c.lifecycle_status);
@@ -1862,6 +1882,24 @@ function ClientRow({
             </ActionButton>
             {showLaunchAction && (
               <ActionButton onClick={onOpenLaunch} color="#34d399" title="Launch checklist — mark client live">Launch</ActionButton>
+            )}
+            {showQaAction && (
+              <>
+                <ActionButton
+                  onClick={onOpenTechQa}
+                  color={techQaDone ? "#22c55e" : "#60a5fa"}
+                  title="Tech Setup QA skeleton — writes Tech QA complete to ClickUp"
+                >
+                  Tech QA{techQaDone ? " ✓" : ""}
+                </ActionButton>
+                <ActionButton
+                  onClick={onOpenMediaQa}
+                  color={mediaQaDone ? "#22c55e" : "#fb923c"}
+                  title="Media Buying QA skeleton — writes Marketing QA complete to ClickUp"
+                >
+                  Media QA{mediaQaDone ? " ✓" : ""}
+                </ActionButton>
+              </>
             )}
             {showOffboardAction && (
               <ActionButton onClick={onOpenOffboard} color="#f87171" title="Open churn offboarding form">Offboard</ActionButton>

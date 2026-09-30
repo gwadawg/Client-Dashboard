@@ -17,6 +17,7 @@ renames it. New onboarding code must not write `clickup_task_id`.
 | 3. Kickoff | CS manager | Kick-Off wizard in Client Roster | Ops fields + PM brief (JSON audit) |
 | 3b. Launch Kit | CSM | **Kit** wizard in Client Roster | Branded client PDF → Storage, `launch_kit` submission, Slack links |
 | 3c. Virtual Card | CS / ops | **Card** wizard in Client Roster / File | `loanofficer.me/{slug}` + `/learn`; URL on `clients.virtual_business_card_url` |
+| 3d. Tech / Media QA | Tech VA / Media Buyer | QA wizards in Client Roster / File | `tech_qa` / `marketing_qa` submission + ClickUp fact `Complete` |
 | 4. Launch | Ops | Launch checklist wizard | `lifecycle_status: active`, `launch_date`, Slack via Make |
 
 **Scheduled CS calls** (onboarding / launch / check-in calendars from GHL Client Success) sync via Make into `cs_appointments` and show on Ops Overview + Client Roster/File. See [`docs/CS_APPOINTMENTS.md`](CS_APPOINTMENTS.md).
@@ -188,6 +189,38 @@ Planned fact fields:
 Use `CLICKUP_OB_FIELD_MAP` for live ClickUp field IDs and dropdown option
 UUIDs. Keep IDs in Railway, not hardcoded in code.
 
+### QA skeleton forms
+
+Added 2026-09-29 as automation skeletons, not final SOP-derived QA.
+
+| Form | Route | Stored `form_type` | ClickUp field key | ClickUp value |
+|------|-------|--------------------|-------------------|---------------|
+| Tech Setup QA | `/api/clients/[id]/qa/tech_setup` | `tech_qa` | `tech_qa` | `Complete` |
+| Media Buying QA | `/api/clients/[id]/qa/media_buying` | `marketing_qa` | `marketing_qa` | `Complete` |
+
+Both forms are client-scoped admin wizards opened from Client Roster or
+Client File. They do not create per-client form definitions. One shared
+config in `src/lib/qa-form.ts` is reused for every client. The submitted
+answers are saved in `client_form_submissions.responses` with
+`skeleton_version = qa-skeleton-v0`, and the ClickUp onboarding task
+receives a comment with the checklist evidence.
+
+QA actions only appear while `lifecycle_status` is `new_account` or
+`onboarding`. A reinstate starts a new QA cycle. Writes go only to
+`clients.onboarding_clickup_task_id` — never the retired Client Hub task.
+
+The submit path intentionally fails before writing the submission when
+`onboarding_clickup_task_id`, `CLICKUP_API_TOKEN`, or the matching
+`CLICKUP_OB_FIELD_MAP` key is missing. That keeps Mr. Waiz from recording
+QA complete when the ClickUp automation did not receive the fact.
+
+Run `supabase/migrations/add_onboarding_qa_form_types.sql` so
+`client_form_submissions` accepts `tech_qa` and `marketing_qa`.
+
+Replace the skeleton checklist content later from the Tech/A2P and
+Media Buying/Funnel SOP done-definitions. Keep the write contract the
+same unless the ClickUp field architecture changes.
+
 After `POST /api/admin/onboard` stores `onboarding_clickup_task_id`, Mr. Waiz
 writes two dropdowns on that task:
 
@@ -225,7 +258,8 @@ Implemented in code on 2026-09-29:
 Still required before production proof:
 
 - Run `supabase/migrations/add_onboarding_clickup_task_id.sql`.
-- Add `CLICKUP_API_TOKEN` to Railway.
+- `CLICKUP_API_TOKEN` is already set in Railway (owner, 2026-09-30).
+  Local `.env.local` does not have it. Do not re-add it from a local file.
 - Set `CLICKUP_CLIENT_HUB_LIST_ID` to the onboarding list ID in Railway.
 - Export live onboarding list field IDs and option UUIDs, then populate
   `CLICKUP_OB_FIELD_MAP`. Example: `{ "ob_form": { "id": "field_uuid",
@@ -248,6 +282,20 @@ Create a public Supabase Storage bucket `client-headshots` for headshot uploads.
 ## 3. Kickoff (CS manager)
 
 Open **Kick-off** from Client Roster after the OB call. Confirms client info, captures GHL location ID + sub-account name, PM landing-page brief (stored in `client_form_submissions`, not `clients` columns).
+
+### Account setup (client file)
+
+Collected on the onboarding call. The kickoff form writes them once. If Team or Brand changes later, update the client file. Do not treat the old kickoff submission as the current setup. The kickoff form does not write these columns yet.
+
+| Field | Column | Values |
+|-------|--------|--------|
+| Brand | `brand_subject` | `client` (Client name) · `company` (Company). Whose name the ads and funnel use. |
+| Team | `account_shape` | `solo` · `team` |
+| Lead routing | `team_routing_notes` | Free text. Shown only when Team. Who receives each lead and how it is split. |
+| We qualify leads | `qualifies_leads` | `true` / `false` / null |
+| How we qualify | `qualification_notes` | Free text. Shown only when Yes. |
+
+Run `supabase/migrations/add_client_launch_setup.sql` before editing these on an existing database.
 
 ## 3b. Launch Kit (CSM)
 
@@ -411,6 +459,8 @@ Roster shows progress strip: Sign | OB | KO | Kit | Live. Launch Kit rows in Cli
 | `GET/POST /api/clients/[id]/team-invite` | Admin session | Copy / rotate team invite URL |
 | `GET/POST /api/form-submissions/pending` | Admin session | Unmapped OB queue |
 | `POST /api/clients/[id]/kickoff` | Admin session | Kickoff wizard |
+| `GET/POST /api/clients/[id]/qa/tech_setup` | Admin session (`admin_clients` / `admin_billing`) | Tech Setup QA skeleton |
+| `GET/POST /api/clients/[id]/qa/media_buying` | Admin session (`admin_clients` / `admin_billing`) | Media Buying QA skeleton |
 | `GET/POST /api/clients/[id]/launch-kit` | Admin session (`admin_clients` / `admin_billing`) | Prefill + versions / `{ mode: 'draft' \| 'generate', draft }` |
 | `POST /api/clients/[id]/launch-kit/send` | Admin session | Post a kit version to the client Slack channel |
 | `GET /api/clients/[id]/launch-kit/download?submission=` | Admin session (+ `client_health`) | Redirect to a fresh 15-min signed URL |

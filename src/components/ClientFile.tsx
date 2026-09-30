@@ -42,6 +42,7 @@ import LoanLogLinkSection from "@/components/loan-log/LoanLogLinkSection";
 import KickOffCallWizard from "@/components/KickOffCallWizard";
 import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import LaunchKitWizard from "@/components/LaunchKitWizard";
+import QaSkeletonWizard from "@/components/QaSkeletonWizard";
 import VirtualCardWizard from "@/components/VirtualCardWizard";
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
 import { reinstateFormHref } from "@/lib/internal-forms";
@@ -52,6 +53,7 @@ import AccountWeekPlansClientHistory from "@/components/AccountWeekPlansClientHi
 import ClientAccountOffersPanel from "@/components/ClientAccountOffersPanel";
 import { requiresLifecycleFeedback } from "@/lib/client-feedback";
 import { isKickoffIncomplete, isKickoffLifecycle } from "@/lib/kickoff";
+import { isQaLifecycle, type QaLane } from "@/lib/qa-form";
 import { isLaunchKitLifecycle } from "@/lib/launch-kit/intake";
 import type { ClientContact } from "@/lib/client-contacts";
 import { csCallTypeLabel, type CsCallType } from "@/lib/cs-appointments";
@@ -385,6 +387,7 @@ export default function ClientFile({
   const [statusChange, setStatusChange] = useState<{ targetStatus: string; pendingBody: Record<string, unknown> } | null>(null);
   const [showKickoff, setShowKickoff] = useState(openKickoff);
   const [showLaunch, setShowLaunch] = useState(false);
+  const [showQaLane, setShowQaLane] = useState<QaLane | null>(null);
   const [showLaunchKit, setShowLaunchKit] = useState(false);
   const [showVirtualCard, setShowVirtualCard] = useState(false);
   const [showOffboard, setShowOffboard] = useState(false);
@@ -769,6 +772,8 @@ export default function ClientFile({
   const onboardingCall = calls.find(c => c.call_type === "onboarding") ?? null;
   const kickoffPending = client ? isKickoffIncomplete(client, onboardingCall) : false;
   const latestReinstate = formSubmissions.find(s => s.form_type === "reinstate") ?? null;
+  const techQaDone = formSubmissions.some(s => s.form_type === "tech_qa" && s.status === "applied");
+  const mediaQaDone = formSubmissions.some(s => s.form_type === "marketing_qa" && s.status === "applied");
   const welcomeBackObDone = !!(
     latestReinstate &&
     formSubmissions.some(
@@ -808,6 +813,18 @@ export default function ClientFile({
         clientId={clientId}
         fallbackName={offerName}
         onClose={() => setShowLaunch(false)}
+        onCompleted={() => {
+          load();
+          onUpdated?.();
+        }}
+      />
+    )}
+    {showQaLane && (
+      <QaSkeletonWizard
+        clientId={clientId}
+        lane={showQaLane}
+        fallbackName={offerName}
+        onClose={() => setShowQaLane(null)}
         onCompleted={() => {
           load();
           onUpdated?.();
@@ -1474,6 +1491,68 @@ export default function ClientFile({
                   Open Launch Kit
                 </button>
               </div>
+            )}
+
+            {isQaLifecycle(client?.lifecycle_status) && (
+            <div className="space-y-3">
+            <div
+              className="rounded-lg px-4 py-3 flex items-start justify-between gap-4 flex-wrap"
+              style={{
+                background: "rgba(96,165,250,0.08)",
+                border: "1px solid rgba(96,165,250,0.25)",
+              }}
+            >
+              <div>
+                <p className="text-sm font-semibold" style={{ color: techQaDone ? "#22c55e" : "#93c5fd" }}>
+                  Tech Setup QA{techQaDone ? " complete" : ""}
+                </p>
+                <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
+                  Skeleton QA gate for A2P, GHL, routing, phone, and Closebot readiness. Submitting writes Tech QA complete to ClickUp.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQaLane("tech_setup")}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                style={{
+                  color: techQaDone ? "#22c55e" : "#93c5fd",
+                  background: techQaDone ? "rgba(34,197,94,0.12)" : "rgba(96,165,250,0.12)",
+                  border: techQaDone ? "1px solid rgba(34,197,94,0.3)" : "1px solid rgba(96,165,250,0.3)",
+                }}
+              >
+                Open Tech QA{techQaDone ? " ✓" : ""}
+              </button>
+            </div>
+
+            <div
+              className="rounded-lg px-4 py-3 flex items-start justify-between gap-4 flex-wrap"
+              style={{
+                background: "rgba(251,146,60,0.08)",
+                border: "1px solid rgba(251,146,60,0.25)",
+              }}
+            >
+              <div>
+                <p className="text-sm font-semibold" style={{ color: mediaQaDone ? "#22c55e" : "#fb923c" }}>
+                  Media Buying QA{mediaQaDone ? " complete" : ""}
+                </p>
+                <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
+                  Skeleton QA gate for ad access, funnel, campaign setup, creative, and launch-readiness. Submitting writes Marketing QA complete to ClickUp.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQaLane("media_buying")}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                style={{
+                  color: mediaQaDone ? "#22c55e" : "#fb923c",
+                  background: mediaQaDone ? "rgba(34,197,94,0.12)" : "rgba(251,146,60,0.12)",
+                  border: mediaQaDone ? "1px solid rgba(34,197,94,0.3)" : "1px solid rgba(251,146,60,0.3)",
+                }}
+              >
+                Open Media QA{mediaQaDone ? " ✓" : ""}
+              </button>
+            </div>
+            </div>
             )}
 
             <div

@@ -18,6 +18,7 @@ import { CC_KICKOFF_FIELD_LABELS } from "@/lib/kickoff";
 import { getReportingTypeLabel } from "@/lib/reporting-types";
 import { getServiceProgramLabel } from "@/lib/service-program";
 import { formatStatesLicensed } from "@/lib/us-states";
+import { getQaFormConfig, type QaLane } from "@/lib/qa-form";
 
 export type FormSubmissionSummary = {
   id: string;
@@ -180,9 +181,42 @@ function humanizeReinstateResponses(responses: Record<string, unknown>): { label
   return rows;
 }
 
+function humanizeQaResponses(formType: FormType, responses: Record<string, unknown>): { label: string; value: string; section?: string }[] {
+  const lane =
+    responses.qa_lane === "tech_setup" || responses.qa_lane === "media_buying"
+      ? responses.qa_lane
+      : formType === "tech_qa"
+        ? "tech_setup"
+        : "media_buying";
+  const config = getQaFormConfig(lane as QaLane);
+  const checklist = responses.checklist && typeof responses.checklist === "object"
+    ? responses.checklist as Record<string, unknown>
+    : {};
+  const rows: { label: string; value: string; section?: string }[] = [
+    { label: "Skeleton", value: formatValue("skeleton_version", responses.skeleton_version) },
+    { label: "Completed by", value: formatValue("completed_by_label", responses.completed_by_label) },
+    { label: "Checklist", value: "", section: "Checklist" },
+  ];
+  for (const item of config.items) {
+    rows.push({
+      label: item.label,
+      value: checklist[item.key] === true ? "✓ Confirmed" : "—",
+      section: "Checklist",
+    });
+  }
+  if (responses.evidence) rows.push({ label: "Evidence", value: String(responses.evidence) });
+  if (responses.blockers) rows.push({ label: "Blockers / exceptions", value: String(responses.blockers) });
+  if (responses.notes) rows.push({ label: "Notes", value: String(responses.notes) });
+  return rows;
+}
+
 function humanizeResponses(formType: FormType, responses: Record<string, unknown>): { label: string; value: string; section?: string }[] {
   if (formType === "launch") {
     return humanizeLaunchResponses(responses);
+  }
+
+  if (formType === "tech_qa" || formType === "marketing_qa") {
+    return humanizeQaResponses(formType, responses);
   }
 
   if (formType === "launch_kit") {
