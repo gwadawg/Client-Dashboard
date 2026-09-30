@@ -268,6 +268,7 @@ export function parseOnboardPayload(body: OnboardPayload) {
       numberField(body.daily_adspend) ??
       numberField(body.daily_ad_spend) ??
       numberField(body.adspend),
+    drive_folder_url: trimString(body.drive_folder_url),
     notes: collectOnboardNotes(body),
   };
 }
@@ -453,7 +454,7 @@ function buildClientRecord(parsed: ParsedOnboard): Record<string, unknown> {
     'brokerage_name', 'ghl_location_id', 'ghl_contact_id',
     'ghl_subaccount_url', 'source',
     'onboarding_clickup_task_id', 'slack_id',
-    'offer_summary', 'daily_adspend',
+    'offer_summary', 'daily_adspend', 'drive_folder_url',
   ];
   for (const k of optional) {
     const v = parsed[k];

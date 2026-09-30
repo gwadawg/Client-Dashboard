@@ -47,6 +47,7 @@ Make SOP: [`make-blueprints/MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLI
 | **Offer** (Call Center · Leads Only) | `sales_package` | `sales_package` (`core_offer` / `mid_offer`) |
 | Appointment Watch (Yes/No) | `appointment_watch` | `appointment_watch` |
 | Daily adspend | `daily_adspend` | `daily_adspend` |
+| Google Drive folder | `drive_folder_url` | `drive_folder_url` |
 | Agreed Offer Terms | `offer_summary` | `offer_summary` |
 | Custom ads | `custom_ads` | `client_notes` (internal) |
 | Onboarding setup breakdown | `onboarding_setup` | `client_notes` (internal) |
@@ -68,6 +69,7 @@ Make SOP: [`make-blueprints/MAKE_NEW_CLIENT.md`](../make-blueprints/MAKE_NEW_CLI
   "sales_package": "{{1.offer}}",
   "appointment_watch": "{{1.appointment_watch}}",
   "daily_adspend": "{{1.daily_adspend}}",
+  "drive_folder_url": "{{drive.webViewLink}}",
   "offer_summary": "{{1.offer_summary}}",
   "custom_ads": "{{1.custom_ads}}",
   "onboarding_setup": "{{1.onboarding_setup}}",

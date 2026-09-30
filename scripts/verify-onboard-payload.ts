@@ -137,6 +137,12 @@ function testOfferTypeVsOfferPackage() {
   assert.equal(mid.reporting_type, 'RM');
   assert.equal(mid.sales_package, 'mid_offer');
   assert.equal(mid.service_program, 'lead_gen');
+
+  const withDrive = parseOnboardPayload({
+    primary_contact_name: 'Jane Doe',
+    drive_folder_url: 'https://drive.google.com/drive/folders/abc',
+  });
+  assert.equal(withDrive.drive_folder_url, 'https://drive.google.com/drive/folders/abc');
 }
 
 function testNewClientClickUpFacts() {

@@ -79,6 +79,7 @@ Always include `"lifecycle_status": "new_account"`.
   "sales_call_recording": "{{1.Call Recording Link}}",
   "appointment_watch": "{{1.Appointment Watch}}",
   "daily_adspend": "{{1.Daily Adspend}}",
+  "drive_folder_url": "{{drive.webViewLink}}",
   "offer_summary": "{{1.Agreed Offer Term}}",
   "form_notes": {
     "custom_ads": "{{1.Custom Ads}}",
