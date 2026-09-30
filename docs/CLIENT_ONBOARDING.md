@@ -181,7 +181,7 @@ Planned fact fields:
 | New Client | `Offer` and `Deliverable` on the onboarding task. `Mr. Waiz` URL, initial `OB Stage`, `OB Form`, and `OB Call` stay on the template until those fields are mapped |
 | GHL CS appointment sync | `OB Call = Booked`, `OB Call Date` |
 | Onboarding Form | `OB Form = Filled` |
-| Kickoff Form | `Kickoff Form = Submitted`, `Launch Call Date` when known |
+| Kickoff Form | `kickoff_form` = `Submitted` and `ob_stage` = `In Build`. Does not set Launch Call Date. |
 | Tech QA Form | `Tech QA = Complete` |
 | Marketing QA Form | `Marketing QA = Complete` |
 | Launch Form | `launch_form` = `Submitted`. ClickUp automation owns Launch Gate. Mr. Waiz does not set it. |

@@ -507,6 +507,22 @@ export function kickoffIdentitySlice(draft: KickoffDraft): Record<KickoffIdentit
   };
 }
 
+export const KICKOFF_CLICKUP_FIELDS = {
+  kickoff_form: 'Submitted',
+  ob_stage: 'In Build',
+} as const;
+
+export function formatKickoffClickUpComment(client: { id: string; name: string }): string {
+  return [
+    '✅ Kickoff Form submitted',
+    '',
+    `Client (Mr. Waiz): ${client.name}`,
+    `Mr. Waiz ID: ${client.id}`,
+    'Kickoff Form: Submitted',
+    'OB Stage: In Build',
+  ].join('\n');
+}
+
 export function isKickoffSetupResolved(draft: KickoffDraft): boolean {
   if (!draft.vertical_confirmed) return false;
   if (serviceProgramApplies(draft.reporting_type) && !draft.service_program) return false;

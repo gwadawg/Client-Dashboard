@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getAuthContext, isAuthError, requireAnyPermission } from '@/lib/api-auth';
+import {
+  addClickUpTaskComment,
+  applyClickUpFieldMap,
+  getClickUpToken,
+} from '@/lib/clickup';
 import { CLIENT_CALL_FIELDS } from '@/lib/client-calls';
 import {
   canViewClientRevenue,
@@ -15,6 +20,8 @@ import {
 } from '@/lib/onboarding-form-profile';
 import {
   KICKOFF_CLIENT_FIELDS,
+  KICKOFF_CLICKUP_FIELDS,
+  formatKickoffClickUpComment,
   getKickoffConfig,
   isKickoffFieldVisible,
   isKickoffIncomplete,
@@ -329,7 +336,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { data: existingClient, error: clientError } = await ctx.service
     .from('clients')
-    .select('id, name, primary_contact_name, lifecycle_status, ghl_location_id')
+    .select('id, name, primary_contact_name, lifecycle_status, ghl_location_id, onboarding_clickup_task_id')
     .eq('id', clientId)
     .single();
 
@@ -374,6 +381,41 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         { status: 409 },
       );
     }
+  }
+
+  let kickoffClickUpTaskId: string | null = null;
+  if (saveMode === 'complete') {
+    kickoffClickUpTaskId = existingClient.onboarding_clickup_task_id?.trim() || null;
+    if (!kickoffClickUpTaskId) {
+      return NextResponse.json(
+        { error: 'Client is missing a ClickUp onboarding task ID. Kickoff writes only to the onboarding task.' },
+        { status: 400 },
+      );
+    }
+    const token = getClickUpToken();
+    if (!token) {
+      return NextResponse.json(
+        { error: 'CLICKUP_API_TOKEN is not configured; Kickoff cannot update ClickUp.' },
+        { status: 500 },
+      );
+    }
+    const wrote = await applyClickUpFieldMap(
+      kickoffClickUpTaskId,
+      token,
+      { ...KICKOFF_CLICKUP_FIELDS },
+      '[kickoff]',
+    );
+    if (wrote < Object.keys(KICKOFF_CLICKUP_FIELDS).length) {
+      return NextResponse.json(
+        { error: 'Kickoff Form or OB Stage is not configured in CLICKUP_OB_FIELD_MAP.' },
+        { status: 500 },
+      );
+    }
+    await addClickUpTaskComment(
+      kickoffClickUpTaskId,
+      token,
+      formatKickoffClickUpComment(existingClient),
+    );
   }
 
   const updates: Record<string, unknown> = {
@@ -530,7 +572,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           recording_url: recordingUrl,
           transcript,
         },
-        applied_patch: updates,
+        applied_patch: {
+          ...updates,
+          ...(kickoffClickUpTaskId
+            ? {
+                onboarding_clickup_task_id: kickoffClickUpTaskId,
+                clickup_fields: KICKOFF_CLICKUP_FIELDS,
+              }
+            : {}),
+        },
       });
     } catch (e) {
       console.error('[kickoff] form submission log failed', e);
