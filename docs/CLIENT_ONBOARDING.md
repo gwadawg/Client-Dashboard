@@ -175,7 +175,7 @@ Planned fact fields:
 
 | Source | ClickUp fields |
 |--------|----------------|
-| New Client | `Mr. Waiz`, `Offer`, `Deliverable`, initial `OB Stage`, `OB Form`, `OB Call` |
+| New Client | `Offer` and `Deliverable` on the onboarding task. `Mr. Waiz` URL, initial `OB Stage`, `OB Form`, and `OB Call` stay on the template until those fields are mapped |
 | GHL CS appointment sync | `OB Call = Booked`, `OB Call Date` |
 | Onboarding Form | `OB Form = Filled` |
 | Kickoff Form | `Kickoff Form = Submitted`, `Launch Call Date` when known |
@@ -185,6 +185,18 @@ Planned fact fields:
 
 Use `CLICKUP_OB_FIELD_MAP` for live ClickUp field IDs and dropdown option
 UUIDs. Keep IDs in Railway, not hardcoded in code.
+
+After `POST /api/admin/onboard` stores `onboarding_clickup_task_id`, Mr. Waiz
+writes two dropdowns on that task:
+
+| Payload | Stored code | ClickUp field | Option label |
+|---------|-------------|---------------|--------------|
+| `reporting_type` RM / DSCR / HE | `RM` / `DSCR` / `CALL_CENTER` | `offer` | `RM` / `DSCR` / `HE` |
+| `sales_package` Call Center / Leads Only | `core_offer` / `mid_offer` | `deliverable` | `Call Center` / `Leads Only` |
+
+Make creates the task and does not set these dropdowns. A key missing from
+`CLICKUP_OB_FIELD_MAP` is skipped. Add `offer` and `deliverable` next to
+the existing `ob_form` entry.
 
 ### Phase 1 implementation packet
 

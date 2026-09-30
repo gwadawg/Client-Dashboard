@@ -10,6 +10,7 @@ import {
 } from '@/lib/client-identity';
 import { syncIsLiveWithLifecycle } from '@/lib/lifecycle-sync';
 import {
+  applyClickUpFieldMap,
   createClickUpTask,
   fmtMoney,
   getClientHubListId,
@@ -272,6 +273,56 @@ export function parseOnboardPayload(body: OnboardPayload) {
 }
 
 export type ParsedOnboard = ReturnType<typeof parseOnboardPayload>;
+
+/** ClickUp dropdown labels for the New Client write. Keys match CLICKUP_OB_FIELD_MAP. */
+export function newClientClickUpFacts(
+  parsed: Pick<ParsedOnboard, 'offer' | 'sales_package'>,
+): Record<string, string> {
+  const facts: Record<string, string> = {};
+  const offer = clickUpOfferOption(parsed.offer);
+  if (offer) facts.offer = offer;
+  const deliverable = clickUpDeliverableOption(parsed.sales_package);
+  if (deliverable) facts.deliverable = deliverable;
+  return facts;
+}
+
+function clickUpOfferOption(offer: ReportingType | null): string | null {
+  if (offer === 'RM') return 'RM';
+  if (offer === 'DSCR') return 'DSCR';
+  if (offer === 'CALL_CENTER') return 'HE';
+  return null;
+}
+
+function clickUpDeliverableOption(salesPackage: string | null): string | null {
+  if (salesPackage === 'core_offer') return 'Call Center';
+  if (salesPackage === 'mid_offer') return 'Leads Only';
+  return null;
+}
+
+async function syncNewClientClickUpFacts(
+  taskId: string | null,
+  parsed: ParsedOnboard,
+): Promise<void> {
+  if (!taskId) return;
+  const token = getClickUpToken();
+  if (!token) {
+    console.warn('[onboard] skip ClickUp facts — CLICKUP_API_TOKEN not set');
+    return;
+  }
+  const facts = newClientClickUpFacts(parsed);
+  try {
+    const wrote = await applyClickUpFieldMap(taskId, token, facts, '[onboard]');
+    if (wrote > 0) {
+      console.info('[onboard] ClickUp offer/deliverable updated for task', taskId);
+    } else if (Object.keys(facts).length > 0) {
+      console.warn(
+        '[onboard] skip ClickUp offer/deliverable — add offer and deliverable to CLICKUP_OB_FIELD_MAP',
+      );
+    }
+  } catch (e) {
+    console.error('[onboard] ClickUp facts failed', e);
+  }
+}
 
 const NEW_CLIENT_NOTE_MARKER = 'New client form';
 
@@ -761,6 +812,8 @@ export async function onboardClient(
   } catch (e) {
     console.error('[onboard] acquisition link failed', e);
   }
+
+  await syncNewClientClickUpFacts(onboardingClickUpTaskId, parsed);
 
   return {
     client,

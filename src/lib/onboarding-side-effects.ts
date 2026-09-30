@@ -13,9 +13,8 @@ import {
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   addClickUpTaskComment,
+  applyClickUpFieldMap,
   getClickUpToken,
-  parseClickUpObFieldMap,
-  setClickUpCustomField,
   updateClickUpTask,
 } from '@/lib/clickup';
 import { contactTypeLabel } from '@/lib/client-contacts';
@@ -229,17 +228,7 @@ async function syncClickUpOnboardingComplete(
     await updateClickUpTask(taskId, token, { status });
   }
 
-  const fieldMap = parseClickUpObFieldMap();
-  const values = fieldMapValues(input);
-  for (const [key, fieldId] of Object.entries(fieldMap)) {
-    const val = values[key];
-    if (val == null || val === '' || val === '—') continue;
-    try {
-      await setClickUpCustomField(taskId, fieldId, token, val);
-    } catch (e) {
-      console.error(`[onboarding-side-effects] ClickUp field ${key} failed`, e);
-    }
-  }
+  await applyClickUpFieldMap(taskId, token, fieldMapValues(input), '[onboarding-side-effects]');
 
   const comment = formatOnboardingClickUpComment(input, client);
   await addClickUpTaskComment(taskId, token, comment);

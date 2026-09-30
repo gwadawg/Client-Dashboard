@@ -3,7 +3,7 @@
 ## Required module order
 
 1. **GHL New Client Form** webhook (closer submits)
-2. **ClickUp** — create Client Hub task → save task `id`
+2. **ClickUp** — create ClickUp onboarding task → save task `id`
 3. **Slack** — create client channel → save channel `id`
 4. **HTTP** — `POST /api/admin/onboard` (**last**; single write to Mr. Waiz)
 
@@ -20,7 +20,7 @@ Blueprint reference: [`ccm-new-client-onboard.blueprint.json`](ccm-new-client-on
 | Email | `email` | `email`, `billing_email` |
 | Phone | `phone` | `phone` |
 | Date signed | `date_signed` | `date_signed` |
-| ClickUp module output | `clickup_task_id` | `clickup_task_id` |
+| ClickUp onboarding task output | `onboarding_clickup_task_id` | `onboarding_clickup_task_id` |
 | Slack module output | `slack_id` | `slack_id` |
 | GHL contact id | `ghl_contact_id` (`{{1.contact_id}}`) | `ghl_contact_id` |
 
@@ -72,7 +72,7 @@ Always include `"lifecycle_status": "new_account"`.
   "email": "{{1.email}}",
   "phone": "{{1.phone}}",
   "ghl_contact_id": "{{1.contact_id}}",
-  "clickup_task_id": "{{2.id}}",
+  "onboarding_clickup_task_id": "{{2.id}}",
   "slack_id": "{{3.id}}",
   "reporting_type": "{{1.Offer}}",
   "sales_package": "{{1.Sales Package}}",
@@ -97,6 +97,7 @@ Always include `"lifecycle_status": "new_account"`.
 
 Remove from the New Client scenario (and any linked onboarding scenarios):
 
+- ClickUp **Update task custom field** modules for `Offer` and `Deliverable`. Mr. Waiz sets those from `reporting_type` and `sales_package` after the onboard POST.
 - ClickUp **Update task custom field** modules that mirror client email, phone, NMLS, address, etc.
 - ClickUp **Set custom field** loops fed from GHL perspective fields
 - Duplicate Mr. Waiz HTTP calls (only one onboard POST at the end)
@@ -109,11 +110,11 @@ ClickUp should remain: **create task**, optional **update task status** on launc
 | Variable | Purpose |
 |----------|---------|
 | `ADMIN_WEBHOOK_SECRET` | Bearer token on onboard HTTP module |
-| `CLICKUP_AUTO_CREATE_ON_ONBOARD` | Set to `false` when Make always sends `clickup_task_id` |
+| `CLICKUP_AUTO_CREATE_ON_ONBOARD` | Set to `false` when Make always sends `onboarding_clickup_task_id` |
 | `GHL_CS_API_TOKEN` | CS subaccount PIT — updates CS contact OB fields + tags `OB Form Filled` |
 | `GHL_CS_LOCATION_ID` | CS location id — same for all clients |
-| `CLICKUP_API_TOKEN` | OB complete comment + optional field updates on ClickUp task |
+| `CLICKUP_API_TOKEN` | Required in Railway for OB comments, onboarding custom-field writes, replay actions, and task creation fallback |
 
 ## Idempotency
 
-Re-running the scenario with the same `clickup_task_id` updates the same Mr. Waiz client row (no duplicate folder). New Client Form notes are inserted once per marker.
+Re-running the scenario with the same `onboarding_clickup_task_id` updates the same Mr. Waiz client row (no duplicate folder). New Client Form notes are inserted once per marker.

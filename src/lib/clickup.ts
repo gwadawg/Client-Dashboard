@@ -91,6 +91,28 @@ export async function updateClickUpTask(
   }
 }
 
+/** Write only the mapped keys that have a value. Unknown keys are skipped. */
+export async function applyClickUpFieldMap(
+  taskId: string,
+  token: string,
+  values: Record<string, string | null | undefined>,
+  logPrefix: string,
+): Promise<number> {
+  const fieldMap = parseClickUpObFieldMap();
+  let wrote = 0;
+  for (const [key, field] of Object.entries(fieldMap)) {
+    const val = values[key];
+    if (val == null || val === '' || val === '—') continue;
+    try {
+      await setClickUpCustomField(taskId, field, token, val);
+      wrote += 1;
+    } catch (e) {
+      console.error(`${logPrefix} ClickUp field ${key} failed`, e);
+    }
+  }
+  return wrote;
+}
+
 export async function setClickUpCustomField(
   taskId: string,
   field: string | ClickUpFieldConfig,

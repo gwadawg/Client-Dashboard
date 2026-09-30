@@ -2,7 +2,7 @@
  * Step 1 onboard payload verification — run: npx tsx scripts/verify-onboard-payload.ts
  */
 import assert from 'node:assert/strict';
-import { parseOnboardPayload } from '../src/lib/onboard-client';
+import { newClientClickUpFacts, parseOnboardPayload } from '../src/lib/onboard-client';
 
 function testStep1CorePayload() {
   const parsed = parseOnboardPayload({
@@ -11,7 +11,7 @@ function testStep1CorePayload() {
     email: 'jane@example.com',
     phone: '(555) 123-4567',
     date_signed: '2026-06-16',
-    clickup_task_id: '86abc123',
+    onboarding_clickup_task_id: '86abc123',
     slack_id: 'C01234567',
   });
 
@@ -21,7 +21,7 @@ function testStep1CorePayload() {
   assert.equal(parsed.billing_email, 'jane@example.com');
   assert.equal(parsed.phone, '(555) 123-4567');
   assert.equal(parsed.date_signed, '2026-06-16');
-  assert.equal(parsed.clickup_task_id, '86abc123');
+  assert.equal(parsed.onboarding_clickup_task_id, '86abc123');
   assert.equal(parsed.slack_id, 'C01234567');
   assert.equal(parsed.lifecycle_status, 'new_account');
 }
@@ -41,7 +41,13 @@ function testClickUpIdAliases() {
     primary_contact_name: 'Test',
     clickup_id: 'id-from-alias',
   });
-  assert.equal(a.clickup_task_id, 'id-from-alias');
+  assert.equal(a.onboarding_clickup_task_id, 'id-from-alias');
+
+  const legacy = parseOnboardPayload({
+    primary_contact_name: 'Test',
+    clickup_task_id: 'legacy-id',
+  });
+  assert.equal(legacy.onboarding_clickup_task_id, 'legacy-id');
 
   const b = parseOnboardPayload({
     primary_contact_name: 'Test',
@@ -133,6 +139,38 @@ function testOfferTypeVsOfferPackage() {
   assert.equal(mid.service_program, 'lead_gen');
 }
 
+function testNewClientClickUpFacts() {
+  const dscr = parseOnboardPayload({
+    primary_contact_name: 'Jane Doe',
+    reporting_type: 'DSCR',
+    sales_package: 'Call Center',
+  });
+  assert.deepEqual(newClientClickUpFacts(dscr), {
+    offer: 'DSCR',
+    deliverable: 'Call Center',
+  });
+
+  const he = parseOnboardPayload({
+    primary_contact_name: 'Jane Doe',
+    reporting_type: 'HE',
+    sales_package: 'Leads Only',
+  });
+  assert.deepEqual(newClientClickUpFacts(he), {
+    offer: 'HE',
+    deliverable: 'Leads Only',
+  });
+
+  const rm = parseOnboardPayload({
+    primary_contact_name: 'Jane Doe',
+    reporting_type: 'RM',
+    sales_package: 'Call Center',
+  });
+  assert.deepEqual(newClientClickUpFacts(rm), {
+    offer: 'RM',
+    deliverable: 'Call Center',
+  });
+}
+
 testStep1CorePayload();
 testSubAccountNameOverridesPlaceholder();
 testClickUpIdAliases();
@@ -140,5 +178,6 @@ testDoesNotUseNameFieldAsSubAccountWhenOnlyPrimaryContactSent();
 testGhlContactFields();
 testAppointmentWatchAndOfferFields();
 testOfferTypeVsOfferPackage();
+testNewClientClickUpFacts();
 
 console.log('verify-onboard-payload: all assertions passed');
