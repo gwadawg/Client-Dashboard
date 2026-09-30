@@ -1,4 +1,3 @@
-import type { FormType } from '@/lib/form-submissions';
 import { latestReinstateCutoffIso, mapCycleProgress } from '@/lib/reinstate-progress';
 
 export const QA_SKELETON_VERSION = 'qa-skeleton-v0';
@@ -11,7 +10,7 @@ export function isQaLifecycle(status: string | null | undefined): boolean {
 
 export function isQaCompleteForCycle(
   rows: Array<{ form_type: string; submitted_at: string; status?: string }>,
-  formType: Extract<FormType, 'tech_qa' | 'marketing_qa'>,
+  formType: 'tech_qa' | 'marketing_qa',
 ): boolean {
   return !!mapCycleProgress(rows, latestReinstateCutoffIso(rows))[formType];
 }
@@ -26,7 +25,7 @@ export type QaChecklistItemDef = {
 
 export type QaFormConfig = {
   lane: QaLane;
-  formType: FormType;
+  formType: 'tech_qa' | 'marketing_qa';
   clickupFieldKey: 'tech_qa' | 'marketing_qa';
   title: string;
   shortLabel: string;
