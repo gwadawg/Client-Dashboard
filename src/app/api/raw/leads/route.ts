@@ -1061,7 +1061,7 @@ export async function GET(req: Request) {
     rows:
       view === 'unmapped'
         ? pageRows
-        : (pageRows as (LeadProfile & { has_lead_in_period?: boolean })[]).map(stripInternal),
+        : (pageRows as ProfileBuilder[]).map(stripInternal),
     total,
     page,
     page_size: PAGE_SIZE,
