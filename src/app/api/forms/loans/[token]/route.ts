@@ -427,7 +427,8 @@ async function handleConversionSubmit(
       stage,
       log_type: 'conversion',
     });
-  } catch {
+  } catch (err) {
+    console.error('[loan-log-conversion]', err);
     return NextResponse.json({ error: "Couldn't save. Try again." }, { status: 500 });
   }
 }

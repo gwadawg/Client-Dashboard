@@ -14,7 +14,6 @@ type Service = ReturnType<typeof createServiceClient>;
 export const LOAN_LOG_STAGES = ['proposal', 'submitted', 'funded'] as const;
 export type LoanLogStage = (typeof LOAN_LOG_STAGES)[number];
 
-const CONVERSATION_TYPES = new Set(['show', 'live_transfer', 'claimed']);
 const PROPOSAL_TYPES = new Set(['proposal_made', 'proposal_sent']);
 const SUBMISSION_TYPES = new Set(['submission_made', 'loan_processing']);
 const FUNDED_TYPES = new Set(['loan_funded', 'closed']);
@@ -133,7 +132,6 @@ export function planLoanLogEvents(input: PlanLoanLogInput): PlanLoanLogResult {
 
   const existing = input.existing;
   const hasLead = existing.some(e => e.event_type === 'lead');
-  const hasConversation = hasType(existing, CONVERSATION_TYPES);
   const hasProposal = hasType(existing, PROPOSAL_TYPES);
   const hasSubmission = hasType(existing, SUBMISSION_TYPES);
   const hasFunded = hasType(existing, FUNDED_TYPES);
@@ -194,30 +192,23 @@ export function planLoanLogEvents(input: PlanLoanLogInput): PlanLoanLogResult {
   if (input.createLead && !hasLead) {
     push('lead', { source: 'loan_log_form' });
   }
-  if (!hasConversation) {
-    push('claimed', { source: 'loan_log_form' });
-  }
 
   const moneyRaw: Record<string, unknown> = {
     source: 'loan_log_form',
     loan_size: input.loanSize,
   };
 
-  // Person grain: at most one conversion event per stage (unique index). Extra
-  // properties are stored as loan_deals, not a second loan_funded row.
+  // Only the stage they logged is stored as an event. Earlier stages are
+  // filled on the lead, 15 days before the next real stage, when this event
+  // or its loan file is saved. A file logged as submitted keeps that date
+  // when it is later marked funded.
   if (input.stage === 'proposal') {
     if (!hasProposal && !hasTypeOnDate(existing, PROPOSAL_TYPES, input.occurredDate)) {
       push('proposal_made', moneyRaw);
     }
-  } else if (!hasProposal) {
-    push('proposal_made', { source: 'loan_log_form' });
   }
 
-  if (input.stage === 'submitted') {
-    if (!hasSubmission) {
-      push('submission_made', moneyRaw);
-    }
-  } else if (input.stage === 'funded' && !hasSubmission) {
+  if (input.stage === 'submitted' && !hasSubmission) {
     push('submission_made', moneyRaw);
   }
 

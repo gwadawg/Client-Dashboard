@@ -331,20 +331,35 @@ export async function promoteLoanDeal(
     transaction_label: string | null;
   },
 ): Promise<void> {
-  const { error } = await service
+  const patch = {
+    stage: 'funded' as const,
+    funded_at: input.funded_at,
+    loan_size: input.loan_size,
+    commission_amount: input.commission_amount,
+    transaction_label: input.transaction_label,
+    updated_at: new Date().toISOString(),
+  };
+
+  const withFellOut = await service
     .from('loan_deals')
-    .update({
-      stage: 'funded',
-      funded_at: input.funded_at,
-      fell_out_at: null,
-      loan_size: input.loan_size,
-      commission_amount: input.commission_amount,
-      transaction_label: input.transaction_label,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ ...patch, fell_out_at: null })
     .eq('id', dealId)
     .eq('stage', 'submitted');
-  if (error) throw new Error(error.message);
+  if (!withFellOut.error) return;
+
+  // Funding must succeed before the fell-out column exists. Open files are
+  // already not fell out, so clearing that timestamp is optional.
+  if (isMissingDbColumn(withFellOut.error.message, 'fell_out_at')) {
+    const legacy = await service
+      .from('loan_deals')
+      .update(patch)
+      .eq('id', dealId)
+      .eq('stage', 'submitted');
+    if (legacy.error) throw new Error(legacy.error.message);
+    return;
+  }
+
+  throw new Error(withFellOut.error.message);
 }
 
 export async function setLoanDealFellOut(

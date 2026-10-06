@@ -19,8 +19,8 @@ const base = {
 };
 
 describe('planLoanLogEvents', () => {
-  it('empty history + create + funded writes the full chain', () => {
-    const { rows, duplicateClicked } = planLoanLogEvents({
+  it('empty history + create + funded writes the logged stage only', () => {
+    const { rows, duplicateClicked, deal } = planLoanLogEvents({
       ...base,
       stage: 'funded',
       createLead: true,
@@ -28,51 +28,38 @@ describe('planLoanLogEvents', () => {
       existing: [],
     });
     assert.equal(duplicateClicked, false);
+    assert.equal(deal.action, 'insert');
+    assert.equal(deal.stage, 'funded');
+    assert.equal(deal.submittedAt, deal.fundedAt);
     assert.deepEqual(
       rows.map(r => r.event_type),
-      ['lead', 'claimed', 'proposal_made', 'submission_made', 'loan_funded'],
+      ['lead', 'loan_funded'],
     );
     assert.equal(rows.every(r => r.occurred_at.startsWith('2026-08-14')), true);
     const funded = rows.find(r => r.event_type === 'loan_funded');
     assert.equal(funded?.raw.loan_size, 350000);
     assert.equal(funded?.raw.commission_amount, 12000);
-    const submitted = rows.find(r => r.event_type === 'submission_made');
-    assert.equal(submitted?.raw.loan_size, 350000);
-    assert.equal('commission_amount' in (submitted?.raw ?? {}), false);
   });
 
-  it('existing lead + submitted does not write a second lead', () => {
-    const existing: LoanLogExistingEvent[] = [
-      { event_type: 'lead', occurred_at: '2026-07-01T12:00:00.000Z' },
-    ];
-    const { rows } = planLoanLogEvents({
-      ...base,
-      stage: 'submitted',
-      createLead: false,
-      existing,
-    });
-    assert.deepEqual(
-      rows.map(r => r.event_type),
-      ['claimed', 'proposal_made', 'submission_made'],
-    );
-  });
-
-  it('does not add claimed when a show already exists', () => {
+  it('existing lead + submitted writes only the submission', () => {
     const existing: LoanLogExistingEvent[] = [
       { event_type: 'lead', occurred_at: '2026-07-01T12:00:00.000Z' },
       { event_type: 'show', occurred_at: '2026-07-02T12:00:00.000Z' },
     ];
-    const { rows } = planLoanLogEvents({
+    const { rows, deal } = planLoanLogEvents({
       ...base,
       stage: 'submitted',
       createLead: false,
       existing,
     });
-    assert.equal(rows.some(r => r.event_type === 'claimed'), false);
+    assert.equal(deal.action, 'insert');
+    assert.equal(deal.stage, 'submitted');
+    assert.equal(deal.fundedAt, null);
     assert.deepEqual(
       rows.map(r => r.event_type),
-      ['proposal_made', 'submission_made'],
+      ['submission_made'],
     );
+    assert.equal(rows[0]?.raw.loan_size, 350000);
   });
 
   it('does not add proposal when proposal_made exists', () => {
@@ -89,18 +76,20 @@ describe('planLoanLogEvents', () => {
     assert.ok(rows.some(r => r.event_type === 'submission_made'));
   });
 
-  it('funded without prior submission writes submission_made', () => {
+  it('funded without a prior submission does not invent an earlier submission event', () => {
     const existing: LoanLogExistingEvent[] = [
       { event_type: 'show', occurred_at: '2026-07-02T12:00:00.000Z' },
       { event_type: 'proposal_made', occurred_at: '2026-07-03T12:00:00.000Z' },
     ];
-    const { rows } = planLoanLogEvents({
+    const { rows, deal } = planLoanLogEvents({
       ...base,
       stage: 'funded',
       createLead: false,
       existing,
     });
-    assert.ok(rows.some(r => r.event_type === 'submission_made'));
+    assert.equal(deal.action, 'insert');
+    assert.equal(deal.submittedAt, deal.fundedAt);
+    assert.equal(rows.some(r => r.event_type === 'submission_made'), false);
     assert.ok(rows.some(r => r.event_type === 'loan_funded'));
   });
 
@@ -129,10 +118,7 @@ describe('planLoanLogEvents', () => {
     });
     assert.equal(duplicateClicked, false);
     assert.equal(deal.action, 'insert');
-    assert.equal(rows.some(r => r.event_type === 'loan_funded'), false);
-    assert.ok(rows.some(r => r.event_type === 'claimed'));
-    assert.ok(rows.some(r => r.event_type === 'proposal_made'));
-    assert.ok(rows.some(r => r.event_type === 'submission_made'));
+    assert.deepEqual(rows, []);
   });
 
   it('same person, same size, same day is a duplicate deal', () => {
@@ -181,19 +167,25 @@ describe('planLoanLogEvents', () => {
     });
     assert.equal(deal.action, 'promote');
     assert.equal(deal.promoteId, 'open-1');
-    assert.ok(rows.some(r => r.event_type === 'loan_funded'));
+    assert.equal(deal.submittedAt, '2026-08-01T12:00:00.000Z');
+    assert.ok(deal.fundedAt?.startsWith('2026-08-14'));
+    assert.deepEqual(
+      rows.map(r => r.event_type),
+      ['loan_funded'],
+    );
   });
 
-  it('proposal only backfills conversation, not submitted or funded', () => {
-    const { rows } = planLoanLogEvents({
+  it('proposal writes only the proposal', () => {
+    const { rows, deal } = planLoanLogEvents({
       ...base,
       stage: 'proposal',
       createLead: true,
       existing: [],
     });
+    assert.equal(deal.action, 'none');
     assert.deepEqual(
       rows.map(r => r.event_type),
-      ['lead', 'claimed', 'proposal_made'],
+      ['lead', 'proposal_made'],
     );
     assert.equal(rows.find(r => r.event_type === 'proposal_made')?.raw.loan_size, 350000);
   });
