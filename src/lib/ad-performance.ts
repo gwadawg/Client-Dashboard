@@ -27,6 +27,16 @@ export type AdEventRow = {
   occurred_at?: string | null;
   /** Reason slugs on a `manual_dq` row (`raw.dq_reasons`). */
   dq_reasons?: string[] | null;
+  /** Surrogate lead. Unique funnel counts use this when it is set. */
+  lead_id?: string | null;
+  /** First-touch ad stored on the lead. Wins over the event's own name. */
+  lead_utm_content?: string | null;
+  lead_ad_name?: string | null;
+  /**
+   * Unique conversation / proposal / submission / funded come from milestone
+   * rows instead of rolling later events backward onto the event date.
+   */
+  skip_stage_rollup?: boolean;
 };
 
 export type DqReasonCount = {
@@ -205,6 +215,7 @@ function bucketDate(date: string, granularity: 'day' | 'week'): string {
 }
 
 function adLeadIdentity(e: AdEventRow): string | null {
+  if (e.lead_id) return e.lead_id;
   return leadIdentityKey({
     client_id: e.client_id,
     ghl_contact_id: e.ghl_contact_id,
@@ -212,6 +223,10 @@ function adLeadIdentity(e: AdEventRow): string | null {
     lead_email: e.lead_email,
     lead_name: e.lead_name,
   });
+}
+
+function leadFirstTouchAd(e: Pick<AdEventRow, 'lead_utm_content' | 'lead_ad_name'>): string | null {
+  return normalizeAdName(e.lead_utm_content) ?? normalizeAdName(e.lead_ad_name);
 }
 
 type Acc = {
@@ -285,6 +300,22 @@ function applyFunnelEvent(
   e: AdEventRow,
 ): void {
   const id = adLeadIdentity(e);
+  if (e.event_type === 'milestone_conversation') {
+    if (id) acc.conversationKeys.add(id);
+    return;
+  }
+  if (e.event_type === 'milestone_proposal') {
+    if (id) acc.proposalKeys.add(id);
+    return;
+  }
+  if (e.event_type === 'milestone_submission') {
+    if (id) acc.submissionKeys.add(id);
+    return;
+  }
+  if (e.event_type === 'milestone_funded') {
+    if (id) acc.fundedKeys.add(id);
+    return;
+  }
   switch (e.event_type) {
     case 'lead':
       acc.leads += 1;
@@ -310,14 +341,16 @@ function applyFunnelEvent(
   if (!id) return;
   if (e.event_type === 'appointment_booked') acc.bookedKeys.add(id);
   if (HAND_RAISE_TYPES.has(e.event_type)) acc.handRaiseKeys.add(id);
-  if (CONVERSATION_TYPES.has(e.event_type)) acc.conversationKeys.add(id);
-  if (PROPOSAL_TYPES.has(e.event_type) || SUBMISSION_TYPES.has(e.event_type) || FUNDED_TYPES.has(e.event_type)) {
-    acc.proposalKeys.add(id);
+  if (!e.skip_stage_rollup) {
+    if (CONVERSATION_TYPES.has(e.event_type)) acc.conversationKeys.add(id);
+    if (PROPOSAL_TYPES.has(e.event_type) || SUBMISSION_TYPES.has(e.event_type) || FUNDED_TYPES.has(e.event_type)) {
+      acc.proposalKeys.add(id);
+    }
+    if (SUBMISSION_TYPES.has(e.event_type) || FUNDED_TYPES.has(e.event_type)) {
+      acc.submissionKeys.add(id);
+    }
+    if (FUNDED_TYPES.has(e.event_type)) acc.fundedKeys.add(id);
   }
-  if (SUBMISSION_TYPES.has(e.event_type) || FUNDED_TYPES.has(e.event_type)) {
-    acc.submissionKeys.add(id);
-  }
-  if (FUNDED_TYPES.has(e.event_type)) acc.fundedKeys.add(id);
   if (e.event_type === 'manual_dq' && !acc.dqKeys.has(id)) {
     acc.dqKeys.add(id);
     for (const slug of e.dq_reasons ?? []) {
@@ -356,6 +389,8 @@ function buildContactAdMap(events: AdEventRow[]): Map<string, string> {
  * DQ whose lead is outside the loaded window stays unattributed.
  */
 function resolveEventAdName(e: AdEventRow, contactAd: Map<string, string>): string | null {
+  const leadAd = leadFirstTouchAd(e);
+  if (leadAd) return leadAd;
   const key = buildContactKey(e.client_id ?? '', eventPhone(e), e.ghl_contact_id);
   if (e.event_type === 'manual_dq') return contactAd.get(key) ?? null;
   const own = canonicalEventAdName(e);

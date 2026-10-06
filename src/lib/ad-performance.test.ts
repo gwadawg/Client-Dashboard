@@ -175,6 +175,59 @@ describe('aggregateAdPerformance unique funnel', () => {
     assert.equal(row.cp_funded, 600);
   });
 
+  it('attributes every event to the lead first-touch ad and stages on their own dates', () => {
+    const rows = aggregateAdPerformance(
+      [meta({ ad_name: 'Hook A', spend: 300 }), meta({ ad_name: 'Other Ad', spend: 40 })],
+      [
+        evt({
+          event_type: 'loan_funded',
+          lead_id: 'lead-1',
+          ad_name: 'Other Ad',
+          utm_content: 'Other Ad',
+          lead_utm_content: 'Hook A',
+          occurred_at: '2026-08-01T12:00:00.000Z',
+          skip_stage_rollup: true,
+        }),
+        evt({
+          event_type: 'milestone_proposal',
+          lead_id: 'lead-1',
+          ad_name: null,
+          lead_utm_content: 'Hook A',
+          occurred_at: '2026-07-02T12:00:00.000Z',
+        }),
+        evt({
+          event_type: 'milestone_submission',
+          lead_id: 'lead-1',
+          ad_name: null,
+          lead_utm_content: 'Hook A',
+          occurred_at: '2026-07-17T12:00:00.000Z',
+        }),
+        evt({
+          event_type: 'milestone_funded',
+          lead_id: 'lead-1',
+          ad_name: null,
+          lead_utm_content: 'Hook A',
+          occurred_at: '2026-08-01T12:00:00.000Z',
+        }),
+        evt({
+          event_type: 'milestone_conversation',
+          lead_id: 'lead-1',
+          ad_name: null,
+          lead_utm_content: 'Hook A',
+          occurred_at: '2026-06-17T12:00:00.000Z',
+        }),
+      ],
+    );
+    const byName = Object.fromEntries(rows.map((r) => [r.ad_name, r]));
+    assert.equal(byName['Hook A'].closes, 1);
+    assert.equal(byName['Hook A'].unique_funded, 1);
+    assert.equal(byName['Hook A'].unique_submissions, 1);
+    assert.equal(byName['Hook A'].unique_proposals, 1);
+    assert.equal(byName['Hook A'].unique_conversations, 1);
+    assert.equal(byName['Other Ad'].closes ?? 0, 0);
+    assert.equal(byName['Other Ad'].unique_funded ?? 0, 0);
+  });
+
   it('attributes manual DQs to the lead ad and counts each reason once', () => {
     const rows = aggregateAdPerformance(
       [meta({ ad_name: 'Hook A', spend: 200 }), meta({ ad_name: 'Original', spend: 50 })],

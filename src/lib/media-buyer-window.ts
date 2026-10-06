@@ -42,15 +42,23 @@ export const FUNNEL_EVENT_TYPES = [
   'closed',
 ] as const;
 
+const LEAD_AD_EMBED = 'leads!events_lead_id_fkey(utm_content,ad_name)';
+
 export const EVENT_SELECT =
-  'client_id, event_type, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, utm_content, is_qualified, is_hot, occurred_at';
+  `client_id, event_type, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, utm_content, is_qualified, is_hot, occurred_at, lead_id, ${LEAD_AD_EMBED}`;
 
 /** Manual DQ only — `raw` stays off the shared funnel select. */
 export const DQ_EVENT_SELECT =
-  'client_id, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, utm_content, occurred_at, raw';
+  `client_id, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, utm_content, occurred_at, raw, lead_id, ${LEAD_AD_EMBED}`;
 
-type ManualDqDbRow = {
+type LeadAdEmbed =
+  | { utm_content?: string | null; ad_name?: string | null }
+  | { utm_content?: string | null; ad_name?: string | null }[]
+  | null;
+
+type DbEventRow = {
   client_id?: string | null;
+  event_type?: string;
   ghl_contact_id?: string | null;
   lead_phone?: string | null;
   phone_number_used?: string | null;
@@ -58,16 +66,44 @@ type ManualDqDbRow = {
   lead_name?: string | null;
   ad_name?: string | null;
   utm_content?: string | null;
+  is_qualified?: boolean | null;
+  is_hot?: boolean | null;
   occurred_at?: string | null;
+  lead_id?: string | null;
+  leads?: LeadAdEmbed;
   raw?: unknown;
+  dq_reasons?: string[] | null;
+  lead_utm_content?: string | null;
+  lead_ad_name?: string | null;
 };
 
-/** Form DQs only. Webhook disqualifications are a different process. */
-export function formManualDqEvent(row: ManualDqDbRow): AdEventRow | null {
-  if (!isClientLogFormRaw(row.raw)) return null;
+export type LeadMilestoneRow = {
+  id: string;
+  client_id: string;
+  utm_content: string | null;
+  ad_name: string | null;
+  conversation_at: string | null;
+  proposal_at: string | null;
+  submission_at: string | null;
+  funded_at: string | null;
+};
+
+const MILESTONE_SELECT =
+  'id, client_id, utm_content, ad_name, conversation_at, proposal_at, submission_at, funded_at';
+
+type ManualDqDbRow = DbEventRow;
+
+function leadAdOf(row: { leads?: LeadAdEmbed }): { utm_content?: string | null; ad_name?: string | null } | null {
+  if (!row.leads) return null;
+  return Array.isArray(row.leads) ? (row.leads[0] ?? null) : row.leads;
+}
+
+/** Flatten the lead embed and keep the lead's first-touch ad on the event. */
+export function toAdEvent(row: DbEventRow, skipStageRollup = false): AdEventRow {
+  const lead = leadAdOf(row);
   return {
     client_id: row.client_id,
-    event_type: 'manual_dq',
+    event_type: row.event_type ?? '',
     ghl_contact_id: row.ghl_contact_id,
     lead_phone: row.lead_phone,
     phone_number_used: row.phone_number_used,
@@ -75,9 +111,73 @@ export function formManualDqEvent(row: ManualDqDbRow): AdEventRow | null {
     lead_name: row.lead_name,
     ad_name: row.ad_name,
     utm_content: row.utm_content,
+    is_qualified: row.is_qualified,
+    is_hot: row.is_hot,
     occurred_at: row.occurred_at,
-    dq_reasons: parseDqReasonSlugs(row.raw),
+    dq_reasons: row.dq_reasons,
+    lead_id: row.lead_id ?? null,
+    lead_utm_content: lead?.utm_content ?? row.lead_utm_content ?? null,
+    lead_ad_name: lead?.ad_name ?? row.lead_ad_name ?? null,
+    skip_stage_rollup: skipStageRollup,
   };
+}
+
+function milestoneInstantInRange(
+  at: string | null,
+  startDate?: string | null,
+  endDate?: string | null,
+): at is string {
+  if (!at) return false;
+  if (startDate && at < `${startDate}T00:00:00.000Z`) return false;
+  if (endDate && at > `${endDate}T23:59:59.999Z`) return false;
+  return true;
+}
+
+/** One row per stage whose date falls in the window, attributed to the lead's ad. */
+export function milestoneAdEvents(
+  leads: LeadMilestoneRow[],
+  startDate?: string | null,
+  endDate?: string | null,
+): AdEventRow[] {
+  const out: AdEventRow[] = [];
+  for (const lead of leads) {
+    const base: AdEventRow = {
+      client_id: lead.client_id,
+      event_type: '',
+      lead_id: lead.id,
+      lead_utm_content: lead.utm_content,
+      lead_ad_name: lead.ad_name,
+    };
+    const push = (event_type: string, occurred_at: string) => {
+      out.push({ ...base, event_type, occurred_at });
+    };
+    if (milestoneInstantInRange(lead.conversation_at, startDate, endDate)) {
+      push('milestone_conversation', lead.conversation_at);
+    }
+    if (milestoneInstantInRange(lead.proposal_at, startDate, endDate)) {
+      push('milestone_proposal', lead.proposal_at);
+    }
+    if (milestoneInstantInRange(lead.submission_at, startDate, endDate)) {
+      push('milestone_submission', lead.submission_at);
+    }
+    if (milestoneInstantInRange(lead.funded_at, startDate, endDate)) {
+      push('milestone_funded', lead.funded_at);
+    }
+  }
+  return out;
+}
+
+/** Form DQs only. Webhook disqualifications are a different process. */
+export function formManualDqEvent(row: ManualDqDbRow): AdEventRow | null {
+  if (!isClientLogFormRaw(row.raw)) return null;
+  return toAdEvent(
+    {
+      ...row,
+      event_type: 'manual_dq',
+      dq_reasons: parseDqReasonSlugs(row.raw),
+    },
+    false,
+  );
 }
 
 export const META_SELECT = 'client_id, ad_name, insight_date, spend, impressions, clicks';
@@ -131,6 +231,7 @@ function scopeKey(scope: MediaBuyerScope): string {
 type Scopeable = {
   eq: (c: string, v: string) => Scopeable;
   in: (c: string, v: string[]) => Scopeable;
+  is: (c: string, v: null) => Scopeable;
   gte: (c: string, v: string) => Scopeable;
   lte: (c: string, v: string) => Scopeable;
   limit: (n: number) => Scopeable;
@@ -174,6 +275,42 @@ function withDateRange(
     q = q.lte(column, asTimestamp ? `${endDate}T23:59:59.999Z` : endDate);
   }
   return q;
+}
+
+function quoteFilterValue(value: string): string {
+  return `"${value.replace(/"/g, '')}"`;
+}
+
+/** Leads with a conversation, proposal, submission, or funded date in the window. */
+async function loadMilestoneLeads(
+  service: ServiceClient,
+  clients: ClientScope,
+  startDate?: string | null,
+  endDate?: string | null,
+): Promise<{ data?: LeadMilestoneRow[]; error?: string }> {
+  let query: Scopeable = service
+    .from('leads')
+    .select(MILESTONE_SELECT)
+    .is('merged_into_id', null) as unknown as Scopeable;
+  query = applyClientScope(query, clients);
+  const start = startDate ? quoteFilterValue(`${startDate}T00:00:00.000Z`) : null;
+  const end = endDate ? quoteFilterValue(`${endDate}T23:59:59.999Z`) : null;
+  const columns = ['conversation_at', 'proposal_at', 'submission_at', 'funded_at'];
+  if (start || end) {
+    const parts = columns.map((column) => {
+      const bits: string[] = [];
+      if (start) bits.push(`${column}.gte.${start}`);
+      if (end) bits.push(`${column}.lte.${end}`);
+      return `and(${bits.join(',')})`;
+    });
+    query = query.or(parts.join(','));
+  } else {
+    query = query.or(columns.map((column) => `${column}.not.is.null`).join(','));
+  }
+  query = query.limit(ROW_LIMIT);
+  const { data, error } = await (query as unknown as QueryResult<LeadMilestoneRow>);
+  if (error) return { error: error.message };
+  return { data: (data ?? []) as LeadMilestoneRow[] };
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -265,6 +402,14 @@ export async function loadMediaBuyerWindow(
         };
       }
 
+      const milestones = await loadMilestoneLeads(
+        service,
+        clients,
+        scope.startDate,
+        scope.endDate,
+      );
+      if (milestones.error) return { error: milestones.error };
+
       const manualDqs = ((dqRows ?? []) as ManualDqDbRow[])
         .map(formManualDqEvent)
         .filter((row): row is AdEventRow => row != null);
@@ -277,7 +422,11 @@ export async function loadMediaBuyerWindow(
 
       return {
         data: {
-          events: [...((events ?? []) as AdEventRow[]), ...manualDqs],
+          events: [
+            ...((events ?? []) as DbEventRow[]).map((row) => toAdEvent(row, true)),
+            ...manualDqs,
+            ...milestoneAdEvents(milestones.data ?? [], scope.startDate, scope.endDate),
+          ],
           meta: (meta ?? []) as AdMetaRow[],
           library: libraryRows,
           aliases: (aliases ?? []) as AdLibraryAliasRow[],
@@ -454,7 +603,7 @@ export async function loadMediaBuyerDrilldownRows(
     };
   }
 
-  const seedEvents = [...(namedByAd ?? []), ...(namedByUtm ?? [])] as AdEventRow[];
+  const seedEvents = [...(namedByAd ?? []), ...(namedByUtm ?? [])] as DbEventRow[];
   const ghlIds: string[] = [];
   const rawPhones: string[] = [];
   const seenGhl = new Set<string>();
@@ -487,13 +636,14 @@ export async function loadMediaBuyerDrilldownRows(
       row.client_id ?? '',
       row.event_type,
       row.occurred_at ?? '',
+      row.lead_id ?? '',
       row.ghl_contact_id ?? '',
       eventPhone(row) ?? '',
       row.ad_name ?? '',
     ].join('|');
     if (!byStamp.has(stamp)) byStamp.set(stamp, row);
   };
-  for (const row of seedEvents) remember(row);
+  for (const row of seedEvents) remember(toAdEvent(row, true));
 
   // Follow-up: funnel events for the same contacts that may not carry ad_name.
   for (const idChunk of chunk(ghlIds, IN_CHUNK)) {
@@ -505,9 +655,9 @@ export async function loadMediaBuyerDrilldownRows(
     q = applyClientScope(q, clients);
     q = withDateRange(q, 'occurred_at', scope.startDate, scope.endDate, true);
     q = q.limit(ROW_LIMIT);
-    const { data, error } = await (q as unknown as QueryResult<AdEventRow>);
+    const { data, error } = await (q as unknown as QueryResult<DbEventRow>);
     if (error) return { error: error.message };
-    for (const row of (data ?? []) as AdEventRow[]) remember(row);
+    for (const row of (data ?? []) as DbEventRow[]) remember(toAdEvent(row, true));
   }
 
   for (const phoneChunk of chunk(rawPhones, IN_CHUNK)) {
@@ -521,9 +671,50 @@ export async function loadMediaBuyerDrilldownRows(
     q = applyClientScope(q, clients);
     q = withDateRange(q, 'occurred_at', scope.startDate, scope.endDate, true);
     q = q.limit(ROW_LIMIT);
-    const { data, error } = await (q as unknown as QueryResult<AdEventRow>);
+    const { data, error } = await (q as unknown as QueryResult<DbEventRow>);
     if (error) return { error: error.message };
-    for (const row of (data ?? []) as AdEventRow[]) remember(row);
+    for (const row of (data ?? []) as DbEventRow[]) remember(toAdEvent(row, true));
+  }
+
+  // Leads whose first-touch ad is this creative, including conversions that
+  // never copied the ad name onto the later event.
+  const leadIds: string[] = [];
+  const seenLead = new Set<string>();
+  const matchedLeads: LeadMilestoneRow[] = [];
+  for (const column of ['utm_content', 'ad_name'] as const) {
+    let leadQuery: Scopeable = service
+      .from('leads')
+      .select(MILESTONE_SELECT)
+      .is('merged_into_id', null)
+      .in(column, names) as unknown as Scopeable;
+    leadQuery = applyClientScope(leadQuery, clients);
+    leadQuery = leadQuery.limit(ROW_LIMIT);
+    const { data, error } = await (leadQuery as unknown as QueryResult<LeadMilestoneRow>);
+    if (error) return { error: error.message };
+    for (const lead of (data ?? []) as LeadMilestoneRow[]) {
+      if (seenLead.has(lead.id)) continue;
+      seenLead.add(lead.id);
+      matchedLeads.push(lead);
+      if (leadIds.length < DRILLDOWN_CONTACT_CAP) leadIds.push(lead.id);
+    }
+  }
+
+  for (const idChunk of chunk(leadIds, IN_CHUNK)) {
+    let q: Scopeable = service
+      .from('events')
+      .select(EVENT_SELECT)
+      .in('event_type', [...FUNNEL_EVENT_TYPES])
+      .in('lead_id', idChunk) as unknown as Scopeable;
+    q = applyClientScope(q, clients);
+    q = withDateRange(q, 'occurred_at', scope.startDate, scope.endDate, true);
+    q = q.limit(ROW_LIMIT);
+    const { data, error } = await (q as unknown as QueryResult<DbEventRow>);
+    if (error) return { error: error.message };
+    for (const row of (data ?? []) as DbEventRow[]) remember(toAdEvent(row, true));
+  }
+
+  for (const row of milestoneAdEvents(matchedLeads, scope.startDate, scope.endDate)) {
+    remember(row);
   }
 
   // Form DQs for those contacts. Attribution uses the lead's ad, not the

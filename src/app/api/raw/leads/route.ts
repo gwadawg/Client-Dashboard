@@ -40,6 +40,7 @@ type EventRow = {
   calendar_id: string | null;
   stage_booked: string | null;
   ghl_contact_id: string | null;
+  lead_id: string | null;
   phone_number_used: string | null;
   is_qualified: boolean | null;
   is_hot: boolean | null;
@@ -129,6 +130,7 @@ type LeadProfile = {
   dq_reason: string | null;
   ghl_contact_id: string | null;
   ghl_location_id: string | null;
+  lead_id: string | null;
   counts: LeadCounts;
   timeline: TimelineItem[];
 };
@@ -167,6 +169,15 @@ type LeadIdentityRow = {
 function rowContactKey(row: Pick<EventRow, 'client_id' | 'ghl_contact_id' | 'lead_phone' | 'phone_number_used'>): string {
   return buildContactKey(row.client_id, eventPhone(row), row.ghl_contact_id);
 }
+
+function profileKey(
+  row: Pick<EventRow, 'lead_id' | 'client_id' | 'ghl_contact_id' | 'lead_phone' | 'phone_number_used'>,
+): string {
+  if (row.lead_id) return `lead:${row.lead_id}`;
+  return rowContactKey(row);
+}
+
+type ProfileBuilder = LeadProfile & { has_lead_in_period: boolean; ad_from_entity?: boolean };
 
 /** Contact keys that have at least one lead event on record (any date). */
 async function loadContactKeysWithLeadEvents(
@@ -511,7 +522,7 @@ function clampUnscopedStart(
 }
 
 const EVENT_SELECT =
-  'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, is_qualified, is_hot, is_out_of_state, lead_source, ad_name, dq_reason, raw, clients(name, ghl_location_id)';
+  'id, client_id, event_type, occurred_at, scheduled_at, duration_seconds, is_pickup, is_conversation, speed_to_lead_seconds, lead_name, lead_phone, lead_email, agent_name, direction, call_status, recording_url, phone_number_used, calendar_name, external_id, calendar_id, stage_booked, ghl_contact_id, lead_id, is_qualified, is_hot, is_out_of_state, lead_source, ad_name, dq_reason, raw, clients(name, ghl_location_id)';
 
 function applyClientScope<T extends { eq: Function; in: Function }>(
   q: T,
@@ -534,13 +545,20 @@ function applyDateRange<T extends { gte: Function; lte: Function }>(
   return next;
 }
 
+function eventInRange(occurredAt: string, start: string | null, end: string | null): boolean {
+  if (start && occurredAt < `${start}T00:00:00.000Z`) return false;
+  if (end && occurredAt > `${end}T23:59:59.999Z`) return false;
+  return true;
+}
+
 function ingestEventRows(
   rows: EventRow[],
-  profiles: Map<string, LeadProfile & { has_lead_in_period: boolean }>,
+  profiles: Map<string, ProfileBuilder>,
+  range?: { start: string | null; end: string | null },
 ) {
   for (const row of rows) {
     const phone = eventPhone(row);
-    const key = buildContactKey(row.client_id, phone, row.ghl_contact_id);
+    const key = profileKey(row);
 
     if (!profiles.has(key)) {
       profiles.set(key, {
@@ -568,6 +586,7 @@ function ingestEventRows(
         dq_reason: null,
         ghl_contact_id: null,
         ghl_location_id: clientRecord(row.clients)?.ghl_location_id ?? null,
+        lead_id: row.lead_id,
         counts: emptyCounts(),
         timeline: [],
         has_lead_in_period: false,
@@ -575,8 +594,10 @@ function ingestEventRows(
     }
 
     const profile = profiles.get(key)!;
+    if (row.lead_id) profile.lead_id = row.lead_id;
     profile.timeline.push(toTimelineItem(row));
-    if (row.event_type !== 'lead') {
+    const countsThisRow = !range || eventInRange(row.occurred_at, range.start, range.end);
+    if (countsThisRow && row.event_type !== 'lead') {
       bumpCounts(profile.counts, row.event_type, row);
     }
     if (PROPOSAL_EVENT_TYPES.has(row.event_type)) profile.has_proposal_made = true;
@@ -612,8 +633,8 @@ function ingestEventRows(
       if (ltv != null) profile.ltv = ltv;
       if (b1 != null) profile.b1_age = b1;
       if (b2 != null) profile.b2_age = b2;
-      if (ls != null) profile.lead_source = ls;
-      if (ad != null) profile.ad_name = ad;
+      if (ls != null && !profile.lead_source) profile.lead_source = ls;
+      if (ad != null && !profile.ad_from_entity) profile.ad_name = ad;
       if (new Date(row.occurred_at).getTime() < new Date(profile.created_at).getTime()) {
         profile.created_at = row.occurred_at;
         if (row.lead_name) profile.lead_name = row.lead_name;
@@ -637,6 +658,135 @@ function ingestEventRows(
       }
     }
   }
+}
+
+type LeadEntityRow = {
+  id: string;
+  client_id: string;
+  lead_name: string | null;
+  lead_phone: string | null;
+  lead_email: string | null;
+  ghl_contact_id: string | null;
+  lead_created_at: string | null;
+  first_seen_at: string;
+  utm_content: string | null;
+  ad_name: string | null;
+  lead_source: string | null;
+  conversation_at: string | null;
+  conversation_source: string | null;
+  proposal_at: string | null;
+  proposal_implied: boolean;
+  submission_at: string | null;
+  submission_implied: boolean;
+  funded_at: string | null;
+  clients: EventRow['clients'];
+  first_lead:
+    | {
+        is_qualified: boolean | null;
+        is_hot: boolean | null;
+        is_out_of_state: boolean | null;
+        raw: unknown;
+      }
+    | {
+        is_qualified: boolean | null;
+        is_hot: boolean | null;
+        is_out_of_state: boolean | null;
+        raw: unknown;
+      }[]
+    | null;
+};
+
+function firstLeadOf(row: LeadEntityRow) {
+  if (!row.first_lead) return null;
+  return Array.isArray(row.first_lead) ? (row.first_lead[0] ?? null) : row.first_lead;
+}
+
+function publicGhlId(value: string | null): string | null {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed || trimmed.startsWith('ldr:')) return null;
+  return trimmed;
+}
+
+function impliedTimelineItem(id: string, eventType: string, occurredAt: string): TimelineItem {
+  return {
+    id,
+    event_type: eventType,
+    occurred_at: occurredAt,
+    scheduled_at: null,
+    agent_name: 'Implied',
+    duration_seconds: null,
+    is_pickup: null,
+    is_conversation: null,
+    call_status: null,
+    calendar_name: null,
+    external_id: null,
+    calendar_id: null,
+    stage_booked: null,
+    recording_url: null,
+    dq_reason: null,
+  };
+}
+
+function applyLeadEntity(profile: ProfileBuilder, lead: LeadEntityRow, start: string | null, end: string | null) {
+  const first = firstLeadOf(lead);
+  const ghl = publicGhlId(lead.ghl_contact_id);
+  profile.lead_id = lead.id;
+  profile.ad_from_entity = true;
+  profile.lead_name = lead.lead_name ?? profile.lead_name;
+  profile.lead_phone = lead.lead_phone ?? profile.lead_phone;
+  profile.lead_email = lead.lead_email ?? profile.lead_email;
+  profile.ghl_contact_id = ghl ?? profile.ghl_contact_id;
+  profile.lead_source = lead.lead_source ?? profile.lead_source;
+  profile.ad_name = lead.utm_content?.trim() || lead.ad_name?.trim() || profile.ad_name;
+  profile.created_at = lead.lead_created_at ?? lead.first_seen_at ?? profile.created_at;
+  profile.has_lead_in_period = Boolean(lead.lead_created_at);
+  profile.is_qualified = first?.is_qualified === true;
+  profile.is_hot = first?.is_hot === true;
+  profile.is_out_of_state = first?.is_out_of_state === true;
+  profile.has_proposal_made = Boolean(lead.proposal_at);
+  profile.has_submission_made = Boolean(lead.submission_at);
+  profile.has_loan_funded = Boolean(lead.funded_at);
+  const loan = extractLoanAmount(first?.raw);
+  const property = extractPropertyValue(first?.raw);
+  const ltv = extractLtv(first?.raw);
+  const b1 = extractB1Age(first?.raw);
+  const b2 = extractB2Age(first?.raw);
+  if (loan != null) profile.loan_amount = loan;
+  if (property != null) profile.property_value = property;
+  if (ltv != null) profile.ltv = ltv;
+  if (b1 != null) profile.b1_age = b1;
+  if (b2 != null) profile.b2_age = b2;
+  if (lead.proposal_implied && lead.proposal_at) {
+    profile.timeline.push(impliedTimelineItem(`implied-proposal-${lead.id}`, 'proposal_made', lead.proposal_at));
+    if (eventInRange(lead.proposal_at, start, end) && profile.counts.proposals_made === 0) {
+      profile.counts.proposals_made = 1;
+      profile.counts.proposals = 1;
+    }
+  }
+  if (lead.submission_implied && lead.submission_at) {
+    profile.timeline.push(impliedTimelineItem(`implied-submission-${lead.id}`, 'submission_made', lead.submission_at));
+    if (eventInRange(lead.submission_at, start, end) && profile.counts.submissions_made === 0) {
+      profile.counts.submissions_made = 1;
+      profile.counts.loan_processing = 1;
+    }
+  }
+  if (lead.conversation_source === 'implied_show' && lead.conversation_at) {
+    profile.timeline.push(impliedTimelineItem(`implied-show-${lead.id}`, 'show', lead.conversation_at));
+  }
+  if (lead.conversation_source === 'implied_claimed' && lead.conversation_at) {
+    profile.timeline.push(impliedTimelineItem(`implied-claimed-${lead.id}`, 'claimed', lead.conversation_at));
+  }
+  profile.timeline.sort(
+    (a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime(),
+  );
+}
+
+function milestoneDateColumn(stage: string | null): string | null {
+  if (stage === 'proposal_made') return 'proposal_at';
+  if (stage === 'submission_made') return 'submission_at';
+  if (stage === 'loan_funded') return 'funded_at';
+  if (stage === 'conversations') return 'conversation_at';
+  return null;
 }
 
 export async function GET(req: Request) {
@@ -692,114 +842,126 @@ export async function GET(req: Request) {
   start_date = clamp.start;
 
   const needsHeavyPath = view === 'unmapped' || Boolean(conversion_event);
+  const stageColumn = view === 'leads' ? milestoneDateColumn(conversion_event) : null;
 
-  // ── Fast path: paginate lead events in the DB, hydrate activity for this page only ──
-  if (!needsHeavyPath) {
+  // One row per lead. The date picks which leads appear; the timeline is the
+  // lead's full history. Stage filters use that stage's own date.
+  if (view === 'leads' && (stageColumn || !needsHeavyPath)) {
     const offset = (page - 1) * PAGE_SIZE;
+    const dateColumn = stageColumn ?? 'lead_created_at';
+    const firstLeadEmbed = quality
+      ? 'first_lead:events!leads_first_lead_event_id_fkey!inner(is_qualified, is_hot, is_out_of_state, raw)'
+      : 'first_lead:events!leads_first_lead_event_id_fkey(is_qualified, is_hot, is_out_of_state, raw)';
     let leadQuery = ctx.service
-      .from('events')
-      .select(EVENT_SELECT, { count: 'exact' })
-      .eq('event_type', 'lead')
-      .order('occurred_at', { ascending: false })
+      .from('leads')
+      .select(
+        `id, client_id, lead_name, lead_phone, lead_email, ghl_contact_id, lead_created_at, first_seen_at, utm_content, ad_name, lead_source, conversation_at, conversation_source, proposal_at, proposal_implied, submission_at, submission_implied, funded_at, clients(name, ghl_location_id), ${firstLeadEmbed}`,
+        { count: 'exact' },
+      )
+      .is('merged_into_id', null)
+      .order(dateColumn, { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1);
 
     leadQuery = applyClientScope(leadQuery, client_id, liveClientIds);
+    if (!stageColumn) leadQuery = leadQuery.not('lead_created_at', 'is', null);
     if (!safeSearch) {
-      leadQuery = applyDateRange(leadQuery, start_date, end_date);
+      if (start_date) leadQuery = leadQuery.gte(dateColumn, `${start_date}T00:00:00.000Z`);
+      if (end_date) leadQuery = leadQuery.lte(dateColumn, `${end_date}T23:59:59.999Z`);
     } else {
       leadQuery = leadQuery.or(
         `lead_name.ilike.%${safeSearch}%,lead_phone.ilike.%${safeSearch}%,lead_email.ilike.%${safeSearch}%`,
       );
     }
     if (quality === 'qualified' || quality === 'qualified_hot') {
-      leadQuery = leadQuery.eq('is_qualified', true);
+      leadQuery = leadQuery.eq('first_lead.is_qualified', true);
     }
     if (quality === 'hot' || quality === 'qualified_hot') {
-      leadQuery = leadQuery.eq('is_hot', true);
+      leadQuery = leadQuery.eq('first_lead.is_hot', true);
     }
 
     const { data: leadData, error: leadError, count } = await leadQuery;
     if (leadError) return NextResponse.json({ error: leadError.message }, { status: 500 });
 
-    const leadRows = (leadData ?? []) as unknown as EventRow[];
-    const profiles = new Map<string, LeadProfile & { has_lead_in_period: boolean }>();
-    ingestEventRows(leadRows, profiles);
-
-    // Hydrate dials/appts/outcomes for the contacts on this page only.
-    const pageKeys = Array.from(profiles.keys());
-    if (pageKeys.length > 0) {
-      const ghlIds = Array.from(
-        new Set(leadRows.map((r) => r.ghl_contact_id).filter(Boolean) as string[]),
-      );
-      const phones = Array.from(
-        new Set(
-          leadRows
-            .map((r) => eventPhone(r))
-            .filter((p): p is string => Boolean(p)),
-        ),
-      );
-      const clientIds = Array.from(new Set(leadRows.map((r) => r.client_id)));
-
-      let activityQuery = ctx.service
-        .from('events')
-        .select(EVENT_SELECT)
-        .neq('event_type', 'lead')
-        .in('client_id', clientIds.length ? clientIds : ['00000000-0000-0000-0000-000000000000'])
-        .order('occurred_at', { ascending: false })
-        .limit(MAX_EVENTS_PAGE_HYDRATE);
-
-      // Prefer GHL contact ids; fall back to phone match when needed.
-      if (ghlIds.length > 0 && phones.length > 0) {
-        const phoneOr = phones.map((p) => `lead_phone.eq.${p}`).join(',');
-        activityQuery = activityQuery.or(
-          `ghl_contact_id.in.(${ghlIds.join(',')}),${phoneOr}`,
-        );
-      } else if (ghlIds.length > 0) {
-        activityQuery = activityQuery.in('ghl_contact_id', ghlIds);
-      } else if (phones.length > 0) {
-        activityQuery = activityQuery.in('lead_phone', phones);
-      }
-
-      if (!safeSearch) {
-        activityQuery = applyDateRange(activityQuery, start_date, end_date);
-      }
-
-      const { data: activityData } = await activityQuery;
-      if (activityData?.length) {
-        // Only keep events that map to contacts already on this page.
-        const filtered = (activityData as unknown as EventRow[]).filter((row) => {
-          const key = buildContactKey(row.client_id, eventPhone(row), row.ghl_contact_id);
-          return profiles.has(key);
-        });
-        ingestEventRows(filtered, profiles);
-      }
+    const leadRows = (leadData ?? []) as unknown as LeadEntityRow[];
+    const profiles = new Map<string, ProfileBuilder>();
+    for (const lead of leadRows) {
+      const key = `lead:${lead.id}`;
+      profiles.set(key, {
+        contact_key: key,
+        client_id: lead.client_id,
+        client_name: clientName(lead.clients),
+        lead_name: lead.lead_name,
+        lead_phone: lead.lead_phone,
+        lead_email: lead.lead_email,
+        created_at: lead.lead_created_at ?? lead.first_seen_at,
+        is_qualified: false,
+        is_hot: false,
+        is_out_of_state: false,
+        loan_amount: null,
+        property_value: null,
+        ltv: null,
+        b1_age: null,
+        b2_age: null,
+        lead_source: lead.lead_source,
+        ad_name: null,
+        has_proposal_made: false,
+        has_submission_made: false,
+        has_loan_funded: false,
+        has_manual_dq: false,
+        dq_reason: null,
+        ghl_contact_id: publicGhlId(lead.ghl_contact_id),
+        ghl_location_id: clientRecord(lead.clients)?.ghl_location_id ?? null,
+        lead_id: lead.id,
+        counts: emptyCounts(),
+        timeline: [],
+        has_lead_in_period: Boolean(lead.lead_created_at),
+        ad_from_entity: true,
+      });
     }
 
-    const pageProfiles = Array.from(profiles.values())
-      .filter((p) => p.has_lead_in_period)
-      .sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
+    const ids = leadRows.map((lead) => lead.id);
+    let eventsLoaded = 0;
+    if (ids.length > 0) {
+      const { data: activityData, error: activityError } = await ctx.service
+        .from('events')
+        .select(EVENT_SELECT)
+        .in('lead_id', ids)
+        .order('occurred_at', { ascending: false })
+        .limit(MAX_EVENTS_PAGE_HYDRATE);
+      if (activityError) return NextResponse.json({ error: activityError.message }, { status: 500 });
+      const activity = (activityData ?? []) as unknown as EventRow[];
+      eventsLoaded = activity.length;
+      ingestEventRows(activity, profiles, safeSearch ? undefined : { start: start_date, end: end_date });
+    }
 
-    const stripInternal = (p: LeadProfile & { has_lead_in_period?: boolean }) => {
-      const { has_lead_in_period: _ignored, ...rest } = p;
+    const countRange = safeSearch ? { start: null, end: null } : { start: start_date, end: end_date };
+    for (const lead of leadRows) {
+      const profile = profiles.get(`lead:${lead.id}`);
+      if (profile) applyLeadEntity(profile, lead, countRange.start, countRange.end);
+    }
+
+    const stripInternal = (p: ProfileBuilder) => {
+      const { has_lead_in_period: _period, ad_from_entity: _ad, ...rest } = p;
       return rest;
     };
 
     return NextResponse.json({
-      rows: pageProfiles.map(stripInternal),
-      total: count ?? pageProfiles.length,
+      rows: leadRows
+        .map((lead) => profiles.get(`lead:${lead.id}`))
+        .filter((profile): profile is ProfileBuilder => Boolean(profile))
+        .map(stripInternal),
+      total: count ?? leadRows.length,
       page,
       page_size: PAGE_SIZE,
       view,
       mapping_summary: {
-        leads_in_period: count ?? pageProfiles.length,
+        leads_in_period: count ?? leadRows.length,
         unmapped_contacts: 0,
         unmapped_events: 0,
         unmapped_by_type: {},
       },
-      events_loaded: leadRows.length,
-      capped: false,
+      events_loaded: eventsLoaded,
+      capped: eventsLoaded >= MAX_EVENTS_PAGE_HYDRATE,
       range_clamped: clamp.clamped,
       effective_start_date: start_date,
       effective_end_date: end_date,
@@ -845,7 +1007,7 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const rows = (data ?? []) as unknown as EventRow[];
-  const profiles = new Map<string, LeadProfile & { has_lead_in_period: boolean }>();
+  const profiles = new Map<string, ProfileBuilder>();
   ingestEventRows(rows, profiles);
 
   const allProfiles = Array.from(profiles.values());
@@ -855,7 +1017,7 @@ export async function GET(req: Request) {
     conversionRows = conversionRows.filter((p) => matchesLeadQuality(p, quality));
   }
   const orphanCandidates = allProfiles.filter(
-    (p) => !p.has_lead_in_period && p.timeline.some((t) => t.event_type !== 'lead'),
+    (p) => !p.lead_id && !p.has_lead_in_period && p.timeline.some((t) => t.event_type !== 'lead'),
   );
 
   let unmappedContacts: UnmappedContact[] = [];
@@ -890,8 +1052,8 @@ export async function GET(req: Request) {
   const offset = (page - 1) * PAGE_SIZE;
   const pageRows = activeRows.slice(offset, offset + PAGE_SIZE);
 
-  const stripInternal = (p: LeadProfile & { has_lead_in_period?: boolean }) => {
-    const { has_lead_in_period: _ignored, ...rest } = p;
+  const stripInternal = (p: ProfileBuilder) => {
+    const { has_lead_in_period: _period, ad_from_entity: _ad, ...rest } = p;
     return rest;
   };
 

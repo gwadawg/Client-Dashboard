@@ -599,8 +599,8 @@ export default function LeadProfilesTable({ clientId, liveOnly, startDate, endDa
         {isUnmappedView
           ? "Contacts with dial, claim, or appointment activity in this range but no lead event on record anywhere. Expand a row to inspect the orphaned events — usually a missing GHL lead webhook or a legacy contact being power-dialed."
           : conversionFilter || qualityFilter
-            ? "Leads matching the stage and/or quality filters in the selected date range. Conversations = claimed, live transfer, or show. Pipeline stages roll up like the KPI cards (funded counts as submitted and proposed). Search by name, phone, or email still ignores the date range. Expand a row for the full event timeline."
-            : "One row per lead event in the selected date range (matches dashboard Total Leads). Activity columns count dials, appointments, and outcomes in the same range. Search by name, phone, or email to jump to a lead (ignores the date range). Expand a row for the full event timeline."}
+            ? "One row per lead whose stage date falls in the range. A missing earlier stage uses its filled-in date. Conversations include shows, live transfers, claims, and filled-in conversations. Search by name, phone, or email still ignores the date range. Expand a row for the full history."
+            : "One row per lead created in the selected date range. The ad is the lead's original ad. Activity counts stay in the range; expand a row for the full history, including filled-in stages marked Implied. Search by name, phone, or email ignores the date range."}
       </p>
 
       <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>

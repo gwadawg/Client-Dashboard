@@ -29,7 +29,7 @@ export function metricsRangeCacheKey(
 ): string {
   const scope = clientIds?.length ? [...clientIds].sort().join(',') : '';
   const hash = createHash('sha256').update(scope).digest('hex').slice(0, 24);
-  return `${startDate}|${endDate}|${hash}`;
+  return `v2|${startDate}|${endDate}|${hash}`;
 }
 
 export async function readMetricsRangeCache(
