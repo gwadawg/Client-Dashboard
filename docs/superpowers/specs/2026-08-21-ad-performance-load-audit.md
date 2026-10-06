@@ -2,6 +2,25 @@
 
 Status: partially implemented (2026-08-21). Shared window cache + slim drilldown + tab keep-alive shipped; date-default / virtualization / module split still open.
 
+## 2026-10-06 — lead cutover regression
+
+Measured on Community First National Bank, last 90 days, after `9e5ecf4` (lead milestones).
+
+| Call | Before | After |
+|---|---:|---:|
+| `dashboard_kpi_counts` (one client) | ~18s mean in `pg_stat_statements` | ~60ms |
+| `dashboard_kpi_timeline` (one client) | ~3–7s | ~20ms |
+| Ad window lead embed | seq scan of all ~47k leads, hash spilled at 2MB `work_mem` | primary-key lookup via `lead_first_touch_ads` |
+
+Causes:
+
+1. `SET statement_timeout` on the KPI functions blocked SQL inlining. PostgREST's `authenticator` role times out at 8s, so the setting existed to raise that cap, and it also forced a generic plan.
+2. `(p_client_ids IS NULL OR client_id = ANY(...))` cannot use `events_client_type_occurred_idx`. The plan walked every dial in the window (`event_type <> 'dial'` removed ~15k rows) and heap-fetched them.
+3. The lead-id backfill rewrote `events` and autovacuum had not run (`autovacuum_count = 0`), so index-only scans heap-fetched almost every row. `VACUUM (ANALYZE)` on `events`, `leads`, and `meta_ad_insights` dropped an all-clients non-dial count from 3.7s to 0.2s.
+4. Creative Command's event select embedded `leads(utm_content, ad_name)`. Postgres hashed the entire `leads` table to attach first-touch ads onto a few thousand events.
+
+Fixes live in `supabase/migrations/speed_lead_kpi_reads.sql` and `src/lib/media-buyer-window.ts`. KPI SQL bodies stay free of `SET` so they can inline; a thin plpgsql wrapper calls `set_config('statement_timeout', '60s', true)` for all-clients ranges. The event scan uses `events_client_nondial_occurred_idx`. Ad reports load first-touch ads by lead id instead of embedding the relation.
+
 ## Symptom
 
 Ad Performance feels slower, especially on wide ranges (e.g. Year to Date) with All Clients. The Ad Library navigation push did **not** change `/api/media-buyer`'s query shape; the cost is structural and easy to blame on nearby UI work.

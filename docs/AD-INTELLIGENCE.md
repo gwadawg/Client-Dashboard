@@ -22,8 +22,9 @@ tags stay as facets inside a folder. See
 ## Ad Performance load
 
 Leaderboard and Creative Command both pull the same raw funnel + Meta
-window today; that duplication is the main reason Ad Performance feels
-slow on wide ranges. Audit and fix order:
+window. After the 2026-10-06 lead cutover, the slow part was the KPI
+functions seq-scanning `events` and the ad loader embedding every lead.
+Audit and fix order:
 [2026-08-21-ad-performance-load-audit.md](superpowers/specs/2026-08-21-ad-performance-load-audit.md).
 
 ## API

@@ -42,14 +42,12 @@ export const FUNNEL_EVENT_TYPES = [
   'closed',
 ] as const;
 
-const LEAD_AD_EMBED = 'leads!events_lead_id_fkey(utm_content,ad_name)';
-
 export const EVENT_SELECT =
-  `client_id, event_type, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, utm_content, is_qualified, is_hot, occurred_at, lead_id, ${LEAD_AD_EMBED}`;
+  'client_id, event_type, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, utm_content, is_qualified, is_hot, occurred_at, lead_id';
 
 /** Manual DQ only — `raw` stays off the shared funnel select. */
 export const DQ_EVENT_SELECT =
-  `client_id, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, utm_content, occurred_at, raw, lead_id, ${LEAD_AD_EMBED}`;
+  'client_id, ghl_contact_id, lead_phone, phone_number_used, lead_email, lead_name, ad_name, utm_content, occurred_at, raw, lead_id';
 
 type LeadAdEmbed =
   | { utm_content?: string | null; ad_name?: string | null }
@@ -313,6 +311,57 @@ async function loadMilestoneLeads(
   return { data: (data ?? []) as LeadMilestoneRow[] };
 }
 
+type LeadTouch = { id: string; utm_content: string | null; ad_name: string | null };
+
+/**
+ * First-touch ad for the leads on these rows. A PostgREST embed joins the
+ * whole leads table (hash + seq scan). Looking up by id uses the primary key.
+ */
+async function hydrateLeadAds(
+  service: ServiceClient,
+  rows: DbEventRow[],
+): Promise<string | null> {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const id = row.lead_id?.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  if (ids.length === 0) return null;
+
+  const ads = new Map<string, { utm_content: string | null; ad_name: string | null }>();
+  for (const idChunk of chunk(ids, 2000)) {
+    const rpc = await service.rpc('lead_first_touch_ads', { p_ids: idChunk });
+    if (rpc.error) {
+      if (!/could not find the function|schema cache/i.test(rpc.error.message)) {
+        return rpc.error.message;
+      }
+      const { data, error } = await service
+        .from('leads')
+        .select('id, utm_content, ad_name')
+        .in('id', idChunk);
+      if (error) return error.message;
+      for (const lead of (data ?? []) as LeadTouch[]) {
+        ads.set(lead.id, { utm_content: lead.utm_content, ad_name: lead.ad_name });
+      }
+      continue;
+    }
+    for (const lead of (rpc.data ?? []) as LeadTouch[]) {
+      ads.set(lead.id, { utm_content: lead.utm_content, ad_name: lead.ad_name });
+    }
+  }
+
+  for (const row of rows) {
+    const ad = row.lead_id ? ads.get(row.lead_id) : undefined;
+    if (!ad) continue;
+    row.lead_utm_content = ad.utm_content;
+    row.lead_ad_name = ad.ad_name;
+  }
+  return null;
+}
+
 function chunk<T>(items: T[], size: number): T[][] {
   if (items.length === 0) return [];
   const out: T[][] = [];
@@ -382,12 +431,14 @@ export async function loadMediaBuyerWindow(
         { data: meta, error: metaError },
         { data: library, error: libError },
         { data: aliases, error: aliasError },
+        milestones,
       ] = await Promise.all([
-        eventsQuery as unknown as QueryResult<AdEventRow>,
+        eventsQuery as unknown as QueryResult<DbEventRow>,
         dqQuery as unknown as QueryResult<ManualDqDbRow>,
         metaQuery as unknown as QueryResult<AdMetaRow>,
         service.from('ad_library').select(LIBRARY_SELECT),
         service.from('ad_library_aliases').select('id, library_id, alias_name'),
+        loadMilestoneLeads(service, clients, scope.startDate, scope.endDate),
       ]);
 
       if (eventsError || dqError || metaError || libError || aliasError) {
@@ -401,29 +452,28 @@ export async function loadMediaBuyerWindow(
             'Failed to load media buyer window',
         };
       }
-
-      const milestones = await loadMilestoneLeads(
-        service,
-        clients,
-        scope.startDate,
-        scope.endDate,
-      );
       if (milestones.error) return { error: milestones.error };
 
-      const manualDqs = ((dqRows ?? []) as ManualDqDbRow[])
+      const eventRows = (events ?? []) as DbEventRow[];
+      const dqDbRows = (dqRows ?? []) as ManualDqDbRow[];
+      const libraryRows = (library ?? []) as AdLibraryMeta[];
+      const [leadError, tagLookup] = await Promise.all([
+        hydrateLeadAds(service, [...eventRows, ...dqDbRows]),
+        tagsByLibraryId(
+          service,
+          libraryRows.map((row) => row.id),
+        ),
+      ]);
+      if (leadError) return { error: leadError };
+
+      const manualDqs = dqDbRows
         .map(formManualDqEvent)
         .filter((row): row is AdEventRow => row != null);
-
-      const libraryRows = (library ?? []) as AdLibraryMeta[];
-      const tagLookup = await tagsByLibraryId(
-        service,
-        libraryRows.map((row) => row.id),
-      );
 
       return {
         data: {
           events: [
-            ...((events ?? []) as DbEventRow[]).map((row) => toAdEvent(row, true)),
+            ...eventRows.map((row) => toAdEvent(row, true)),
             ...manualDqs,
             ...milestoneAdEvents(milestones.data ?? [], scope.startDate, scope.endDate),
           ],
@@ -643,7 +693,14 @@ export async function loadMediaBuyerDrilldownRows(
     ].join('|');
     if (!byStamp.has(stamp)) byStamp.set(stamp, row);
   };
-  for (const row of seedEvents) remember(toAdEvent(row, true));
+  const rememberDb = async (rows: DbEventRow[]): Promise<string | null> => {
+    const err = await hydrateLeadAds(service, rows);
+    if (err) return err;
+    for (const row of rows) remember(toAdEvent(row, true));
+    return null;
+  };
+  const seedErr = await rememberDb(seedEvents);
+  if (seedErr) return { error: seedErr };
 
   // Follow-up: funnel events for the same contacts that may not carry ad_name.
   for (const idChunk of chunk(ghlIds, IN_CHUNK)) {
@@ -657,7 +714,8 @@ export async function loadMediaBuyerDrilldownRows(
     q = q.limit(ROW_LIMIT);
     const { data, error } = await (q as unknown as QueryResult<DbEventRow>);
     if (error) return { error: error.message };
-    for (const row of (data ?? []) as DbEventRow[]) remember(toAdEvent(row, true));
+    const leadError = await rememberDb((data ?? []) as DbEventRow[]);
+    if (leadError) return { error: leadError };
   }
 
   for (const phoneChunk of chunk(rawPhones, IN_CHUNK)) {
@@ -673,7 +731,8 @@ export async function loadMediaBuyerDrilldownRows(
     q = q.limit(ROW_LIMIT);
     const { data, error } = await (q as unknown as QueryResult<DbEventRow>);
     if (error) return { error: error.message };
-    for (const row of (data ?? []) as DbEventRow[]) remember(toAdEvent(row, true));
+    const leadError = await rememberDb((data ?? []) as DbEventRow[]);
+    if (leadError) return { error: leadError };
   }
 
   // Leads whose first-touch ad is this creative, including conversions that
@@ -710,7 +769,8 @@ export async function loadMediaBuyerDrilldownRows(
     q = q.limit(ROW_LIMIT);
     const { data, error } = await (q as unknown as QueryResult<DbEventRow>);
     if (error) return { error: error.message };
-    for (const row of (data ?? []) as DbEventRow[]) remember(toAdEvent(row, true));
+    const leadError = await rememberDb((data ?? []) as DbEventRow[]);
+    if (leadError) return { error: leadError };
   }
 
   for (const row of milestoneAdEvents(matchedLeads, scope.startDate, scope.endDate)) {
@@ -719,11 +779,14 @@ export async function loadMediaBuyerDrilldownRows(
 
   // Form DQs for those contacts. Attribution uses the lead's ad, not the
   // snapshot copied onto the DQ row, so this is not filtered by ad name.
-  const rememberDq = (rows: ManualDqDbRow[]) => {
+  const rememberDq = async (rows: ManualDqDbRow[]): Promise<string | null> => {
+    const err = await hydrateLeadAds(service, rows);
+    if (err) return err;
     for (const row of rows) {
       const ev = formManualDqEvent(row);
       if (ev) remember(ev);
     }
+    return null;
   };
 
   for (const idChunk of chunk(ghlIds, IN_CHUNK)) {
@@ -737,7 +800,8 @@ export async function loadMediaBuyerDrilldownRows(
     q = q.limit(ROW_LIMIT);
     const { data, error } = await (q as unknown as QueryResult<ManualDqDbRow>);
     if (error) return { error: error.message };
-    rememberDq((data ?? []) as ManualDqDbRow[]);
+    const leadError = await rememberDq((data ?? []) as ManualDqDbRow[]);
+    if (leadError) return { error: leadError };
   }
 
   for (const phoneChunk of chunk(rawPhones, IN_CHUNK)) {
@@ -752,7 +816,8 @@ export async function loadMediaBuyerDrilldownRows(
     q = q.limit(ROW_LIMIT);
     const { data, error } = await (q as unknown as QueryResult<ManualDqDbRow>);
     if (error) return { error: error.message };
-    rememberDq((data ?? []) as ManualDqDbRow[]);
+    const leadError = await rememberDq((data ?? []) as ManualDqDbRow[]);
+    if (leadError) return { error: leadError };
   }
 
   const events = [...byStamp.values()];
