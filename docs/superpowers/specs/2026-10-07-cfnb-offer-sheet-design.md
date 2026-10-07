@@ -52,6 +52,7 @@ and gets paid on the back end when loans fund.
 4. **What you get** — Meta ad management with no % of spend;
    more creative volume (new video ads and angles);
    website and landing page management;
+   monthly SEO and AI search ranking;
    live reporting dashboard and funded-loan tracking;
    SendBlue texting, paid by Waiz.
 5. **What goes away** — 10% of ad spend; $1,200 website fee;
