@@ -1638,7 +1638,8 @@ create table if not exists client_form_submissions (
     form_type in (
       'new_client', 'onboarding', 'kickoff', 'tech_qa', 'marketing_qa',
       'launch', 'launch_kit', 'virtual_card',
-      'churn', 'reinstate', 'reinstate_onboarding'
+      'churn', 'reinstate', 'reinstate_onboarding',
+      'landing_page'
     )
   ),
   constraint client_form_submissions_status_check check (

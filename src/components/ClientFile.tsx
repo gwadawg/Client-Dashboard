@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import CheckinCallSummary from "@/components/CheckinCallSummary";
 import ClientCallFormFields from "@/components/ClientCallFormFields";
 import {
@@ -44,6 +45,11 @@ import LaunchChecklistWizard from "@/components/LaunchChecklistWizard";
 import LaunchKitWizard from "@/components/LaunchKitWizard";
 import QaSkeletonWizard from "@/components/QaSkeletonWizard";
 import VirtualCardWizard from "@/components/VirtualCardWizard";
+
+const LandingPageForm = dynamic(
+  () => import("@/components/landing-page/LandingPageForm"),
+  { ssr: false },
+);
 import ChurnOffboardingWizard from "@/components/ChurnOffboardingWizard";
 import { reinstateFormHref } from "@/lib/internal-forms";
 import Link from "next/link";
@@ -390,6 +396,7 @@ export default function ClientFile({
   const [showQaLane, setShowQaLane] = useState<QaLane | null>(null);
   const [showLaunchKit, setShowLaunchKit] = useState(false);
   const [showVirtualCard, setShowVirtualCard] = useState(false);
+  const [showLanding, setShowLanding] = useState(false);
   const [showOffboard, setShowOffboard] = useState(false);
   const [offerRow, setOfferRow] = useState<{ name: string; reporting_type: string | null } | null>(null);
   const [csAppointments, setCsAppointments] = useState<
@@ -853,6 +860,17 @@ export default function ClientFile({
         }}
       />
     )}
+    {showLanding && (
+      <LandingPageForm
+        clientId={clientId}
+        fallbackName={offerName}
+        onClose={() => setShowLanding(false)}
+        onPublished={() => {
+          load();
+          onUpdated?.();
+        }}
+      />
+    )}
     {showOffboard && (
       <ChurnOffboardingWizard
         clientId={clientId}
@@ -1031,6 +1049,25 @@ export default function ClientFile({
                 >
                   Card{client.virtual_business_card_url ? " ✓" : ""}
                 </button>
+                {client.reporting_type === "DSCR" && (
+                  <button
+                    type="button"
+                    onClick={() => setShowLanding(true)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                    style={{
+                      color: "#7dd3fc",
+                      background: "rgba(125,211,252,0.12)",
+                      border: "1px solid rgba(125,211,252,0.3)",
+                    }}
+                    title={
+                      client.landing_page_url
+                        ? `Landing page: ${client.landing_page_url}`
+                        : "Publish a dscrexperts.com landing page"
+                    }
+                  >
+                    Landing{client.landing_page_url ? " ✓" : ""}
+                  </button>
+                )}
                 {(client.lifecycle_status === "onboarding" || client.lifecycle_status === "new_account") && (
                   <button
                     type="button"
@@ -1585,6 +1622,39 @@ export default function ClientFile({
                 {client?.virtual_business_card_url ? "Edit card" : "Open Card"}
               </button>
             </div>
+
+            {client?.reporting_type === "DSCR" && (
+            <div
+              className="rounded-lg px-4 py-3 flex items-start justify-between gap-4 flex-wrap"
+              style={{
+                background: "rgba(125,211,252,0.08)",
+                border: "1px solid rgba(125,211,252,0.25)",
+              }}
+            >
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "#7dd3fc" }}>
+                  Landing page
+                </p>
+                <p className="text-xs mt-1" style={{ color: "#94a3b8" }}>
+                  {client.landing_page_url
+                    ? `Live at ${client.landing_page_url}`
+                    : "Publish a dscrexperts.com page from a template. A pull request opens for review."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLanding(true)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                style={{
+                  color: "#7dd3fc",
+                  background: "rgba(125,211,252,0.12)",
+                  border: "1px solid rgba(125,211,252,0.3)",
+                }}
+              >
+                {client.landing_page_url ? "Edit landing" : "Open Landing"}
+              </button>
+            </div>
+            )}
 
             <Section title="This offer / subaccount">
               <p className="text-xs mb-3" style={{ color: "#64748b" }}>

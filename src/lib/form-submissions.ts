@@ -14,6 +14,7 @@ export const FORM_TYPES = [
   'churn',
   'reinstate',
   'reinstate_onboarding',
+  'landing_page',
 ] as const;
 export type FormType = (typeof FORM_TYPES)[number];
 
@@ -32,6 +33,7 @@ export const FORM_TYPE_LABELS: Record<FormType, string> = {
   churn: 'Churn / Offboarding',
   reinstate: 'Reinstate',
   reinstate_onboarding: 'Welcome-Back OB',
+  landing_page: 'Landing page',
 };
 
 export const FORM_STATUS_LABELS: Record<FormStatus, string> = {

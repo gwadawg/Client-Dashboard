@@ -17,6 +17,7 @@ renames it. New onboarding code must not write `clickup_task_id`.
 | 3. Kickoff | CS manager | Kick-Off wizard in Client Roster | Ops fields + PM brief (JSON audit) |
 | 3b. Launch Kit | CSM | **Kit** wizard in Client Roster | Branded client PDF → Storage, `launch_kit` submission, Slack links |
 | 3c. Virtual Card | CS / ops | **Card** wizard in Client Roster / File | `loanofficer.me/{slug}` + `/learn`; URL on `clients.virtual_business_card_url` |
+| 3e. Landing page | CS / ops | **Landing** on Client File (DSCR only) | Pull request into `gwadawg/dscr-experts`. URLs written after the live page responds |
 | 3d. Tech / Media QA | Tech VA / Media Buyer | QA wizards in Client Roster / File | `tech_qa` / `marketing_qa` submission + ClickUp fact `Complete` |
 | 4. Launch | Ops | Launch checklist wizard | `lifecycle_status: active`, `launch_date`, Slack via Make |
 
@@ -370,8 +371,26 @@ Open **Card** from Client Roster actions or Client File (shows **✓** when publ
 
 Run migration `supabase/migrations/add_virtual_card.sql` before first publish.
 
+## 3e. Landing page (CS / ops, DSCR only)
+
+Stock DSCR page on `https://dscrexperts.com/{slug}/`, opened from
+**Landing** on Client File. Not shown for reverse mortgage or call center.
+The form publishes a pull request to `gwadawg/dscr-experts`. A person
+merges it. Mr. Waiz writes `landing_page_url` and `thank_you_page_url`
+only after that URL responds.
+
+The first publish stays out of search (`preview`). Launch needs a second
+publish with search indexing on. Design and build order:
+[`2026-10-06-client-landing-builder-design.md`](superpowers/specs/2026-10-06-client-landing-builder-design.md)
+and
+[`2026-10-07-client-landing-builder.md`](superpowers/plans/2026-10-07-client-landing-builder.md).
+
 ## 4. Launch checklist
 Open **Launch** from Client Roster when kickoff is complete. The wizard is a 4-department checklist (18 items). Checklist answers live in `client_form_submissions.responses` JSON. On submit the form also writes `clients.phone_ghl` (Go High Level prospecting number) plus lifecycle / launch date.
+
+If the client has a built landing page, republish it from Client File
+with search indexing on before ads go live. The wizard does not block
+on that republish.
 
 ### Departments
 
