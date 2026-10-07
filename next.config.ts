@@ -68,6 +68,14 @@ const nextConfig: NextConfig = {
         source: "/offers/russ-rich/",
         destination: "/offers/russ-rich/index.html",
       },
+      {
+        source: "/offers/chuck-eueno",
+        destination: "/offers/chuck-eueno/index.html",
+      },
+      {
+        source: "/offers/chuck-eueno/",
+        destination: "/offers/chuck-eueno/index.html",
+      },
     ];
   },
 };
