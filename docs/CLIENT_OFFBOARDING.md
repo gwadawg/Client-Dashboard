@@ -12,16 +12,19 @@ Mr. Waiz is the source of truth for lifecycle status. ClickUp and GHL receive no
 
 ---
 
-## Where to find the form
+## Where to open it
 
-| Location | Link / action |
-|----------|----------------|
-| **Team Forms hub** | [`/forms`](/forms) — bookmark this for all internal forms |
-| **Churn form** | [`/forms/churn`](/forms/churn) — select client from dropdown, then submit |
-| **Resources tab** | Resources → **Team Forms** section (pinned at top when filtering Forms) |
-| **Shortcuts** | Roster / Client File / Billing **Offboard** or **Churn** buttons (opens form with client pre-selected) |
+The offboarding wizard is the path that marks a client `churned`. Choosing `churned` in the client-file lifecycle dropdown opens that wizard; it does not save `churned` by itself.
 
-Staff must be logged in to submit (the form is not public like `/onboard`).
+| Location | Action |
+|----------|--------|
+| **Client Roster** | **Offboard** on active, paused, or off-boarding clients |
+| **Client File** | **Offboard** in the header |
+| **Client Billing** | **Churn** on an active client's billing schedule row |
+| **Team Forms hub** | [`/forms`](/forms) |
+| **Churn form** | [`/forms/churn`](/forms/churn) — select a client, then submit |
+
+Staff must be logged in (the form is not public like `/onboard`).
 
 Pre-select a client: `/forms/churn?clientId={uuid}`
 
@@ -100,6 +103,13 @@ Ops channel alert (slug from `SLACK_OPS_CHANNEL_SLUG`, default `ops_alerts`) wit
 | `GHL_CLIENT_CHURNED_TAG` | Optional | Default: `Client Churned` |
 | `SLACK_BOT_TOKEN` | For Slack alert | Direct ops posting |
 | `SLACK_OPS_CHANNEL_SLUG` | Optional | Default: `ops_alerts` |
+
+---
+
+## Analytics
+
+- **`v_churn_reasons`** — monthly churn count and lost MRR by reason code
+- **`client_form_submissions`** (`form_type` `churn`) — qualitative feedback
 
 ---
 

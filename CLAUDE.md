@@ -48,7 +48,8 @@ and run `/start` — Claude will build everything automatically.
 │   └── KPIS.md                      ← KPI formulas & GHL field mapping (source of truth)
 ├── make-blueprints/                 ← Make.com scenario blueprints
 ├── supabase/
-│   └── schema.sql                   ← Full database schema (run once)
+│   ├── schema.sql                   ← Schema snapshot (do not treat as the only migration)
+│   └── migrations/                  ← Ongoing SQL changes
 │
 └── src/
     ├── app/
@@ -76,5 +77,5 @@ and run `/start` — Claude will build everything automatically.
 | **KPI definitions & formulas** | `docs/KPIS.md` |
 | **Data Chat (scoped AI Q&A)** | `docs/DATA_CHAT.md` → `src/lib/ai/data-chat/` |
 | Dashboard UI | `src/components/DashboardView.tsx` |
-| Database schema | `supabase/schema.sql` |
+| Database schema | `supabase/migrations/` (apply these). `supabase/schema.sql` is a snapshot, not the change path |
 | Environment variables | `.env.local` |
