@@ -58,3 +58,7 @@ export function yamlPath(slug: string): string {
 export function headshotPath(slug: string, ext: "png" | "jpg" | "jpeg" | "webp"): string {
   return `brand_assets/clients/${slug}/headshot.${ext}`;
 }
+
+export function logoPath(slug: string, ext: "png" | "jpg" | "jpeg" | "webp"): string {
+  return `brand_assets/clients/${slug}/logo.${ext}`;
+}

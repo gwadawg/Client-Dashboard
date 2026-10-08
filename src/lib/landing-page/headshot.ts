@@ -1,4 +1,4 @@
-import { headshotPath } from "./products";
+import { headshotPath, logoPath } from "./products";
 
 export type HeadshotExt = "png" | "jpg" | "jpeg" | "webp";
 
@@ -38,4 +38,12 @@ export function headshotRepoFile(
 ): { path: string; extension: HeadshotExt } {
   const extension = headshotExtension(source);
   return { path: headshotPath(slug, extension), extension };
+}
+
+export function logoRepoFile(
+  slug: string,
+  source: { contentType?: string | null; filename?: string | null },
+): { path: string; extension: HeadshotExt } {
+  const extension = headshotExtension(source);
+  return { path: logoPath(slug, extension), extension };
 }

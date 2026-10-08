@@ -7,6 +7,7 @@ import {
   LANDING_THEMES,
   type LandingTheme,
 } from "@/lib/landing-page/products";
+import { assetFileId } from "@/lib/landing-page/assets";
 import type { LandingDraft, LandingPublishMeta } from "@/lib/landing-page/types";
 
 type Props = {
@@ -23,7 +24,79 @@ type LoadResponse = {
   publish: LandingPublishMeta;
   landingPageUrl: string | null;
   thankYouPageUrl: string | null;
+  headshotUrl: string | null;
+  logoUrl: string | null;
 };
+
+function AssetSlot({
+  label,
+  hint,
+  empty,
+  url,
+  disabled,
+  contain,
+  onPick,
+}: {
+  label: string;
+  hint: string;
+  empty: string;
+  url: string | null;
+  disabled: boolean;
+  contain?: boolean;
+  onPick: (file: File) => void;
+}) {
+  const id = assetFileId(url);
+  return (
+    <div className="rounded-lg border border-white/10 px-3 py-3">
+      <p className="text-xs font-semibold text-slate-200">{label}</p>
+      <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{hint}</p>
+      {url && id ? (
+        <div className="mt-3 flex items-center gap-3">
+          <img
+            src={url}
+            alt=""
+            className={`h-16 w-16 rounded-md bg-black/30 ${contain ? "object-contain" : "object-cover"}`}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">{label} ID</p>
+            <p className="truncate font-mono text-xs text-slate-200" title={id}>
+              {id}
+            </p>
+            <label className="mt-2 inline-block text-[11px] text-slate-400">
+              Replace
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+                disabled={disabled}
+                className="mt-1 block w-full text-xs text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-100"
+                onChange={event => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (file) onPick(file);
+                }}
+              />
+            </label>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3">
+          <p className="text-xs text-amber-200">{empty}</p>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+            disabled={disabled}
+            className="mt-2 block w-full text-xs text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-100"
+            onChange={event => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) onPick(file);
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 const fieldStyle = {
   background: "#0f2040",
@@ -60,6 +133,8 @@ export default function LandingPageForm({ clientId, fallbackName, onClose, onPub
   const [publish, setPublish] = useState<LandingPublishMeta | null>(null);
   const [landingPageUrl, setLandingPageUrl] = useState<string | null>(null);
   const [thankYouPageUrl, setThankYouPageUrl] = useState<string | null>(null);
+  const [headshotUrl, setHeadshotUrl] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -77,6 +152,8 @@ export default function LandingPageForm({ clientId, fallbackName, onClose, onPub
         setPublish(json.publish);
         setLandingPageUrl(json.landingPageUrl);
         setThankYouPageUrl(json.thankYouPageUrl);
+        setHeadshotUrl(json.headshotUrl ?? null);
+        setLogoUrl(json.logoUrl ?? null);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not load");
       } finally {
@@ -103,6 +180,30 @@ export default function LandingPageForm({ clientId, fallbackName, onClose, onPub
         : current.stateNotices.filter(item => item !== notice);
       return { ...current, stateNotices };
     });
+  }
+
+  async function uploadAsset(kind: "headshot" | "logo", file: File) {
+    setBusy(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.set("kind", kind);
+      body.set("file", file);
+      const res = await fetch(`/api/clients/${clientId}/landing-page`, {
+        method: "POST",
+        body,
+      });
+      const json = (await res.json()) as { error?: string; headshotUrl?: string; logoUrl?: string };
+      if (!res.ok) throw new Error(json.error || "Upload failed");
+      if (json.headshotUrl) setHeadshotUrl(json.headshotUrl);
+      if (json.logoUrl) setLogoUrl(json.logoUrl);
+      setNotice(kind === "logo" ? "Logo saved on the client" : "Headshot saved on the client");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function post(action: "save" | "publish" | "check") {
@@ -329,6 +430,26 @@ export default function LandingPageForm({ clientId, fallbackName, onClose, onPub
             <Field label="Company NMLS">
               <input className={inputClass} style={fieldStyle} disabled={disabled} value={draft.nmlsCompany} onChange={e => patch({ nmlsCompany: e.target.value })} />
             </Field>
+          </section>
+
+          <section className="grid gap-4 sm:grid-cols-2">
+            <AssetSlot
+              label="Headshot"
+              hint="4:5 portrait, about 1200×1500. PNG, JPG, or WEBP, 4MB or smaller. Face in the upper half."
+              empty="No headshot on this client. Upload one before publishing."
+              url={headshotUrl}
+              disabled={disabled}
+              onPick={file => void uploadAsset("headshot", file)}
+            />
+            <AssetSlot
+              label="Logo"
+              hint="Optional company mark. Transparent PNG works best, about 800×200. Shown small on the page."
+              empty="No logo on this client. Upload one if this page should show a mark."
+              url={logoUrl}
+              contain
+              disabled={disabled}
+              onPick={file => void uploadAsset("logo", file)}
+            />
           </section>
 
           <Field label="Bio">

@@ -53,9 +53,10 @@ export type LandingClient = {
   zip_code: string | null;
   states_licensed: string[] | null;
   headshot_url: string | null;
+  logo_url: string | null;
   landing_page_url: string | null;
   thank_you_page_url: string | null;
 };
 
 export const LANDING_CLIENT_FIELDS =
-  "id, name, reporting_type, primary_contact_name, email, phone, nmls, brokerage_name, legal_business_name, biography, street_address, city, state, zip_code, states_licensed, headshot_url, landing_page_url, thank_you_page_url";
+  "id, name, reporting_type, primary_contact_name, email, phone, nmls, brokerage_name, legal_business_name, biography, street_address, city, state, zip_code, states_licensed, headshot_url, logo_url, landing_page_url, thank_you_page_url";

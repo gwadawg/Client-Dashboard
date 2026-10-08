@@ -1518,6 +1518,7 @@ create index if not exists pending_events_ghl_location_pending
 
 -- Client onboarding form submissions (audit trail; checklist answers in JSONB).
 alter table clients add column if not exists headshot_url text;
+alter table clients add column if not exists logo_url text;
 alter table clients add column if not exists team_invite_token text;
 alter table clients add column if not exists loan_log_token text;
 

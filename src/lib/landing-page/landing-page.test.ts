@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
 import YAML from "yaml";
-import { headshotExtension } from "./headshot";
+import { assetFileId } from "./assets";
+import { headshotExtension, logoRepoFile } from "./headshot";
 import {
   draftForPublish,
   draftFromClient,
@@ -65,6 +66,7 @@ const client: LandingClient = {
   zip_code: "78701",
   states_licensed: ["TX"],
   headshot_url: null,
+  logo_url: null,
   landing_page_url: null,
   thank_you_page_url: null,
 };
@@ -154,6 +156,21 @@ describe("landing headshot", () => {
     assert.equal(headshotExtension({ contentType: "image/png" }), "png");
     assert.equal(headshotExtension({ filename: "photo.jpeg" }), "jpeg");
     assert.throws(() => headshotExtension({ contentType: "image/gif" }), /PNG, JPG, or WEBP/);
+  });
+
+  it("reads the storage id from a public URL and builds the logo path", () => {
+    assert.equal(
+      assetFileId(
+        "https://example.supabase.co/storage/v1/object/public/client-headshots/logos/abc-123.png",
+      ),
+      "abc-123.png",
+    );
+    assert.equal(assetFileId(null), null);
+    assert.equal(assetFileId("   "), null);
+    assert.equal(
+      logoRepoFile("jane-doe", { filename: "mark.webp" }).path,
+      "brand_assets/clients/jane-doe/logo.webp",
+    );
   });
 });
 
