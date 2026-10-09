@@ -83,6 +83,8 @@ export type AdPerformanceRow = {
   dq_reasons: DqReasonCount[];
   cpl: number | null;
   cost_per_qualified: number | null;
+  /** Spend ÷ hot leads. Null when the ad produced no hot leads. */
+  cost_per_hot: number | null;
   cost_per_appointment: number | null;
   cost_per_show: number | null;
   cost_per_close: number | null;
@@ -93,6 +95,8 @@ export type AdPerformanceRow = {
   booking_rate: number | null;
   /** Qualified leads ÷ total leads × 100. */
   qualified_rate: number | null;
+  /** Hot leads ÷ total leads × 100. */
+  hot_rate: number | null;
   /** Graded Show Rate: unique booked who spoke ÷ unique booked (see docs/KPIS.md). */
   show_rate: number | null;
   /** True Show: shows ÷ (shows + no-shows). Booking-process secondary, not graded. */
@@ -451,6 +455,7 @@ function costMetrics(
   spend: number,
   leads: number,
   qualified: number,
+  hot: number,
   conversations: number,
   shows: number,
   appointments: number,
@@ -462,6 +467,7 @@ function costMetrics(
   return {
     cpl: round(ratio(spend, leads), 2),
     cost_per_qualified: round(ratio(spend, qualified), 2),
+    cost_per_hot: round(ratio(spend, hot), 2),
     cost_per_appointment: round(ratio(spend, appointments), 2),
     cost_per_show: round(ratio(spend, shows), 2),
     cost_per_close: round(ratio(spend, closes), 2),
@@ -535,6 +541,7 @@ function accToRow(acc: Acc & { booked_converted?: number }): AdPerformanceRow {
     acc.spend,
     acc.leads,
     acc.qualified,
+    acc.hot,
     unique_conversations,
     acc.shows,
     acc.appointments,
@@ -569,6 +576,7 @@ function accToRow(acc: Acc & { booked_converted?: number }): AdPerformanceRow {
     ...costs,
     booking_rate: pct(unique_booked, acc.qualified),
     qualified_rate: pct(acc.qualified, acc.leads),
+    hot_rate: pct(acc.hot, acc.leads),
     show_rate: pct(unique_booked_converted, unique_booked),
     true_show_pct: pct(acc.shows, acc.shows + acc.no_shows),
     hand_raise_rate: pct(unique_hand_raises, acc.qualified),
@@ -740,6 +748,7 @@ export type AdClientBreakdownRow = {
   optin_rate: number | null;
   leads: number;
   qualified: number;
+  hot: number;
   appointments: number;
   shows: number;
   closes: number;
@@ -750,12 +759,14 @@ export type AdClientBreakdownRow = {
   unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
+  cost_per_hot: number | null;
   cp_conversation: number | null;
   cp_proposal: number | null;
   cp_submission: number | null;
   cp_funded: number | null;
   cost_per_show: number | null;
   qualified_rate: number | null;
+  hot_rate: number | null;
   hand_raise_rate: number | null;
   conversation_rate: number | null;
 };
@@ -771,6 +782,7 @@ export type AdDailyPoint = {
   optin_rate: number | null;
   leads: number;
   qualified: number;
+  hot: number;
   appointments: number;
   shows: number;
   unique_hand_raises: number;
@@ -780,11 +792,13 @@ export type AdDailyPoint = {
   unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
+  cost_per_hot: number | null;
   cp_conversation: number | null;
   cp_proposal: number | null;
   cp_submission: number | null;
   cp_funded: number | null;
   qualified_rate: number | null;
+  hot_rate: number | null;
   hand_raise_rate: number | null;
   conversation_rate: number | null;
 };
@@ -802,6 +816,8 @@ export type AdVariantBreakdown = {
   optin_rate: number | null;
   leads: number;
   qualified: number;
+  hot: number;
+  hot_rate: number | null;
   appointments: number;
   shows: number;
   closes: number;
@@ -811,6 +827,7 @@ export type AdVariantBreakdown = {
   unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
+  cost_per_hot: number | null;
   cp_conversation: number | null;
   cp_proposal: number | null;
   cp_submission: number | null;
@@ -893,6 +910,7 @@ function finalizeDailyPoint(date: string, b: RawBucket): AdDailyPoint {
     b.spend,
     b.leads,
     b.qualified,
+    b.hot,
     u.unique_conversations,
     b.shows,
     b.appointments,
@@ -909,6 +927,7 @@ function finalizeDailyPoint(date: string, b: RawBucket): AdDailyPoint {
     ...platformMetrics(b.spend, b.impressions, b.clicks, b.leads),
     leads: b.leads,
     qualified: b.qualified,
+    hot: b.hot,
     appointments: b.appointments,
     shows: b.shows,
     unique_hand_raises: u.unique_hand_raises,
@@ -918,11 +937,13 @@ function finalizeDailyPoint(date: string, b: RawBucket): AdDailyPoint {
     unique_funded: u.unique_funded,
     cpl: costs.cpl,
     cost_per_qualified: costs.cost_per_qualified,
+    cost_per_hot: costs.cost_per_hot,
     cp_conversation: costs.cp_conversation,
     cp_proposal: costs.cp_proposal,
     cp_submission: costs.cp_submission,
     cp_funded: costs.cp_funded,
     qualified_rate: pct(b.qualified, b.leads),
+    hot_rate: pct(b.hot, b.leads),
     hand_raise_rate: pct(u.unique_hand_raises, b.qualified),
     conversation_rate: pct(u.unique_conversations, b.qualified),
   };
@@ -934,6 +955,7 @@ function finalizeClientRow(client_id: string, b: RawBucket): AdClientBreakdownRo
     b.spend,
     b.leads,
     b.qualified,
+    b.hot,
     u.unique_conversations,
     b.shows,
     b.appointments,
@@ -950,6 +972,7 @@ function finalizeClientRow(client_id: string, b: RawBucket): AdClientBreakdownRo
     ...platformMetrics(b.spend, b.impressions, b.clicks, b.leads),
     leads: b.leads,
     qualified: b.qualified,
+    hot: b.hot,
     appointments: b.appointments,
     shows: b.shows,
     closes: b.closes,
@@ -960,12 +983,14 @@ function finalizeClientRow(client_id: string, b: RawBucket): AdClientBreakdownRo
     unique_funded: u.unique_funded,
     cpl: costs.cpl,
     cost_per_qualified: costs.cost_per_qualified,
+    cost_per_hot: costs.cost_per_hot,
     cp_conversation: costs.cp_conversation,
     cp_proposal: costs.cp_proposal,
     cp_submission: costs.cp_submission,
     cp_funded: costs.cp_funded,
     cost_per_show: costs.cost_per_show,
     qualified_rate: pct(b.qualified, b.leads),
+    hot_rate: pct(b.hot, b.leads),
     hand_raise_rate: pct(u.unique_hand_raises, b.qualified),
     conversation_rate: pct(u.unique_conversations, b.qualified),
   };
@@ -1066,6 +1091,7 @@ export function buildMultiAdDrilldown(
       b.spend,
       b.leads,
       b.qualified,
+      b.hot,
       u.unique_conversations,
       b.shows,
       b.appointments,
@@ -1082,6 +1108,8 @@ export function buildMultiAdDrilldown(
       ...platformMetrics(b.spend, b.impressions, b.clicks, b.leads),
       leads: b.leads,
       qualified: b.qualified,
+      hot: b.hot,
+      hot_rate: pct(b.hot, b.leads),
       appointments: b.appointments,
       shows: b.shows,
       closes: b.closes,
@@ -1091,6 +1119,7 @@ export function buildMultiAdDrilldown(
       unique_funded: u.unique_funded,
       cpl: costs.cpl,
       cost_per_qualified: costs.cost_per_qualified,
+      cost_per_hot: costs.cost_per_hot,
       cp_conversation: costs.cp_conversation,
       cp_proposal: costs.cp_proposal,
       cp_submission: costs.cp_submission,

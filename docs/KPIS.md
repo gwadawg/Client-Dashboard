@@ -185,7 +185,7 @@ HE accounts have **no ad-cost grading** (CPL / CPQL / CPConv are omitted). **Out
 | Email | `lead_email` | `lead_email` |
 | Link To Contact | `ghl_contact_id` | `ghl_contact_id` |
 | Qualified | `qualified` *(planned)* | `raw` until column added |
-| Hot | `hot` *(planned)* | `raw` |
+| Hot | `hot` or `is_hot` | `is_hot` |
 | Out of State? | `out_of_state` *(planned)* | `raw` |
 | Ad Name | `ad_name` or `utm_content` | `ad_name` |
 | Ad Set | `adset_name` / `ad_set_name` | `adset_name` |
@@ -428,10 +428,12 @@ The **Media Buyer** view (Overview group) ranks Facebook ads **globally across a
 | **CTR** | `Clicks ÷ Impressions × 100` |
 | **CPC** | `Spend ÷ Clicks` |
 | **CPM** | `Spend ÷ Impressions × 1000` |
-| **Leads / Qualified / Closes** | `COUNT(attributed lead / qualified lead / loan_funded)` — volume, not unique |
+| **Leads / Qualified / Hot / Closes** | `COUNT(attributed lead / qualified lead / hot lead / loan_funded)` — volume, not unique |
 | **Qual %** | `Qualified ÷ Leads × 100` |
+| **Hot %** | `Hot ÷ Leads × 100` |
 | **CPL** | `Spend ÷ Leads` |
 | **CPQL** | `Spend ÷ Qualified` |
+| **CPH** | `Spend ÷ Hot` |
 | **CPCONV** | `Spend ÷ Unique (show ∪ claimed ∪ live_transfer)` — north star, same as client cards |
 | **Hand-raise %** | `Unique (booked ∪ claimed ∪ LT) ÷ Qualified × 100` |
 | **Conversation %** | `Unique (show ∪ claimed ∪ LT) ÷ Qualified × 100` |
@@ -447,7 +449,7 @@ The **Media Buyer** view (Overview group) ranks Facebook ads **globally across a
 | **Cost per Close** | `Spend ÷ Closes` |
 | **Show Rate** (Media Buyer ad board) | Slot/event attendance (`Shows ÷ (Shows + No Shows)`). **Not** Client Success graded **Show Rate** (unique booked → spoke) |
 
-Opening an ad loads the **ad workspace**: CPL / CPQL / CPCONV plus backend CPP / CPS / CPF (and qual / hand-raise / conversation rate) as day or week series (week when the range is > 90 days, same rule as client cost trends), the manual-DQ reason mix, plus a per-client table so a blended spike can be split into **creative fatigue** (most accounts drift together) vs **one account**.
+Opening an ad loads the **ad workspace**: CPL / CPQL / CPH / CPCONV plus backend CPP / CPS / CPF (and qual / hot / hand-raise / conversation rate) as day or week series (week when the range is > 90 days, same rule as client cost trends), the manual-DQ reason mix, plus a per-client table so a blended spike can be split into **creative fatigue** (most accounts drift together) vs **one account**.
 
 Client Workspace → Conversions shows the same unique form-DQ count.
 That card opens Explorer with the Disqualified stage filter.

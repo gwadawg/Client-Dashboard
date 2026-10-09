@@ -89,6 +89,7 @@ type AdRow = {
   dq_reasons?: { slug: string; count: number }[];
   cpl: number | null;
   cost_per_qualified: number | null;
+  cost_per_hot: number | null;
   cost_per_appointment: number | null;
   cost_per_show: number | null;
   cost_per_close: number | null;
@@ -98,6 +99,7 @@ type AdRow = {
   cp_funded: number | null;
   booking_rate: number | null;
   qualified_rate: number | null;
+  hot_rate: number | null;
   show_rate: number | null;
   hand_raise_rate: number | null;
   conversation_rate: number | null;
@@ -250,6 +252,7 @@ function rollupAds(list: AdRow[]) {
   const clicks = list.reduce((s, a) => s + a.clicks, 0);
   const leads = list.reduce((s, a) => s + a.leads, 0);
   const qualified = list.reduce((s, a) => s + a.qualified, 0);
+  const hot = list.reduce((s, a) => s + a.hot, 0);
   const appointments = list.reduce((s, a) => s + a.appointments, 0);
   const shows = list.reduce((s, a) => s + a.shows, 0);
   const closes = list.reduce((s, a) => s + a.closes, 0);
@@ -270,11 +273,13 @@ function rollupAds(list: AdRow[]) {
     optin_rate: clicks > 0 ? (leads / clicks) * 100 : null,
     leads,
     qualified,
+    hot,
     appointments,
     shows,
     closes,
     cpl: leads > 0 ? spend / leads : null,
     cost_per_qualified: qualified > 0 ? spend / qualified : null,
+    cost_per_hot: hot > 0 ? spend / hot : null,
     cp_conversation: unique_conversations > 0 ? spend / unique_conversations : null,
     unique_proposals,
     unique_submissions,
@@ -285,6 +290,7 @@ function rollupAds(list: AdRow[]) {
     cp_submission: unique_submissions > 0 ? spend / unique_submissions : null,
     cp_funded: unique_funded > 0 ? spend / unique_funded : null,
     qualified_rate: leads > 0 ? (qualified / leads) * 100 : null,
+    hot_rate: leads > 0 ? (hot / leads) * 100 : null,
     hand_raise_rate: qualified > 0 ? (unique_hand_raises / qualified) * 100 : null,
     conversation_rate: qualified > 0 ? (unique_conversations / qualified) * 100 : null,
   };
@@ -622,6 +628,9 @@ type SortKey =
   | "leads"
   | "qualified"
   | "qualified_rate"
+  | "hot"
+  | "hot_rate"
+  | "cost_per_hot"
   | "appointments"
   | "shows"
   | "closes"
@@ -1037,12 +1046,13 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
     !!search.trim();
 
   const totals = rollupAds(filteredAds);
-  const colCount = showPlatform ? 21 : 16;
+  const colCount = showPlatform ? 24 : 19;
   const rankPresets = [
     { label: "CPCONV", key: "cp_conversation" as const, nextAsc: true },
     { label: "CPQL", key: "cost_per_qualified" as const, nextAsc: true },
     { label: "CPL", key: "cpl" as const, nextAsc: true },
     { label: "CPF", key: "cp_funded" as const, nextAsc: true },
+    { label: "Hot", key: "hot" as const, nextAsc: false },
     { label: "Hand-raise", key: "hand_raise_rate" as const, nextAsc: false },
   ];
 
@@ -1347,8 +1357,11 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
           { label: "CPM", value: money2(totals.cpm) },
           { label: "Leads", value: num(totals.leads) },
           { label: "Qual %", value: pct(totals.qualified_rate) },
+          { label: "Hot", value: num(totals.hot) },
+          { label: "Hot %", value: pct(totals.hot_rate) },
           { label: "CPL", value: money2(totals.cpl) },
           { label: "CPQL", value: money2(totals.cost_per_qualified) },
+          { label: "CPH", value: money2(totals.cost_per_hot) },
           { label: "CPCONV", value: money2(totals.cp_conversation) },
           { label: "Proposals", value: num(totals.unique_proposals) },
           { label: "Submissions", value: num(totals.unique_submissions) },
@@ -1385,8 +1398,11 @@ function AdPerformance({ startDate, endDate, clientId, onAddToLibrary, onViewInL
                 ) : null}
                 <SortHeader label="Leads" k="leads" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Qual %" k="qualified_rate" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="Hot" k="hot" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="Hot %" k="hot_rate" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="CPL" k="cpl" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="CPQL" k="cost_per_qualified" sortKey={sortKey} asc={asc} onSort={onSort} />
+                <SortHeader label="CPH" k="cost_per_hot" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="CPCONV" k="cp_conversation" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="HR %" k="hand_raise_rate" sortKey={sortKey} asc={asc} onSort={onSort} />
                 <SortHeader label="Conv %" k="conversation_rate" sortKey={sortKey} asc={asc} onSort={onSort} />
@@ -1660,8 +1676,11 @@ function FragmentRow({
       ) : null}
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{num(ad.leads)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#a78bfa" }}>{pct(ad.qualified_rate)}</td>
+      <td className="px-3 py-3 text-right" style={{ color: "#ef4444" }}>{num(ad.hot)}</td>
+      <td className="px-3 py-3 text-right" style={{ color: "#ef4444" }}>{pct(ad.hot_rate)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money2(ad.cpl)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money2(ad.cost_per_qualified)}</td>
+      <td className="px-3 py-3 text-right" style={{ color: "#e2e8f0" }}>{money2(ad.cost_per_hot)}</td>
       <td className="px-3 py-3 text-right font-semibold" style={{ color: "#fbbf24" }}>{money2(ad.cp_conversation)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{pct(ad.hand_raise_rate)}</td>
       <td className="px-3 py-3 text-right" style={{ color: "#94a3b8" }}>{pct(ad.conversation_rate)}</td>

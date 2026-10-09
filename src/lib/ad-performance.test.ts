@@ -154,6 +154,23 @@ describe('aggregateAdPerformance unique funnel', () => {
     assert.equal(rows[0].qualified_rate, 50);
   });
 
+  it('counts hot leads, hot rate, and cost per hot from lead events only', () => {
+    const rows = aggregateAdPerformance(
+      [meta({ spend: 400 })],
+      [
+        evt({ event_type: 'lead', ghl_contact_id: 'a', is_hot: true }),
+        evt({ event_type: 'lead', ghl_contact_id: 'b', is_hot: false }),
+        evt({ event_type: 'lead', ghl_contact_id: 'c', is_hot: true }),
+        evt({ event_type: 'lead', ghl_contact_id: 'd' }),
+        evt({ event_type: 'show', ghl_contact_id: 'a', is_hot: true, ad_name: null }),
+      ],
+    );
+    assert.equal(rows[0].leads, 4);
+    assert.equal(rows[0].hot, 2);
+    assert.equal(rows[0].hot_rate, 50);
+    assert.equal(rows[0].cost_per_hot, 200);
+  });
+
   it('rolls funded borrowers into submissions and proposals without double-counting', () => {
     const rows = aggregateAdPerformance(
       [meta({ spend: 600 })],
@@ -461,6 +478,62 @@ describe('buildAdDrilldown', () => {
     assert.equal(drill.daily[0].spend, 100);
     assert.equal(drill.daily[0].cp_conversation, 100);
   });
+
+  it('emits hot rate on the day the hot leads arrived', () => {
+    const drill = buildAdDrilldown(
+      'Hook A',
+      [meta({ spend: 80 })],
+      [
+        evt({ event_type: 'lead', ghl_contact_id: 'a', is_hot: true }),
+        evt({ event_type: 'lead', ghl_contact_id: 'b', is_hot: false }),
+      ],
+      { startDate: '2026-08-01', endDate: '2026-08-07' },
+    );
+    assert.equal(drill.daily.length, 1);
+    assert.equal(drill.daily[0].hot, 1);
+    assert.equal(drill.daily[0].hot_rate, 50);
+    assert.equal(drill.daily[0].cost_per_hot, 80);
+    assert.equal(drill.perClient[0].hot, 1);
+    assert.equal(drill.perClient[0].hot_rate, 50);
+  });
+});
+
+describe('rollupAdPerformanceByLibrary hot', () => {
+  it('sums hot leads and recomputes hot rate from the merged totals', () => {
+    const perName = aggregateAdPerformance(
+      [
+        meta({ ad_name: 'Hook A', spend: 100 }),
+        meta({ ad_name: 'Hook A v2', spend: 300 }),
+      ],
+      [
+        evt({ ad_name: 'Hook A', event_type: 'lead', ghl_contact_id: 'a', is_hot: true }),
+        evt({ ad_name: 'Hook A v2', event_type: 'lead', ghl_contact_id: 'b', is_hot: false }),
+        evt({ ad_name: 'Hook A v2', event_type: 'lead', ghl_contact_id: 'c', is_hot: true }),
+        evt({ ad_name: 'Hook A v2', event_type: 'lead', ghl_contact_id: 'd', is_hot: false }),
+      ],
+    );
+    const resolver = new AdLibraryResolver(
+      [{
+        id: 'lib-hot',
+        ad_name: 'Hook A',
+        status: 'active',
+        platform: 'facebook',
+        ad_format: 'ugc',
+        product: 'reverse',
+        summary: null,
+        visual_notes: null,
+        drive_url: null,
+        thumbnail_url: null,
+      }],
+      [{ id: 'al-hot', library_id: 'lib-hot', alias_name: 'Hook A v2' }],
+    );
+    const rolled = rollupAdPerformanceByLibrary(perName, resolver);
+    assert.equal(rolled.length, 1);
+    assert.equal(rolled[0].leads, 4);
+    assert.equal(rolled[0].hot, 2);
+    assert.equal(rolled[0].hot_rate, 50);
+    assert.equal(rolled[0].cost_per_hot, 200);
+  });
 });
 
 describe('rollupAdPerformanceByLibrary', () => {
@@ -496,6 +569,8 @@ describe('rollupAdPerformanceByLibrary', () => {
     assert.equal(rolled[0].spend, 150);
     assert.equal(rolled[0].leads, 2);
     assert.equal(rolled[0].unique_conversations, 1);
+    assert.equal(rolled[0].hot, 0);
+    assert.equal(rolled[0].hot_rate, 0);
     assert.equal(rolled[0].is_sourced, true);
     assert.deepEqual(rolled[0].variant_names, ['Hook A', 'Hook A v2']);
   });

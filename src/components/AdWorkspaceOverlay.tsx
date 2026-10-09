@@ -43,10 +43,13 @@ export type AdWorkspaceAd = {
   leads: number;
   qualified: number;
   qualified_rate: number | null;
+  hot: number;
+  hot_rate: number | null;
   appointments: number;
   shows: number;
   cpl: number | null;
   cost_per_qualified: number | null;
+  cost_per_hot: number | null;
   cp_conversation: number | null;
   cp_proposal: number | null;
   cp_submission: number | null;
@@ -79,6 +82,7 @@ export type AdWorkspaceClientRow = {
   optin_rate: number | null;
   leads: number;
   qualified: number;
+  hot: number;
   appointments: number;
   shows: number;
   unique_hand_raises: number;
@@ -88,12 +92,14 @@ export type AdWorkspaceClientRow = {
   unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
+  cost_per_hot: number | null;
   cp_conversation: number | null;
   cp_proposal: number | null;
   cp_submission: number | null;
   cp_funded: number | null;
   cost_per_show: number | null;
   qualified_rate: number | null;
+  hot_rate: number | null;
   hand_raise_rate: number | null;
   conversation_rate: number | null;
 };
@@ -109,17 +115,20 @@ export type AdWorkspaceDaily = {
   optin_rate: number | null;
   leads: number;
   qualified: number;
+  hot: number;
   unique_conversations: number;
   unique_proposals: number;
   unique_submissions: number;
   unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
+  cost_per_hot: number | null;
   cp_conversation: number | null;
   cp_proposal: number | null;
   cp_submission: number | null;
   cp_funded: number | null;
   qualified_rate: number | null;
+  hot_rate: number | null;
   hand_raise_rate: number | null;
   conversation_rate: number | null;
 };
@@ -131,6 +140,8 @@ export type AdWorkspaceVariant = {
   spend: number;
   leads: number;
   qualified: number;
+  hot: number;
+  hot_rate: number | null;
   appointments: number;
   shows: number;
   unique_conversations: number;
@@ -139,6 +150,7 @@ export type AdWorkspaceVariant = {
   unique_funded: number;
   cpl: number | null;
   cost_per_qualified: number | null;
+  cost_per_hot: number | null;
   cp_conversation: number | null;
   cp_proposal: number | null;
   cp_submission: number | null;
@@ -187,17 +199,19 @@ const CLIENT_LINE_COLORS = [
   "#c084fc",
 ];
 
-type CostKey = "cpl" | "cost_per_qualified" | "cp_conversation";
-type RateKey = "qualified_rate" | "hand_raise_rate" | "conversation_rate";
+type CostKey = "cpl" | "cost_per_qualified" | "cost_per_hot" | "cp_conversation";
+type RateKey = "qualified_rate" | "hot_rate" | "hand_raise_rate" | "conversation_rate";
 
 const COST_CHARTS: { key: CostKey; title: string; subtitle: string }[] = [
   { key: "cpl", title: "CPL", subtitle: "Spend ÷ leads" },
   { key: "cost_per_qualified", title: "CPQL", subtitle: "Spend ÷ qualified" },
+  { key: "cost_per_hot", title: "CPH", subtitle: "Spend ÷ hot leads" },
   { key: "cp_conversation", title: "CPCONV", subtitle: "Spend ÷ unique conversations" },
 ];
 
 const RATE_CHARTS: { key: RateKey; title: string; subtitle: string; color: string }[] = [
   { key: "qualified_rate", title: "Qual %", subtitle: "Qualified ÷ leads", color: "#22c55e" },
+  { key: "hot_rate", title: "Hot %", subtitle: "Hot ÷ leads", color: "#ef4444" },
   { key: "hand_raise_rate", title: "Hand-raise %", subtitle: "Unique booked ∪ claimed ∪ LT ÷ qualified", color: "#f59e0b" },
   { key: "conversation_rate", title: "Conversation %", subtitle: "Unique show ∪ claimed ∪ LT ÷ qualified", color: "#a78bfa" },
 ];
@@ -780,7 +794,9 @@ export default function AdWorkspaceOverlay({
                   />
                   <div className="grid grid-cols-2 xl:col-span-3 xl:grid-cols-4 gap-2">
                     <StatTile label="Leads" value={num(ad.leads)} tip="Attributed lead events" layer="page" />
+                    <StatTile label="Hot" value={num(ad.hot)} tip="Lead events tagged hot" layer="rate" />
                     <StatTile label="Qual %" value={pct(ad.qualified_rate)} tip="Qualified ÷ leads" layer="rate" spark={daily.map((p) => p.qualified_rate)} />
+                    <StatTile label="Hot %" value={pct(ad.hot_rate)} tip="Hot ÷ leads" layer="rate" spark={daily.map((p) => p.hot_rate)} />
                     <StatTile label="Hand-raise" value={pct(ad.hand_raise_rate)} tip="Unique booked ∪ claimed ∪ LT ÷ qualified" layer="rate" spark={daily.map((p) => p.hand_raise_rate)} />
                     <StatTile label="Conv %" value={pct(ad.conversation_rate)} tip="Unique conversations ÷ qualified" layer="rate" spark={daily.map((p) => p.conversation_rate)} />
                   </div>
@@ -803,9 +819,10 @@ export default function AdWorkspaceOverlay({
                     spark={daily.map((p) => p.cp_conversation)}
                   />
                   <HeroTile label="Spend" value={money(ad.spend)} tip="Meta spend in range" layer="cost" />
-                  <div className="grid grid-cols-2 xl:col-span-2 gap-2">
+                  <div className="grid grid-cols-3 xl:col-span-2 gap-2">
                     <StatTile label="CPL" value={moneyExact(ad.cpl)} tip="Spend ÷ leads" layer="cost" spark={daily.map((p) => p.cpl)} />
                     <StatTile label="CPQL" value={moneyExact(ad.cost_per_qualified)} tip="Spend ÷ qualified" layer="cost" spark={daily.map((p) => p.cost_per_qualified)} />
+                    <StatTile label="CPH" value={moneyExact(ad.cost_per_hot)} tip="Spend ÷ hot leads" layer="cost" spark={daily.map((p) => p.cost_per_hot)} />
                   </div>
                   <div className="grid grid-cols-3 xl:col-span-4 gap-2">
                     <StatTile label="Proposals" value={num(ad.unique_proposals ?? 0)} tip="Unique proposal ∪ submission ∪ funded" layer="cost" />
@@ -870,7 +887,7 @@ export default function AdWorkspaceOverlay({
               </div>
 
               {mode === "blended" ? (
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   {COST_CHARTS.map((chart) => (
                     <CostPanel key={chart.key} chart={chart} data={blendedChartData} granularity={granularity} />
                   ))}
@@ -884,7 +901,7 @@ export default function AdWorkspaceOverlay({
                 />
               )}
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {RATE_CHARTS.map((chart) => (
                   <RatePanel key={chart.key} chart={chart} data={blendedChartData} granularity={granularity} />
                 ))}
@@ -913,9 +930,12 @@ export default function AdWorkspaceOverlay({
                           { h: "CPC", layer: "interest" as const },
                           { h: "Opt-in", layer: "page" as const, divide: true },
                           { h: "Leads", layer: null },
+                          { h: "Hot", layer: "rate" as const },
                           { h: "Qual %", layer: "rate" as const },
+                          { h: "Hot %", layer: "rate" as const },
                           { h: "CPL", layer: "cost" as const, divide: true },
                           { h: "CPQL", layer: "cost" as const },
+                          { h: "CPH", layer: "cost" as const },
                           { h: "CPCONV", layer: "cost" as const },
                           { h: "Δ vs ad", layer: null },
                           { h: "Prop", layer: null, divide: true },
@@ -989,7 +1009,9 @@ export default function AdWorkspaceOverlay({
                                 {pct(c.optin_rate)}
                               </td>
                               <td className="px-3 py-2 text-right tabular-nums" style={{ color: "#94a3b8" }}>{num(c.leads)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums" style={{ color: "#ef4444" }}>{num(c.hot)}</td>
                               <td className="px-3 py-2 text-right tabular-nums" style={{ color: LAYER.rate }}>{pct(c.qualified_rate)}</td>
+                              <td className="px-3 py-2 text-right tabular-nums" style={{ color: "#ef4444" }}>{pct(c.hot_rate)}</td>
                               <td
                                 className="px-3 py-2 text-right tabular-nums"
                                 style={{ color: "#e2e8f0", borderLeft: "1px solid rgba(255,255,255,0.08)" }}
@@ -997,6 +1019,7 @@ export default function AdWorkspaceOverlay({
                                 {moneyExact(c.cpl)}
                               </td>
                               <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{moneyExact(c.cost_per_qualified)}</td>
+                              <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{moneyExact(c.cost_per_hot)}</td>
                               <td className="px-3 py-2 text-right font-semibold" style={{ color: "#fbbf24" }}>{moneyExact(c.cp_conversation)}</td>
                               <td
                                 className="px-3 py-2 text-right tabular-nums"
@@ -1031,7 +1054,7 @@ export default function AdWorkspaceOverlay({
                     <table className="w-full text-xs">
                       <thead>
                         <tr style={{ background: "#050c18" }}>
-                          {["Ad name", "Spend", "Leads", "CPL", "CPCONV", "Prop", "CPP", "Sub", "CPS", "Funded", "CPF"].map((h, i) => (
+                          {["Ad name", "Spend", "Leads", "Hot", "Hot %", "CPL", "CPCONV", "Prop", "CPP", "Sub", "CPS", "Funded", "CPF"].map((h, i) => (
                             <th key={h} className={`px-3 py-2 ${i === 0 ? "text-left" : "text-right"} text-[10px] font-semibold uppercase tracking-wider`} style={{ color: "#475569" }}>
                               {h}
                             </th>
@@ -1044,6 +1067,8 @@ export default function AdWorkspaceOverlay({
                             <td className="px-3 py-2" style={{ color: "#cbd5e1" }}>{v.ad_name}</td>
                             <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{moneyExact(v.spend)}</td>
                             <td className="px-3 py-2 text-right" style={{ color: "#94a3b8" }}>{num(v.leads)}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: "#ef4444" }}>{num(v.hot)}</td>
+                            <td className="px-3 py-2 text-right" style={{ color: "#ef4444" }}>{pct(v.hot_rate)}</td>
                             <td className="px-3 py-2 text-right" style={{ color: "#e2e8f0" }}>{moneyExact(v.cpl)}</td>
                             <td className="px-3 py-2 text-right" style={{ color: "#fbbf24" }}>{moneyExact(v.cp_conversation)}</td>
                             <td className="px-3 py-2 text-right tabular-nums" style={{ color: "#94a3b8" }}>{num(v.unique_proposals ?? 0)}</td>
